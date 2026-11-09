@@ -35,11 +35,13 @@ export const player = (name: string) => PlayerIdSchema.make(name);
 
 const decodeCard = Schema.decodeSync(CardFromText);
 
+export const card = (text: string) => decodeCard(text);
+
 export const cards = (text: string) =>
   text
     .split(" ")
-    .filter((card) => card.length > 0)
-    .map((card) => decodeCard(card));
+    .filter((word) => word.length > 0)
+    .map((word) => decodeCard(word));
 
 export const baseConfig: TableConfig = {
   ante: Antes.NoAnte(),
@@ -130,8 +132,8 @@ export const deckStartingWith = (text: string) => {
 
   return decodeDeck([
     ...top,
-    ...Array.from({ length: 52 }, (_, card) => card).filter(
-      (card) => !top.some((chosen) => chosen === card)
+    ...Array.from({ length: 52 }, (_, index) => index).filter(
+      (index) => !top.some((chosen) => chosen === index)
     ),
   ]);
 };

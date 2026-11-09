@@ -1,6 +1,12 @@
 import { Option, Result } from "effect";
 
 import {
+  rabbitHunt,
+  revealRabbit,
+  revealShown,
+  showCards,
+} from "./after-hand.js";
+import {
   act,
   call,
   check,
@@ -69,10 +75,18 @@ const decideCommand = Commands.$match({
     (command) =>
     (state: TableState): Decision =>
       chooseRuns(state, command),
+  RabbitHunt:
+    (command) =>
+    (state: TableState): Decision =>
+      rabbitHunt(state, command),
   SetSittingOut:
     (command) =>
     (state: TableState): Decision =>
       setSittingOut(state, command),
+  ShowCards:
+    (command) =>
+    (state: TableState): Decision =>
+      showCards(state, command),
   SitDown:
     (command) =>
     (state: TableState): Decision =>
@@ -100,6 +114,10 @@ const evolveEvent = Events.$match({
     (event) =>
     (state: TableState): TableState =>
       call(state, event),
+  CardsShown:
+    (event) =>
+    (state: TableState): TableState =>
+      revealShown(state, event),
   Checked:
     (event) =>
     (state: TableState): TableState =>
@@ -140,6 +158,10 @@ const evolveEvent = Events.$match({
     (event) =>
     (state: TableState): TableState =>
       awardPot(state, event),
+  RabbitHunted:
+    () =>
+    (state: TableState): TableState =>
+      revealRabbit(state),
   RaisedTo:
     (event) =>
     (state: TableState): TableState =>

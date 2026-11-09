@@ -43,6 +43,7 @@ export const EventSchema = Schema.TaggedUnion({
     amount: ChipsSchema,
     seat: SeatIndexSchema,
   },
+  CardsShown: { cards: Schema.Array(CardSchema), seat: SeatIndexSchema },
   Checked: { seat: SeatIndexSchema },
   ChipsAdded: { amount: ChipsSchema, seat: SeatIndexSchema },
   Folded: { seat: SeatIndexSchema },
@@ -81,6 +82,7 @@ export const EventSchema = Schema.TaggedUnion({
     run: Schema.Int.check(Schema.isGreaterThanOrEqualTo(1)),
     winners: Schema.Array(PotShareSchema),
   },
+  RabbitHunted: { cards: Schema.Array(CardSchema) },
   RaisedTo: {
     added: ChipsSchema,
     allIn: Schema.Boolean,

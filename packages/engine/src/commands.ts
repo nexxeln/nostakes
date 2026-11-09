@@ -1,7 +1,7 @@
 import { Data, Schema } from "effect";
 
 import { ActionSchema } from "./actions.js";
-import { DeckSchema } from "./cards.js";
+import { CardSchema, DeckSchema } from "./cards.js";
 import { ChipsSchema, PlayerIdSchema, SeatIndexSchema } from "./primitives.js";
 import { TableConfigSchema } from "./rules.js";
 
@@ -13,7 +13,16 @@ export const CommandSchema = Schema.TaggedUnion({
     runs: Schema.Int.check(Schema.isGreaterThanOrEqualTo(1)),
     seat: SeatIndexSchema,
   },
+  RabbitHunt: { seat: SeatIndexSchema },
   SetSittingOut: { seat: SeatIndexSchema, sittingOut: Schema.Boolean },
+  ShowCards: {
+    cards: Schema.Array(CardSchema).check(
+      Schema.isMinLength(1),
+      Schema.isMaxLength(2),
+      Schema.isUnique()
+    ),
+    seat: SeatIndexSchema,
+  },
   SitDown: {
     buyIn: ChipsSchema,
     player: PlayerIdSchema,
