@@ -1,6 +1,7 @@
 import { Data, Schema } from "effect";
 
 import { CardSchema, DeckSchema } from "./cards.js";
+import { HandRankSchema } from "./evaluation.js";
 import { ChipsSchema, PlayerIdSchema, SeatIndexSchema } from "./primitives.js";
 import { TableConfigSchema } from "./rules.js";
 import { StreetSchema } from "./state.js";
@@ -15,6 +16,15 @@ export const PotShareSchema = Schema.Struct({
 });
 
 export type PotShare = typeof PotShareSchema.Type;
+
+export const ShowdownEntrySchema = Schema.TaggedUnion({
+  Mucked: { seat: SeatIndexSchema },
+  Shown: {
+    cards: Schema.Array(CardSchema),
+    rank: HandRankSchema,
+    seat: SeatIndexSchema,
+  },
+});
 
 export const EventSchema = Schema.TaggedUnion({
   AntePosted: {
@@ -74,6 +84,10 @@ export const EventSchema = Schema.TaggedUnion({
     to: ChipsSchema,
   },
   RulesChanged: { config: TableConfigSchema },
+  ShowdownReached: {
+    order: Schema.Array(ShowdownEntrySchema),
+    run: Schema.Int.check(Schema.isGreaterThanOrEqualTo(1)),
+  },
   SittingOutChanged: { seat: SeatIndexSchema, sittingOut: Schema.Boolean },
   StraddlePosted: { amount: ChipsSchema, seat: SeatIndexSchema },
   StreetDealt: {

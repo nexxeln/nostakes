@@ -48,12 +48,15 @@ export {
   EventSchema,
   Events,
   PotShareSchema,
+  ShowdownEntrySchema,
   type Blind,
   type Event,
   type PotShare,
 } from "./events.js";
 
 export { buildPots, type Pot } from "./pots.js";
+
+export { ShowdownEntries, type ShowdownEntry } from "./showdown.js";
 
 export {
   ChipsSchema,
