@@ -1,5 +1,6 @@
 import { Data, Schema } from "effect";
 
+import { DeckSchema } from "./cards.js";
 import { ChipsSchema, PlayerIdSchema, SeatIndexSchema } from "./primitives.js";
 import { TableConfigSchema } from "./rules.js";
 
@@ -13,6 +14,7 @@ export const CommandSchema = Schema.TaggedUnion({
     seat: SeatIndexSchema,
   },
   StandUp: { seat: SeatIndexSchema },
+  StartHand: { deck: DeckSchema, straddles: Schema.Array(SeatIndexSchema) },
 });
 
 export type Command = typeof CommandSchema.Type;

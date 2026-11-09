@@ -26,7 +26,13 @@ export {
 
 export { CommandSchema, Commands, type Command } from "./commands.js";
 
-export { EventSchema, Events, type Event } from "./events.js";
+export {
+  BlindSchema,
+  EventSchema,
+  Events,
+  type Blind,
+  type Event,
+} from "./events.js";
 
 export {
   ChipsSchema,
@@ -44,10 +50,14 @@ export {
   type Rejection,
   AmountNotPositive,
   HandInProgress,
+  NotEnoughPlayers,
   PlayerAlreadySeated,
   SeatEmpty,
   SeatInHand,
   SeatTaken,
+  StraddleNotAllowed,
+  StraddleProblemSchema,
+  type StraddleProblem,
 } from "./rejection.js";
 
 export {
@@ -72,9 +82,11 @@ export {
   type LastHand,
   type Phase,
   type PlayerStatus,
+  type Round,
   type Seat,
+  type Straddle,
   type Street,
   type TableState,
 } from "./state.js";
 
-export { decide, evolve, replay } from "./table.js";
+export { decide, evolve, evolveAll, replay } from "./table.js";

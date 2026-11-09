@@ -4,13 +4,20 @@ import {
   Antes,
   CardFromText,
   ChipsSchema,
+  Commands,
+  DeckSchema,
   PlayerIdSchema,
   SeatIndexSchema,
+  Seats,
+  TableStates,
+  Events,
   decide,
   evolve,
+  initialTable,
 } from "../src/index.js";
 import type {
   Command,
+  Deck,
   Event,
   Rejection,
   TableConfig,
@@ -85,3 +92,69 @@ export const rejection = (
 
   return Result.isFailure(decision) ? decision.failure : undefined;
 };
+
+export const bankrollChange = (event: Event) => {
+  if (Events.$is("PlayerSat")(event)) {
+    return event.buyIn;
+  }
+
+  if (Events.$is("ChipsAdded")(event)) {
+    return event.amount;
+  }
+
+  return Events.$is("PlayerStood")(event) ? 0 - event.stack : 0;
+};
+
+export const occupiedTable = (
+  config: TableConfig,
+  stacks: Readonly<Record<number, number>>
+) =>
+  runAll(
+    initialTable(config),
+    Object.entries(stacks).map(([index, stack]) =>
+      Commands.SitDown({
+        buyIn: chipCount(stack),
+        player: player(`p${index}`),
+        seat: seat(Number(index)),
+      })
+    )
+  ).state;
+
+const decodeDeck = Schema.decodeSync(DeckSchema);
+
+export const deckStartingWith = (text: string) => {
+  const top = cards(text);
+
+  return decodeDeck([
+    ...top,
+    ...Array.from({ length: 52 }, (_, card) => card).filter(
+      (card) => !top.some((chosen) => chosen === card)
+    ),
+  ]);
+};
+
+export const startHand = (
+  state: TableState,
+  deck: Deck,
+  straddles: readonly number[] = []
+) =>
+  run(
+    state,
+    Commands.StartHand({
+      deck,
+      straddles: straddles.map((index) => seat(index)),
+    })
+  );
+
+export const handOf = (state: TableState) => {
+  if (!TableStates.$is("InHand")(state)) {
+    throw new Error("expected a hand in progress");
+  }
+
+  return state.hand;
+};
+
+export const stacksOf = (state: TableState) =>
+  state.seats.map((current) =>
+    Seats.$is("Occupied")(current) ? current.stack : null
+  );

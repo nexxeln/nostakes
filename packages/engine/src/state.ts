@@ -2,7 +2,7 @@ import { Data, Option, Schema } from "effect";
 
 import type { Card } from "./cards.js";
 import type { Chips, PlayerId, SeatIndex } from "./primitives.js";
-import { SEAT_COUNT } from "./primitives.js";
+import { SEAT_COUNT, chips } from "./primitives.js";
 import type { TableConfig } from "./rules.js";
 
 export const StreetSchema = Schema.Literals([
@@ -41,9 +41,10 @@ export interface HandPlayer {
   readonly holeCards: readonly Card[];
   readonly mucked: boolean;
   readonly player: PlayerId;
-  readonly revealed: readonly Card[];
+  readonly publicCards: readonly Card[];
   readonly seat: SeatIndex;
   readonly status: PlayerStatus;
+  readonly won: Chips;
 }
 
 export interface RunChoice {
@@ -51,22 +52,22 @@ export interface RunChoice {
   readonly seat: SeatIndex;
 }
 
+export interface Round {
+  readonly actedAt: readonly Option.Option<Chips>[];
+  readonly currentBet: Chips;
+  readonly lastAggressor: Option.Option<SeatIndex>;
+  readonly lastFullRaise: Chips;
+}
+
 export type Phase = Data.TaggedEnum<{
-  Betting: {
-    readonly currentBet: Chips;
-    readonly lastAggressor: Option.Option<SeatIndex>;
-    readonly lastFullRaise: Chips;
-    readonly respondedTo: readonly Option.Option<Chips>[];
-    readonly toAct: SeatIndex;
-  };
+  Betting: Round & { readonly toAct: SeatIndex };
   ChoosingRuns: {
     readonly choices: readonly RunChoice[];
     readonly maxRuns: number;
     readonly pending: readonly SeatIndex[];
   };
-  Settling: {
-    readonly lastAggressor: Option.Option<SeatIndex>;
-  };
+  RunningOut: { readonly runs: readonly (readonly Card[])[] };
+  Settling: { readonly lastAggressor: Option.Option<SeatIndex> };
 }>;
 
 export const Phases = Data.taggedEnum<Phase>();
@@ -75,28 +76,27 @@ export type Betting = Data.TaggedEnum.Value<Phase, "Betting">;
 
 export type ChoosingRuns = Data.TaggedEnum.Value<Phase, "ChoosingRuns">;
 
-export interface ForcedBet {
+export interface Straddle {
   readonly amount: Chips;
   readonly seat: SeatIndex;
 }
 
 export interface Hand {
   readonly bigBlindSeat: SeatIndex;
-  readonly boards: readonly (readonly Card[])[];
+  readonly board: readonly Card[];
   readonly deadMoney: Chips;
   readonly deck: readonly Card[];
-  readonly lastForcedBet: Option.Option<ForcedBet>;
-  readonly paidOut: Chips;
   readonly phase: Phase;
   readonly players: readonly HandPlayer[];
   readonly smallBlindSeat: SeatIndex;
+  readonly straddles: readonly Straddle[];
   readonly street: Street;
 }
 
 export interface LastHandPlayer {
   readonly holeCards: readonly Card[];
   readonly player: PlayerId;
-  readonly revealed: readonly Card[];
+  readonly publicCards: readonly Card[];
   readonly seat: SeatIndex;
 }
 
@@ -115,7 +115,7 @@ export type TableState = Data.TaggedEnum<{
     readonly seats: readonly Seat[];
   };
   InHand: {
-    readonly button: Option.Option<SeatIndex>;
+    readonly button: SeatIndex;
     readonly config: TableConfig;
     readonly hand: Hand;
     readonly handNumber: number;
@@ -149,6 +149,12 @@ export const occupantOf = (state: TableState, seat: SeatIndex) => {
   return isOccupied(occupant) ? Option.some(occupant) : Option.none();
 };
 
+export const stackOf = (state: TableState, seat: SeatIndex) => {
+  const occupant = seatAtIndex(state, seat);
+
+  return isOccupied(occupant) ? occupant.stack : 0;
+};
+
 export const handPlayerAt = (hand: Hand, seat: SeatIndex) =>
   Option.fromUndefinedOr(hand.players.find((player) => player.seat === seat));
 
@@ -157,3 +163,44 @@ export const replaceSeat = (
   seat: SeatIndex,
   replacement: Seat
 ) => seats.map((current, index) => (index === seat ? replacement : current));
+
+export const updatePlayer = (
+  hand: Hand,
+  seat: SeatIndex,
+  update: (player: HandPlayer) => HandPlayer
+): Hand => ({
+  ...hand,
+  players: hand.players.map((player) =>
+    player.seat === seat ? update(player) : player
+  ),
+});
+
+export const notFolded = (hand: Hand) =>
+  hand.players.filter((player) => player.status !== "Folded");
+
+export const activePlayers = (hand: Hand) =>
+  hand.players.filter((player) => player.status === "Active");
+
+export const playersClockwiseAfter = (
+  players: readonly HandPlayer[],
+  seat: SeatIndex
+) => [
+  ...players.filter((player) => player.seat > seat),
+  ...players.filter((player) => player.seat <= seat),
+];
+
+export const withStackChange = (
+  seats: readonly Seat[],
+  seat: SeatIndex,
+  change: number
+) =>
+  seats.map((current, index) =>
+    index === seat && isOccupied(current)
+      ? { ...current, stack: chips(current.stack + change) }
+      : current
+  );
+
+export const withHand = (state: InHand, hand: Hand): InHand => ({
+  ...state,
+  hand,
+});

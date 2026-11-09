@@ -16,6 +16,7 @@ import {
 } from "../src/index.js";
 import type { Command, TableState } from "../src/index.js";
 import {
+  bankrollChange,
   baseConfig,
   chipCount,
   fold,
@@ -323,13 +324,7 @@ it.prop(
         state = fold(state, decision.success);
 
         for (const event of decision.success) {
-          bankroll += Events.$match(event, {
-            ChipsAdded: (added) => added.amount,
-            PlayerSat: (sat) => sat.buyIn,
-            PlayerStood: (stood) => 0 - stood.stack,
-            RulesChanged: () => 0,
-            SittingOutChanged: () => 0,
-          });
+          bankroll += bankrollChange(event);
         }
       }
 
