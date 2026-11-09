@@ -13,3 +13,13 @@ export {
   rankOf,
   suitOf,
 } from "./cards.js";
+
+export {
+  HandCategorySchema,
+  HandRankSchema,
+  describe,
+  evaluate,
+  handCategory,
+  type HandCategory,
+  type HandRank,
+} from "./evaluation.js";
