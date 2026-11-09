@@ -2,7 +2,10 @@ import { Schema } from "effect";
 
 import { PlayerIdSchema, SeatIndexSchema } from "../primitives.js";
 
-export class SeatTaken extends Schema.TaggedError<SeatTaken>()("SeatTaken", {
+export class SeatTaken extends Schema.TaggedError<
+  SeatTaken,
+  { readonly brand: unique symbol }
+>()("SeatTaken", {
   occupant: PlayerIdSchema,
   seat: SeatIndexSchema,
 }) {

@@ -2,7 +2,10 @@ import { Schema } from "effect";
 
 import { SeatIndexSchema } from "../primitives.js";
 
-export class SeatEmpty extends Schema.TaggedError<SeatEmpty>()("SeatEmpty", {
+export class SeatEmpty extends Schema.TaggedError<
+  SeatEmpty,
+  { readonly brand: unique symbol }
+>()("SeatEmpty", {
   seat: SeatIndexSchema,
 }) {
   override get message() {

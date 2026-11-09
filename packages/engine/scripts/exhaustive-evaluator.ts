@@ -2,10 +2,10 @@ import { CardSchema, evaluate, handCategory } from "@nostakes/engine";
 import type { Card, HandCategory } from "@nostakes/engine";
 import { Console, Effect, Schema } from "effect";
 
-class CategoryCountsDiffer extends Schema.TaggedError<CategoryCountsDiffer>()(
-  "CategoryCountsDiffer",
-  { categories: Schema.Array(Schema.String) }
-) {}
+class CategoryCountsDiffer extends Schema.TaggedError<
+  CategoryCountsDiffer,
+  { readonly brand: unique symbol }
+>()("CategoryCountsDiffer", { categories: Schema.Array(Schema.String) }) {}
 
 const EXPECTED: readonly (readonly [HandCategory, number])[] = [
   ["RoyalFlush", 4324],
