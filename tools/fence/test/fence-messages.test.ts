@@ -2,6 +2,7 @@ import { describe, expect, it } from "@effect/vitest";
 import { Effect, Schema } from "effect";
 import * as Arbitrary from "effect/Arbitrary";
 
+import { HOOK_BYPASS_REASON } from "../../../scripts/vcs-command-policy.js";
 import { fenceMessage, placeholderValue } from "./fixtures/fence-message.js";
 
 const repoRoot = new URL("../../../", import.meta.url);
@@ -80,6 +81,10 @@ describe("fence messages", () => {
       }
     })
   );
+
+  it("names the fix when the VCS policy blocks a hook bypass", () => {
+    expect(fenceMessage(HOOK_BYPASS_REASON)).toBeDefined();
+  });
 
   it.effect.prop(
     "every rendered rule message says what is wrong, why, and the fix",
