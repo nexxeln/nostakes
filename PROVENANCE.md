@@ -4,7 +4,7 @@ nostakes bans comments in code (see `AGENTS.md`). Credit for borrowed code lives
 
 | Code | Origin | Notes |
 | --- | --- | --- |
-| `tsconfig.base.json`, `oxlint.config.ts`, `oxfmt.config.ts`, `lefthook.yml`, `.claude/settings.json`, `scripts/hooks/`, `scripts/vcs-command-policy.*`, `scripts/oxlint-*.ts`, `tools/fence/test/` | [joelhooks/rat-stack](https://github.com/joelhooks/rat-stack) at `54bf778`, MIT, Copyright (c) 2026 Joel Hooks | Copied, then cut to the rules that do not depend on rat-stack's package layout. `AGENTS.md` lists every change. |
+| `tsconfig.base.json`, `oxlint.config.ts`, `oxfmt.config.ts`, `lefthook.yml`, `.claude/settings.json`, `scripts/hooks/`, `scripts/vcs-command-policy.*`, `scripts/oxlint-*.ts`, `.github/workflows/ci.yml`, `tools/fence/test/` | [joelhooks/rat-stack](https://github.com/joelhooks/rat-stack) at `54bf778`, MIT, Copyright (c) 2026 Joel Hooks | Copied, then cut to the rules that do not depend on rat-stack's package layout. `AGENTS.md` lists every change. |
 | `scripts/oxlint-plugin-effect-tests.ts` | [t3code](https://github.com/pingdotgg/t3code) `oxlint-plugin-t3code/rules/no-manual-effect-runtime-in-tests.ts`, through rat-stack | Unchanged from rat-stack's adaptation. |
 | `tools/oxlint/anti-slop/` | [dmmulroy/anti-slop](https://github.com/dmmulroy/anti-slop) at `c44ef22`, MIT, through rat-stack | Vendored and owned. See `LICENSE` and `UPSTREAM.md` there. Its files keep upstream's comments. |
 
