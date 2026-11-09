@@ -9,6 +9,13 @@ export const BlindSchema = Schema.Literals(["Small", "Big"]);
 
 export type Blind = typeof BlindSchema.Type;
 
+export const PotShareSchema = Schema.Struct({
+  amount: ChipsSchema,
+  seat: SeatIndexSchema,
+});
+
+export type PotShare = typeof PotShareSchema.Type;
+
 export const EventSchema = Schema.TaggedUnion({
   AntePosted: {
     allIn: Schema.Boolean,
@@ -29,6 +36,7 @@ export const EventSchema = Schema.TaggedUnion({
   Checked: { seat: SeatIndexSchema },
   ChipsAdded: { amount: ChipsSchema, seat: SeatIndexSchema },
   Folded: { seat: SeatIndexSchema },
+  HandEnded: { handNumber: Schema.Int },
   HandStarted: {
     bigBlindSeat: SeatIndexSchema,
     button: SeatIndexSchema,
@@ -50,6 +58,13 @@ export const EventSchema = Schema.TaggedUnion({
     player: PlayerIdSchema,
     seat: SeatIndexSchema,
     stack: ChipsSchema,
+  },
+  PotAwarded: {
+    amount: ChipsSchema,
+    eligible: Schema.Array(SeatIndexSchema),
+    pot: Schema.Int.check(Schema.isGreaterThanOrEqualTo(1)),
+    run: Schema.Int.check(Schema.isGreaterThanOrEqualTo(1)),
+    winners: Schema.Array(PotShareSchema),
   },
   RaisedTo: {
     added: ChipsSchema,

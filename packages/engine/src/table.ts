@@ -24,6 +24,7 @@ import {
   postStraddle,
   startHand,
 } from "./forced-bets.js";
+import { awardPot, endHand, foldOut } from "./pots.js";
 import type { Rejection } from "./rejection.js";
 import type { TableConfig } from "./rules.js";
 import {
@@ -37,7 +38,7 @@ import {
   sitDown,
   standUp,
 } from "./seating.js";
-import { Phases, initialTable, isInHand } from "./state.js";
+import { Phases, initialTable, isInHand, notFolded } from "./state.js";
 import type { InHand, TableState } from "./state.js";
 
 type Decision = Result.Result<readonly Event[], Rejection>;
@@ -98,6 +99,10 @@ const evolveEvent = Events.$match({
     (event) =>
     (state: TableState): TableState =>
       fold(state, event),
+  HandEnded:
+    () =>
+    (state: TableState): TableState =>
+      endHand(state),
   HandStarted:
     (event) =>
     (state: TableState): TableState =>
@@ -114,6 +119,10 @@ const evolveEvent = Events.$match({
     (event) =>
     (state: TableState): TableState =>
       emptySeat(state, event),
+  PotAwarded:
+    (event) =>
+    (state: TableState): TableState =>
+      awardPot(state, event),
   RaisedTo:
     (event) =>
     (state: TableState): TableState =>
@@ -155,9 +164,17 @@ export const evolveAll = (state: TableState, events: readonly Event[]) => {
   return current;
 };
 
+const afterStreet = (state: InHand): readonly Event[] => {
+  if (notFolded(state.hand).length < 2) {
+    return foldOut(state);
+  }
+
+  return streetIsOpen(state.hand) ? [nextStreet(state.hand)] : [];
+};
+
 const settle = (state: InHand): readonly Event[] =>
   Option.match(uncalledExcess(state.hand), {
-    onNone: () => (streetIsOpen(state.hand) ? [nextStreet(state.hand)] : []),
+    onNone: () => afterStreet(state),
     onSome: (excess) => [Events.UncalledBetReturned(excess)],
   });
 

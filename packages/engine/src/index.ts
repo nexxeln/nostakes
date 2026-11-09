@@ -47,9 +47,13 @@ export {
   BlindSchema,
   EventSchema,
   Events,
+  PotShareSchema,
   type Blind,
   type Event,
+  type PotShare,
 } from "./events.js";
+
+export { buildPots, type Pot } from "./pots.js";
 
 export {
   ChipsSchema,
