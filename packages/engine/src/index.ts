@@ -54,6 +54,8 @@ export {
   type PotShare,
 } from "./events.js";
 
+export { invariants, type Violation } from "./invariants.js";
+
 export { buildPots, type Pot } from "./pots.js";
 
 export { ShowdownEntries, type ShowdownEntry } from "./showdown.js";
