@@ -4,9 +4,45 @@ nostakes bans comments in code (see `AGENTS.md`). Credit for borrowed code lives
 
 | Code | Origin | Notes |
 | --- | --- | --- |
-| `tsconfig.base.json`, `oxlint.config.ts`, `oxfmt.config.ts`, `lefthook.yml`, `.claude/settings.json`, `scripts/hooks/`, `scripts/vcs-command-policy.*`, `scripts/oxlint-*.ts`, `.github/workflows/ci.yml`, `tools/fence/test/` | [joelhooks/rat-stack](https://github.com/joelhooks/rat-stack) at `54bf778`, MIT, Copyright (c) 2026 Joel Hooks | Copied, then cut to the rules that do not depend on rat-stack's package layout. `AGENTS.md` lists every change. |
+| `package.json`, `pnpm-workspace.yaml`, `turbo.json`, `tsconfig.base.json`, `tsconfig.json`, `oxlint.config.ts`, `oxfmt.config.ts`, `lefthook.yml`, `.claude/settings.json`, `scripts/hooks/`, `scripts/vcs-command-policy.*`, `scripts/oxlint-*.ts`, `.github/workflows/ci.yml`, `tools/fence/test/`, the config files in `packages/*/`, the shape of `AGENTS.md` | [joelhooks/rat-stack](https://github.com/joelhooks/rat-stack) at `54bf778`, MIT, Copyright (c) 2026 Joel Hooks | Copied, then cut to what does not depend on rat-stack's package layout. The changes are listed below. |
 | `scripts/oxlint-plugin-effect-tests.ts` | [t3code](https://github.com/pingdotgg/t3code) `oxlint-plugin-t3code/rules/no-manual-effect-runtime-in-tests.ts`, through rat-stack | Unchanged from rat-stack's adaptation. |
 | `tools/oxlint/anti-slop/` | [dmmulroy/anti-slop](https://github.com/dmmulroy/anti-slop) at `c44ef22`, MIT, through rat-stack | Vendored and owned. See `LICENSE` and `UPSTREAM.md` there. Its files keep upstream's comments. |
+
+## Changes from rat-stack
+
+Unchanged: `tsconfig.base.json`, `.nvmrc`, `.claude/settings.json`, `scripts/hooks/block-git-no-verify.mjs`, `scripts/vcs-command-policy.d.ts`, `scripts/oxlint-plugin-no-comments.ts`, `scripts/oxlint-plugin-effect-tests.ts`, the anti-slop rule files, `packages/*/tsconfig.build.json`, and the no-comments, unknown-parameters, and fence-message tests.
+
+Adapted:
+
+- `package.json`: scripts for rat-stack's apps, deploys, content, Pi, and varlock are gone. `test` no longer runs the security-audit skill tests. `debt` and `verify` are new.
+- `pnpm-workspace.yaml`: adds `tools/fence`. Only `lefthook` may run install scripts. No release-age exclusions or overrides, because none of our pins needs one.
+- `turbo.json`: no site, web, or infra tasks and no signed remote cache. Adds `verify` and the root inputs the fence tests read.
+- `tsconfig.json`: no `allowedUnstableApis`, because no root script uses Effect.
+- `oxfmt.config.ts`: no site ignores or overrides.
+- `oxlint.config.ts`: no Foldkit or `@xstate/effect` plugins, no site or web overrides, and the dropped rules below.
+- `scripts/oxlint-plugin-patterns.ts` is `nostakes-patterns`. `scripts/oxlint-plugin-boundaries.ts` is `nostakes-boundaries`. `scripts/oxlint-plugin-debt-ledger.ts` is `nostakes-debt`, read by `pnpm debt` instead of a site page.
+- `nostakes-boundaries/no-cross-layer-imports` keeps only the rule that a package cannot import app code.
+- `scripts/vcs-command-policy.js` also blocks `commit -n`, `LEFTHOOK=0`, and `core.hooksPath` overrides.
+- `lefthook.yml` drops its header comments.
+- `.github/workflows/ci.yml` drops the remote cache, the source fetch, the concurrency cap, and the full-history checkout.
+- The patterns and boundaries tests keep the cases for the kept rules, with nostakes paths.
+- `tools/fence/test/effect-tests-rule.test.ts`, `anti-slop-rules.test.ts`, and `debt-ledger-rule.test.ts` are new. rat-stack has no fixture tests for those rules.
+
+Dropped, because each depends on rat-stack's packages or apps:
+
+- `contract-binding-matches-name`: rat-stack's `defineContract`
+- `watch-effect-actors`: rat-stack's devtools `watchActor`
+- `learn-snippet-idiom`: rat-stack's `.brain` learn cards
+- `audited-content-regex`: rat-stack's site content pipeline
+- `flag-removal-date`: rat-stack's flags package
+- `no-browser-server-imports`: rat-stack's browser-safe contract modules
+- `no-feature-transport`: rat-stack's Foldkit feature layout. Revisit with the Foldkit phase.
+- `no-core-adapters`: rat-stack's `packages/core`
+- `no-devtools-in-production`: rat-stack's devtools and auth packages
+- `no-code-snippets-in-runtime`: rat-stack's `packages/code-snippets`
+- `no-hand-rolled-surface`: rat-stack's `packages/capability` projections
+
+Also dropped: the Foldkit and `@xstate/effect` lint plugins until those phases, the checker bump and parity tooling, the lockfile guard test (it needs `@effect/platform-node`; `lockfile:check` itself stays in `check`), the Pi and Cursor hooks, the skills, `VISION.md`, and the agent source mirrors.
 
 ## rat-stack license
 
