@@ -18,11 +18,13 @@ import type { TableConfig } from "./rules.js";
 import {
   Phases,
   TableStates,
+  commit,
   isInHand,
   isOccupied,
   seatAtIndex,
   stackOf,
   updatePlayer,
+  whenInHand,
   withHand,
   withStackChange,
 } from "./state.js";
@@ -293,34 +295,6 @@ export const beginHand = (
     handNumber: event.handNumber,
     seats: state.seats,
   });
-
-export const whenInHand = (
-  state: TableState,
-  update: (inHand: InHand) => TableState
-) => (isInHand(state) ? update(state) : state);
-
-const commit = (
-  state: InHand,
-  seat: SeatIndex,
-  amount: Chips,
-  live: boolean
-): InHand => {
-  const seats = withStackChange(state.seats, seat, 0 - amount);
-  const allIn = stackOf({ ...state, seats }, seat) === 0;
-
-  return {
-    ...state,
-    hand: updatePlayer(state.hand, seat, (player) => ({
-      ...player,
-      committedThisStreet: live
-        ? chips(player.committedThisStreet + amount)
-        : player.committedThisStreet,
-      committedTotal: chips(player.committedTotal + amount),
-      status: allIn ? "AllIn" : player.status,
-    })),
-    seats,
-  };
-};
 
 export const postAnte = (state: TableState, event: EventOf<"AntePosted">) =>
   whenInHand(state, (inHand) => {

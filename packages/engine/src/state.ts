@@ -204,3 +204,31 @@ export const withHand = (state: InHand, hand: Hand): InHand => ({
   ...state,
   hand,
 });
+
+export const whenInHand = (
+  state: TableState,
+  update: (inHand: InHand) => TableState
+) => (isInHand(state) ? update(state) : state);
+
+export const commit = (
+  state: InHand,
+  seat: SeatIndex,
+  amount: Chips,
+  live: boolean
+): InHand => {
+  const seats = withStackChange(state.seats, seat, 0 - amount);
+  const allIn = stackOf({ ...state, seats }, seat) === 0;
+
+  return {
+    ...state,
+    hand: updatePlayer(state.hand, seat, (player) => ({
+      ...player,
+      committedThisStreet: live
+        ? chips(player.committedThisStreet + amount)
+        : player.committedThisStreet,
+      committedTotal: chips(player.committedTotal + amount),
+      status: allIn ? "AllIn" : player.status,
+    })),
+    seats,
+  };
+};

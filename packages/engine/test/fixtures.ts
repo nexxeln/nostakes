@@ -1,6 +1,7 @@
-import { Result, Schema } from "effect";
+import { Option, Result, Schema } from "effect";
 
 import {
+  Actions,
   Antes,
   CardFromText,
   ChipsSchema,
@@ -14,8 +15,10 @@ import {
   decide,
   evolve,
   initialTable,
+  legalActions,
 } from "../src/index.js";
 import type {
+  Action,
   Command,
   Deck,
   Event,
@@ -158,3 +161,35 @@ export const stacksOf = (state: TableState) =>
   state.seats.map((current) =>
     Seats.$is("Occupied")(current) ? current.stack : null
   );
+
+export const folds = Actions.Fold();
+
+export const checks = Actions.Check();
+
+export const calls = Actions.Call();
+
+export const raisesTo = (to: number) => Actions.RaiseTo({ to: chipCount(to) });
+
+export const actAs = (index: number, action: Action) =>
+  Commands.Act({ action, seat: seat(index) });
+
+export const play = (
+  state: TableState,
+  moves: readonly (readonly [number, Action])[]
+) =>
+  runAll(
+    state,
+    moves.map(([index, action]) => actAs(index, action))
+  );
+
+export const legalOf = (state: TableState) =>
+  Option.getOrThrowWith(
+    legalActions(state),
+    () => new Error("expected a seat to bet")
+  );
+
+export const configWithBlinds = (small: number, big: number): TableConfig => ({
+  ...baseConfig,
+  bigBlind: chipCount(big),
+  smallBlind: chipCount(small),
+});

@@ -1,4 +1,21 @@
 export {
+  ActionSchema,
+  Actions,
+  LegalActionsSchema,
+  RaiseRangeSchema,
+  type Action,
+  type LegalActions,
+  type RaiseRange,
+} from "./actions.js";
+
+export {
+  PendingDecisions,
+  legalActions,
+  pendingDecisions,
+  type PendingDecision,
+} from "./betting.js";
+
+export {
   CARD_RANKS,
   CARD_SUITS,
   CardSchema,
@@ -50,7 +67,10 @@ export {
   type Rejection,
   AmountNotPositive,
   HandInProgress,
+  IllegalAction,
+  NoBettingRound,
   NotEnoughPlayers,
+  NotYourTurn,
   PlayerAlreadySeated,
   SeatEmpty,
   SeatInHand,

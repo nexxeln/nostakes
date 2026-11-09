@@ -1,10 +1,12 @@
 import { Data, Schema } from "effect";
 
+import { ActionSchema } from "./actions.js";
 import { DeckSchema } from "./cards.js";
 import { ChipsSchema, PlayerIdSchema, SeatIndexSchema } from "./primitives.js";
 import { TableConfigSchema } from "./rules.js";
 
 export const CommandSchema = Schema.TaggedUnion({
+  Act: { action: ActionSchema, seat: SeatIndexSchema },
   AddChips: { amount: ChipsSchema, seat: SeatIndexSchema },
   ChangeRules: { config: TableConfigSchema },
   SetSittingOut: { seat: SeatIndexSchema, sittingOut: Schema.Boolean },

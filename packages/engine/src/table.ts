@@ -1,5 +1,17 @@
-import { Result } from "effect";
+import { Option, Result } from "effect";
 
+import {
+  act,
+  call,
+  check,
+  dealStreet,
+  fold,
+  nextStreet,
+  raise,
+  returnUncalled,
+  streetIsOpen,
+  uncalledExcess,
+} from "./betting.js";
 import { Commands } from "./commands.js";
 import type { Command } from "./commands.js";
 import { Events } from "./events.js";
@@ -25,12 +37,16 @@ import {
   sitDown,
   standUp,
 } from "./seating.js";
-import { initialTable } from "./state.js";
-import type { TableState } from "./state.js";
+import { Phases, initialTable, isInHand } from "./state.js";
+import type { InHand, TableState } from "./state.js";
 
 type Decision = Result.Result<readonly Event[], Rejection>;
 
 const decideCommand = Commands.$match({
+  Act:
+    (command) =>
+    (state: TableState): Decision =>
+      act(state, command),
   AddChips:
     (command) =>
     (state: TableState): Decision =>
@@ -66,10 +82,22 @@ const evolveEvent = Events.$match({
     (event) =>
     (state: TableState): TableState =>
       postBlind(state, event),
+  Called:
+    (event) =>
+    (state: TableState): TableState =>
+      call(state, event),
+  Checked:
+    (event) =>
+    (state: TableState): TableState =>
+      check(state, event),
   ChipsAdded:
     (event) =>
     (state: TableState): TableState =>
       addToStack(state, event.seat, event.amount),
+  Folded:
+    (event) =>
+    (state: TableState): TableState =>
+      fold(state, event),
   HandStarted:
     (event) =>
     (state: TableState): TableState =>
@@ -86,6 +114,10 @@ const evolveEvent = Events.$match({
     (event) =>
     (state: TableState): TableState =>
       emptySeat(state, event),
+  RaisedTo:
+    (event) =>
+    (state: TableState): TableState =>
+      raise(state, event),
   RulesChanged:
     (event) =>
     (state: TableState): TableState => ({
@@ -100,6 +132,14 @@ const evolveEvent = Events.$match({
     (event) =>
     (state: TableState): TableState =>
       postStraddle(state, event),
+  StreetDealt:
+    (event) =>
+    (state: TableState): TableState =>
+      dealStreet(state, event),
+  UncalledBetReturned:
+    (event) =>
+    (state: TableState): TableState =>
+      returnUncalled(state, event),
 });
 
 export const evolve = (state: TableState, event: Event) =>
@@ -115,7 +155,16 @@ export const evolveAll = (state: TableState, events: readonly Event[]) => {
   return current;
 };
 
-const automatic = (_state: TableState): readonly Event[] => [];
+const settle = (state: InHand): readonly Event[] =>
+  Option.match(uncalledExcess(state.hand), {
+    onNone: () => (streetIsOpen(state.hand) ? [nextStreet(state.hand)] : []),
+    onSome: (excess) => [Events.UncalledBetReturned(excess)],
+  });
+
+const automatic = (state: TableState): readonly Event[] =>
+  isInHand(state) && Phases.$is("Settling")(state.hand.phase)
+    ? settle(state)
+    : [];
 
 const withAutomatic = (state: TableState, caused: readonly Event[]) => {
   const events = [...caused];
