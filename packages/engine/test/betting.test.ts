@@ -19,7 +19,6 @@ import {
   configWithBlinds,
   deckStartingWith,
   folds,
-  handOf,
   legalOf,
   occupiedTable,
   play,
@@ -354,7 +353,7 @@ describe("uncalled bets", () => {
       ]
     );
 
-    expect(allIn.events).toStrictEqual([
+    expect(allIn.events.slice(0, 3)).toStrictEqual([
       Events.RaisedTo({
         added: chipCount(495),
         allIn: true,
@@ -365,9 +364,6 @@ describe("uncalled bets", () => {
       Events.Called({ allIn: true, amount: chipCount(90), seat: seat(1) }),
       Events.UncalledBetReturned({ amount: chipCount(400), seat: seat(0) }),
     ]);
-    expect(stacksOf(allIn.state).slice(0, 2)).toStrictEqual([400, 0]);
-    expect(
-      handOf(allIn.state).players.map((player) => player.committedTotal)
-    ).toStrictEqual([100, 100]);
+    expect(stacksOf(allIn.state).slice(0, 2)).toStrictEqual([400, 200]);
   });
 });

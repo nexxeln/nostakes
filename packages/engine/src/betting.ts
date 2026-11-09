@@ -10,6 +10,7 @@ import type { Chips, SeatIndex } from "./primitives.js";
 import { SEAT_COUNT, chips } from "./primitives.js";
 import { IllegalAction, NoBettingRound, NotYourTurn } from "./rejection.js";
 import type { TableConfig } from "./rules.js";
+import { choosesRuns, runCap } from "./run-outs.js";
 import {
   Phases,
   activePlayers,
@@ -66,24 +67,21 @@ export const seatToAct = (hand: Hand, round: Round, after: SeatIndex) => {
   );
 };
 
-export const uncalledExcess = (hand: Hand) => {
-  const [top, second] = hand.players.toSorted(
-    (left, right) => right.committedTotal - left.committedTotal
-  );
-
-  return top !== undefined && top.committedTotal > (second?.committedTotal ?? 0)
-    ? Option.some({
-        amount: chips(top.committedTotal - (second?.committedTotal ?? 0)),
-        seat: top.seat,
-      })
-    : Option.none();
-};
-
 export const closedStreet = (
-  _config: TableConfig,
-  _hand: Hand,
+  config: TableConfig,
+  hand: Hand,
   lastAggressor: Option.Option<SeatIndex>
-): Phase => Phases.Settling({ lastAggressor });
+): Phase => {
+  const maxRuns = runCap(config, hand);
+
+  return choosesRuns(hand, maxRuns)
+    ? Phases.ChoosingRuns({
+        choices: [],
+        maxRuns,
+        pending: notFolded(hand).map((player) => player.seat),
+      })
+    : Phases.Settling({ lastAggressor });
+};
 
 export const continueBetting = (
   config: TableConfig,
@@ -340,6 +338,21 @@ export const nextStreet = (hand: Hand) => {
   });
 };
 
+const dealToRun = (
+  state: InHand,
+  event: EventOf<"StreetDealt">,
+  runs: readonly (readonly Card[])[]
+) =>
+  withHand(state, {
+    ...state.hand,
+    deck: state.hand.deck.slice(event.cards.length),
+    phase: Phases.RunningOut({
+      runs: runs.map((cards, index) =>
+        index === event.run - 1 ? [...cards, ...event.cards] : cards
+      ),
+    }),
+  });
+
 const dealToBoard = (state: InHand, cards: readonly Card[], street: Street) => {
   const hand: Hand = {
     ...state.hand,
@@ -364,7 +377,11 @@ const dealToBoard = (state: InHand, cards: readonly Card[], street: Street) => {
 };
 
 export const dealStreet = (state: TableState, event: EventOf<"StreetDealt">) =>
-  whenInHand(state, (inHand) => dealToBoard(inHand, event.cards, event.street));
+  whenInHand(state, (inHand) =>
+    Phases.$is("RunningOut")(inHand.hand.phase)
+      ? dealToRun(inHand, event, inHand.hand.phase.runs)
+      : dealToBoard(inHand, event.cards, event.street)
+  );
 
 export const streetIsOpen = (hand: Hand) =>
   notFolded(hand).length > 1 &&

@@ -10,7 +10,6 @@ import {
   raise,
   returnUncalled,
   streetIsOpen,
-  uncalledExcess,
 } from "./betting.js";
 import { Commands } from "./commands.js";
 import type { Command } from "./commands.js";
@@ -24,10 +23,18 @@ import {
   postStraddle,
   startHand,
 } from "./forced-bets.js";
-import { awardPot, endHand, foldOut } from "./pots.js";
+import { awardPot, endHand, foldOut, uncalledExcess } from "./pots.js";
 import type { SeatIndex } from "./primitives.js";
 import type { Rejection } from "./rejection.js";
 import type { TableConfig } from "./rules.js";
+import {
+  agreedRuns,
+  chooseRuns,
+  recordRunChoice,
+  runOut,
+  startRunning,
+  tableHands,
+} from "./run-outs.js";
 import {
   addChips,
   addToStack,
@@ -58,6 +65,10 @@ const decideCommand = Commands.$match({
     (command) =>
     (state: TableState): Decision =>
       changeRules(state, command),
+  ChooseRuns:
+    (command) =>
+    (state: TableState): Decision =>
+      chooseRuns(state, command),
   SetSittingOut:
     (command) =>
     (state: TableState): Decision =>
@@ -109,6 +120,10 @@ const evolveEvent = Events.$match({
     (event) =>
     (state: TableState): TableState =>
       beginHand(state, event),
+  HandsTabled:
+    (event) =>
+    (state: TableState): TableState =>
+      tableHands(state, event),
   HoleCardsDealt:
     (event) =>
     (state: TableState): TableState =>
@@ -135,6 +150,14 @@ const evolveEvent = Events.$match({
       ...state,
       config: event.config,
     }),
+  RunsAgreed:
+    (event) =>
+    (state: TableState): TableState =>
+      startRunning(state, event),
+  RunsChosen:
+    (event) =>
+    (state: TableState): TableState =>
+      recordRunChoice(state, event),
   ShowdownReached:
     (event) =>
     (state: TableState): TableState =>
@@ -182,7 +205,7 @@ const afterStreet = (
     return showdown(state, lastAggressor);
   }
 
-  return streetIsOpen(state.hand) ? [nextStreet(state.hand)] : [];
+  return streetIsOpen(state.hand) ? [nextStreet(state.hand)] : runOut(state, 1);
 };
 
 const settle = (
@@ -194,10 +217,22 @@ const settle = (
     onSome: (excess) => [Events.UncalledBetReturned(excess)],
   });
 
-const automatic = (state: TableState): readonly Event[] =>
-  isInHand(state) && Phases.$is("Settling")(state.hand.phase)
-    ? settle(state, state.hand.phase.lastAggressor)
-    : [];
+const automatic = (state: TableState): readonly Event[] => {
+  if (!isInHand(state)) {
+    return [];
+  }
+
+  const { phase } = state.hand;
+
+  if (Phases.$is("Settling")(phase)) {
+    return settle(state, phase.lastAggressor);
+  }
+
+  return Option.match(agreedRuns(state), {
+    onNone: () => [],
+    onSome: (runs) => runOut(state, runs),
+  });
+};
 
 const withAutomatic = (state: TableState, caused: readonly Event[]) => {
   const events = [...caused];

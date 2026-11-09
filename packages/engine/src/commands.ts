@@ -9,6 +9,10 @@ export const CommandSchema = Schema.TaggedUnion({
   Act: { action: ActionSchema, seat: SeatIndexSchema },
   AddChips: { amount: ChipsSchema, seat: SeatIndexSchema },
   ChangeRules: { config: TableConfigSchema },
+  ChooseRuns: {
+    runs: Schema.Int.check(Schema.isGreaterThanOrEqualTo(1)),
+    seat: SeatIndexSchema,
+  },
   SetSittingOut: { seat: SeatIndexSchema, sittingOut: Schema.Boolean },
   SitDown: {
     buyIn: ChipsSchema,

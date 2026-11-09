@@ -58,6 +58,19 @@ export const buildPots = (hand: Hand): readonly Pot[] => {
   });
 };
 
+export const uncalledExcess = (hand: Hand) => {
+  const [top, second] = hand.players.toSorted(
+    (left, right) => right.committedTotal - left.committedTotal
+  );
+
+  return top !== undefined && top.committedTotal > (second?.committedTotal ?? 0)
+    ? Option.some({
+        amount: chips(top.committedTotal - (second?.committedTotal ?? 0)),
+        seat: top.seat,
+      })
+    : Option.none();
+};
+
 export const clockwiseDistance = (button: SeatIndex, seat: SeatIndex) =>
   (seat - button + SEAT_COUNT - 1) % SEAT_COUNT;
 

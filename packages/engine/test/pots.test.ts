@@ -1,7 +1,7 @@
 import { describe, expect, it } from "@effect/vitest";
 import { Option } from "effect";
 
-import { Commands, Events, TableStates, buildPots } from "../src/index.js";
+import { Commands, Events, TableStates } from "../src/index.js";
 import type { TableState } from "../src/index.js";
 import {
   baseConfig,
@@ -10,7 +10,6 @@ import {
   chipCount,
   deckStartingWith,
   folds,
-  handOf,
   occupiedTable,
   play,
   raisesTo,
@@ -160,11 +159,15 @@ describe("pots", () => {
         [2, calls],
         [3, folds],
       ]
-    ).state;
+    );
 
-    expect(buildPots(handOf(layered))).toStrictEqual([
-      { amount: 200, eligible: [seat(0), seat(1), seat(2)] },
-      { amount: 170, eligible: [seat(1), seat(2)] },
+    expect(
+      layered.events
+        .filter(Events.$is("PotAwarded"))
+        .map((award) => [award.amount, award.eligible])
+    ).toStrictEqual([
+      [200, [seat(0), seat(1), seat(2)]],
+      [170, [seat(1), seat(2)]],
     ]);
   });
 });
