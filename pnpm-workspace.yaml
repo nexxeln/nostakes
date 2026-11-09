@@ -1,0 +1,8 @@
+verifyDepsBeforeRun: error
+
+packages:
+  - "apps/*"
+  - "packages/*"
+
+allowBuilds:
+  lefthook: true

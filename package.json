@@ -1,0 +1,57 @@
+{
+  "name": "nostakes",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Poker night with friends, in the browser.",
+  "type": "module",
+  "scripts": {
+    "build": "turbo run build",
+    "check": "pnpm run lockfile:check && turbo run typecheck typecheck-scripts && ultracite check && oxfmt --check .",
+    "fix": "ultracite fix && oxfmt .",
+    "lint": "ultracite check && oxfmt --check .",
+    "lockfile:check": "pnpm --config.optimistic-repeat-install=false install --frozen-lockfile --offline --lockfile-only --ignore-scripts",
+    "format": "oxfmt",
+    "format:check": "oxfmt --check",
+    "prepare": "effect-tsgo patch && if git rev-parse --git-dir >/dev/null 2>&1; then lefthook install; fi",
+    "test": "turbo run test",
+    "typecheck": "turbo run typecheck typecheck-scripts",
+    "typecheck:tsc": "turbo run typecheck:tsc typecheck:tsc-scripts",
+    "typecheck:tsc-scripts": "tsc --noEmit -p tsconfig.json",
+    "typecheck:fast": "turbo run typecheck:fast typecheck:fast-scripts",
+    "typecheck:fast-scripts": "tsrs --noEmit -p tsconfig.json",
+    "typecheck-scripts": "effect-tsrs diagnostics --project tsconfig.json --strict --type-check",
+    "verify": "turbo run verify"
+  },
+  "devDependencies": {
+    "@effect/tsgo": "0.67.5",
+    "@oxlint/plugins": "1.92.0",
+    "@types/node": "24.19.2",
+    "@yielded/effect-tsrs": "0.2.3",
+    "lefthook": "2.2.2",
+    "oxfmt": "0.77.0",
+    "oxlint": "1.92.0",
+    "oxlint-tsgolint": "7.0.2006",
+    "tsrs": "0.23.0-ts7.1.0-beta",
+    "turbo": "2.11.10",
+    "typescript": "7.0.2",
+    "ultracite": "8.1.1",
+    "vitest": "5.1.0"
+  },
+  "devEngines": {
+    "packageManager": {
+      "name": "pnpm",
+      "version": "11.3.0",
+      "onFail": "error"
+    },
+    "runtime": {
+      "name": "node",
+      "version": ">=24.18.0",
+      "onFail": "warn"
+    }
+  },
+  "engines": {
+    "node": ">=24.18.0",
+    "pnpm": ">=11.1.2"
+  },
+  "packageManager": "pnpm@11.3.0"
+}

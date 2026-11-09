@@ -1,0 +1,56 @@
+{
+  "$schema": "https://turborepo.com/schema.json",
+  "globalDependencies": ["tsconfig.base.json"],
+  "tasks": {
+    "typecheck": {
+      "dependsOn": ["^typecheck"],
+      "outputs": []
+    },
+    "typecheck:tsc": {
+      "dependsOn": ["^typecheck:tsc"],
+      "outputs": []
+    },
+    "//#typecheck:tsc-scripts": {
+      "outputs": []
+    },
+    "typecheck:fast": {
+      "dependsOn": ["^typecheck:fast"],
+      "outputs": []
+    },
+    "//#typecheck:fast-scripts": {
+      "outputs": []
+    },
+    "build": {
+      "dependsOn": ["^build"],
+      "outputs": ["dist/**"]
+    },
+    "test": {
+      "dependsOn": ["build"],
+      "outputs": []
+    },
+    "verify": {
+      "dependsOn": ["build"],
+      "cache": false,
+      "outputs": []
+    },
+    "//#lint": {
+      "outputs": []
+    },
+    "//#typecheck-scripts": {
+      "outputs": []
+    },
+    "//#lockfile:check": {
+      "cache": false,
+      "outputs": []
+    },
+    "check": {
+      "dependsOn": [
+        "//#lockfile:check",
+        "typecheck",
+        "//#lint",
+        "//#typecheck-scripts"
+      ],
+      "outputs": []
+    }
+  }
+}
