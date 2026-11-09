@@ -1,0 +1,170 @@
+import { Option, Result } from "effect";
+
+import type { CommandOf } from "./commands.js";
+import { Events } from "./events.js";
+import type { Event, EventOf } from "./events.js";
+import { SEAT_INDEXES, chips } from "./primitives.js";
+import type { SeatIndex } from "./primitives.js";
+import {
+  AmountNotPositive,
+  HandInProgress,
+  PlayerAlreadySeated,
+  SeatEmpty,
+  SeatInHand,
+  SeatTaken,
+} from "./rejection.js";
+import {
+  EMPTY_SEAT,
+  Seats,
+  isInHand,
+  occupantOf,
+  replaceSeat,
+} from "./state.js";
+import type { Occupied, TableState } from "./state.js";
+
+export const accept = (...events: readonly Event[]) => Result.succeed(events);
+
+export const dealtIntoCurrentHand = (state: TableState, seat: SeatIndex) =>
+  isInHand(state) && state.hand.players.some((player) => player.seat === seat);
+
+const seatedPlayer = (state: TableState, seat: SeatIndex) =>
+  Option.match(occupantOf(state, seat), {
+    onNone: () => Result.fail(new SeatEmpty({ seat })),
+    onSome: (occupant) => Result.succeed(occupant),
+  });
+
+const idleSeatedPlayer = (state: TableState, seat: SeatIndex) =>
+  Result.flatMap(seatedPlayer(state, seat), (occupant) =>
+    dealtIntoCurrentHand(state, seat)
+      ? Result.fail(new SeatInHand({ seat }))
+      : Result.succeed(occupant)
+  );
+
+export const sitDown = (state: TableState, command: CommandOf<"SitDown">) => {
+  const occupant = occupantOf(state, command.seat);
+
+  if (Option.isSome(occupant)) {
+    return Result.fail(
+      new SeatTaken({ occupant: occupant.value.player, seat: command.seat })
+    );
+  }
+
+  const existing = SEAT_INDEXES.find((seat) =>
+    Option.exists(
+      occupantOf(state, seat),
+      (seated) => seated.player === command.player
+    )
+  );
+
+  if (existing !== undefined) {
+    return Result.fail(
+      new PlayerAlreadySeated({ player: command.player, seat: existing })
+    );
+  }
+
+  if (command.buyIn <= 0) {
+    return Result.fail(new AmountNotPositive({ amount: command.buyIn }));
+  }
+
+  return accept(
+    Events.PlayerSat({
+      buyIn: command.buyIn,
+      player: command.player,
+      seat: command.seat,
+    })
+  );
+};
+
+export const standUp = (state: TableState, command: CommandOf<"StandUp">) =>
+  Result.map(idleSeatedPlayer(state, command.seat), (occupant) => [
+    Events.PlayerStood({
+      player: occupant.player,
+      seat: command.seat,
+      stack: occupant.stack,
+    }),
+  ]);
+
+export const addChips = (state: TableState, command: CommandOf<"AddChips">) =>
+  Result.flatMap(idleSeatedPlayer(state, command.seat), () =>
+    command.amount > 0
+      ? accept(
+          Events.ChipsAdded({ amount: command.amount, seat: command.seat })
+        )
+      : Result.fail(new AmountNotPositive({ amount: command.amount }))
+  );
+
+export const setSittingOut = (
+  state: TableState,
+  command: CommandOf<"SetSittingOut">
+) =>
+  Result.map(seatedPlayer(state, command.seat), (occupant) =>
+    occupant.sittingOut === command.sittingOut
+      ? []
+      : [
+          Events.SittingOutChanged({
+            seat: command.seat,
+            sittingOut: command.sittingOut,
+          }),
+        ]
+  );
+
+export const changeRules = (
+  state: TableState,
+  command: CommandOf<"ChangeRules">
+) =>
+  isInHand(state)
+    ? Result.fail(new HandInProgress({ handNumber: state.handNumber }))
+    : accept(Events.RulesChanged({ config: command.config }));
+
+const updateOccupant = (
+  state: TableState,
+  seat: SeatIndex,
+  update: (occupant: Occupied) => Occupied
+) =>
+  Option.match(occupantOf(state, seat), {
+    onNone: () => state,
+    onSome: (occupant) => ({
+      ...state,
+      seats: replaceSeat(state.seats, seat, update(occupant)),
+    }),
+  });
+
+export const seatPlayer = (state: TableState, event: EventOf<"PlayerSat">) => ({
+  ...state,
+  seats: replaceSeat(
+    state.seats,
+    event.seat,
+    Seats.Occupied({
+      player: event.player,
+      sittingOut: false,
+      stack: event.buyIn,
+    })
+  ),
+});
+
+export const emptySeat = (
+  state: TableState,
+  event: EventOf<"PlayerStood">
+) => ({
+  ...state,
+  seats: replaceSeat(state.seats, event.seat, EMPTY_SEAT),
+});
+
+export const addToStack = (
+  state: TableState,
+  seat: SeatIndex,
+  amount: number
+) =>
+  updateOccupant(state, seat, (occupant) => ({
+    ...occupant,
+    stack: chips(occupant.stack + amount),
+  }));
+
+export const markSittingOut = (
+  state: TableState,
+  event: EventOf<"SittingOutChanged">
+) =>
+  updateOccupant(state, event.seat, (occupant) => ({
+    ...occupant,
+    sittingOut: event.sittingOut,
+  }));
