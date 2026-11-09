@@ -247,6 +247,24 @@ importers:
         specifier: 5.1.0
         version: 5.1.0(@types/node@24.19.2)(vite@8.3.6(@types/node@24.19.2)(yaml@2.9.1))
 
+  tools/fence:
+    devDependencies:
+      '@effect/vitest':
+        specifier: 4.1.2
+        version: 4.1.2(effect@4.1.2)(vitest@5.1.0(@types/node@24.19.2)(vite@8.3.6(@types/node@24.19.2)(yaml@2.9.1)))
+      '@types/node':
+        specifier: 24.19.2
+        version: 24.19.2
+      effect:
+        specifier: 4.1.2
+        version: 4.1.2
+      typescript:
+        specifier: 7.0.2
+        version: 7.0.2
+      vitest:
+        specifier: 5.1.0
+        version: 5.1.0(@types/node@24.19.2)(vite@8.3.6(@types/node@24.19.2)(yaml@2.9.1))
+
 packages:
 
   '@babel/helper-string-parser@7.29.13':
@@ -312,6 +330,12 @@ packages:
   '@effect/tsgo@0.67.5':
     resolution: {integrity: sha512-uL3mf3Q6F3aFOZK/qLb3eHUcztmgTIbabk0enTiA3t8nZm5EygE3eYT4+XQCp+aWCEzYcc2C3b6sljlsFGzTHg==}
     hasBin: true
+
+  '@effect/vitest@4.1.2':
+    resolution: {integrity: sha512-JJPwAHkJHxvM/woW9mMW/khjasAHcmwWdOMAgMy16rfqsxcVhFDnrRsvN9VI2+kMv8zDCCyBE2q1n5hzZlfE0w==}
+    peerDependencies:
+      effect: ^4.1.2
+      vitest: '>=5.0.0 <6.0.0'
 
   '@jridgewell/resolve-uri@3.1.2':
     resolution: {integrity: sha512-bRISgCIjP20/tbWSPWMEi54QVPRZExkuD9lJL+UIxUKtwVJA8wW1Trb1jMs1RFXo1CBTNZ/5hpC9QvmKWdopKw==}
@@ -1033,6 +1057,9 @@ packages:
     resolution: {integrity: sha512-Btj2BOOO83o3WyH59e8MgXsxEQVcarkUOpEYrubB0urwnN10yQ364rsiByU11nZlqWYZm05i/of7io4mzihBtQ==}
     engines: {node: '>=8'}
 
+  effect@4.1.2:
+    resolution: {integrity: sha512-d3Oah1WyKxFLFh19yWheS5IXIVaITzxZ71JkE1rkUozq/6EcJSU5nPk5bF2QrSygZ3SQoiNQB8TsxFriyMeMaQ==}
+
   empathic@2.1.0:
     resolution: {integrity: sha512-AnfC1ATldl49/cvZdLPDjBfrRNwbDO05aibiOtzQu3qtlbJtomNLhF30HEtn/7iBz50dlMECqATo3fG0LrdEgw==}
     engines: {node: '>=14'}
@@ -1688,6 +1715,11 @@ snapshots:
       '@effect/tsgo-win32-arm64': 0.67.5
       '@effect/tsgo-win32-x64': 0.67.5
 
+  '@effect/vitest@4.1.2(effect@4.1.2)(vitest@5.1.0(@types/node@24.19.2)(vite@8.3.6(@types/node@24.19.2)(yaml@2.9.1)))':
+    dependencies:
+      effect: 4.1.2
+      vitest: 5.1.0(@types/node@24.19.2)(vite@8.3.6(@types/node@24.19.2)(yaml@2.9.1))
+
   '@jridgewell/resolve-uri@3.1.2': {}
 
   '@jridgewell/sourcemap-codec@1.6.0': {}
@@ -2080,6 +2112,8 @@ snapshots:
   deepmerge@4.3.1: {}
 
   detect-libc@2.1.2: {}
+
+  effect@4.1.2: {}
 
   empathic@2.1.0: {}
 

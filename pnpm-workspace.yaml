@@ -3,6 +3,7 @@ verifyDepsBeforeRun: error
 packages:
   - "apps/*"
   - "packages/*"
+  - "tools/fence"
 
 allowBuilds:
   lefthook: true

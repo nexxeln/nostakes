@@ -51,6 +51,23 @@
         "//#typecheck-scripts"
       ],
       "outputs": []
+    },
+    "@nostakes/fence#typecheck": {
+      "dependsOn": ["^typecheck"],
+      "outputs": [],
+      "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/scripts/**"]
+    },
+    "@nostakes/fence#test": {
+      "dependsOn": ["build"],
+      "outputs": [],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/oxlint.config.ts",
+        "$TURBO_ROOT$/package.json",
+        "$TURBO_ROOT$/pnpm-lock.yaml",
+        "$TURBO_ROOT$/scripts/**",
+        "$TURBO_ROOT$/tools/oxlint/**"
+      ]
     }
   }
 }
