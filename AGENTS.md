@@ -8,7 +8,7 @@ nostakes is a web app where groups of friends play poker online, at most 9 playe
 
 Workspace `package.json` files declare the pinned stack. Keep every dependency exact. Record drift instead of migrating silently.
 
-- pnpm workspaces and Turborepo `2.11.10`: `packages/*`, `tools/fence`, and `apps/*` (reserved)
+- pnpm workspaces and Turborepo `2.11.10`: `packages/*`, `tools/fence`, and `apps/*`
 - Node `>=24.18.0` (`.nvmrc` holds `24.18.0`) and pnpm `11.3.0`. Do not install with npm or Bun.
 - Effect `4.1.2` and `@effect/vitest` `4.1.2`. Every package resolves the same Effect runtime.
 - TypeScript `7.0.2` in strict mode, patched by `@effect/tsgo` `0.67.5` in `prepare` so the Effect diagnostics fail `tsc` too
@@ -17,14 +17,17 @@ Workspace `package.json` files declare the pinned stack. Keep every dependency e
 - Vitest `5.1.0`
 - Oxlint `1.92.0` with `oxlint-tsgolint` `7.0.2006` for type-aware rules, `@oxlint/plugins` `1.92.0`, Ultracite `8.1.1`, and Oxfmt `0.77.0`
 - Lefthook `2.2.2` and `@types/node` `24.19.2`
+- Alchemy `2.0.0-beta.85` (`alchemy`, `@alchemy.run/cloudflare`, `@alchemy.run/test`), `@cloudflare/workers-types` `5.20261108.1`, and `@effect/platform-node` `4.1.2`, which Alchemy's local Worker bridge imports. `workerd` is the only extra entry under `allowBuilds`, so its postinstall can fetch the local runtime.
 
-Cloudflare Workers, a Durable Object per room, Alchemy, XState, and Foldkit arrive in later phases, each with the owner's sign-off.
+XState and Foldkit arrive in later phases, each with the owner's sign-off.
 
 ## Packages
 
 - `@nostakes/engine` (`packages/engine`): pure no-limit hold'em rules
 - `@nostakes/ledger` (`packages/ledger`): buy-ins, cash-outs, and settle-up transfers
 - `@nostakes/room` (`packages/room`): one poker night as a pure reducer over the engine and the ledger: members, host, seats, clocks, the queue at the end of a hand, views, and redaction
+- `@nostakes/protocol` (`packages/protocol`): the JSON frames between a room's clients and its server, the room pass, and the wire limits. It is generic over a room core's schemas, so it never imports the room, and it does no I/O.
+- `@nostakes/room-server` (`apps/room-server`): the Cloudflare Worker and one Durable Object per room, declared with Alchemy. It hosts any core that satisfies `HostedRoom` in `src/hosted-room.ts`. Its tests drive a toy core in `test/fixtures` through real WebSocket clients on local workerd.
 - `@nostakes/fence` (`tools/fence`): fixture tests for the lint rules and the hook policy. It ships nothing.
 
 ## Commands
@@ -51,6 +54,8 @@ A long-running check, such as an exhaustive enumeration or a simulator, is a scr
 - Import the package by its own name, for example `@nostakes/engine`. The name resolves to the built `dist`, and turbo's `verify` task builds the package first.
 - Print with Effect `Console`, run the program with `Effect.runPromise`, and fail the Effect on a counterexample. A failed Effect exits non-zero.
 - `verify` is not part of `check` or `test`, and turbo never caches it. Run `pnpm verify` before you commit a change to the rules a script covers.
+- `apps/room-server` is the exception. Its probes need a deployed Worker, and only the `@alchemy.run/test` harness deploys one to local workerd, so its `verify` runs `scripts/*.verify.ts` through `vitest.verify.config.ts`. Each probe fails its Effect with a tagged error on a counterexample.
+- Integration tests that start workerd cost seconds on every commit through the hook. Keep `pnpm test` for the room server under about 30 seconds: one `beforeAll(deploy(ToyStack))` per file, files in parallel workers, and slow probes such as the 25-second hibernation idle in `verify`.
 
 ## Fence
 
@@ -58,7 +63,12 @@ The fence makes cheating uncomfortable. If a hook fails, fix the failure. Do not
 
 - Lefthook pre-commit runs `pnpm check` and `pnpm test`.
 - Never skip the hooks: no `--no-verify`, no `commit -n`, no `LEFTHOOK=0`, no `core.hooksPath` override. The Claude Code hook in `.claude/settings.json` denies these commands. The policy lives in `scripts/vcs-command-policy.js`.
-- `tsconfig.base.json` owns the Effect diagnostic severities. A package tsconfig may add an exact `allowedUnstableApis` entry only for a module the checker warns about. `engine` and `ledger` already allow `@effect/vitest` and `effect/Arbitrary`, because every test needs them.
+- `tsconfig.base.json` owns the Effect diagnostic severities. A package tsconfig may add an exact `allowedUnstableApis` entry only for a module the checker warns about. `engine` and `ledger` already allow `@effect/vitest` and `effect/Arbitrary`, because every test needs them. `apps/room-server` also allows the `effect/http` modules it uses.
+- Some rules collide with common Effect forms. Use the form that passes both:
+  - `unicorn/no-array-method-this-argument` reads any two-argument `.map`, `.filter`, or `.forEach` as an array call with `thisArg`. `Option.map(option, f)` and `Effect.forEach(items, f)` trip it. Write `option.pipe(Option.map(f))` and `pipe(items, Effect.forEach(f))`. `Effect.forEach(f, { concurrency })` trips it too, so write `Effect.all(items.map(f), { concurrency })`.
+  - `anti-slop-effect/no-service-constructor-imports` rejects importing any `make<Name>` outside a test file. Name a factory for what it returns, such as `hostRoom` or `roomObject`.
+  - `no-empty-object-type` rejects an empty `Data.TaggedEnum` variant. Give every variant a field that says something.
+  - `anti-slop-effect/no-manual-tagged-construction` rejects a `_tag` in an object literal, test fixtures included. Compare wire frames as JSON text when a test needs the literal form.
 - CI runs `pnpm install --frozen-lockfile` and then `pnpm turbo run check test build`.
 
 ## Project law
@@ -83,7 +93,10 @@ The fence makes cheating uncomfortable. If a hook fails, fix the failure. Do not
 - Dependencies run from `apps` to `packages`. `nostakes-boundaries/no-cross-layer-imports` stops a package from importing app code.
 - `engine` owns the rules of a hand. `ledger` owns the money across a session. Neither imports the other yet.
 - Pure domain state machines are plain reducers over tagged unions. `decide(state, command)` returns the events the command causes, or fails with a tagged error. `evolve(state, event)` returns the next state. Branch with `Match.tagsExhaustive` or a `Data.taggedEnum` `$match`. A `switch` on `_tag` fails lint (`anti-slop-effect/no-manual-tag-comparison`).
-- Lifecycles with side effects are XState machines. They arrive in a later phase with the room server. This is a deliberate reading of rat-stack's "lifecycles are machines" rule. A pure reducer has no side effect to retry, cancel, or resume, so it needs no actor. A lifecycle that waits, times out, or talks to the network gets a machine.
+- `protocol` owns the wire. `room-server` owns identity, storage, delivery, and limits, and depends on `protocol`. The pure room core plugs into the server through `HostedRoom` in one module and never sees a socket, a token, or a sequence number.
+- Lifecycles with side effects are XState machines. This is a deliberate reading of rat-stack's "lifecycles are machines" rule. A pure reducer has no side effect to retry, cancel, or resume, so it needs no actor. A lifecycle that waits, times out, or talks to the network gets a machine.
+- The room server has no XState machine. Its only lifecycle is "wait until a deadline, then act", and that deadline is data in the core's state (`nextDeadline`), re-read on every start and after every commit and armed as the Durable Object alarm. There is no hidden state for a machine to own. Every change to a room goes through one synchronous commit function in `src/room-host.ts` that cannot await.
+- The client's connection lifecycle (connect, hello, live, backoff, resume) does have hidden state and side effects. It will be an XState machine in the client package.
 - `Effect.sleep` inside a loop fails lint (`nostakes-patterns/no-sleep-in-loop`). Waiting belongs in a machine.
 
 ## Source control
