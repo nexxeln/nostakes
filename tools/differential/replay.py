@@ -92,9 +92,10 @@ CONFIGURATIONS = {
 EXCLUSIONS = {
     "short-big-blind": (
         "Brief rule 7 keeps the call and the minimum raise at the full big blind when the "
-        "big blind posts short. PokerKit sizes from the chips actually posted. Pre-flop "
-        "betting is compared up to the first decision where the two sizes differ, and the "
-        "rest of the hand is not compared."
+        "big blind posts short and another seat can still act. PokerKit sizes from the "
+        "chips actually posted. Pre-flop betting is compared up to the first decision where "
+        "the two sizes differ, and the rest of the hand is not compared. A difference at a "
+        "decision where no other seat can act is not excluded."
     ),
     "pokerkit-short-all-in-reopens": (
         "PokerKit lets a seat that already acted raise after all-in wagers that add up to "
@@ -118,12 +119,6 @@ EXCLUSIONS = {
         "PokerKit gives a pot's whole remainder to the first run and to the first winner. "
         "Brief rules 17 and 22 hand leftover chips out one at a time. Awards and final "
         "stacks are compared against the brief's split of PokerKit's own pots and winners."
-    ),
-    "pokerkit-unmatched-folded-chips": (
-        "PokerKit cannot pay a pot that no live seat is eligible for: it asserts in a "
-        "fold-out and burns the chips at a showdown. The engine returns those chips to "
-        "the folders. Pots and final stacks are not compared; everything before the "
-        "payout is."
     ),
 }
 
@@ -162,6 +157,8 @@ class Hand:
         self.river_call_for_raise = False
         self.reference = None
         self.engine_preflop = True
+        self.engine_folded = set()
+        self.engine_all_in = set()
         self.winner_cache = {}
         self.short_big_blind = not record["straddles"] and not any(
             e["_tag"] == "BlindPosted" and e["blind"] == "Big" and e["amount"] == self.big_blind for e in record["start"]
@@ -196,6 +193,7 @@ class Hand:
         self.build_state(started)
         self.check_postings()
         self.deal_hole_cards()
+        self.note_engine_events(self.record["start"])
         self.advance()
         for step in self.record["steps"]:
             if self.stopped is not None:
@@ -205,6 +203,7 @@ class Hand:
                 self.act(step)
             elif tag == "ChooseRuns":
                 self.choose(step)
+            self.note_engine_events(step["events"])
             self.advance()
         if self.stopped is None:
             self.finish()
@@ -404,8 +403,8 @@ class Hand:
             if self.pots is None and (state.showdown_index is not None or state.can_kill_hand() or state.can_push_chips()):
                 self.pots = [(pot.amount, tuple(self.order[i] for i in pot.player_indices)) for pot in state.pots]
                 if any(not eligible for _, eligible in self.pots):
-                    self.excluded.add("pokerkit-unmatched-folded-chips")
-                    self.stop("pokerkit-unmatched-folded-chips")
+                    self.differ("unmatched-folded-chips", f"pokerkit pots {self.pots} include one no live seat can win")
+                    self.stop("unmatched-folded-chips")
                     return
             if state.showdown_index is not None:
                 player = state.showdown_index
@@ -487,18 +486,19 @@ class Hand:
                 self.differ("turn", f"engine has no betting round, pokerkit waits for seat {actor_seat}")
             return
         short_big_blind = self.short_big_blind and self.engine_preflop
+        rule_seven = short_big_blind and self.others_can_act(pending["seat"])
         if actor_seat != pending["seat"]:
-            if short_big_blind and actor_seat is None and pending["raise"] is None:
+            if rule_seven:
+                self.excluded.add("short-big-blind")
+                self.stop("short-big-blind")
+                return
+            if short_big_blind:
                 self.differ(
                     "dead-decision-after-short-big-blind",
                     f"engine asks seat {pending['seat']} to call {pending['call']} that no live seat can match; "
-                    "pokerkit has no decision because every chip beyond the short big blind comes back",
+                    f"pokerkit asks seat {actor_seat} because every chip beyond the short big blind comes back",
                 )
                 self.stop("dead-decision-after-short-big-blind")
-                return
-            if short_big_blind:
-                self.excluded.add("short-big-blind")
-                self.stop("short-big-blind")
                 return
             self.differ("turn", f"engine seat {pending['seat']} to act, pokerkit seat {actor_seat}")
             self.stop("turn")
@@ -509,7 +509,7 @@ class Hand:
         engine_raise = pending["raise"]
         engine_bounds = None if engine_raise is None else (engine_raise["minTo"], engine_raise["maxTo"])
         engine_call = 0 if pending["canCheck"] else pending["call"]
-        if short_big_blind and (engine_call != call or engine_bounds != bounds):
+        if rule_seven and (engine_call != call or engine_bounds != bounds):
             self.excluded.add("short-big-blind")
             self.stop("short-big-blind")
             return
@@ -538,6 +538,16 @@ class Hand:
                 self.engine_preflop = False
         else:
             self.check_rejection(step, actor, actor_seat, call, raise_excluded)
+
+    def note_engine_events(self, events):
+        for event in events:
+            if event["_tag"] == "Folded":
+                self.engine_folded.add(event["seat"])
+            elif event.get("allIn"):
+                self.engine_all_in.add(event["seat"])
+
+    def others_can_act(self, seat):
+        return any(s != seat and s not in self.engine_folded and s not in self.engine_all_in for s in self.order)
 
     def skip_dead_checks(self, expected):
         state = self.state
@@ -864,8 +874,8 @@ def replay(line):
             hand.run()
         except AssertionError as error:
             if hand.pots is None and hand.state is not None and sum(hand.state.statuses) == 1:
-                hand.excluded.add("pokerkit-unmatched-folded-chips")
-                hand.stop("pokerkit-unmatched-folded-chips")
+                hand.differ("unmatched-folded-chips", "pokerkit cannot pay a fold-out pot no live seat can win")
+                hand.stop("unmatched-folded-chips")
             else:
                 hand.differ("replay-crash", f"{type(error).__name__}: {error} {traceback.format_exc(limit=-3)}")
         except Exception as error:
@@ -873,9 +883,6 @@ def replay(line):
     for caught_warning in caught:
         message = str(caught_warning.message)
         if message in BENIGN_WARNINGS:
-            continue
-        if message.startswith("Due to non-standard folds"):
-            hand.excluded.add("pokerkit-unmatched-folded-chips")
             continue
         hand.differ("pokerkit-warning", message)
     return {

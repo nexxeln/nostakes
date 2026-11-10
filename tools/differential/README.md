@@ -50,12 +50,11 @@ PokerKit can follow these engine rules when the replay sets it up a certain way.
 
 PokerKit cannot follow these rules. Each exclusion skips only the affected comparison and is counted. The reasons live in `EXCLUSIONS` in `replay.py`.
 
-- `short-big-blind`: the brief keeps the call at the full big blind when the big blind posts short. PokerKit uses the chips posted. Pre-flop is compared up to the first decision where the sizes differ.
+- `short-big-blind`: the brief keeps the call at the full big blind when the big blind posts short and another seat can still act (rule 7). PokerKit uses the chips posted. Pre-flop is compared up to the first decision where the sizes differ. A size or turn difference at a decision where no other seat can act is not excluded: the engine must then match PokerKit.
 - `pokerkit-short-all-in-reopens`: PokerKit counts the first short all-in of a street as a full raise and reopens the betting. TDA Rule 49-A does not.
 - `pokerkit-forgets-added-short-all-ins`: PokerKit restarts its sum of short all-ins once it reaches a full raise, so a later short all-in closes the betting again. TDA Rule 49-A counts them all.
 - `pokerkit-refuses-raise-nobody-can-call`: PokerKit refuses a raise that no other live seat can call. The engine allows it and returns the uncalled excess. The replay plays the raise as a call.
 - `odd-chip-spread`: PokerKit gives a whole remainder to the first run and the first winner. The brief hands leftover chips out one at a time. Awards are compared against the brief's split of PokerKit's own pots and winners.
-- `pokerkit-unmatched-folded-chips`: PokerKit cannot pay a pot no live seat is eligible for. The engine returns those chips to the folders.
 
 ## Gaps
 
@@ -71,16 +70,16 @@ PokerKit has no model of these. The replay checks them with its own arithmetic f
 
 Each finding is the smallest hand the generator produced for that category, trimmed by `--findings` and re-checked. Replay a finding file to see the difference again.
 
-### `dead-decision-after-short-big-blind`
+### `dead-decision-after-short-big-blind` (fixed)
 
-File: `findings/dead-decision-after-short-big-blind.json`.
+File: `findings/dead-decision-after-short-big-blind.json`. The file keeps the engine output from before the fix, so replaying it still shows the difference.
 
 Heads-up, blinds 5 and 10, an every-player ante of 9. Seat 2 is the big blind with 14 chips. It posts the ante of 9 and then 5 of its big blind, and is all in. Seat 1 is the button and posts the ante of 9 and the small blind of 5. Both seats now have 14 in the pot, so neither can win a chip the other has not matched.
 
 - **Expected.** Seat 1 has no decision. The hands are tabled and the board runs out, and the better hand takes the 28-chip pot. PokerKit asks nobody to act here.
-- **Actual.** The engine asks seat 1 to call 5 more, up to the full big blind of 10, and accepts a fold. In this hand seat 1 folded and seat 2 took all 28 chips without a showdown. A call would also have changed nothing: rule 15 hands back every chip of it. Rule 29 makes a timeout a fold, so a player who steps away loses chips that should have gone to a showdown.
-- **Which side is wrong.** The engine, through a gap in brief rule 7. Rule 7 keeps the call at the full big blind so that other seats can still contest a side pot. It does not cover the case where no other live seat can match anything, and rule 13 then waits for a seat that cannot change the outcome except by folding. TDA Rule 17 (2026 Rules, version 1.1) says: "All hands will be tabled without delay once a player is all-in and all betting action by all other players in the hand is complete." No other seat can bet here, so the hands should be tabled and run out.
-- **Seen.** 18 of 100,000 hands at seed 20261110, all heads-up after the big blind posted short or not at all. The same decision appears multiway once everyone else has folded to the small blind (inferred from the rule, not seen in this run).
+- **Was.** The engine asked seat 1 to call 5 more, up to the full big blind of 10, and accepted a fold. In this hand seat 1 folded a straight and seat 2 took all 28 chips without a showdown.
+- **Fix.** When no other non-folded seat is `Active`, the engine caps the bet a seat must match at the largest commitment this street among the other non-folded seats. Here that leaves nothing to call, so the street closes and the board runs out. A big blind short by less than the small blind leaves a real call of the difference. `packages/engine/test/betting.test.ts` replays this hand under "Rule 7 amended".
+- **Seen before the fix.** 18 of 100,000 hands at seed 20261110 under the first harness. With `short-big-blind` narrowed, the same export shows the bug in more hands, because heads-up calls charged at the full big blind are no longer excluded. After the fix, 0.
 
 ## PokerKit behaviour found along the way
 
