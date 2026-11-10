@@ -1,7 +1,7 @@
 import { SeqSchema } from "@nostakes/protocol";
 import type { CloseReason, CommandId, Seq } from "@nostakes/protocol";
 import { createEffectEventStreamLogic, setupEffect } from "@xstate/effect";
-import { Array as Arr, Effect, Option, Schema, Stream } from "effect";
+import { Effect, Option, Schema, Stream } from "effect";
 import { types } from "xstate";
 
 import { drawBackoff } from "./backoff.js";
@@ -15,6 +15,7 @@ import type {
   Link,
   Owed,
   PendingCommand,
+  RoomUpdate,
 } from "./client-events.js";
 import { CLOSE_VERDICTS, closeReasonIn } from "./close-reasons.js";
 import type {
@@ -157,9 +158,7 @@ export const roomClientMachine = <T extends RoomTypes>(
     schemas: {
       context: types<ClientContext<T>>(),
       emitted: {
-        Applied: types<{
-          readonly activity: readonly Activity<T["Event"]>[];
-        }>(),
+        Applied: types<RoomUpdate<T>>(),
         Replied: types<{
           readonly id: CommandId;
           readonly result: ReplyResult<T>;
@@ -367,9 +366,12 @@ export const roomClientMachine = <T extends RoomTypes>(
                           ),
                       ];
 
-                      if (Arr.isArrayNonEmpty(activity)) {
-                        enq.emit({ activity, type: "Applied" });
-                      }
+                      enq.emit({
+                        activity,
+                        seq: event.seq,
+                        type: "Applied",
+                        view: event.view,
+                      });
 
                       for (const { command, id } of context.pending) {
                         enq(
@@ -447,7 +449,9 @@ export const roomClientMachine = <T extends RoomTypes>(
                           seq: seqAt(event.from + skip + index),
                         })
                       ),
+                      seq: event.to,
                       type: "Applied",
+                      view: event.view,
                     });
 
                     return {

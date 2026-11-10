@@ -22,7 +22,12 @@ import {
   SILENCE_LIMIT_MS,
   WAKE_PROBE_MS,
 } from "../src/index.js";
-import type { Activity, IssuedCommand, RoomClient } from "../src/index.js";
+import type {
+  Activity,
+  IssuedCommand,
+  RoomClient,
+  RoomUpdate,
+} from "../src/index.js";
 import {
   fakeTransport,
   seq as seqOf,
@@ -92,6 +97,7 @@ const COMMAND_UNHEARD_AFTER_MS = ANSWER_LIMIT_MS + UNANSWERED_AFTER_MS;
 const harness = Effect.gen(function* harness() {
   const fake = yield* fakeTransport;
   const seen: Activity<ToyTypes["Event"]>[] = [];
+  const updates: RoomUpdate<ToyTypes>[] = [];
 
   const client: RoomClient<ToyTypes> = yield* roomClient(toySchemas, {
     token: TOKEN,
@@ -100,6 +106,11 @@ const harness = Effect.gen(function* harness() {
 
   yield* client.activity.pipe(
     Stream.runForEach((item) => Effect.sync(() => seen.push(item))),
+    Effect.forkScoped
+  );
+
+  yield* client.updates.pipe(
+    Stream.runForEach((update) => Effect.sync(() => updates.push(update))),
     Effect.forkScoped
   );
 
@@ -147,6 +158,7 @@ const harness = Effect.gen(function* harness() {
     phase,
     seen,
     socket,
+    updates,
   };
 });
 
@@ -333,6 +345,65 @@ describe("room client against a fake socket", () => {
         expect(state.seq).toEqual(Option.some(9));
         expect(state.view).toEqual(Option.some({ total: 9 }));
         expect(state.connection).toBe("Live");
+      }).pipe(Effect.scoped, lowestJitter)
+  );
+
+  it.effect(
+    "each view arrives with the events that produced it and the sequence number it reflects, in the order the room applied them",
+    () =>
+      Effect.gen(function* updatesInOrder() {
+        const { client, greet, socket, updates } = yield* harness;
+
+        yield* client.start;
+        yield* settle;
+
+        const first = yield* greet(0, 7, [6, 7]);
+
+        yield* first.push(serverText.events(8, [8, 9]));
+        yield* first.push(serverText.events(8, [8]));
+        yield* first.push(serverText.events(9, [9, 10]));
+        yield* settle;
+        yield* cut(first);
+        yield* advance(250);
+        yield* greet(1, 10);
+        yield* advance(250);
+        yield* cut(yield* socket(1));
+        yield* advance(250);
+        yield* (yield* socket(2)).accept;
+        yield* (yield* socket(2)).push(serverText.skippedWelcome(11, 300));
+        yield* settle;
+
+        expect(updates).toEqual([
+          {
+            activity: [
+              Activities.Applied({ event: addedTotal(6), seq: seqOf(6) }),
+              Activities.Applied({ event: addedTotal(7), seq: seqOf(7) }),
+            ],
+            seq: seqOf(7),
+            view: { total: 7 },
+          },
+          {
+            activity: [
+              Activities.Applied({ event: addedTotal(8), seq: seqOf(8) }),
+              Activities.Applied({ event: addedTotal(9), seq: seqOf(9) }),
+            ],
+            seq: seqOf(9),
+            view: { total: 9 },
+          },
+          {
+            activity: [
+              Activities.Applied({ event: addedTotal(10), seq: seqOf(10) }),
+            ],
+            seq: seqOf(10),
+            view: { total: 10 },
+          },
+          { activity: [], seq: seqOf(10), view: { total: 10 } },
+          {
+            activity: [Activities.Skipped({ from: seqOf(11), to: seqOf(300) })],
+            seq: seqOf(300),
+            view: { total: 300 },
+          },
+        ]);
       }).pipe(Effect.scoped, lowestJitter)
   );
 

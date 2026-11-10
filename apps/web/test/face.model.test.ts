@@ -42,28 +42,35 @@ const home = init({
 
 const inRoom = (worn: Avatar, table: OpenView): Model =>
   update(
-    init({
-      invite: Option.some(CODE),
-      learned: [],
-      profile: { avatar: codeFor(DEFAULT_AVATAR), name: NAME },
-      saved: Option.some({ code: CODE, player: PLAYER }),
-      sound: false,
-      theme: Option.none(),
-    }).model,
-    Messages.GotLink({
-      link: {
-        phase: "Live",
-        presence: [],
-        receivedAt: 0,
-        refusal: Option.none(),
-        retryDelayMs: Option.none(),
-        view: Option.some({
-          ...table,
-          members: [
-            { avatar: codeFor(worn), name: NAME, player: PLAYER },
-            ...table.members.filter(({ player }) => player !== PLAYER),
-          ],
-        }),
+    update(
+      init({
+        invite: Option.some(CODE),
+        learned: [],
+        profile: { avatar: codeFor(DEFAULT_AVATAR), name: NAME },
+        saved: Option.some({ code: CODE, player: PLAYER }),
+        sound: false,
+        theme: Option.none(),
+      }).model,
+      Messages.GotLink({
+        link: {
+          phase: "Live",
+          presence: [],
+          receivedAt: 0,
+          refusal: Option.none(),
+          retryDelayMs: Option.none(),
+        },
+      })
+    ).model,
+    Messages.GotUpdate({
+      events: [],
+      receivedAt: 0,
+      seq: 1,
+      view: {
+        ...table,
+        members: [
+          { avatar: codeFor(worn), name: NAME, player: PLAYER },
+          ...table.members.filter(({ player }) => player !== PLAYER),
+        ],
       },
     })
   ).model;

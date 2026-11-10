@@ -2,7 +2,11 @@ import { describe, expect, it } from "@effect/vitest";
 import { Actions, ChipsSchema, LegalActionsSchema } from "@nostakes/engine";
 import type { Action } from "@nostakes/engine";
 import { PlayerIdSchema, RoomCodeSchema } from "@nostakes/protocol";
-import { MemberCommandSchema, RoomViewSchema } from "@nostakes/room";
+import {
+  MemberCommandSchema,
+  RoomViewSchema,
+  SeenEventSchema,
+} from "@nostakes/room";
 import { Match, Option, Schema } from "effect";
 import * as Arbitrary from "effect/Arbitrary";
 
@@ -16,6 +20,7 @@ import {
   legalOf,
   roomOf,
 } from "../src/features/room.js";
+import { happeningsOf, KEPT_EVENTS } from "../src/features/table/from-room.js";
 import { TableIntentSchema } from "../src/features/table/snapshot.js";
 import type { TableIntent } from "../src/features/table/snapshot.js";
 import { init, update } from "../src/features/update.js";
@@ -59,14 +64,14 @@ type OpenView = typeof RoomViewSchema.cases.Open.Type;
 const roomIn = (model: Model): InRoom =>
   Option.getOrThrowWith(roomOf(model), () => new Error("left the room"));
 
-const messageFor = (
+const messagesFor = (
   step: Step,
   table: OpenView,
   issued: readonly number[]
-): Message =>
+): readonly Message[] =>
   StepSchema.match(step, {
-    Intent: ({ intent }) => Messages.GotTableIntent({ intent }),
-    Link: ({ legal, live }) =>
+    Intent: ({ intent }) => [Messages.GotTableIntent({ intent })],
+    Link: ({ legal, live }) => [
       Messages.GotLink({
         link: {
           phase: live ? "Live" : "Waiting",
@@ -74,16 +79,23 @@ const messageFor = (
           receivedAt: 0,
           refusal: Option.none(),
           retryDelayMs: Option.none(),
-          view: Option.some({ ...table, legal }),
         },
       }),
-    Reply: ({ accepted, pick }) =>
+      Messages.GotUpdate({
+        events: [],
+        receivedAt: 0,
+        seq: 1,
+        view: { ...table, legal },
+      }),
+    ],
+    Reply: ({ accepted, pick }) => [
       Messages.GotReply({
         key: issued[pick % Math.max(1, issued.length)] ?? 404,
         outcome: accepted
           ? ReplyOutcomes.Accepted({ seq: 1 })
           : ReplyOutcomes.Rejected({ reason: "no" }),
       }),
+    ],
   });
 
 const isIntent = Schema.is(Messages.GotTableIntent);
@@ -136,6 +148,88 @@ const legalAction = (model: Model, action: Action) => {
   );
 };
 
+const LinkOrUpdateSchema = Schema.TaggedUnion({
+  Link: { live: Schema.Boolean, receivedAt: Schema.Int },
+  Update: {
+    events: Schema.Array(SeenEventSchema.cases.Table).check(
+      Schema.isMaxLength(4)
+    ),
+    receivedAt: Schema.Int,
+    view: RoomViewSchema.cases.Open,
+  },
+});
+
+const arrivals = Arbitrary.array(Arbitrary.schema(LinkOrUpdateSchema), {
+  maxLength: 12,
+  minLength: 1,
+});
+
+describe("the table's view and events", () => {
+  it.prop(
+    "change only together, in one update, so the table never shows a view ahead of the events that produced it",
+    { plan: arrivals },
+    ({ plan }) => {
+      let model = start;
+      let head = 0;
+
+      for (const arrival of plan) {
+        const before = roomIn(model);
+
+        if (LinkOrUpdateSchema.guards.Link(arrival)) {
+          ({ model } = update(
+            model,
+            Messages.GotLink({
+              link: {
+                phase: arrival.live ? "Live" : "Waiting",
+                presence: [],
+                receivedAt: arrival.receivedAt,
+                refusal: Option.none(),
+                retryDelayMs: Option.none(),
+              },
+            })
+          ));
+
+          expect(roomIn(model).shown).toStrictEqual(before.shown);
+          expect(roomIn(model).events).toStrictEqual(before.events);
+        } else {
+          const from = head + 1;
+
+          const applied = arrival.events.map((event, index) => ({
+            event,
+            seq: from + index,
+          }));
+
+          head += applied.length;
+          ({ model } = update(
+            model,
+            Messages.GotUpdate({
+              events: applied,
+              receivedAt: arrival.receivedAt,
+              seq: head,
+              view: arrival.view,
+            })
+          ));
+
+          expect(roomIn(model).shown).toEqual(
+            Option.some({
+              receivedAt: arrival.receivedAt,
+              seq: head,
+              view: arrival.view,
+            })
+          );
+          expect(roomIn(model).events).toStrictEqual(
+            [
+              ...before.events,
+              ...applied.flatMap(({ event, seq }) => happeningsOf(seq, event)),
+            ].slice(-KEPT_EVENTS)
+          );
+        }
+      }
+    },
+    { arbitrary: { runs: 50 } }
+  );
+});
+
 describe("the table", () => {
   it.prop(
     "sends an action only when it is legal, live, and nothing else is in flight",
@@ -145,29 +239,30 @@ describe("the table", () => {
       const issued: number[] = [];
 
       for (const step of plan) {
-        const message = messageFor(step, table, issued);
-        const result = update(model, message);
-        const sent = sentActions(result.commands ?? []);
+        for (const message of messagesFor(step, table, issued)) {
+          const result = update(model, message);
+          const sent = sentActions(result.commands ?? []);
 
-        if (isIntent(message)) {
-          const before = model;
+          if (isIntent(message)) {
+            const before = model;
 
-          const wanted = actionOf(message.intent).pipe(
-            Option.filter((action) => legalAction(before, action))
-          );
+            const wanted = actionOf(message.intent).pipe(
+              Option.filter((action) => legalAction(before, action))
+            );
 
-          expect(sent.map(({ action }) => action)).toEqual(
-            Option.match(wanted, {
-              onNone: () => [],
-              onSome: (action) => [action],
-            })
-          );
-        } else {
-          expect(sent).toEqual([]);
+            expect(sent.map(({ action }) => action)).toEqual(
+              Option.match(wanted, {
+                onNone: () => [],
+                onSome: (action) => [action],
+              })
+            );
+          } else {
+            expect(sent).toEqual([]);
+          }
+
+          issued.push(...sent.map(({ key }) => key));
+          ({ model } = result);
         }
-
-        issued.push(...sent.map(({ key }) => key));
-        ({ model } = result);
       }
     },
     { arbitrary: { runs: 100 } }
@@ -182,36 +277,37 @@ describe("the table", () => {
       const cleared = new Set<number>();
 
       for (const step of plan) {
-        const message = messageFor(step, table, issued);
-        const before = roomIn(model).pending;
-        const result = update(model, message);
-        const after = roomIn(result.model).pending;
+        for (const message of messagesFor(step, table, issued)) {
+          const before = roomIn(model).pending;
+          const result = update(model, message);
+          const after = roomIn(result.model).pending;
 
-        if (isReply(message)) {
-          const wasPending = before.some(({ key }) => key === message.key);
+          if (isReply(message)) {
+            const wasPending = before.some(({ key }) => key === message.key);
 
-          expect(wasPending).toBe(
-            issued.includes(message.key) && !cleared.has(message.key)
-          );
-          expect(after.map(({ key }) => key)).toEqual(
-            before.map(({ key }) => key).filter((key) => key !== message.key)
-          );
+            expect(wasPending).toBe(
+              issued.includes(message.key) && !cleared.has(message.key)
+            );
+            expect(after.map(({ key }) => key)).toEqual(
+              before.map(({ key }) => key).filter((key) => key !== message.key)
+            );
 
-          if (!wasPending) {
-            expect(result.model).toStrictEqual(model);
+            if (!wasPending) {
+              expect(result.model).toStrictEqual(model);
+            }
+
+            cleared.add(message.key);
           }
 
-          cleared.add(message.key);
-        }
+          for (const { key } of sentActions(result.commands ?? [])) {
+            expect(after.filter((pending) => pending.key === key)).toHaveLength(
+              1
+            );
+            issued.push(key);
+          }
 
-        for (const { key } of sentActions(result.commands ?? [])) {
-          expect(after.filter((pending) => pending.key === key)).toHaveLength(
-            1
-          );
-          issued.push(key);
+          ({ model } = result);
         }
-
-        ({ model } = result);
       }
     },
     { arbitrary: { runs: 100 } }

@@ -30,6 +30,12 @@ interface ActivityDefinition extends Data.TaggedEnum.WithGenerics<1> {
 
 export const Activities = Data.taggedEnum<ActivityDefinition>();
 
+export interface RoomUpdate<T extends RoomTypes> {
+  readonly activity: readonly Activity<T["Event"]>[];
+  readonly seq: Seq;
+  readonly view: T["View"];
+}
+
 export interface PendingCommand<T extends RoomTypes> {
   readonly id: CommandId;
   readonly command: T["Command"];

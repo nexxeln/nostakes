@@ -75,6 +75,7 @@ const freshRoom = (code: InRoom["code"], player: InRoom["player"]): InRoom => ({
   picked: Option.none(),
   player,
   settings: Option.none(),
+  shown: Option.none(),
 });
 
 export const init = (flags: Flags): Return => {
@@ -331,8 +332,11 @@ const fromTable = (model: Model, intent: TableIntent): Return =>
     })
   );
 
-const remember = (room: InRoom, seq: number, event: SeenEvent): InRoom => {
-  const fresh = happeningsOf(seq, event);
+const remember = (
+  room: InRoom,
+  applied: readonly { readonly event: SeenEvent; readonly seq: number }[]
+): InRoom => {
+  const fresh = applied.flatMap(({ event, seq }) => happeningsOf(seq, event));
 
   return fresh.length === 0
     ? room
@@ -401,8 +405,6 @@ export const update = (model: Model, message: Message): Return =>
   Messages.match(message, {
     AcquiredConnection: () =>
       editRoom(model, (room) => ({ ...room, connected: true })),
-    AppliedEvent: ({ event, seq }) =>
-      editRoom(model, (room) => remember(room, seq, event)),
     ChangedDraft: ({ field, value }) =>
       editRoom(model, (room) => ({
         ...room,
@@ -555,6 +557,11 @@ export const update = (model: Model, message: Message): Return =>
     GotReply: ({ key, outcome }) =>
       editRoom(model, (room) => settle(room, key, outcome)),
     GotTableIntent: ({ intent }) => fromTable(model, intent),
+    GotUpdate: ({ events, receivedAt, seq, view }) =>
+      editRoom({ ...model, now: receivedAt }, (room) => ({
+        ...remember(room, events),
+        shown: Option.some({ receivedAt, seq, view }),
+      })),
     PickedAvatar: ({ avatar }) => {
       if (Option.isSome(model.faceDraft)) {
         return { model: { ...model, faceDraft: Option.some(avatar) } };

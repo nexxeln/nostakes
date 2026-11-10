@@ -20,7 +20,7 @@ export const connectionTarget = (model: Model): Option.Option<SavedPass> =>
   roomOf(model).pipe(Option.map(({ code, player }) => ({ code, player })));
 
 export const viewOf = (room: InRoom): Option.Option<RoomView> =>
-  room.link.pipe(Option.flatMap(({ view }) => view));
+  room.shown.pipe(Option.map(({ view }) => view));
 
 export const openViewOf = (room: InRoom): Option.Option<OpenView> =>
   viewOf(room).pipe(Option.filter(RoomViews.$is("Open")));

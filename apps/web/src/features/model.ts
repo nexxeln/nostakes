@@ -52,10 +52,17 @@ export const LinkSchema = Schema.Struct({
   receivedAt: Schema.Int,
   refusal: Schema.Option(CloseReasonSchema),
   retryDelayMs: Schema.Option(Schema.Int),
-  view: Schema.Option(RoomViewSchema),
 });
 
 export type Link = typeof LinkSchema.Type;
+
+export const ShownViewSchema = Schema.Struct({
+  receivedAt: Schema.Int,
+  seq: Schema.Int,
+  view: RoomViewSchema,
+});
+
+export type ShownView = typeof ShownViewSchema.Type;
 
 export const PendingSchema = Schema.Struct({
   acting: Schema.Boolean,
@@ -92,6 +99,7 @@ export const InRoomSchema = Schema.Struct({
   picked: Schema.Option(Schema.Int),
   player: PlayerIdSchema,
   settings: Schema.Option(SettingsDraftSchema),
+  shown: Schema.Option(ShownViewSchema),
 });
 
 export type InRoom = typeof InRoomSchema.Type;

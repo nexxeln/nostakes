@@ -312,7 +312,7 @@ const canTakeASeat = (view: OpenView, room: InRoom) =>
 const SECOND = 1000;
 
 const clockOf = (view: OpenView, room: InRoom): ActionClock | null => {
-  const key = Option.match(room.link, {
+  const key = Option.match(room.shown, {
     onNone: () => 0,
     onSome: ({ receivedAt }) => receivedAt,
   });

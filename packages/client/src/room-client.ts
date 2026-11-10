@@ -26,7 +26,7 @@ import {
 import type { Scope } from "effect";
 import type { SnapshotFrom } from "xstate";
 
-import type { Activity, DropReason } from "./client-events.js";
+import type { Activity, DropReason, RoomUpdate } from "./client-events.js";
 import { clientCodec, frameBytes } from "./codec.js";
 import type { ClientSchemas, ReplyResult, RoomTypes } from "./codec.js";
 import { ClientRefused } from "./errors/client-refused.js";
@@ -92,6 +92,7 @@ export interface RoomClient<T extends RoomTypes> {
   readonly state: Effect.Effect<ClientState<T>>;
   readonly states: Stream.Stream<ClientState<T>>;
   readonly activity: Stream.Stream<Activity<T["Event"]>>;
+  readonly updates: Stream.Stream<RoomUpdate<T>>;
 }
 
 export interface RoomClientOptions {
@@ -134,6 +135,7 @@ export const roomClient = <T extends RoomTypes>(
     const prefix = yield* clientPrefix;
     const issued = yield* Ref.make(0);
     const activity = yield* PubSub.unbounded<Activity<T["Event"]>>();
+    const updates = yield* PubSub.unbounded<RoomUpdate<T>>();
 
     const waiting = new Map<
       CommandId,
@@ -194,7 +196,9 @@ export const roomClient = <T extends RoomTypes>(
     };
 
     const listeners = [
-      actor.on("Applied", ({ activity: items }) => {
+      actor.on("Applied", ({ activity: items, seq, view }) => {
+        PubSub.publishUnsafe(updates, { activity: items, seq, view });
+
         for (const item of items) {
           PubSub.publishUnsafe(activity, item);
         }
@@ -306,6 +310,7 @@ export const roomClient = <T extends RoomTypes>(
           )
         )
       ),
+      updates: Stream.fromPubSub(updates),
       wake: Effect.sync(() => {
         actor.send({ type: "Wake" });
       }),

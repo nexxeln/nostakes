@@ -1,5 +1,5 @@
 import { Activities } from "@nostakes/client";
-import type { ClientState } from "@nostakes/client";
+import type { ClientState, RoomUpdate } from "@nostakes/client";
 import { Clock, Effect, Option, Schema, Stream } from "effect";
 import { Subscription } from "foldkit";
 import type { ManagedResource } from "foldkit";
@@ -22,7 +22,6 @@ const linkOf = (
   receivedAt,
   refusal: state.refusal,
   retryDelayMs: state.retryDelayMs,
-  view: state.view,
 });
 
 const roomLinks = RoomConnection.get.pipe(
@@ -39,15 +38,28 @@ const roomLinks = RoomConnection.get.pipe(
   Stream.unwrap
 );
 
-const roomActivity = RoomConnection.get.pipe(
+const appliedEvents = (activity: RoomUpdate<PokerClientTypes>["activity"]) =>
+  activity.flatMap(
+    Activities.$match({
+      Applied: ({ event, seq }) => [{ event, seq }],
+      Skipped: () => [],
+    })
+  );
+
+const roomUpdates = RoomConnection.get.pipe(
   Effect.map((client) =>
-    client.activity.pipe(
-      Stream.flatMap(
-        Activities.$match({
-          Applied: ({ event, seq }) =>
-            Stream.make(Messages.AppliedEvent({ event, seq })),
-          Skipped: () => Stream.empty,
-        })
+    client.updates.pipe(
+      Stream.mapEffect(({ activity, seq, view }) =>
+        Clock.currentTimeMillis.pipe(
+          Effect.map((receivedAt) =>
+            Messages.GotUpdate({
+              events: appliedEvents(activity),
+              receivedAt,
+              seq,
+              view,
+            })
+          )
+        )
       )
     )
   ),
@@ -76,19 +88,6 @@ export const subscriptions = Subscription.make<
   Message,
   ManagedResource.ServiceOf<typeof RoomConnection>
 >()((entry) => ({
-  activity: entry(
-    { connected: Schema.Option(Schema.String) },
-    {
-      dependenciesToStream: ({ connected }) =>
-        Option.isSome(connected) ? roomActivity : Stream.empty,
-      modelToDependencies: (model) => ({
-        connected: roomOf(model).pipe(
-          Option.filter(({ connected }) => connected),
-          Option.map(({ code }) => code)
-        ),
-      }),
-    }
-  ),
   clock: entry(
     { ticking: Schema.Boolean },
     {
@@ -103,6 +102,19 @@ export const subscriptions = Subscription.make<
     {
       dependenciesToStream: ({ connected }) =>
         Option.isSome(connected) ? roomLinks : Stream.empty,
+      modelToDependencies: (model) => ({
+        connected: roomOf(model).pipe(
+          Option.filter(({ connected }) => connected),
+          Option.map(({ code }) => code)
+        ),
+      }),
+    }
+  ),
+  updates: entry(
+    { connected: Schema.Option(Schema.String) },
+    {
+      dependenciesToStream: ({ connected }) =>
+        Option.isSome(connected) ? roomUpdates : Stream.empty,
       modelToDependencies: (model) => ({
         connected: roomOf(model).pipe(
           Option.filter(({ connected }) => connected),

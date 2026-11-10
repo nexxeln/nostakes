@@ -32,7 +32,6 @@ const roomWith = (
     receivedAt: 0,
     refusal: Option.none(),
     retryDelayMs: Option.none(),
-    view: Option.some(view),
   }),
   menu: false,
   notice: Option.none(),
@@ -40,6 +39,7 @@ const roomWith = (
   picked: Option.none(),
   player: PLAYER,
   settings: Option.none(),
+  shown: Option.some({ receivedAt: 0, seq: 1, view }),
 });
 
 const spots = Arbitrary.schema(

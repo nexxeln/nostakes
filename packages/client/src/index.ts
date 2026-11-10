@@ -9,6 +9,7 @@ export {
   type Link,
   type Owed,
   type PendingCommand,
+  type RoomUpdate,
 } from "./client-events.js";
 
 export {
