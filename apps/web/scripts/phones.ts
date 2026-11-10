@@ -268,6 +268,8 @@ const IOS_FOCUS_ZOOM_BELOW_PX = 16;
 
 const ZOOMED_IN = 2;
 
+const PINCHED_ABOVE = 1.2;
+
 const PINCH_AT_Y = 300;
 
 const fieldSizes = (page: Page, screen: string) =>
@@ -339,11 +341,158 @@ const pinchTable = (context: BrowserContext, page: Page, scaleFactor: number) =>
     )
   );
 
+const setPageScale = (
+  context: BrowserContext,
+  page: Page,
+  pageScaleFactor: number
+) =>
+  attempt("open a devtools session", () => context.newCDPSession(page)).pipe(
+    Effect.flatMap((session) =>
+      attempt(`set the page scale to ${pageScaleFactor}`, () =>
+        session.send("Emulation.setPageScaleFactor", { pageScaleFactor })
+      )
+    )
+  );
+
+const TABLE_TAKES_PAN_AND_PINCH = "phones-control-pinch";
+
+const letTablePanAndPinch = (page: Page, on: boolean) =>
+  attempt(on ? "let the table pan and pinch" : "give the table back", () =>
+    page.evaluate(
+      ([id, wanted, table]) => {
+        document.querySelector(`#${id}`)?.remove();
+
+        if (wanted) {
+          const sheet = document.createElement("style");
+
+          sheet.id = id;
+          sheet.textContent = `${table} { touch-action: manipulation !important; }`;
+          document.head.append(sheet);
+        }
+      },
+      [TABLE_TAKES_PAN_AND_PINCH, on, TABLE] as const
+    )
+  );
+
+const scaleAfterPinch = (page: Page) =>
+  waitFor(visualScale(page), (scale) => scale > PINCHED_ABOVE);
+
 const wideOverflow = (page: Page) =>
   attempt("measure the page's width", () =>
     page.evaluate(
       () => document.documentElement.scrollWidth - globalThis.innerWidth
     )
+  );
+
+type Note<R> = (
+  check: string,
+  passed: boolean,
+  detail: string
+) => Effect.Effect<void, PhoneCheckFailed, R>;
+
+const zoomedModeCheck = <R>(
+  engineName: string,
+  context: BrowserContext,
+  page: Page,
+  note: Note<R>
+) =>
+  Effect.gen(function* checkZoomedMode() {
+    const realScale =
+      engineName === "chromium"
+        ? yield* setPageScale(context, page, ZOOMED_IN).pipe(
+            Effect.andThen(
+              waitFor(visualScale(page), (n) => n > PINCHED_ABOVE)
+            ),
+            Effect.map((scale) => scale > PINCHED_ABOVE),
+            Effect.orElseSucceed(() => false)
+          )
+        : false;
+
+    if (!realScale) {
+      yield* pretendZoom(page, ZOOMED_IN);
+    }
+
+    yield* Effect.sleep("200 millis");
+
+    const zoomedTouch = yield* style(page, TABLE, "touch-action");
+    const zoomedHint = yield* zoomHintShown(page);
+
+    yield* realScale ? setPageScale(context, page, 1) : forgetPretendZoom(page);
+
+    yield* Effect.sleep("200 millis");
+
+    const restoredTouch = yield* style(page, TABLE, "touch-action");
+    const restoredHint = yield* zoomHintShown(page);
+
+    yield* note(
+      "zoomed in, the table pans and pinches like the page and says how to get back; at its own scale it takes its gestures again",
+      zoomedTouch === "manipulation" &&
+        zoomedHint &&
+        restoredTouch === "pinch-zoom" &&
+        !restoredHint,
+      `${realScale ? "page really scaled to 2" : "scale stubbed, this build ignores a page scale"}: zoomed ${zoomedTouch}, hint ${zoomedHint}; back ${restoredTouch}, hint ${restoredHint}`
+    );
+  });
+
+const pinchCheck = <R>(
+  engineName: string,
+  context: BrowserContext,
+  page: Page,
+  note: Note<R>
+) =>
+  Effect.gen(function* checkRealPinch() {
+    if (engineName === "chromium") {
+      yield* letTablePanAndPinch(page, true);
+
+      const controlPinch = yield* pinchTable(context, page, ZOOMED_IN);
+      const controlScale = yield* scaleAfterPinch(page);
+
+      yield* setPageScale(context, page, 1);
+      yield* letTablePanAndPinch(page, false);
+      yield* Effect.sleep("300 millis");
+
+      if (controlScale > PINCHED_ABOVE) {
+        const pinchedIn = yield* pinchTable(context, page, ZOOMED_IN);
+        const inScale = yield* scaleAfterPinch(page);
+
+        yield* Effect.sleep("200 millis");
+
+        const pinchedTouch = yield* style(page, TABLE, "touch-action");
+        const pinchedHint = yield* zoomHintShown(page);
+
+        yield* note(
+          "a pinch that starts on the table zooms the page, and the zoomed table then pans and pinches and says how to get back",
+          pinchedIn === "" &&
+            inScale > PINCHED_ABOVE &&
+            pinchedTouch === "manipulation" &&
+            pinchedHint,
+          `pinched to ${inScale.toFixed(2)} ${pinchedIn}, table ${pinchedTouch}, hint ${pinchedHint}`.trim()
+        );
+        yield* setPageScale(context, page, 1);
+      } else {
+        yield* note(
+          "a pinch that starts on the table zooms the page",
+          true,
+          `not checked: this browser build does not apply a synthesized pinch at all, since a control pinch over a table set to pan and pinch stayed at ${controlScale.toFixed(2)}${controlPinch === "" ? "" : ` (${controlPinch})`}; the touch-action and page-scale checks above still ran`
+        );
+      }
+    } else {
+      yield* note(
+        "pinching the table",
+        true,
+        "not checked: this engine cannot synthesize a pinch"
+      );
+    }
+  });
+
+const zoomChecks = <R>(
+  engineName: string,
+  context: BrowserContext,
+  page: Page,
+  note: Note<R>
+) =>
+  zoomedModeCheck(engineName, context, page, note).pipe(
+    Effect.andThen(pinchCheck(engineName, context, page, note))
   );
 
 const phoneChecks = (engine: BrowserType, app: string, watched: PageWatch) =>
@@ -605,59 +754,7 @@ const phoneChecks = (engine: BrowserType, app: string, watched: PageWatch) =>
         .join(", ")
     );
 
-    yield* pretendZoom(host, ZOOMED_IN);
-    yield* Effect.sleep("200 millis");
-
-    const zoomedTouch = yield* style(host, TABLE, "touch-action");
-    const zoomedHint = yield* zoomHintShown(host);
-
-    yield* forgetPretendZoom(host);
-    yield* Effect.sleep("200 millis");
-
-    const restoredTouch = yield* style(host, TABLE, "touch-action");
-    const restoredHint = yield* zoomHintShown(host);
-
-    yield* note(
-      "zoomed in, the table pans and pinches like the page and says how to get back; at its own scale it takes its gestures again",
-      zoomedTouch === "manipulation" &&
-        zoomedHint &&
-        restoredTouch === "pinch-zoom" &&
-        !restoredHint,
-      `zoomed ${zoomedTouch}, hint ${zoomedHint}; back ${restoredTouch}, hint ${restoredHint}`
-    );
-
-    if (engine.name() === "chromium") {
-      const pinchedIn = yield* pinchTable(hostContext, host, ZOOMED_IN);
-
-      yield* Effect.sleep("400 millis");
-
-      const inScale = yield* visualScale(host);
-      const pinchedTouch = yield* style(host, TABLE, "touch-action");
-      const pinchedHint = yield* zoomHintShown(host);
-
-      yield* note(
-        "a pinch that starts on the table zooms the page, and the zoomed table then pans and pinches and says how to get back",
-        pinchedIn === "" &&
-          inScale > 1.2 &&
-          pinchedTouch === "manipulation" &&
-          pinchedHint,
-        `pinched to ${inScale.toFixed(2)} ${pinchedIn}, table ${pinchedTouch}, hint ${pinchedHint}`.trim()
-      );
-      yield* attempt("reload at the page's own scale", () =>
-        host.goto(host.url())
-      );
-      yield* attempt("see the table again", () =>
-        host
-          .locator(`${TABLE} .self:not(.gone)`)
-          .waitFor({ state: "attached", timeout: 15_000 })
-      );
-    } else {
-      yield* note(
-        "pinching the table",
-        true,
-        "not checked: this engine cannot synthesize a pinch"
-      );
-    }
+    yield* zoomChecks(engine.name(), hostContext, host, note);
 
     const emulated = yield* insetsFor(hostContext, host, NOTCH);
 
