@@ -1,15 +1,26 @@
 import * as Cloudflare from "@alchemy.run/cloudflare";
-import { Effect } from "effect";
+import { Stage } from "alchemy";
+import { Effect, Schema } from "effect";
 
 import { serveRooms } from "./serve-rooms.js";
 import {
   ROOM_ROUTES,
   SITE_HOSTS,
   siteOrigin,
-  siteStage,
+  SiteStageSchema,
+  UnknownSiteStage,
   WEB_ASSETS,
   ZONE,
 } from "./site.js";
+
+export const siteStage = Effect.gen(function* siteStage() {
+  const stage = yield* Stage;
+
+  return yield* Schema.decodeUnknownEffect(SiteStageSchema)(stage).pipe(
+    Effect.mapError(() => new UnknownSiteStage({ stage })),
+    Effect.orDie
+  );
+});
 
 export default class SiteWorker extends Cloudflare.Worker<SiteWorker>()(
   "Site",

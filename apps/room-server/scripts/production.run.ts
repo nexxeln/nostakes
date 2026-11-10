@@ -3,8 +3,8 @@ import * as Alchemy from "alchemy";
 import * as State from "alchemy/State";
 import { Config, Effect, Layer } from "effect";
 
-import SiteWorker from "../src/site-worker.js";
-import { siteOrigin, siteStage } from "../src/site.js";
+import SiteWorker, { siteStage } from "../src/site-worker.js";
+import { siteOrigin } from "../src/site.js";
 
 export const STATE_STORE = "nostakes-state";
 

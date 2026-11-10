@@ -1,11 +1,13 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
+    "allowImportingTsExtensions": true,
     "plugins": [
       {
         "name": "@effect/language-service",
         "allowedUnstableApis": [
           "@effect/platform-node/NodeFileSystem",
+          "@effect/platform-node/NodeServices",
           "@effect/vitest",
           "effect/Arbitrary",
           "effect/FileSystem",
@@ -17,7 +19,8 @@
           "effect/http/HttpRouter",
           "effect/http/HttpServerError",
           "effect/http/HttpServerRequest",
-          "effect/http/HttpServerResponse"
+          "effect/http/HttpServerResponse",
+          "effect/process/ChildProcess"
         ]
       }
     ]

@@ -1,5 +1,4 @@
-import { Stage } from "alchemy";
-import { Effect, Schema } from "effect";
+import { Schema } from "effect";
 
 export const ZONE = "nostakes.club";
 
@@ -20,15 +19,6 @@ export class UnknownSiteStage extends Schema.TaggedError<
     return `The site has no stage named '${this.stage}'. Deploy with --stage production or --stage preview.`;
   }
 }
-
-export const siteStage = Effect.gen(function* siteStage() {
-  const stage = yield* Stage;
-
-  return yield* Schema.decodeUnknownEffect(SiteStageSchema)(stage).pipe(
-    Effect.mapError(() => new UnknownSiteStage({ stage })),
-    Effect.orDie
-  );
-});
 
 export const siteOrigin = (stage: SiteStage) => `https://${SITE_HOSTS[stage]}`;
 

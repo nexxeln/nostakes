@@ -19,7 +19,15 @@ import type {
   RoomView,
   SeenEvent,
 } from "@nostakes/room";
-import { Console, Duration, Effect, Option, Schema, Stream } from "effect";
+import {
+  Console,
+  Duration,
+  Effect,
+  Exit,
+  Option,
+  Schema,
+  Stream,
+} from "effect";
 import * as FetchHttpClient from "effect/http/FetchHttpClient";
 import * as HttpClient from "effect/http/HttpClient";
 import * as HttpClientRequest from "effect/http/HttpClientRequest";
@@ -307,6 +315,12 @@ const smoke = Effect.gen(function* smoke() {
   yield* note("a fresh connection reads the same settlement");
 });
 
-await Effect.runPromise(
-  smoke.pipe(Effect.scoped, Effect.provide(FetchHttpClient.layer))
+const outcome = await Effect.runPromiseExit(
+  smoke.pipe(
+    Effect.scoped,
+    Effect.tapError((failure) => Console.error(failure.message)),
+    Effect.provide(FetchHttpClient.layer)
+  )
 );
+
+process.exitCode = Exit.isSuccess(outcome) ? 0 : 1;
