@@ -87,6 +87,11 @@ export interface HostedRoom<T extends RoomTypes> {
     audience: T["Audience"],
     at: number
   ) => T["View"];
+  readonly haltedView: (
+    state: T["State"],
+    audience: T["Audience"],
+    at: number
+  ) => T["View"];
   readonly invariants: (state: T["State"]) => readonly string[];
   readonly signalAllowed: (
     state: T["State"],

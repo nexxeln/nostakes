@@ -28,6 +28,7 @@ import {
   replay,
   signalAllowed,
   stallCommand,
+  standingsView,
   viewFor,
 } from "@nostakes/room";
 import type {
@@ -162,6 +163,8 @@ export const pokerRoomOn = (chain: DrandChain): HostedRoom<PokerTypes> => ({
       TurnClock: () => 0,
     }),
   evolve,
+  haltedView: (state, audience, at) =>
+    standingsView(state, audience, millis(at)),
   invariants: (state) =>
     invariants(state).map(({ detail, invariant }) => `${invariant}: ${detail}`),
   joinCommand: (request) => MemberCommandSchema.cases.Join.make(request),

@@ -29,6 +29,16 @@ export const JoinOutcomeSchema = Schema.TaggedUnion({
 
 export type JoinOutcome = typeof JoinOutcomeSchema.Type;
 
+export const StandingsOutcomeSchema = Schema.TaggedUnion({
+  Halted: { view: Schema.Json },
+  Invalid: {},
+  NotAuthorized: {},
+  NotFound: {},
+  NotHalted: {},
+});
+
+export type StandingsOutcome = typeof StandingsOutcomeSchema.Type;
+
 export const InspectionSchema = Schema.Struct({
   alarmRuns: Schema.Array(
     Schema.Struct({ at: Schema.Int, outcome: Schema.String })

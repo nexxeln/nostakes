@@ -1,14 +1,17 @@
 import { randomAvatar } from "@nostakes/avatar";
 import {
+  haltedStandings,
   HttpRefusalSchema,
   RoomCodeSchema,
   RoomPassSchema,
+  StandingsRequestSchema,
 } from "@nostakes/protocol";
 import type { UnavailableReason } from "@nostakes/protocol";
 import {
   JoinRequestSchema,
   MemberCommandSchema,
   RoomSignalSchema,
+  RoomViewSchema,
 } from "@nostakes/room";
 import type { JoinRequest } from "@nostakes/room";
 import { Clock, Effect, Match, Option, Schema } from "effect";
@@ -39,6 +42,7 @@ import {
   forgetPass,
   randomSeed,
   reloadFor,
+  storedPass,
   storeLearned,
   storePass,
   storeProfile,
@@ -156,6 +160,48 @@ export const SendToRoom = Command.define("SendToRoom", {
       })
     ),
   messages: [Messages.GotReply],
+});
+
+const standingsBody = haltedStandings(Schema.toCodecJson(RoomViewSchema));
+
+const askedStandings = (code: string) =>
+  storedPass(code).pipe(
+    Effect.mapError(() => "this device no longer holds a pass for the room"),
+    Effect.flatMap((pass) =>
+      HttpClientRequest.post(
+        new URL(`/rooms/${code}/standings`, globalThis.location.href)
+      ).pipe(
+        HttpClientRequest.bodyJsonUnsafe(
+          Schema.encodeSync(StandingsRequestSchema)({ token: pass.token })
+        ),
+        HttpClient.execute,
+        Effect.flatMap((response) => response.json),
+        Effect.mapError(() => "the room server is not answering")
+      )
+    ),
+    Effect.flatMap((json) =>
+      Schema.decodeUnknownEffect(standingsBody)(json).pipe(
+        Effect.mapError(() =>
+          Option.match(Schema.decodeUnknownOption(HttpRefusalSchema)(json), {
+            onNone: () => "the room server sent nonsense",
+            onSome: refusalText,
+          })
+        )
+      )
+    ),
+    Effect.provide(FetchHttpClient.layer)
+  );
+
+export const ReadStandings = Command.define("ReadStandings", {
+  args: { code: RoomCodeSchema },
+  execute: ({ code }) =>
+    askedStandings(code).pipe(
+      Effect.match({
+        onFailure: (reason) => Messages.MissedStandings({ reason }),
+        onSuccess: ({ view }) => Messages.GotStandings({ view }),
+      })
+    ),
+  messages: [Messages.GotStandings, Messages.MissedStandings],
 });
 
 export const SignalRoom = Command.define("SignalRoom", {

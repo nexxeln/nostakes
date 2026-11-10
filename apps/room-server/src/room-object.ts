@@ -11,6 +11,7 @@ import {
   PlayerIdSchema,
   RoomCodeSchema,
   SIGNAL_ALLOWANCE,
+  StandingsRequestSchema,
   TOKEN_BYTES,
   TokenTextSchema,
   fullBucket,
@@ -63,6 +64,7 @@ import {
   loadRoom,
   openStorage,
   Origins,
+  StandingsAnswers,
 } from "./room-host.js";
 import type { CommitResult, Connections, RoomHost } from "./room-host.js";
 import {
@@ -71,6 +73,7 @@ import {
   MAX_MEMBERS,
   MAX_SOCKETS,
   OpenOutcomeSchema,
+  StandingsOutcomeSchema,
 } from "./room-rpc.js";
 import type { Inspection } from "./room-rpc.js";
 import { servedBuildOrNone } from "./served-build.js";
@@ -92,9 +95,11 @@ const refusalStatus: Record<PlainRefusal["refusal"], number> = {
   BadOrigin: 403,
   BadRequest: 400,
   NoFreeCode: 503,
+  NotAuthorized: 403,
   NotFound: 404,
   RoomFull: 409,
   RoomHalted: 410,
+  RoomOpen: 409,
   RoomUnavailable: 503,
   ServerFault: 500,
   UpgradeRequired: 426,
@@ -1037,6 +1042,43 @@ export const roomObject = <T extends RoomTypes, Tally>(
             Effect.orDie
           );
 
+        const standings = (input: typeof StandingsRequestSchema.Encoded) =>
+          Effect.gen(function* readStandings() {
+            const decoded = yield* Schema.decodeEffect(StandingsRequestSchema)(
+              input
+            ).pipe(Effect.option);
+
+            if (Option.isNone(decoded)) {
+              return StandingsOutcomeSchema.cases.Invalid.make({});
+            }
+
+            if (Option.isNone(host)) {
+              return StandingsOutcomeSchema.cases.NotFound.make({});
+            }
+
+            const room = host.value;
+
+            const bytes = Base64Url.decode(
+              Redacted.value(decoded.value.token)
+            ).pipe(Result.getOrElse(() => new Uint8Array()));
+
+            const hash = yield* sha256(bytes);
+            const at = yield* Clock.currentTimeMillis;
+
+            return StandingsAnswers.$match(room.standings(hash, at), {
+              Halted: ({ view }) =>
+                StandingsOutcomeSchema.cases.Halted.make({
+                  view: Schema.encodeSync(core.schemas.view)(view),
+                }),
+              NotAuthorized: () =>
+                StandingsOutcomeSchema.cases.NotAuthorized.make({}),
+              NotHalted: () => StandingsOutcomeSchema.cases.NotHalted.make({}),
+            });
+          }).pipe(
+            Effect.flatMap(Schema.encodeEffect(StandingsOutcomeSchema)),
+            Effect.orDie
+          );
+
         const upgrade = Effect.gen(function* upgradeSocket() {
           const request = yield* HttpServerRequest.HttpServerRequest;
 
@@ -1082,6 +1124,8 @@ export const roomObject = <T extends RoomTypes, Tally>(
             join(input).pipe(Effect.ensuring(flush)),
           open: (input: typeof OpenCall.Encoded) =>
             open(input).pipe(Effect.ensuring(flush)),
+          standings: (input: typeof StandingsRequestSchema.Encoded) =>
+            standings(input).pipe(Effect.ensuring(flush)),
           webSocketClose: (socket: Cloudflare.WebSocket) =>
             release(socket.ws, "ClosedByClient").pipe(
               Effect.andThen(attend(Option.some(socket.ws))),

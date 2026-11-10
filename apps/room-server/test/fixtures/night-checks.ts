@@ -46,6 +46,12 @@ import {
   waitBeyondPause,
 } from "./fair-checks.js";
 import type { FairnessCounts, Proof } from "./fair-checks.js";
+import {
+  haltedViewOf,
+  ledgerFromLog,
+  standingsProblems,
+  unfinishedHand,
+} from "./halted-standings.js";
 import { decodeServerFrame, pokerCodec, wallClock } from "./poker-socket.js";
 import type { Arrival } from "./poker-socket.js";
 import { describeSignal } from "./signal-plan.js";
@@ -127,6 +133,7 @@ export const COUNT_NAMES = [
   "duplicatesConfirmed",
   "endedAfterHand",
   "endedBetweenHands",
+  "endedHalted",
   "endedStalled",
   "events",
   "everyPlayerAnteHands",
@@ -218,6 +225,7 @@ export const emptyCounts = (): NightCounts => ({
   duplicatesConfirmed: 0,
   endedAfterHand: 0,
   endedBetweenHands: 0,
+  endedHalted: 0,
   endedStalled: 0,
   events: 0,
   everyPlayerAnteHands: 0,
@@ -264,7 +272,18 @@ export const emptyCounts = (): NightCounts => ({
   welcomeClockChecks: 0,
 });
 
-export type NightEnding = "AsItComes" | "MidHand" | "Stalled";
+export type NightEnding = "AsItComes" | "MidHand" | "Stalled" | "Halted";
+
+export interface HaltStandings {
+  readonly label: string;
+  readonly status: number;
+  readonly view: Option.Option<Schema.Json>;
+}
+
+export interface HaltEvidence {
+  readonly lost: { readonly seq: number; readonly event: string };
+  readonly standings: readonly HaltStandings[];
+}
 
 export interface NightEvidence {
   readonly checked: boolean;
@@ -274,6 +293,7 @@ export interface NightEvidence {
   readonly events: readonly string[];
   readonly seqs: readonly number[];
   readonly halted: Option.Option<string>;
+  readonly halt: Option.Option<HaltEvidence>;
   readonly refusedAlarms: number;
   readonly memoryMatchesLog: boolean;
   readonly bots: readonly BotRecord[];
@@ -1645,6 +1665,10 @@ const checkStorage = (checker: Checker, evidence: NightEvidence) => {
     report(checker, "stored sequence numbers are not 1..n");
   }
 
+  if (evidence.ending === "Halted") {
+    return;
+  }
+
   if (Option.isSome(evidence.halted)) {
     report(checker, `the room halted: ${evidence.halted.value}`);
   }
@@ -1659,6 +1683,51 @@ const checkStorage = (checker: Checker, evidence: NightEvidence) => {
   if (!evidence.memoryMatchesLog) {
     report(checker, "the object's state differs from the replay of its log");
   }
+};
+
+const checkHalt = (
+  checker: Checker,
+  evidence: NightEvidence,
+  events: readonly RoomEvent[]
+) => {
+  if (evidence.ending !== "Halted") {
+    return;
+  }
+
+  if (Option.isNone(evidence.halt)) {
+    report(checker, "the night was meant to halt mid-hand and never did");
+
+    return;
+  }
+
+  const { lost, standings } = evidence.halt.value;
+  const expected = `stored event ${lost.seq} has sequence number ${lost.seq + 1}`;
+  const sound = events.slice(0, lost.seq - 1);
+  const ledger = ledgerFromLog(sound);
+
+  if (!Option.contains(evidence.halted, expected)) {
+    report(
+      checker,
+      `the room lost stored event ${lost.seq} and halted with ${Option.getOrElse(evidence.halted, () => "no reason")}`
+    );
+  }
+
+  if (!unfinishedHand(sound)) {
+    report(checker, `stored event ${lost.seq} was not lost mid-hand`);
+  }
+
+  for (const { label, status, view } of standings) {
+    const problems = Option.match(view, {
+      onNone: () => [`answered ${status} with no standings`],
+      onSome: (json) => standingsProblems(haltedViewOf(json), ledger),
+    });
+
+    for (const problem of problems) {
+      report(checker, `${label}'s standings of the halted room: ${problem}`);
+    }
+  }
+
+  checker.counts.endedHalted += 1;
 };
 
 const deafReplyTimes = (clients: readonly ClientBotRecord[]) =>
@@ -1976,8 +2045,13 @@ export const checkNight = (evidence: NightEvidence): NightVerdict => {
   }
 
   checkEnding(checker, evidence, events);
+  checkHalt(checker, evidence, events);
 
-  const transfers = checkSettlement(checker, received.finals, ledger.net);
+  const transfers =
+    evidence.ending === "Halted"
+      ? []
+      : checkSettlement(checker, received.finals, ledger.net);
+
   const fair = checkFairness(checker, evidence, events);
 
   return {

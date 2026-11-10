@@ -432,6 +432,17 @@ html:has(.room) {
   font-weight: 600;
 }
 
+.member-detail {
+  font-size: var(--text-1);
+  color: var(--color-ink-muted);
+}
+
+.halted-line {
+  margin: 0;
+  font-size: var(--text-2);
+  line-height: var(--leading);
+}
+
 .tag {
   font-size: var(--text-1);
   color: var(--color-ink-muted);

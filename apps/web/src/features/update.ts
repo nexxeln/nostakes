@@ -40,6 +40,7 @@ import {
   ForgetRoom,
   JoinRoom,
   KeepMoment,
+  ReadStandings,
   ReloadPage,
   SaveLearned,
   SaveProfile,
@@ -52,9 +53,10 @@ import {
   WakeRoom,
 } from "../client/commands.js";
 import type { RoomConnection } from "../client/connection.js";
+import { haltedText } from "./halted.js";
 import { Messages, ReplyOutcomes } from "./message.js";
 import type { Message, ReplyOutcome } from "./message.js";
-import { FairMarks, Screens, pageTheme } from "./model.js";
+import { FairMarks, HaltedStandings, Screens, pageTheme } from "./model.js";
 import type { Flags, InRoom, Link, Model, RulesSheet } from "./model.js";
 import { NO_MOMENTS, watchedMoments } from "./moments/watch.js";
 import { considerUpdate } from "./page-update.js";
@@ -113,6 +115,7 @@ const freshRoom = (code: InRoom["code"], player: InRoom["player"]): InRoom => ({
   events: [],
   fairness: [],
   fairnessOpen: false,
+  halted: Option.none(),
   link: Option.none(),
   member: Option.none(),
   menu: false,
@@ -257,6 +260,33 @@ const editRoomThenUpdate = (
       ),
       model: withRoom(model, { ...room, update: step.update }),
     };
+  });
+
+const haltedClosedView = (room: InRoom) =>
+  room.halted.pipe(
+    Option.filter(HaltedStandings.guards.Shown),
+    Option.map(({ view }) => view),
+    Option.filter(RoomViews.$is("Closed"))
+  );
+
+const haltedRefusal = (room: InRoom) =>
+  Option.isNone(room.halted) &&
+  Option.exists(
+    room.link,
+    ({ phase, refusal }) =>
+      phase === "Refused" && Option.contains(refusal, "RoomHalted")
+  );
+
+const askForStandings = (step: Return): Return =>
+  Option.match(roomOf(step.model).pipe(Option.filter(haltedRefusal)), {
+    onNone: () => step,
+    onSome: (room) => ({
+      commands: [...(step.commands ?? []), ReadStandings({ code: room.code })],
+      model: withRoom(step.model, {
+        ...room,
+        halted: Option.some(HaltedStandings.Asking()),
+      }),
+    }),
   });
 
 const withoutRoom = (model: Model, code: string): Model => ({
@@ -755,16 +785,19 @@ export const update = (model: Model, message: Message): Return =>
     ClickedCopySettlement: () =>
       inRoom(model, (room) =>
         Option.match(
-          viewOf(room).pipe(Option.filter(RoomViews.$is("Closed"))),
+          haltedClosedView(room).pipe(
+            Option.map(haltedText),
+            Option.orElse(() =>
+              viewOf(room).pipe(
+                Option.filter(RoomViews.$is("Closed")),
+                Option.map(settlementText)
+              )
+            )
+          ),
           {
             onNone: () => ({ model }),
-            onSome: (closed) => ({
-              commands: [
-                CopyText({
-                  copied: "Settlement",
-                  text: settlementText(closed),
-                }),
-              ],
+            onSome: (text) => ({
+              commands: [CopyText({ copied: "Settlement", text })],
               model,
             }),
           }
@@ -914,24 +947,31 @@ export const update = (model: Model, message: Message): Return =>
       },
     }),
     GotLink: ({ link }) =>
-      editRoomThenUpdate(
-        {
-          ...model,
-          now: link.receivedAt,
-          reporting: droppedLine(model, link)
-            ? {
-                ...model.reporting,
-                reconnects: model.reporting.reconnects + 1,
-              }
-            : model.reporting,
-        },
-        (room) => ({
-          ...room,
-          link: Option.some(link),
-        })
+      askForStandings(
+        editRoomThenUpdate(
+          {
+            ...model,
+            now: link.receivedAt,
+            reporting: droppedLine(model, link)
+              ? {
+                  ...model.reporting,
+                  reconnects: model.reporting.reconnects + 1,
+                }
+              : model.reporting,
+          },
+          (room) => ({
+            ...room,
+            link: Option.some(link),
+          })
+        )
       ),
     GotReply: ({ key, outcome }) =>
       editRoom(model, (room) => settle(room, key, outcome)),
+    GotStandings: ({ view }) =>
+      editRoom(model, (room) => ({
+        ...room,
+        halted: Option.some(HaltedStandings.Shown({ view })),
+      })),
     GotTableIntent: ({ intent }) => fromTable(model, intent),
     GotUpdate: ({ events, receivedAt, seq, view }) =>
       noteRoom(
@@ -1009,6 +1049,11 @@ export const update = (model: Model, message: Message): Return =>
       ],
       model,
     }),
+    MissedStandings: ({ reason }) =>
+      editRoom(model, (room) => ({
+        ...room,
+        halted: Option.some(HaltedStandings.Missing({ reason })),
+      })),
     PickedAvatar: ({ avatar }) => wearFace(model, avatar, false),
     ReleasedConnection: () =>
       editRoom(model, (room) => ({ ...room, connected: false })),

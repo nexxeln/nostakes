@@ -265,3 +265,5 @@ export {
 } from "./views.js";
 
 export type { Audience, RoomView, SeenEvent, SeenTableEvent } from "./views.js";
+
+export { standingsOf, standingsView } from "./standings.js";

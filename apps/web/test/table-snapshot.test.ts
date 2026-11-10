@@ -37,6 +37,7 @@ const roomWith = (
   events: [],
   fairness: [],
   fairnessOpen: false,
+  halted: Option.none(),
   link: Option.some({
     newBuild: Option.none(),
     phase: live ? "Live" : "Waiting",

@@ -116,6 +116,18 @@ export const roomObjectWithTestHooks = <T extends RoomTypes, Tally>(
                   ),
                   Effect.orDie
                 ),
+              lose: (seq: typeof Schema.Int.Encoded) =>
+                Schema.decodeEffect(Schema.Int)(seq).pipe(
+                  Effect.flatMap((lost) =>
+                    Effect.sync(() => {
+                      state.raw.storage.sql.exec(
+                        "delete from events where seq = ?",
+                        lost
+                      );
+                    })
+                  ),
+                  Effect.orDie
+                ),
               restart: () =>
                 Effect.sync(() => {
                   state.raw.abort("restart requested by a test");
@@ -142,6 +154,7 @@ export interface TestRoomStub {
   readonly inspect: () => Effect.Effect<typeof InspectionSchema.Encoded>;
   readonly jam: (on: boolean) => Effect.Effect<void>;
   readonly restart: () => Effect.Effect<void>;
+  readonly lose: (seq: number) => Effect.Effect<void>;
   readonly wakeAt: (at: number) => Effect.Effect<void>;
 }
 
@@ -156,6 +169,8 @@ const CodesBody = Schema.Struct({ codes: Schema.Array(RoomCodeSchema) });
 const AlarmBody = Schema.Struct({ at: Schema.Int });
 
 const JamBody = Schema.Struct({ on: Schema.Boolean });
+
+const LoseBody = Schema.Struct({ seq: Schema.Int });
 
 const ModeBody = Schema.Struct({ mode: AnalyticsModeSchema });
 
@@ -209,6 +224,15 @@ export const testRoutes = (
     return HttpServerResponse.empty({ status: 204 });
   }).pipe(Effect.orDie);
 
+  const lose = Effect.gen(function* loseEvent() {
+    const room = yield* roomOf;
+    const { seq } = yield* HttpServerRequest.schemaBodyJson(LoseBody);
+
+    yield* room.lose(seq).pipe(Effect.ignore);
+
+    return HttpServerResponse.empty({ status: 204 });
+  }).pipe(Effect.orDie);
+
   const queueCodes = Effect.gen(function* queueCodes() {
     const body = yield* HttpServerRequest.schemaBodyJson(CodesBody);
 
@@ -247,6 +271,7 @@ export const testRoutes = (
     HttpRouter.add("POST", "/test/rooms/:code/restart", restart),
     HttpRouter.add("POST", "/test/rooms/:code/alarm", wake),
     HttpRouter.add("POST", "/test/rooms/:code/jam", jam),
+    HttpRouter.add("POST", "/test/rooms/:code/lose", lose),
     HttpRouter.add("POST", "/test/codes", queueCodes)
   );
 };

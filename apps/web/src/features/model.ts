@@ -160,6 +160,14 @@ export const FairHandSchema = Schema.Struct({
 
 export type FairHand = typeof FairHandSchema.Type;
 
+export const HaltedStandings = defineTaggedUnion({
+  Asking: {},
+  Missing: { reason: Schema.String },
+  Shown: { view: RoomViewSchema },
+});
+
+export type HaltedStanding = typeof HaltedStandings.Type;
+
 export const InRoomSchema = Schema.Struct({
   addingChips: Schema.Boolean,
   clockSamples: Schema.Array(Schema.Int),
@@ -171,6 +179,7 @@ export const InRoomSchema = Schema.Struct({
   events: Schema.Array(TableEventSchema),
   fairness: Schema.Array(FairHandSchema),
   fairnessOpen: Schema.Boolean,
+  halted: Schema.Option(HaltedStandings),
   link: Schema.Option(LinkSchema),
   member: Schema.Option(PlayerIdSchema),
   menu: Schema.Boolean,

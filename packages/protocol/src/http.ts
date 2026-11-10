@@ -1,5 +1,6 @@
 import { Schema } from "effect";
 
+import type { WireSchema } from "./frames.js";
 import { PlayerIdSchema, RoomCodeSchema, TokenSchema } from "./primitives.js";
 
 export const RoomPassSchema = Schema.Struct({
@@ -21,8 +22,17 @@ export const PlainRefusalSchema = Schema.Struct({
     "UpgradeRequired",
     "RoomUnavailable",
     "ServerFault",
+    "NotAuthorized",
+    "RoomOpen",
   ]),
 });
+
+export const StandingsRequestSchema = Schema.Struct({ token: TokenSchema });
+
+export type StandingsRequest = typeof StandingsRequestSchema.Type;
+
+export const haltedStandings = <View extends WireSchema>(view: View) =>
+  Schema.Struct({ view });
 
 export type PlainRefusal = typeof PlainRefusalSchema.Type;
 

@@ -566,6 +566,7 @@ export const toyRoom: HostedRoom<ToyTypes> = {
       ExpireTurn: () => 0,
     }),
   evolve,
+  haltedView: viewFor,
   invariants,
   joinCommand: ({ avatar, name }) =>
     ToyMemberCommandSchema.cases.Join.make({ avatar, name }),

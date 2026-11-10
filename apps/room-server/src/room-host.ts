@@ -104,6 +104,18 @@ export interface MemberAnswer<T extends RoomTypes> {
   }>;
 }
 
+export type Standings<View> = Data.TaggedEnum<{
+  Halted: { readonly view: View; readonly reason: string };
+  NotHalted: { readonly headSeq: number };
+  NotAuthorized: { readonly halted: boolean };
+}>;
+
+interface StandingsDefinition extends Data.TaggedEnum.WithGenerics<1> {
+  readonly taggedEnum: Standings<this["A"]>;
+}
+
+export const StandingsAnswers = Data.taggedEnum<StandingsDefinition>();
+
 export interface RecentStates<State> {
   readonly from: number;
   readonly states: readonly State[];
@@ -135,12 +147,91 @@ const keepRecent = <State>(
   return { from: recent.from + dropped, states: states.slice(dropped) };
 };
 
-const gapsIn = (rows: readonly StoredEvent[]) =>
-  rows.flatMap((row, index) =>
-    row.seq === index + 1
-      ? []
-      : [`stored event ${index + 1} has sequence number ${row.seq}`]
-  );
+interface SoundLog<Event> {
+  readonly rows: readonly StoredEvent[];
+  readonly events: readonly Event[];
+  readonly problems: readonly string[];
+}
+
+const soundRows = <Event>(
+  rows: readonly StoredEvent[],
+  decode: (text: string) => Event,
+  upTo: Option.Option<number>
+): SoundLog<Event> => {
+  const kept: StoredEvent[] = [];
+  const events: Event[] = [];
+
+  for (const [index, row] of rows.entries()) {
+    if (Option.exists(upTo, (last) => row.seq > last)) {
+      break;
+    }
+
+    if (row.seq !== index + 1) {
+      return {
+        events,
+        problems: [`stored event ${index + 1} has sequence number ${row.seq}`],
+        rows: kept,
+      };
+    }
+
+    const decoded = Result.try({
+      catch: (thrown) => Inspectable.toStringUnknown(thrown, 0),
+      try: () => decode(row.event),
+    });
+
+    if (Result.isFailure(decoded)) {
+      return {
+        events,
+        problems: [
+          `stored event ${row.seq} does not decode: ${decoded.failure}`,
+        ],
+        rows: kept,
+      };
+    }
+
+    kept.push(row);
+    events.push(decoded.success);
+  }
+
+  return { events, problems: [], rows: kept };
+};
+
+const soundUntilBroken = <T extends RoomTypes>(
+  core: HostedRoom<T>,
+  log: SoundLog<T["Event"]>
+): SoundLog<T["Event"]> => {
+  const [first, ...rest] = log.events;
+
+  if (first === undefined) {
+    return log;
+  }
+
+  let state = core.replay([first]);
+  let problems: readonly string[] = core.invariants(state);
+  let kept = 1;
+
+  for (const event of rest) {
+    if (problems.length > 0) {
+      break;
+    }
+
+    const next = core.evolve(state, event);
+    const broken = core.invariants(next);
+
+    if (broken.length > 0) {
+      problems = broken;
+    } else {
+      state = next;
+      kept += 1;
+    }
+  }
+
+  return {
+    events: log.events.slice(0, kept),
+    problems: [...log.problems, ...problems],
+    rows: log.rows.slice(0, kept),
+  };
+};
 
 export const loadRoom = <T extends RoomTypes>(
   core: HostedRoom<T>,
@@ -150,32 +241,48 @@ export const loadRoom = <T extends RoomTypes>(
   storage.meta().pipe(
     Option.map((meta): HostState<T> => {
       const { decodeEvent } = roomCodec(core);
-      const rows = storage.eventsAfter(0);
-      const gaps = gapsIn(rows);
-      const events = rows.map((row) => decodeEvent(row.event));
-      const split = Math.max(1, events.length - MAX_MISSED_EVENTS);
-      let state = core.replay(events.slice(0, split));
-      const states = [state];
 
-      for (const event of events.slice(split)) {
-        state = core.evolve(state, event);
-        states.push(state);
-      }
+      const read = soundRows(
+        storage.eventsAfter(0),
+        decodeEvent,
+        meta.soundSeq
+      );
 
-      const violations = [...gaps, ...core.invariants(state)];
+      const whole = (log: SoundLog<T["Event"]>) => {
+        const split = Math.max(1, log.events.length - MAX_MISSED_EVENTS);
+        let state = core.replay(log.events.slice(0, split));
+        const states = [state];
 
-      replayed(events);
+        for (const event of log.events.slice(split)) {
+          state = core.evolve(state, event);
+          states.push(state);
+        }
+
+        return { split, state, states };
+      };
+
+      const first = whole(read);
+      const broken = core.invariants(first.state);
+
+      const sound = Arr.isReadonlyArrayNonEmpty(broken)
+        ? soundUntilBroken(core, read)
+        : read;
+
+      const { split, state, states } = sound === read ? first : whole(sound);
+      const violations = sound.problems;
+
+      replayed(sound.events);
 
       return {
         code: meta.code,
         commandFaults: storage.commandFaults(),
         credentials: storage.credentials().map(hashedCredential),
-        halted: Arr.isArrayNonEmpty(violations)
+        halted: Arr.isReadonlyArrayNonEmpty(violations)
           ? Option.some(violations.join("; "))
           : meta.halted,
-        headSeq: rows.at(-1)?.seq ?? 0,
-        lastEventAt: rows.at(-1)?.at ?? 0,
-        recent: { from: rows[split - 1]?.seq ?? 0, states },
+        headSeq: sound.rows.at(-1)?.seq ?? 0,
+        lastEventAt: sound.rows.at(-1)?.at ?? 0,
+        recent: { from: sound.rows[split - 1]?.seq ?? 0, states },
         refusals: storage.refusals(),
         state,
       };
@@ -283,7 +390,7 @@ export const hostRoom = <T extends RoomTypes>(
   const halt = (reason: string, connections: Connections) => {
     current = { ...current, halted: Option.some(reason) };
     Result.try(() => {
-      storage.halt(reason);
+      storage.halt(reason, current.headSeq);
     });
     connections.closeAll("RoomHalted");
   };
@@ -881,6 +988,24 @@ export const hostRoom = <T extends RoomTypes>(
           }))
         );
 
+  const standings = (hash: Uint8Array, at: number): Standings<T["View"]> =>
+    Option.match(current.halted, {
+      onNone: () => StandingsAnswers.NotHalted({ headSeq: current.headSeq }),
+      onSome: (reason) =>
+        Option.match(matchCredential(current.credentials, hash), {
+          onNone: () => StandingsAnswers.NotAuthorized({ halted: true }),
+          onSome: (player) =>
+            StandingsAnswers.Halted({
+              reason,
+              view: core.haltedView(
+                current.state,
+                core.audienceOf(current.state, player),
+                at
+              ),
+            }),
+        }),
+    });
+
   return {
     answerDeadline,
     answerMember,
@@ -894,6 +1019,7 @@ export const hostRoom = <T extends RoomTypes>(
     nextDeadline,
     noteAttendance,
     snapshot: () => current,
+    standings,
     welcome,
   };
 };

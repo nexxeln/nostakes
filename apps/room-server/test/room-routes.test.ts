@@ -35,6 +35,7 @@ const unreachableRooms: RoomNamespace = {
     fetch: () => Effect.die(new Error(CLOUDFLARE_REFUSAL)),
     join: () => refusedCall("join"),
     open: () => refusedCall("open"),
+    standings: () => refusedCall("standings"),
   }),
 };
 

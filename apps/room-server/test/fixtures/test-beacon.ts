@@ -8,7 +8,7 @@ const signer = selfSignedChain("nostakes room-server test beacon");
 
 export const TEST_CHAIN = { ...signer.chain, periodSeconds: 1 };
 
-export const OUTAGE_EVERY = 29;
+export const OUTAGE_EVERY = 13;
 
 export const beaconDown = (round: BeaconRound) => round % OUTAGE_EVERY === 0;
 

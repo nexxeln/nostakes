@@ -207,6 +207,7 @@ const describeStalls = (
 const FAIRNESS_EXPECTED: readonly FairnessCountName[] = [
   "handsJudged",
   "checkedInTime",
+  "outagesConfirmed",
   "plainHands",
 ];
 
@@ -215,6 +216,7 @@ const ENDINGS: readonly NightEnding[] = [
   "MidHand",
   "Stalled",
   "AsItComes",
+  "Halted",
 ];
 
 const INFORMATIONAL: ReadonlySet<CountName> = new Set([
@@ -312,7 +314,7 @@ const summarize = (
     `  showdowns: tabled ${counts.showdownTables}, mucked ${counts.showdownMucks}, chosen at or after the clock's deadline ${counts.lateShowdownChoices}, won without showing ${counts.unshownWinners}, winning hands refused a muck ${counts.illegalMucks}`,
     `  hands with approval ${counts.handsWithApproval} and without ${counts.handsWithoutApproval}, approvals ${counts.approvals}, denials ${counts.denials}`,
     `  settings changed ${counts.settingsChanged}, rules queued ${counts.rulesQueued}, closes queued in a hand ${counts.closeQueued}`,
-    `  nights ended between hands ${counts.endedBetweenHands}, after the hand in play ${counts.endedAfterHand}, from a stalled room ${counts.endedStalled}; hands cancelled when a stalled night ended ${counts.handsCancelled}`,
+    `  nights ended between hands ${counts.endedBetweenHands}, after the hand in play ${counts.endedAfterHand}, from a stalled room ${counts.endedStalled}, halted mid-hand by a lost stored event and settled from the standings it still serves ${counts.endedHalted}; hands cancelled when a stalled night ended ${counts.handsCancelled}`,
     `  frames checked ${counts.framesChecked}, views checked ${counts.viewsChecked}, viewFor ${views > 0 ? ((viewMs * 1000) / views).toFixed(1) : "n/a"} µs each over ${views}`,
     `  client bots ${counts.clientBots}: commands ${counts.clientCommands}, traced to the log ${counts.clientCommandsTraced}, issued right before a drop ${counts.clientIssuedBeforeDrop}, resent after a drop ${counts.clientResent}`,
     `  client drops: bot close ${counts.clientDropsBotClose}, server restart ${counts.clientDropsRestart}, unanswered on a deaf line ${counts.clientDropsDeafUnanswered}, black hole ${counts.clientDropsBlackHole}; server silence limit ${counts.clientDropsSilenceLimit}, deaf and silent ${counts.clientDropsDeafSilence}, unanswered on a clear line ${counts.clientDropsUnansweredOnClearLine}, unexplained ${counts.clientDropsUnexplained}, failed reconnects ${counts.clientFailedAttempts}`,

@@ -83,6 +83,7 @@ export const Messages = defineMessageUnion({
   FailedEntry: { problem: Schema.String },
   GotLink: { link: LinkSchema },
   GotReply: { key: Schema.Int, outcome: ReplyOutcomes },
+  GotStandings: { view: RoomViewSchema },
   GotTableIntent: { intent: TableIntentSchema },
   GotUpdate: {
     events: Schema.Array(
@@ -99,6 +100,7 @@ export const Messages = defineMessageUnion({
   },
   JudgedHand: { hand: Schema.Int, mark: FairMarks },
   KeptMoment: { picture: MomentPictureSchema },
+  MissedStandings: { reason: Schema.String },
   PickedAvatar: { avatar: AvatarSchema },
   ReleasedConnection: {},
   SentSignal: {

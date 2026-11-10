@@ -1,10 +1,19 @@
 import * as Cloudflare from "@alchemy.run/cloudflare";
 import * as Test from "@alchemy.run/test/Vitest";
 import { expect } from "@effect/vitest";
-import type { Shuffle } from "@nostakes/room";
-import { Effect } from "effect";
+import { ActionSchema, SeatIndexSchema } from "@nostakes/engine";
+import { CommandIdSchema } from "@nostakes/protocol";
+import type { RoomCode, RoomPass } from "@nostakes/protocol";
+import {
+  ChipAmountSchema,
+  MemberCommandSchema,
+  RoomViews,
+} from "@nostakes/room";
+import type { MemberCommand, Shuffle } from "@nostakes/room";
+import { Effect, Option, Redacted, Schedule, Schema } from "effect";
 import * as FetchHttpClient from "effect/http/FetchHttpClient";
 
+import { DEFAULT_SETTINGS } from "../src/poker-room.js";
 import type { Temper } from "./fixtures/bot.js";
 import type { ClientTemper } from "./fixtures/client-bot.js";
 import {
@@ -12,6 +21,13 @@ import {
   emptyFairness,
   FAIRNESS_COUNT_NAMES,
 } from "./fixtures/fair-checks.js";
+import {
+  haltedViewOf,
+  ledgerFromLog,
+  soundPrefixOf,
+  standingsProblems,
+  unfinishedHand,
+} from "./fixtures/halted-standings.js";
 import type { NightEnding } from "./fixtures/night-checks.js";
 import {
   judgeNight,
@@ -19,7 +35,22 @@ import {
   planNight,
   playNight,
 } from "./fixtures/night.js";
+import {
+  createPokerRoom,
+  joinPokerRoom,
+  postJson,
+} from "./fixtures/poker-http.js";
+import {
+  awaitArrival,
+  openSocket,
+  pokerCodec,
+} from "./fixtures/poker-socket.js";
+import type {
+  PokerServerMessage,
+  PokerSocket,
+} from "./fixtures/poker-socket.js";
 import { PokerStack } from "./fixtures/poker-stack.js";
+import { inspect, loseStoredEvent } from "./fixtures/stack.js";
 
 const { afterAll, beforeAll, deploy, destroy, test } = Test.make({
   dev: true,
@@ -31,6 +62,10 @@ const { afterAll, beforeAll, deploy, destroy, test } = Test.make({
 const deployed = beforeAll(deploy(PokerStack));
 
 afterAll(destroy(PokerStack));
+
+const Commands = MemberCommandSchema.cases;
+
+const seat = (index: number) => SeatIndexSchema.make(index);
 
 const SEED = 20_261_110;
 
@@ -64,6 +99,7 @@ const ROOMS: readonly SmallRoom[] = [
   { ending: "MidHand", hands: 9, players: 5, restarts: 1, shuffle: "Plain" },
   { ending: "AsItComes", hands: 9, players: 2, restarts: 1, shuffle: "Plain" },
   { ending: "AsItComes", hands: 9, players: 4, restarts: 1, shuffle: "Plain" },
+  { ending: "Halted", hands: 3, players: 3, restarts: 0, shuffle: "Plain" },
 ];
 
 const TEMPER: Temper = {
@@ -93,7 +129,7 @@ const CHAOS: ClientTemper = {
 };
 
 test(
-  "a small night: five rooms play about 30 hands at once over real sockets, with restarts, timeouts, reconnects, duplicates, and a second device, and every check holds",
+  "a small night: six rooms play about 30 hands at once over real sockets, with restarts, timeouts, reconnects, duplicates, and a second device, and every check holds",
   Effect.gen(function* smallNight() {
     const { url } = yield* deployed;
     const base = yield* Effect.fromNullishOr(url).pipe(Effect.orDie);
@@ -180,6 +216,7 @@ test(
     ).toBeGreaterThanOrEqual(1);
     expect(total((counts) => counts.viewsChecked)).toBeGreaterThan(0);
     expect(total((counts) => counts.endedStalled)).toBe(1);
+    expect(total((counts) => counts.endedHalted)).toBe(1);
     expect(total((counts) => counts.endedAfterHand)).toBeGreaterThanOrEqual(1);
     expect(total((counts) => counts.clientBots)).toBeGreaterThanOrEqual(3);
     expect(
@@ -208,4 +245,206 @@ test(
     expect(total((counts) => counts.clientSignalsHeard)).toBeGreaterThan(0);
   }).pipe(Effect.provide(FetchHttpClient.layer)),
   { timeout: 120_000 }
+);
+
+const StandingsBody = Schema.Struct({ view: Schema.Json });
+
+const standingsFor = (base: string, code: RoomCode, token: string) =>
+  postJson(new URL(`/rooms/${code}/standings`, base), { token }).pipe(
+    Effect.flatMap((response) =>
+      response.json.pipe(
+        Effect.map((json) => ({ json, status: response.status }))
+      )
+    ),
+    Effect.orDie
+  );
+
+const isReplyTo =
+  (id: string) =>
+  (
+    message: PokerServerMessage
+  ): message is typeof pokerCodec.server.cases.Reply.Type =>
+    pokerCodec.server.guards.Reply(message) && message.id === id;
+
+const latestOpenView = (socket: PokerSocket) =>
+  Option.fromUndefinedOr(
+    socket.arrivals.findLast(
+      ({ message }) =>
+        pokerCodec.server.guards.Events(message) ||
+        pokerCodec.server.guards.Welcome(message)
+    )?.message
+  ).pipe(
+    Option.flatMap((message) =>
+      pokerCodec.server.guards.Events(message) ||
+      pokerCodec.server.guards.Welcome(message)
+        ? Option.some(message.view)
+        : Option.none()
+    ),
+    Option.filter(RoomViews.$is("Open"))
+  );
+
+const toActIn = (sockets: readonly PokerSocket[], hand: number) =>
+  Effect.sync(() =>
+    sockets.flatMap((socket) =>
+      latestOpenView(socket).pipe(
+        Option.filter((view) =>
+          Option.exists(view.hand, ({ handNumber }) => handNumber === hand)
+        ),
+        Option.flatMap(({ legal }) => legal),
+        Option.map((legal) => ({ legal, socket })),
+        Option.toArray
+      )
+    )
+  ).pipe(
+    Effect.repeat({
+      schedule: Schedule.spaced("50 millis"),
+      times: 200,
+      until: (found) => found.length > 0,
+    }),
+    Effect.flatMap((found) => Effect.fromNullishOr(found[0])),
+    Effect.orDie
+  );
+
+const ask = (socket: PokerSocket, id: string, command: MemberCommand) =>
+  Effect.gen(function* askRoom() {
+    const from = socket.arrivals.length;
+
+    yield* socket.send(
+      pokerCodec.client.cases.Command.make({
+        command,
+        id: CommandIdSchema.make(id),
+      })
+    );
+
+    return yield* awaitArrival(socket, `reply ${id}`, isReplyTo(id), from);
+  }).pipe(Effect.orDie);
+
+const acted = (sockets: readonly PokerSocket[], hand: number, id: string) =>
+  Effect.gen(function* actOnce() {
+    const { legal, socket } = yield* toActIn(sockets, hand);
+
+    const action = Option.isSome(legal.call)
+      ? ActionSchema.cases.Call.make({})
+      : ActionSchema.cases.Check.make({});
+
+    const reply = yield* ask(socket, id, Commands.Act.make({ action }));
+
+    return pokerCodec.reply.guards.Accepted(reply.result)
+      ? reply.result.seq
+      : 0;
+  });
+
+const greeted = (base: string, pass: RoomPass, label: string) =>
+  Effect.gen(function* greet() {
+    const socket = yield* openSocket(base, pass.code, label);
+
+    yield* socket.send(
+      pokerCodec.client.cases.Hello.make({
+        after: Option.none(),
+        token: pass.token,
+      })
+    );
+    yield* awaitArrival(socket, "welcome", pokerCodec.server.guards.Welcome);
+
+    return socket;
+  }).pipe(Effect.orDie);
+
+test(
+  "a room halted mid-hand by a lost stored event still serves its standings: chips in the unfinished hand go back, the nets add up to zero, and they match a ledger read from the log",
+  Effect.gen(function* haltedStandings() {
+    const { url } = yield* deployed;
+    const base = yield* Effect.fromNullishOr(url).pipe(Effect.orDie);
+    const settings = { ...DEFAULT_SETTINGS, betweenHandsSeconds: 0 };
+
+    const anaPass = yield* createPokerRoom(base, {
+      avatar: "fox",
+      name: "Ana",
+      settings: { ...settings, shuffle: "Plain" },
+    }).pipe(Effect.orDie);
+
+    const benPass = yield* joinPokerRoom(base, anaPass.code, {
+      avatar: "owl",
+      name: "Ben",
+    }).pipe(Effect.orDie);
+
+    const ana = yield* greeted(base, anaPass, "ana");
+    const ben = yield* greeted(base, benPass, "ben");
+
+    yield* ask(
+      ana,
+      "sit",
+      Commands.RequestSeat.make({
+        buyIn: ChipAmountSchema.make(200),
+        seat: seat(0),
+      })
+    );
+    yield* ask(
+      ben,
+      "sit",
+      Commands.RequestSeat.make({
+        buyIn: ChipAmountSchema.make(200),
+        seat: seat(1),
+      })
+    );
+    yield* ask(ana, "start", Commands.StartGame.make({}));
+
+    const first = yield* toActIn([ana, ben], 1);
+
+    yield* ask(
+      first.socket,
+      "fold",
+      Commands.Act.make({ action: ActionSchema.cases.Fold.make({}) })
+    );
+
+    const called = yield* acted([ana, ben], 2, "call");
+
+    yield* acted([ana, ben], 2, "check");
+    yield* acted([ana, ben], 2, "flop");
+
+    const before = yield* inspect(base, anaPass.code);
+
+    yield* loseStoredEvent(base, anaPass.code, called + 1);
+
+    const anaStandings = yield* standingsFor(
+      base,
+      anaPass.code,
+      Redacted.value(anaPass.token)
+    );
+
+    const benStandings = yield* standingsFor(
+      base,
+      anaPass.code,
+      Redacted.value(benPass.token)
+    );
+
+    const stranger = yield* standingsFor(base, anaPass.code, "a".repeat(43));
+    const after = yield* inspect(base, anaPass.code);
+    const sound = soundPrefixOf(after.seqs, after.events);
+    const ledger = ledgerFromLog(sound);
+
+    expect({
+      halted: after.halted,
+      statuses: [anaStandings.status, benStandings.status, stranger.status],
+    }).toStrictEqual({
+      halted: Option.some(
+        `stored event ${called + 1} has sequence number ${called + 2}`
+      ),
+      statuses: [200, 200, 403],
+    });
+
+    const views = [anaStandings, benStandings].map(({ json }) =>
+      haltedViewOf(Schema.decodeUnknownSync(StandingsBody)(json).view)
+    );
+
+    expect(before.halted).toStrictEqual(Option.none());
+    expect(sound.length).toBe(called);
+    expect(unfinishedHand(sound)).toBe(true);
+    expect(views.flatMap((view) => standingsProblems(view, ledger))).toEqual(
+      []
+    );
+    expect(
+      ledger.map(({ net }) => net).toSorted((left, right) => left - right)
+    ).toEqual([-1, 1]);
+  }).pipe(Effect.provide(FetchHttpClient.layer)),
+  { timeout: 60_000 }
 );

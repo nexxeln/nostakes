@@ -29,13 +29,16 @@ export {
 } from "./allowance.js";
 
 export {
+  haltedStandings,
   HttpRefusalSchema,
   PlainRefusalSchema,
   RoomPassSchema,
+  StandingsRequestSchema,
   TooManyRequestsSchema,
   type HttpRefusal,
   type PlainRefusal,
   type RoomPass,
+  type StandingsRequest,
   type TooManyRequests,
 } from "./http.js";
 

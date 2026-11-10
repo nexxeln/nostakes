@@ -12,7 +12,7 @@ import {
   TimeBankRefills,
 } from "@nostakes/room";
 import type { RoomSettings, RoomView, Shuffle } from "@nostakes/room";
-import { SEALING_MARGIN_MS } from "@nostakes/shuffle";
+import { beaconWaitLimitMs, SEALING_MARGIN_MS } from "@nostakes/shuffle";
 import { Duration, Effect, Option, Schema } from "effect";
 
 import type { StampedPoint } from "../../src/measures.js";
@@ -32,8 +32,10 @@ import { startClientBot } from "./client-bot.js";
 import type { ClientBotRecord, ClientTemper } from "./client-bot.js";
 import { timeline } from "./client-wire.js";
 import type { Timeline } from "./client-wire.js";
+import { haltMidHand } from "./halt-night.js";
 import { checkNight } from "./night-checks.js";
 import type {
+  HaltEvidence,
   NightEnding,
   NightEvidence,
   NightVerdict,
@@ -112,13 +114,15 @@ export class NightFailed extends Schema.TaggedError<
 export const WATCHDOG_MARGIN_MS = 6000;
 
 export const SEALED_DEAL_WAIT_MS =
-  SEALING_MARGIN_MS + TEST_CHAIN.periodSeconds * 1000;
+  SEALING_MARGIN_MS +
+  TEST_CHAIN.periodSeconds * 1000 +
+  beaconWaitLimitMs(TEST_CHAIN);
 
 export const CLOSE_GRACE_MS = 30_000;
 
 export const SETTLE_LIMIT_MS = 30_000;
 
-export const STALL_LIMIT_MS = 20_000;
+export const STALL_LIMIT_MS = 20_000 + beaconWaitLimitMs(TEST_CHAIN);
 
 export const MID_HAND_WAIT_MS = 15_000;
 
@@ -664,6 +668,7 @@ export const playNight = (base: string, opened: OpenedNight) =>
         : Option.none();
     };
 
+    let halting = false;
     let settlingSince = Option.none<number>();
     let endingSince = Option.none<number>();
     let jammed = false;
@@ -684,6 +689,12 @@ export const playNight = (base: string, opened: OpenedNight) =>
 
         if (plan.ending === "AsItComes") {
           return Option.some("as it comes");
+        }
+
+        if (plan.ending === "Halted") {
+          return Option.isSome(open.hand)
+            ? Option.some("halting mid-hand")
+            : Option.none();
         }
 
         if (!jammed) {
@@ -757,6 +768,14 @@ export const playNight = (base: string, opened: OpenedNight) =>
 
         if (hands >= plan.hands && !control.closing) {
           const reason = yield* timeToClose(open.value, now);
+
+          if (Option.isSome(reason) && plan.ending === "Halted") {
+            note(`stopping every bot after ${hands} hands to halt the room`);
+            halting = true;
+            control.stop = true;
+
+            continue;
+          }
 
           if (Option.isSome(reason)) {
             note(`closing after ${hands} hands, ${reason.value}`);
@@ -840,7 +859,21 @@ export const playNight = (base: string, opened: OpenedNight) =>
       )
     );
 
-    const inspection = yield* inspect(base, plan.code);
+    const halt = halting
+      ? Option.some(yield* haltMidHand(base, plan.code, opened.passes, note))
+      : Option.none<HaltEvidence>();
+
+    const halted = yield* inspect(base, plan.code);
+
+    const inspection = Option.match(halt, {
+      onNone: () => halted,
+      onSome: ({ lost }) => ({
+        ...halted,
+        events: halted.events.toSpliced(lost.seq - 1, 0, lost.event),
+        seqs: halted.seqs.toSpliced(lost.seq - 1, 0, lost.seq),
+      }),
+    });
+
     const points = yield* roomAnalytics(base, plan.code);
     const hashes = yield* hashesOf(plan.devices);
 
@@ -863,6 +896,7 @@ export const playNight = (base: string, opened: OpenedNight) =>
         code: plan.code,
         ending: plan.ending,
         events: inspection.events,
+        halt,
         halted: inspection.halted,
         memoryMatchesLog: inspection.memoryMatchesLog,
         refusedAlarms: refusedAlarms(inspection),

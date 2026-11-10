@@ -39,6 +39,15 @@ const refusalsTable = `create table if not exists refusals (
    retry_at integer not null
  )`;
 
+const soundSeqTable = `create table if not exists sound_seq (
+   id integer primary key check (id = 1),
+   seq integer not null
+ )`;
+
+const SoundSeqRows = Schema.Array(Schema.Struct({ seq: Schema.Int }));
+
+const decodeSoundSeq = Schema.decodeUnknownSync(SoundSeqRows);
+
 const commandFaultsTable = `create table if not exists command_faults (
    id integer primary key check (id = 1),
    faults integer not null
@@ -180,8 +189,13 @@ export const sqliteStorage = (
         hash
       );
     },
-    halt: (reason) => {
+    halt: (reason, soundSeq) => {
+      sql.exec(soundSeqTable);
       sql.exec("update meta set halted = ? where id = 1", reason);
+      sql.exec(
+        "insert or replace into sound_seq (id, seq) values (1, ?)",
+        soundSeq
+      );
     },
     meta: () =>
       isCreated()
@@ -191,7 +205,21 @@ export const sqliteStorage = (
                 .exec("select schema_version, code, halted from meta")
                 .toArray()
             )[0]
-          ).pipe(Option.map(({ code, halted }) => ({ code, halted })))
+          ).pipe(
+            Option.map(({ code, halted }) => {
+              sql.exec(soundSeqTable);
+
+              return {
+                code,
+                halted,
+                soundSeq: Option.fromUndefinedOr(
+                  decodeSoundSeq(
+                    sql.exec("select seq from sound_seq").toArray()
+                  )[0]?.seq
+                ),
+              };
+            })
+          )
         : Option.none(),
     noteCommandFaults: (faults) => {
       sql.exec(commandFaultsTable);

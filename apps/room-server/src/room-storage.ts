@@ -19,6 +19,7 @@ export interface Credential {
 export interface RoomMeta {
   readonly code: RoomCode;
   readonly halted: Option.Option<string>;
+  readonly soundSeq: Option.Option<number>;
 }
 
 export interface Refusals {
@@ -31,7 +32,7 @@ export interface RoomStorage {
   readonly transaction: <A>(write: () => A) => A;
   readonly create: (code: RoomCode) => void;
   readonly meta: () => Option.Option<RoomMeta>;
-  readonly halt: (reason: string) => void;
+  readonly halt: (reason: string, soundSeq: number) => void;
   readonly appendEvent: (row: StoredEvent) => void;
   readonly eventsAfter: (after: number) => readonly StoredEvent[];
   readonly countEventsAfter: (after: number) => number;

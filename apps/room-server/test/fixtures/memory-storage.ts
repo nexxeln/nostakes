@@ -58,7 +58,11 @@ export const memoryStorage = () => {
     create: (code: RoomCode) => {
       write((current) => ({
         ...current,
-        meta: Option.some({ code, halted: Option.none() }),
+        meta: Option.some({
+          code,
+          halted: Option.none(),
+          soundSeq: Option.none(),
+        }),
       }));
     },
     credentials: () => tables.credentials,
@@ -82,11 +86,15 @@ export const memoryStorage = () => {
         credentials: [...current.credentials, credential],
       }));
     },
-    halt: (reason) => {
+    halt: (reason, soundSeq) => {
       write((current) => ({
         ...current,
         meta: current.meta.pipe(
-          Option.map((meta) => ({ ...meta, halted: Option.some(reason) }))
+          Option.map((meta) => ({
+            ...meta,
+            halted: Option.some(reason),
+            soundSeq: Option.some(soundSeq),
+          }))
         ),
       }));
     },

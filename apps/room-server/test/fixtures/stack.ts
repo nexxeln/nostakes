@@ -65,6 +65,15 @@ export const jamRoom = (base: string, code: RoomCode, on: boolean) =>
     Effect.orDie
   );
 
+export const loseStoredEvent = (base: string, code: RoomCode, seq: number) =>
+  HttpClientRequest.post(new URL(`/test/rooms/${code}/lose`, base)).pipe(
+    HttpClientRequest.bodyJsonUnsafe({ seq }),
+    HttpClient.execute,
+    Effect.asVoid,
+    Effect.orDie,
+    Effect.andThen(restart(base, code))
+  );
+
 export const queueCodes = (base: string, codes: readonly RoomCode[]) =>
   HttpClientRequest.post(new URL("/test/codes", base)).pipe(
     HttpClientRequest.bodyJsonUnsafe({ codes }),

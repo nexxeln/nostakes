@@ -1,5 +1,10 @@
 import type { RpcCallError } from "@alchemy.run/cloudflare";
-import { RoomCodeSchema, RoomPassSchema } from "@nostakes/protocol";
+import {
+  haltedStandings,
+  RoomCodeSchema,
+  RoomPassSchema,
+  StandingsRequestSchema,
+} from "@nostakes/protocol";
 import type { RoomCode } from "@nostakes/protocol";
 import { Cause, Effect, Layer, Option, Schema } from "effect";
 import * as HttpRouter from "effect/http/HttpRouter";
@@ -24,7 +29,11 @@ import {
   MAX_CODE_ATTEMPTS,
 } from "./room-code.js";
 import { refuse } from "./room-object.js";
-import { JoinOutcomeSchema, OpenOutcomeSchema } from "./room-rpc.js";
+import {
+  JoinOutcomeSchema,
+  OpenOutcomeSchema,
+  StandingsOutcomeSchema,
+} from "./room-rpc.js";
 import { RouteFault } from "./route-fault.js";
 
 export interface RoomStub {
@@ -37,6 +46,9 @@ export interface RoomStub {
     readonly device?: string;
     readonly request: Schema.Json;
   }) => Effect.Effect<typeof JoinOutcomeSchema.Encoded, RpcCallError>;
+  readonly standings: (input: {
+    readonly token: string;
+  }) => Effect.Effect<typeof StandingsOutcomeSchema.Encoded, RpcCallError>;
   readonly fetch: (
     request: HttpServerRequest.HttpServerRequest
   ) => Effect.Effect<HttpServerResponse.HttpServerResponse, HttpServerError>;
@@ -71,6 +83,14 @@ const withDevice = (device: Option.Option<string>) =>
 const decodeOpenOutcome = Schema.decodeEffect(OpenOutcomeSchema);
 
 const decodeJoinOutcome = Schema.decodeEffect(JoinOutcomeSchema);
+
+const decodeStandingsOutcome = Schema.decodeEffect(StandingsOutcomeSchema);
+
+const encodeStandingsRequest = Schema.encodeSync(StandingsRequestSchema);
+
+const standingsBody = HttpServerResponse.schemaJson(
+  haltedStandings(Schema.Json)
+);
 
 const pass = HttpServerResponse.schemaJson(RoomPassSchema);
 
@@ -237,6 +257,41 @@ export const roomRoutes = <R>(
       });
     }).pipe(Effect.catchTag("RoomCallFailed", unavailable));
 
+    const readStandings = Effect.gen(function* readStandings() {
+      const code = yield* roomCodeOf.pipe(Effect.orDie);
+
+      if (Option.isNone(code)) {
+        return yield* refuse("NotFound");
+      }
+
+      const body = yield* jsonBody.pipe(
+        Effect.map(
+          Option.flatMap(Schema.decodeUnknownOption(StandingsRequestSchema))
+        )
+      );
+
+      if (Option.isNone(body)) {
+        return yield* refuse("BadRequest");
+      }
+
+      const outcome = yield* callRoom(
+        code.value,
+        "standings",
+        rooms
+          .getByName(code.value)
+          .standings(encodeStandingsRequest(body.value))
+          .pipe(Effect.flatMap(decodeStandingsOutcome))
+      );
+
+      return yield* StandingsOutcomeSchema.match(outcome, {
+        Halted: ({ view }) => standingsBody({ view }).pipe(Effect.orDie),
+        Invalid: () => refuse("BadRequest"),
+        NotAuthorized: () => refuse("NotAuthorized"),
+        NotFound: () => refuse("NotFound"),
+        NotHalted: () => refuse("RoomOpen"),
+      });
+    }).pipe(Effect.catchTag("RoomCallFailed", unavailable));
+
     const connect = Effect.gen(function* connect() {
       const code = yield* roomCodeOf.pipe(Effect.orDie);
       const request = yield* HttpServerRequest.HttpServerRequest;
@@ -296,6 +351,14 @@ export const roomRoutes = <R>(
         guarded(
           "POST /rooms/:code/members",
           limited("join", tooManyRequests, joinRoom)
+        )
+      ),
+      HttpRouter.add(
+        "POST",
+        "/rooms/:code/standings",
+        guarded(
+          "POST /rooms/:code/standings",
+          limited("join", tooManyRequests, readStandings)
         )
       ),
       HttpRouter.add(

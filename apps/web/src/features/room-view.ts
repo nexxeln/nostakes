@@ -12,6 +12,7 @@ import {
   fairSymbol,
   tonightLine,
 } from "./fairness-text.js";
+import { HALTED_LINE, haltedRows, netText } from "./halted.js";
 import {
   chipsSheet,
   confirmSheet,
@@ -21,8 +22,8 @@ import {
 } from "./menu-view.js";
 import { Messages } from "./message.js";
 import type { Message } from "./message.js";
-import { FairMarks, pageTheme } from "./model.js";
-import type { InRoom, Model } from "./model.js";
+import { FairMarks, HaltedStandings, pageTheme } from "./model.js";
+import type { HaltedStanding, InRoom, Model } from "./model.js";
 import { momentElement } from "./moments/element.js";
 import { handEnded } from "./moments/watch.js";
 import { updateLine } from "./page-update.js";
@@ -571,6 +572,94 @@ const refusedView = (h: H): Html =>
     ]
   );
 
+const haltedStandingsView = (room: InRoom, view: ClosedView, h: H): Html => {
+  const name = (player: PlayerId) => nameOf(view, player);
+
+  return h.section(
+    [h.Class("card-panel settlement")],
+    [
+      h.h2([h.Class("sheet-title")], ["The table stopped"]),
+      h.p([h.Class("halted-line"), h.Role("status")], [HALTED_LINE]),
+      h.ul(
+        [h.Class("member-list")],
+        haltedRows(view).map(({ detail, name: shown, net, player }) =>
+          h.li(
+            [h.Key(`halted-${player}`), h.Class("member")],
+            [
+              h.span([h.Class("member-name")], [shown]),
+              h.span([h.Class("member-detail")], [detail]),
+              h.span(
+                [h.Class(net >= 0 ? "net is-up" : "net is-down")],
+                [netText(net)]
+              ),
+            ]
+          )
+        )
+      ),
+      h.h3([h.Class("sheet-heading")], ["Settle up"]),
+      h.ul(
+        [h.Class("transfers")],
+        view.settlement.transfers.length === 0
+          ? [h.li([], ["Everyone is square."])]
+          : view.settlement.transfers.map(({ amount, from, to }) =>
+              h.li(
+                [h.Key(`pay-${from}-${to}`)],
+                [`${name(from)} pays ${name(to)} ${amount}`]
+              )
+            )
+      ),
+      h.button(
+        [
+          h.Type("button"),
+          h.Class("button primary"),
+          h.OnClick(Messages.ClickedCopySettlement()),
+        ],
+        [room.copied === "Settlement" ? "Copied" : "Copy for the group chat"]
+      ),
+      homeButton("Back home", h),
+    ]
+  );
+};
+
+const haltedView = (room: InRoom, standing: HaltedStanding, h: H): Html =>
+  HaltedStandings.match(standing, {
+    Asking: () =>
+      h.p(
+        [h.Class("muted opening")],
+        ["The table stopped. Reading the standings…"]
+      ),
+    Missing: ({ reason }) =>
+      h.section(
+        [h.Class("card-panel settlement")],
+        [
+          h.h2([h.Class("sheet-title")], ["The table stopped"]),
+          h.p([h.Class("halted-line")], [HALTED_LINE]),
+          h.p(
+            [h.Class("problem")],
+            [`The standings could not be read: ${reason}.`]
+          ),
+          homeButton("Back home", h),
+        ]
+      ),
+    Shown: ({ view }) =>
+      RoomViews.$match(view, {
+        Closed: (closed) => haltedStandingsView(room, closed, h),
+        Open: () =>
+          h.section(
+            [h.Class("card-panel settlement")],
+            [
+              h.h2([h.Class("sheet-title")], ["The table stopped"]),
+              h.p([h.Class("halted-line")], [HALTED_LINE]),
+              h.p(
+                [h.Class("problem")],
+                ["The room could not settle its last hand."]
+              ),
+              homeButton("Back home", h),
+            ]
+          ),
+      }),
+  });
+
 export const roomView = (model: Model, room: InRoom, h: H): Html => {
   const view = viewOf(room);
   const open = view.pipe(Option.filter(RoomViews.$is("Open")));
@@ -587,20 +676,22 @@ export const roomView = (model: Model, room: InRoom, h: H): Html => {
     [
       header(model, room, open, h),
       noticeLine(model, room, h),
-      Option.match(view, {
-        onNone: () =>
-          refused
-            ? refusedView(h)
-            : h.p([h.Class("muted opening")], ["Opening the room…"]),
-        onSome: (current) =>
-          RoomViews.$match(current, {
-            Closed: (closed) => closedRoomView(room, closed, h),
-            Open: (live) =>
-              hasLeft(live)
-                ? leftRoomView(live, h)
-                : openRoomView(model, room, live, presence, h),
+      Option.isSome(room.halted)
+        ? haltedView(room, room.halted.value, h)
+        : Option.match(view, {
+            onNone: () =>
+              refused
+                ? refusedView(h)
+                : h.p([h.Class("muted opening")], ["Opening the room…"]),
+            onSome: (current) =>
+              RoomViews.$match(current, {
+                Closed: (closed) => closedRoomView(room, closed, h),
+                Open: (live) =>
+                  hasLeft(live)
+                    ? leftRoomView(live, h)
+                    : openRoomView(model, room, live, presence, h),
+              }),
           }),
-      }),
     ]
   );
 };

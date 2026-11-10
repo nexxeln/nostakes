@@ -1,8 +1,10 @@
 import { describe, expect, it } from "@effect/vitest";
 import {
+  haltedStandings,
   HttpRefusalSchema,
   PROTOCOL_VERSION,
   RoomPassSchema,
+  StandingsRequestSchema,
   clientMessage,
   serverMessage,
 } from "@nostakes/protocol";
@@ -78,6 +80,10 @@ const wire = {
     signal: schemas.signal,
     view: schemas.view,
   }),
+  standings: Schema.Struct({
+    request: StandingsRequestSchema,
+    response: haltedStandings(schemas.view),
+  }),
   view: schemas.view,
 } satisfies Record<keyof WireParts, Schema.Top>;
 
@@ -91,6 +97,7 @@ const current: WireParts = {
   rejection: digestOf(wire.rejection),
   roomPass: digestOf(wire.roomPass),
   serverFrame: digestOf(wire.serverFrame),
+  standings: digestOf(wire.standings),
   view: digestOf(wire.view),
 };
 

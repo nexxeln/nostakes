@@ -52,7 +52,7 @@ export const closingSteps = (state: Open, at: Millis): readonly Step[] => [
     ]),
 ];
 
-const cancelling =
+export const cancelling =
   (at: Millis): Step =>
   (state) => {
     const { table } = state;

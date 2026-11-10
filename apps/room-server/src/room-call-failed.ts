@@ -1,7 +1,12 @@
 import type { RoomCode } from "@nostakes/protocol";
 import { Cause, Effect, Schema } from "effect";
 
-export const RoomCallSchema = Schema.Literals(["open", "join", "connect"]);
+export const RoomCallSchema = Schema.Literals([
+  "open",
+  "join",
+  "connect",
+  "standings",
+]);
 
 export type RoomCall = typeof RoomCallSchema.Type;
 
