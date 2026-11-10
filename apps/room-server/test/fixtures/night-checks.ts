@@ -1413,7 +1413,19 @@ const checkSettlement = (
     );
   }
 
-  if (new Set(closed.map((view) => encodeView(view))).size > 1) {
+  for (const { player, view } of finals) {
+    if (RoomViews.$is("Closed")(view) && !Option.contains(view.you, player)) {
+      report(
+        checker,
+        `${player} was not told who they are when the room closed`
+      );
+    }
+  }
+
+  if (
+    new Set(closed.map((view) => encodeView({ ...view, you: Option.none() })))
+      .size > 1
+  ) {
     report(checker, "members were shown different settlements");
   }
 

@@ -48,6 +48,7 @@ import type { Millis } from "./time.js";
 export const AudienceSchema = Schema.TaggedUnion({
   Seated: { player: PlayerIdSchema, seat: SeatIndexSchema },
   Spectator: {},
+  Unseated: { player: PlayerIdSchema },
 });
 
 export type Audience = typeof AudienceSchema.Type;
@@ -56,10 +57,10 @@ export const Audiences = Data.taggedEnum<Audience>();
 
 export const audienceOf = (state: RoomState, player: PlayerId): Audience =>
   RoomStates.$match(state, {
-    Closed: () => Audiences.Spectator(),
+    Closed: () => Audiences.Unseated({ player }),
     Open: (open) =>
       Option.match(seatOf(open, player), {
-        onNone: () => Audiences.Spectator(),
+        onNone: () => Audiences.Unseated({ player }),
         onSome: (seat) => Audiences.Seated({ player, seat }),
       }),
   });
@@ -322,11 +323,14 @@ const MemberViewSchema = Schema.Struct({
   player: PlayerIdSchema,
 });
 
+const youField = absentAs(Schema.Option(PlayerIdSchema), Option.none());
+
 export const RoomViewSchema = Schema.TaggedUnion({
   Closed: {
     code: RoomCodeSchema,
     members: Schema.Array(MemberViewSchema),
     settlement: SettlementSchema,
+    you: youField,
   },
   Open: {
     balances: Schema.Array(BalanceSchema),
@@ -363,7 +367,7 @@ export const RoomViewSchema = Schema.TaggedUnion({
     seats: Schema.Array(SeatViewSchema),
     settings: RoomSettingsSchema,
     showdown: Schema.Option(ShowdownChoicesSchema),
-    you: Schema.Option(PlayerIdSchema),
+    you: youField,
   },
 });
 
@@ -660,10 +664,11 @@ const openView = (state: Open, audience: Audience, at: Millis): RoomView => {
     seats: seatsView(state),
     settings: state.settings,
     showdown: showdownFor(state, viewer),
-    you: viewer.pipe(
-      Option.filter(Audiences.$is("Seated")),
-      Option.map(({ player }) => player)
-    ),
+    you: Audiences.$match(audience, {
+      Seated: ({ player }) => viewer.pipe(Option.map(() => player)),
+      Spectator: () => Option.none(),
+      Unseated: ({ player }) => Option.some(player),
+    }),
   });
 };
 
@@ -678,6 +683,11 @@ export const viewFor = (
         code: closed.code,
         members: membersView(closed),
         settlement: closed.settlement,
+        you: Audiences.$match(audience, {
+          Seated: ({ player }) => Option.some(player),
+          Spectator: () => Option.none(),
+          Unseated: ({ player }) => Option.some(player),
+        }),
       }),
     Open: (open) => openView(open, audience, at),
   });

@@ -6,7 +6,7 @@ import type { SeenEvent, SeenTableEvent } from "@nostakes/room";
 import { Match, Option } from "effect";
 
 import type { InRoom } from "../model.js";
-import { isActing, isLive } from "../room.js";
+import { isActing, isLive, isYou } from "../room.js";
 import type { OpenView } from "../room.js";
 import { Happenings } from "./snapshot.js";
 import type {
@@ -216,8 +216,8 @@ const occupiedSeat = (
   seat: number,
   occupant: Occupant
 ): SeatSnapshot => {
-  const { presence, room, view } = context;
-  const mine = occupant.player === room.player;
+  const { presence, view } = context;
+  const mine = isYou(view, occupant.player);
   const here = presence.includes(occupant.player);
   const member = view.members.find(({ player }) => player === occupant.player);
 
@@ -296,16 +296,16 @@ const emptySeat = (seat: number): SeatSnapshot => ({
   status: "Empty",
 });
 
-export const heroSeatOf = (view: OpenView, room: InRoom) =>
+export const heroSeatOf = (view: OpenView) =>
   Option.fromNullishOr(
     view.seats.find(({ occupant }) =>
-      Option.exists(occupant, ({ player }) => player === room.player)
+      Option.exists(occupant, ({ player }) => isYou(view, player))
     )?.seat
   );
 
 const canTakeASeat = (view: OpenView, room: InRoom) =>
-  Option.isNone(heroSeatOf(view, room)) &&
-  !view.requests.seats.some(({ player }) => player === room.player) &&
+  Option.isNone(heroSeatOf(view)) &&
+  !view.requests.seats.some(({ player }) => isYou(view, player)) &&
   Option.isNone(room.drafts.seat);
 
 export const KEPT_CLOCK_SAMPLES = 8;
@@ -426,7 +426,9 @@ const afterHandOf = (
       const { table } = view.settings;
 
       const mayHunt = heroSeat.pipe(
-        Option.flatMap((seat) => lastHandOf(view, room.player, seat)),
+        Option.flatMap((seat) =>
+          view.you.pipe(Option.flatMap((you) => lastHandOf(view, you, seat)))
+        ),
         Option.exists(
           ({ folded }) => table.rabbitHunters === "DealtIn" || !folded
         )
@@ -487,7 +489,7 @@ export const tableSnapshot = (
   presence: readonly PlayerId[],
   learned: readonly Hint[]
 ): TableSnapshot => {
-  const heroSeat = heroSeatOf(view, room);
+  const heroSeat = heroSeatOf(view);
   const offerSeats = canTakeASeat(view, room);
   const context: SeatContext = { presence, room, view };
 
@@ -509,7 +511,7 @@ export const tableSnapshot = (
     clock: clockOf(view, room),
     events: room.events,
     heroSeat: Option.getOrNull(heroSeat),
-    hostTools: view.host === room.player,
+    hostTools: isYou(view, view.host),
     learned,
     legal: free ? legalOfView(view) : null,
     runVote: free ? runVoteOf(view, heroSeat) : null,

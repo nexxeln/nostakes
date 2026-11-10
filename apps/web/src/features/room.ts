@@ -1,5 +1,6 @@
 import type { LegalActions, Action } from "@nostakes/engine";
 import { Actions } from "@nostakes/engine";
+import type { PlayerId } from "@nostakes/protocol";
 import { RoomViews } from "@nostakes/room";
 import type { RoomView } from "@nostakes/room";
 import { Option } from "effect";
@@ -18,6 +19,9 @@ export const roomOf = (model: Model): Option.Option<InRoom> =>
 
 export const connectionTarget = (model: Model): Option.Option<SavedPass> =>
   roomOf(model).pipe(Option.map(({ code, player }) => ({ code, player })));
+
+export const isYou = (view: RoomView, player: PlayerId) =>
+  Option.contains(view.you, player);
 
 export const viewOf = (room: InRoom): Option.Option<RoomView> =>
   room.shown.pipe(Option.map(({ view }) => view));

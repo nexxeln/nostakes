@@ -221,7 +221,21 @@ describe("views", () => {
 
   it("finds the audience for a member from the seat they hold", () => {
     expect(audienceOf(dealt.state, ann)).toStrictEqual(annSees);
-    expect(audienceOf(dealt.state, dan)).toStrictEqual(spectator);
+    expect(audienceOf(dealt.state, dan)).toStrictEqual(
+      Audiences.Unseated({ player: dan })
+    );
+  });
+
+  it("tells a member without a seat who they are, and shows them only what a spectator sees", () => {
+    const danSees = audienceOf(dealt.state, dan);
+    const view = openView(viewFor(dealt.state, danSees, ms(1000)));
+    const watching = openView(viewFor(dealt.state, spectator, ms(1000)));
+
+    expect(view.you).toStrictEqual(Option.some(dan));
+    expect({ ...view, you: Option.none() }).toStrictEqual(watching);
+    expect(dealt.events.map((event) => redact(event, danSees))).toStrictEqual(
+      dealt.events.map((event) => redact(event, spectator))
+    );
   });
 });
 

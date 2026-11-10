@@ -71,6 +71,7 @@ const inRoom = (worn: Avatar, table: OpenView): Model =>
           { avatar: codeFor(worn), name: NAME, player: PLAYER },
           ...table.members.filter(({ player }) => player !== PLAYER),
         ],
+        you: Option.some(PLAYER),
       },
     })
   ).model;

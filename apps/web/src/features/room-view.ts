@@ -11,7 +11,7 @@ import { face } from "./face-builder.js";
 import { Messages } from "./message.js";
 import type { Message } from "./message.js";
 import type { InRoom, Model } from "./model.js";
-import { isLive, viewOf } from "./room.js";
+import { isLive, isYou, viewOf } from "./room.js";
 import type { ClosedView, OpenView } from "./room.js";
 import { settingsPanel } from "./settings-view.js";
 import { heroSeatOf, tableSnapshot } from "./table/from-room.js";
@@ -106,7 +106,7 @@ const header = (
             onNone: () => h.empty,
             onSome: (open) =>
               faceButton(
-                open.members.find(({ player }) => player === room.player)
+                open.members.find(({ player }) => isYou(open, player))
                   ?.avatar ?? model.profile.avatar,
                 h
               ),
@@ -253,7 +253,7 @@ const playerSheet = (room: InRoom, view: OpenView, h: H): Html =>
       Option.flatMap((seat) => Option.fromNullishOr(view.seats[seat])),
       Option.flatMap(({ occupant }) => occupant),
       Option.filter(
-        ({ player }) => view.host === room.player && player !== room.player
+        ({ player }) => isYou(view, view.host) && !isYou(view, player)
       )
     ),
     {
@@ -331,17 +331,17 @@ const seatedTools = (room: InRoom, view: OpenView, seated: Occupant, h: H) => {
 };
 
 const youSection = (room: InRoom, view: OpenView, h: H): readonly Html[] => {
-  const seated = heroSeatOf(view, room).pipe(
+  const seated = heroSeatOf(view).pipe(
     Option.flatMap((seat) => Option.fromNullishOr(view.seats[seat])),
     Option.flatMap(({ occupant }) => occupant)
   );
 
-  const waitingSeat = view.requests.seats.find(
-    ({ player }) => player === room.player
+  const waitingSeat = view.requests.seats.find(({ player }) =>
+    isYou(view, player)
   );
 
   const waitingChips = [...view.requests.chips, ...view.queued.chips].find(
-    ({ player }) => player === room.player
+    ({ player }) => isYou(view, player)
   );
 
   return [
@@ -365,7 +365,7 @@ const youSection = (room: InRoom, view: OpenView, h: H): readonly Html[] => {
 };
 
 const hostSection = (room: InRoom, view: OpenView, h: H): readonly Html[] =>
-  view.host === room.player
+  isYou(view, view.host)
     ? [
         h.h3([h.Class("sheet-heading")], ["Host"]),
         view.game === "Waiting"
@@ -421,7 +421,7 @@ const peopleSection = (
           ),
           h.span(
             [h.Class("member-name")],
-            [member.player === room.player ? "You" : member.name]
+            [isYou(view, member.player) ? "You" : member.name]
           ),
           member.player === view.host
             ? h.span([h.Class("tag")], ["host"])
@@ -492,7 +492,7 @@ const requestPill = (
   );
 
 const hostRequests = (room: InRoom, view: OpenView, h: H): Html => {
-  if (view.host !== room.player) {
+  if (!isYou(view, view.host)) {
     return h.empty;
   }
 
@@ -554,11 +554,11 @@ const hostRequests = (room: InRoom, view: OpenView, h: H): Html => {
 };
 
 const waitingCall = (room: InRoom, view: OpenView, h: H): Html => {
-  if (Option.isNone(heroSeatOf(view, room))) {
+  if (Option.isNone(heroSeatOf(view))) {
     return h.p([h.Class("muted")], ["Tap a seat to sit."]);
   }
 
-  return view.host === room.player
+  return isYou(view, view.host)
     ? commandButton(
         h,
         room,
@@ -730,7 +730,7 @@ export const roomView = (model: Model, room: InRoom, h: H): Html => {
           RoomViews.$match(current, {
             Closed: (closed) => closedRoomView(room, closed, h),
             Open: (live) =>
-              live.members.some(({ player }) => player === room.player)
+              live.members.some(({ player }) => isYou(live, player))
                 ? openRoomView(model, room, live, presence, h)
                 : leftRoomView(h),
           }),

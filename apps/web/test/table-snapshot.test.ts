@@ -209,6 +209,50 @@ describe("the ring around a face", () => {
   );
 });
 
+describe("who you are", () => {
+  it.prop(
+    "comes from the view, seated or not, and never from the id the page kept from its pass",
+    { view: views },
+    ({ view }) => {
+      const named = PlayerIdSchema.make("player-0000000ef");
+
+      const seatedAs = (you: Option.Option<typeof named>) => ({
+        ...view,
+        hand: Option.none(),
+        seats: Array.from({ length: 9 }, (_, index) => ({
+          occupant:
+            index === 4
+              ? Option.some({
+                  away: false,
+                  leaving: false,
+                  owes: { big: false, entry: false, small: false },
+                  player: named,
+                  posts: false,
+                  sittingOut: false,
+                  stack: ChipsSchema.make(100),
+                  straddling: false,
+                })
+              : Option.none(),
+          seat: SeatIndexSchema.make(index),
+        })),
+        settings: { ...view.settings, seats: 9 },
+        you,
+      });
+
+      const heroOf = (you: Option.Option<typeof named>) => {
+        const seen = seatedAs(you);
+
+        return tableSnapshot(roomWith(seen, true, false), seen, [], [])
+          .heroSeat;
+      };
+
+      expect(heroOf(Option.some(named))).toBe(4);
+      expect(heroOf(Option.some(PLAYER))).toBeNull();
+    },
+    { arbitrary: { runs: 20 } }
+  );
+});
+
 describe("after a hand, on a fresh page", () => {
   it.prop(
     "a player who folded the last hand shows as folded and may not hunt the rabbit where only players still in may, with no events remembered",
@@ -261,6 +305,7 @@ describe("after a hand, on a fresh page", () => {
             rabbitHunters: "StillIn" as const,
           },
         },
+        you: Option.some(PLAYER),
       };
 
       const snapshot = tableSnapshot(

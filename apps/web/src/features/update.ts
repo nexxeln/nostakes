@@ -43,6 +43,7 @@ import {
   isActing,
   isLegal,
   isLive,
+  isYou,
   legalOf,
   openViewOf,
   roomOf,
@@ -377,7 +378,7 @@ const ownMember = (room: InRoom) =>
   openViewOf(room).pipe(
     Option.flatMap((view) =>
       Option.fromNullishOr(
-        view.members.find((member) => member.player === room.player)
+        view.members.find((member) => isYou(view, member.player))
       )
     )
   );
