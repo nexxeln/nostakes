@@ -27,10 +27,18 @@ export type Ante = typeof AnteSchema.Type;
 export const Antes = Data.taggedEnum<Ante>();
 
 export const StraddleRulesSchema = Schema.Struct({
-  button: Schema.Boolean,
+  button: Schema.Boolean.annotate({
+    description:
+      "The player on the button may straddle, posting twice the big blind and acting last before the flop.",
+    title: "Button straddle",
+  }),
   underTheGun: Schema.Int.check(
     Schema.isBetween({ maximum: MAX_UNDER_THE_GUN_STRADDLES, minimum: 0 })
-  ),
+  ).annotate({
+    description:
+      "How many players in a row after the big blind may straddle. 0 turns the under-the-gun straddle off.",
+    title: "Under-the-gun straddles",
+  }),
 });
 
 export type StraddleRules = typeof StraddleRulesSchema.Type;
@@ -40,17 +48,39 @@ export const ShowdownRuleSchema = Schema.Literals(["Automatic", "Interactive"]);
 export type ShowdownRule = typeof ShowdownRuleSchema.Type;
 
 export const TableConfigSchema = Schema.Struct({
-  ante: AnteSchema,
-  bigBlind: PositiveChipsSchema,
-  maxRuns: RunCountSchema,
-  rabbitHunt: Schema.Boolean,
+  ante: AnteSchema.annotate({
+    description:
+      "No ante, an ante from every player dealt in, or one ante paid by the big blind for the table.",
+    title: "Ante",
+  }),
+  bigBlind: PositiveChipsSchema.annotate({
+    description: "Chips the big blind posts before the cards are dealt.",
+    title: "Big blind",
+  }),
+  maxRuns: RunCountSchema.annotate({
+    description:
+      "The most times the rest of the board can be run when players are all in. 1 turns the run vote off.",
+    title: "Most runs",
+  }),
+  rabbitHunt: Schema.Boolean.annotate({
+    description:
+      "After a hand ends early, a player dealt in may reveal the board cards that were never dealt.",
+    title: "Rabbit hunt",
+  }),
   showdown: setting(ShowdownRuleSchema, "Automatic", {
     description:
       "Automatic shows the first hand and then each hand that can win or tie. Interactive asks each seat in turn to table or muck.",
     title: "Showdown",
   }),
-  smallBlind: PositiveChipsSchema,
-  straddle: StraddleRulesSchema,
+  smallBlind: PositiveChipsSchema.annotate({
+    description:
+      "Chips the small blind posts. It may not exceed the big blind.",
+    title: "Small blind",
+  }),
+  straddle: StraddleRulesSchema.annotate({
+    description: "Which voluntary straddles players may post.",
+    title: "Straddles",
+  }),
 })
   .check(
     Schema.makeFilter((config) =>

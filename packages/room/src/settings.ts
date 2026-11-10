@@ -8,8 +8,15 @@ export const ChipAmountSchema = ChipsSchema.check(
 );
 
 export const BuyInRangeSchema = Schema.Struct({
-  max: ChipAmountSchema,
-  min: ChipAmountSchema,
+  max: ChipAmountSchema.annotate({
+    description:
+      "The most a player may sit down with. A top-up may not take a stack above it.",
+    title: "Largest buy-in",
+  }),
+  min: ChipAmountSchema.annotate({
+    description: "The least a player may sit down with.",
+    title: "Smallest buy-in",
+  }),
 }).check(
   Schema.makeFilter((range) =>
     range.min <= range.max
@@ -30,15 +37,38 @@ export const MAX_TIME_BANK_SECONDS = 86_400;
 export const DEFAULT_SHOWDOWN_SECONDS = 15;
 
 export const ApprovalSchema = Schema.Struct({
-  chips: Schema.Boolean,
-  seats: Schema.Boolean,
+  chips: Schema.Boolean.annotate({
+    description:
+      "The host approves every buy-in and top-up from another player before the chips arrive.",
+    title: "Approve chips",
+  }),
+  seats: Schema.Boolean.annotate({
+    description:
+      "The host approves every player who asks for a seat before they sit down.",
+    title: "Approve seats",
+  }),
 });
 
 export const RoomSettingsSchema = Schema.Struct({
-  approval: ApprovalSchema,
-  betweenHandsSeconds: wholeSeconds(0, MAX_CLOCK_SECONDS),
-  buyIn: BuyInRangeSchema,
-  runChoiceSeconds: wholeSeconds(1, MAX_CLOCK_SECONDS),
+  approval: ApprovalSchema.annotate({
+    description: "What the host must approve before it happens.",
+    title: "Approval",
+  }),
+  betweenHandsSeconds: wholeSeconds(0, MAX_CLOCK_SECONDS).annotate({
+    description:
+      "Seconds between the end of a hand and the next deal. Players may show cards or rabbit hunt meanwhile.",
+    title: "Pause between hands",
+  }),
+  buyIn: BuyInRangeSchema.annotate({
+    description:
+      "The smallest and largest number of chips a player may sit down with.",
+    title: "Buy-in",
+  }),
+  runChoiceSeconds: wholeSeconds(1, MAX_CLOCK_SECONDS).annotate({
+    description:
+      "Seconds players have to vote on how many times to run the board. Anyone who has not voted runs it once.",
+    title: "Run vote clock",
+  }),
   showdownSeconds: setting(
     wholeSeconds(1, MAX_CLOCK_SECONDS),
     DEFAULT_SHOWDOWN_SECONDS,
@@ -48,9 +78,21 @@ export const RoomSettingsSchema = Schema.Struct({
       title: "Showdown clock",
     }
   ),
-  table: TableConfigSchema,
-  timeBankSeconds: wholeSeconds(0, MAX_TIME_BANK_SECONDS),
-  turnSeconds: wholeSeconds(0, MAX_CLOCK_SECONDS),
+  table: TableConfigSchema.annotate({
+    description:
+      "The rules of a hand. A change made during a hand applies from the next hand.",
+    title: "Table rules",
+  }),
+  timeBankSeconds: wholeSeconds(0, MAX_TIME_BANK_SECONDS).annotate({
+    description:
+      "Extra seconds each player may spend once their turn clock runs out.",
+    title: "Time bank",
+  }),
+  turnSeconds: wholeSeconds(0, MAX_CLOCK_SECONDS).annotate({
+    description:
+      "Seconds a player has to act on their turn. 0 turns the clock off.",
+    title: "Turn clock",
+  }),
 });
 
 export type RoomSettings = typeof RoomSettingsSchema.Type;

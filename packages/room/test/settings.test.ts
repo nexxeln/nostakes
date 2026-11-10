@@ -1,5 +1,5 @@
 import { describe, expect, it } from "@effect/vitest";
-import { Schema } from "effect";
+import { Schema, SchemaAST } from "effect";
 
 import { RoomEventSchema, RoomSettingsSchema } from "../src/index.js";
 import { settings } from "./fixtures.js";
@@ -54,5 +54,24 @@ describe("settings stored before a field existed", () => {
     expect(decodeEvent(stored)).toMatchObject({
       settings: withEveryDefault,
     });
+  });
+});
+
+const unlabelled = (ast: SchemaAST.AST, path: string): readonly string[] =>
+  SchemaAST.isObjects(ast)
+    ? ast.propertySignatures.flatMap((field) => {
+        const at = `${path}${String(field.name)}`;
+
+        const labelled =
+          SchemaAST.resolveTitle(field.type) !== undefined &&
+          SchemaAST.resolveDescription(field.type) !== undefined;
+
+        return [...(labelled ? [] : [at]), ...unlabelled(field.type, `${at}.`)];
+      })
+    : [];
+
+describe("the host settings screen", () => {
+  it("finds a title and a description on every setting", () => {
+    expect(unlabelled(RoomSettingsSchema.ast, "")).toStrictEqual([]);
   });
 });
