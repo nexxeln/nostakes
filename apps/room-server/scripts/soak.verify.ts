@@ -67,6 +67,8 @@ const CHAOS: ClientTemper = {
   wakePercent: 0.5,
 };
 
+const HAND_BUDGET_MS = 12_000;
+
 const INFORMATIONAL: ReadonlySet<CountName> = new Set([
   "catchUpsSkipped",
   "clientDropsDeafSilence",
@@ -205,6 +207,7 @@ test(
         {
           betweenHandsSeconds: index % 2,
           clientPercent: 50,
+          handBudgetMs: HAND_BUDGET_MS,
           hands: perRoom + (index % 3),
           players: 2 + (index % 8),
           restarts: 2,

@@ -56,6 +56,7 @@ test(
         {
           betweenHandsSeconds: 0,
           clientPercent: 50,
+          handBudgetMs: 4000,
           hands: 10,
           players,
           restarts: 1,

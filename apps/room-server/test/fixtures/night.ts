@@ -148,6 +148,7 @@ export const RULES: readonly RuleChange[] = [
 ];
 
 export interface NightRecipe {
+  readonly handBudgetMs: number;
   readonly rotation: number;
   readonly betweenHandsSeconds: number;
   readonly players: number;
@@ -213,7 +214,7 @@ export const planNight = (
     code: codeFrom(random),
     hands: recipe.hands,
     lateJoiners,
-    limitMs: recipe.hands * 4000 + 60_000,
+    limitMs: recipe.hands * recipe.handBudgetMs + 60_000,
     players: recipe.players - (recipe.players > 2 ? 1 : 0),
     restartHands: Array.from({ length: recipe.restarts }, (_, index) =>
       Math.max(
