@@ -161,6 +161,14 @@ export const roomObject = <T extends RoomTypes>(
 
         let host: Option.Option<RoomHost<T>> = hosted();
 
+        yield* Effect.logInfo("the room object started").pipe(
+          Effect.annotateLogs({
+            instance,
+            room: Option.isSome(host) ? "loaded from storage" : "empty",
+            sockets: raw.getWebSockets().length,
+          })
+        );
+
         const codecOf = (room: RoomHost<T>) => room.codec;
 
         const sockets = () => raw.getWebSockets();
