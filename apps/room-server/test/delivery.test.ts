@@ -252,7 +252,9 @@ test(
   }).pipe(Effect.provide(FetchHttpClient.layer))
 );
 
-const COMMANDS_PER_CLIENT = 200;
+const DEVICES_PER_MEMBER = 4;
+
+const COMMANDS_PER_CLIENT = 50;
 
 const sendAll = (client: RoomClient, prefix: string) =>
   Effect.gen(function* sendEveryCommand() {
@@ -280,13 +282,17 @@ const eventLog = (client: RoomClient) =>
   );
 
 test(
-  "13. order under load: three clients send 200 commands each and all see the stored order",
+  "13. order under load: three members on four devices each send 600 commands in all and every socket sees the stored order",
   Effect.gen(function* underLoad() {
     const base = yield* baseUrl;
     const passes = yield* openRoomWith(base, ["Ana", "Ben", "Cy"]);
 
+    const devices = passes.flatMap((pass) =>
+      Array.from({ length: DEVICES_PER_MEMBER }, () => pass)
+    );
+
     const clients = yield* pipe(
-      passes,
+      devices,
       Effect.forEach((pass, index) =>
         joinAs(base, pass, `sender ${index}`).pipe(
           Effect.map(({ client }) => client)
