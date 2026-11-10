@@ -238,6 +238,10 @@ export const planNight = (
           })
         : TimeBankRefills.NoRefill(),
     timeBankSeconds: recipe.turnSeconds > 0 ? random.between(1, 2) : 0,
+    topUps:
+      (["UpToMax", "UpToMax", "BelowMin", "WhenBust"] as const)[
+        random.below(4)
+      ] ?? "UpToMax",
     turnSeconds: recipe.turnSeconds,
   });
 

@@ -30,6 +30,7 @@ import { ServerOnly } from "./rejections/server-only.js";
 import { SettlesAfterHand } from "./rejections/settles-after-hand.js";
 import { ShuffleRanOut } from "./rejections/shuffle-ran-out.js";
 import { TableRejected } from "./rejections/table-rejected.js";
+import { TopUpNotAllowed } from "./rejections/top-up-not-allowed.js";
 
 export const RoomRejectionSchema = Schema.Union([
   ActionNotOnSeat,
@@ -61,6 +62,7 @@ export const RoomRejectionSchema = Schema.Union([
   SettlesAfterHand,
   ShuffleRanOut,
   TableRejected,
+  TopUpNotAllowed,
   Unbalanced,
 ]);
 
@@ -123,5 +125,7 @@ export { SettlesAfterHand } from "./rejections/settles-after-hand.js";
 export { ShuffleRanOut } from "./rejections/shuffle-ran-out.js";
 
 export { TableRejected } from "./rejections/table-rejected.js";
+
+export { TopUpNotAllowed } from "./rejections/top-up-not-allowed.js";
 
 export { Unbalanced } from "@nostakes/ledger";

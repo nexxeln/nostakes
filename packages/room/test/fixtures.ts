@@ -70,6 +70,7 @@ export const settings: RoomSettings = {
   }),
   timeBankRefill: TimeBankRefills.NoRefill(),
   timeBankSeconds: 0,
+  topUps: "UpToMax",
   turnSeconds: 0,
 };
 

@@ -19,6 +19,7 @@ import {
   ChipsOverMax,
   NoChipRequest,
   SettlesAfterHand,
+  TopUpNotAllowed,
 } from "./rejection.js";
 import type { Settlement } from "./settlement.js";
 import { RoomStates, SEATS, heldSeat, occupantAt } from "./state.js";
@@ -87,6 +88,35 @@ const onTheWay = (state: Open, player: PlayerId) => {
   return total;
 };
 
+const topUpRefusal = (
+  state: Open,
+  player: PlayerId,
+  seat: SeatIndex,
+  holding: number
+): Option.Option<TopUpNotAllowed> => {
+  const rule = state.settings.topUps;
+  const { min } = state.settings.buyIn;
+
+  if (rule === "UpToMax") {
+    return Option.none();
+  }
+
+  const duringHand = dealtIn(state, seat);
+  const allowed = rule === "BelowMin" ? holding < min : holding === 0;
+
+  return !duringHand && allowed
+    ? Option.none()
+    : Option.some(
+        new TopUpNotAllowed({
+          duringHand,
+          holding: ChipsSchema.make(holding),
+          min,
+          player,
+          rule,
+        })
+      );
+};
+
 export const requestChips = (
   state: Open,
   player: PlayerId,
@@ -105,6 +135,11 @@ export const requestChips = (
 
     const stack = stackAt(state, seat) + onTheWay(state, player);
     const { max } = state.settings.buyIn;
+    const refusal = topUpRefusal(state, player, seat, stack);
+
+    if (Option.isSome(refusal)) {
+      return Result.fail(refusal.value);
+    }
 
     if (stack + command.amount > max) {
       return Result.fail(

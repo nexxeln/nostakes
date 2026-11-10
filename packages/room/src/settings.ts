@@ -89,6 +89,14 @@ export const ApprovalSchema = Schema.Struct({
   }),
 });
 
+export const TopUpRuleSchema = Schema.Literals([
+  "UpToMax",
+  "BelowMin",
+  "WhenBust",
+]);
+
+export type TopUpRule = typeof TopUpRuleSchema.Type;
+
 export const DealingSchema = Schema.Literals(["Automatic", "Host"]);
 
 export type Dealing = typeof DealingSchema.Type;
@@ -166,6 +174,11 @@ const settingsFields = (shuffleWhenAbsent: Shuffle) => ({
     description:
       "Extra seconds each player may spend once their turn clock runs out.",
     title: "Time bank",
+  }),
+  topUps: setting(TopUpRuleSchema, "UpToMax", {
+    description:
+      "When a seated player may add chips. UpToMax: at any time, up to the largest buy-in. BelowMin: only between their hands, while below the smallest buy-in. WhenBust: only between their hands, once they have no chips left. Chips never take a stack past the largest buy-in.",
+    title: "Top-ups",
   }),
   turnSeconds: wholeSeconds(0, MAX_CLOCK_SECONDS).annotate({
     description:

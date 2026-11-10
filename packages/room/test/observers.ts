@@ -7,7 +7,7 @@ import {
   pendingDecisions,
 } from "@nostakes/engine";
 import type { Card, Event, PlayerId, SeatIndex } from "@nostakes/engine";
-import { Option, Predicate, Result, Schema } from "effect";
+import { Match, Option, Predicate, Result, Schema } from "effect";
 
 import {
   Actors,
@@ -700,4 +700,75 @@ export const clockProblems = (
   return open === runningBank(final).join(",")
     ? problems
     : [...problems, `banks left open: ${open}`];
+};
+
+const holdingOf = (state: Open, player: PlayerId) => {
+  let holding = 0;
+
+  for (const occupied of state.table.seats) {
+    holding +=
+      Seats.$is("Occupied")(occupied) && occupied.player === player
+        ? occupied.stack
+        : 0;
+  }
+
+  for (const queued of state.queued.chips) {
+    holding += queued.player === player ? queued.amount : 0;
+  }
+
+  return holding;
+};
+
+const dealtInNow = (state: Open, player: PlayerId) =>
+  TableStates.$is("InHand")(state.table) &&
+  state.table.hand.players.some((dealt) => dealt.player === player);
+
+const topUpAllowed = (state: Open, player: PlayerId) => {
+  const holding = holdingOf(state, player);
+
+  return Match.value(state.settings.topUps).pipe(
+    Match.when("UpToMax", () => true),
+    Match.when(
+      "BelowMin",
+      () => !dealtInNow(state, player) && holding < state.settings.buyIn.min
+    ),
+    Match.when("WhenBust", () => !dealtInNow(state, player) && holding === 0),
+    Match.exhaustive
+  );
+};
+
+export const topUpProblems = (step: Step): readonly string[] => {
+  const { before, command, decision } = step;
+
+  if (
+    !RoomCommands.$is("RequestChips")(command) ||
+    !Actors.$is("Member")(command.by) ||
+    !isOpen(before) ||
+    !SEATS.some((seat) =>
+      Option.exists(Option.fromUndefinedOr(before.table.seats[seat]), (held) =>
+        Seats.$is("Occupied")(held) && Actors.$is("Member")(command.by)
+          ? held.player === command.by.player
+          : false
+      )
+    )
+  ) {
+    return [];
+  }
+
+  const { player } = command.by;
+  const allowed = topUpAllowed(before, player);
+
+  const refusedForTheRule =
+    Result.isFailure(decision) &&
+    Predicate.isTagged(decision.failure, "TopUpNotAllowed");
+
+  if (Result.isSuccess(decision) && !allowed) {
+    return [
+      `${player} topped up holding ${holdingOf(before, player)} under ${before.settings.topUps}`,
+    ];
+  }
+
+  return refusedForTheRule && allowed
+    ? [`${player} was refused a top-up ${before.settings.topUps} allows`]
+    : [];
 };

@@ -48,6 +48,7 @@ import type {
   RoomLog,
   RoomSettings,
   RoomState,
+  TopUpRule,
 } from "../src/index.js";
 import { bytesFrom } from "./fixtures.js";
 import { seededRandom } from "./random.js";
@@ -114,6 +115,13 @@ const CLOCK_SECONDS = [0, 5, 30];
 
 const BANK_SECONDS = [0, 3, 20];
 
+const TOP_UPS: readonly TopUpRule[] = [
+  "UpToMax",
+  "UpToMax",
+  "BelowMin",
+  "WhenBust",
+];
+
 export const settingsFrom = (random: SeededRandom): RoomSettings => ({
   approval: { chips: random.chance(1, 2), seats: random.chance(1, 2) },
   betweenHandsSeconds: random.below(3),
@@ -136,6 +144,7 @@ export const settingsFrom = (random: SeededRandom): RoomSettings => ({
         upTo: 1 + random.below(30),
       }),
   timeBankSeconds: BANK_SECONDS[random.below(3)] ?? 0,
+  topUps: TOP_UPS[random.below(TOP_UPS.length)] ?? "UpToMax",
   turnSeconds: CLOCK_SECONDS[random.below(3)] ?? 0,
 });
 

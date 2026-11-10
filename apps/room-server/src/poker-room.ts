@@ -75,6 +75,7 @@ export const DEFAULT_SETTINGS: RoomSettings = Schema.decodeSync(
   },
   timeBankRefill: TimeBankRefills.NoRefill(),
   timeBankSeconds: 60,
+  topUps: "UpToMax",
   turnSeconds: 30,
 });
 

@@ -63,6 +63,7 @@ export {
   SettlesAfterHand,
   ShuffleRanOut,
   TableRejected,
+  TopUpNotAllowed,
   Unbalanced,
 } from "./rejection.js";
 
@@ -102,6 +103,7 @@ export {
   ShuffleSchema,
   TimeBankRefillSchema,
   TimeBankRefills,
+  TopUpRuleSchema,
 } from "./settings.js";
 
 export type {
@@ -109,6 +111,7 @@ export type {
   RoomSettings,
   Shuffle,
   TimeBankRefill,
+  TopUpRule,
 } from "./settings.js";
 
 export {

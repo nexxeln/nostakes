@@ -299,6 +299,13 @@ export interface PlannerSetup {
   readonly stats: { silences: number };
 }
 
+const mayTopUp = (open: OpenView, stack: number) =>
+  open.settings.topUps === "UpToMax" ||
+  (Option.isNone(open.hand) &&
+    (open.settings.topUps === "BelowMin"
+      ? stack < open.settings.buyIn.min
+      : stack === 0));
+
 const handToCall = (open: OpenView) =>
   open.settings.dealing === "Host" &&
   open.game === "Running" &&
@@ -564,13 +571,14 @@ export const plannerFor = (setup: PlannerSetup) => {
       ({ player }) => player === pass.player
     );
 
+    const canTopUp = !asked && !queued && mayTopUp(open, occupant.stack);
     const { max, min } = open.settings.buyIn;
 
     if (occupant.leaving) {
       return Option.none();
     }
 
-    if (occupant.stack === 0 && !asked && !queued) {
+    if (occupant.stack === 0 && canTopUp) {
       return intent(
         Commands.RequestChips.make({
           amount: ChipAmountSchema.make(random.between(min, max)),
@@ -604,7 +612,7 @@ export const plannerFor = (setup: PlannerSetup) => {
       return intent(Commands.SitOut.make({}));
     }
 
-    if (roll < 75 && occupant.stack < max && !asked && !queued) {
+    if (roll < 75 && occupant.stack < max && canTopUp) {
       return intent(
         Commands.RequestChips.make({
           amount: ChipAmountSchema.make(

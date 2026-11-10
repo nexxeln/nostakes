@@ -1,6 +1,13 @@
 import { describe, expect, it } from "@effect/vitest";
-import { Seats } from "@nostakes/engine";
+import {
+  Actions,
+  PendingDecisions,
+  Seats,
+  pendingDecisions,
+} from "@nostakes/engine";
+import type { Action } from "@nostakes/engine";
 import { BoughtIn, CashedOut, AmountSchema } from "@nostakes/ledger";
+import { Option } from "effect";
 
 import {
   AlreadySeated,
@@ -18,6 +25,8 @@ import {
   SeatNotFree,
   SeatRequestPending,
   SeatsStillTaken,
+  TopUpNotAllowed,
+  seatOf,
 } from "../src/index.js";
 import type { RoomState } from "../src/index.js";
 import {
@@ -26,6 +35,7 @@ import {
   bob,
   cat,
   chipCount,
+  dealAt,
   ms,
   openedBy,
   rejection,
@@ -378,5 +388,117 @@ describe("the number of seats", () => {
     ]);
     expect(open(shrunk.state).settings.seats).toBe(4);
     expect(open(run(shrunk.state, resize(9)).state).settings.seats).toBe(9);
+  });
+});
+
+const toppingUp = (rule: "BelowMin" | "WhenBust") =>
+  runAll(openedBy(ann, { ...settings, topUps: rule }), [
+    join(bob),
+    requestSeat(ann, 0, 100),
+    requestSeat(bob, 1, 100),
+    RoomCommands.StartGame({ at: ms(3), by: as(ann) }),
+  ]);
+
+const actorOf = (state: RoomState) => {
+  const pending = pendingDecisions(open(state).table);
+
+  return [ann, bob].find(
+    (player) =>
+      PendingDecisions.$is("Bet")(pending) &&
+      Option.contains(seatOf(open(state), player), pending.legal.seat)
+  );
+};
+
+const playOut = (state: RoomState, choose: (index: number) => Action) => {
+  let current = state;
+
+  for (let turn = 0; turn < 12; turn += 1) {
+    const who = actorOf(current);
+
+    if (who !== undefined) {
+      current = run(
+        current,
+        RoomCommands.Act({ action: choose(turn), at: ms(20), by: as(who) })
+      ).state;
+    }
+  }
+
+  return current;
+};
+
+const stackOf = (state: RoomState, index: number) => {
+  const held = open(state).table.seats[index];
+
+  return held !== undefined && Seats.$is("Occupied")(held) ? held.stack : 0;
+};
+
+const holdingNow = (who: typeof ann, holding: number, duringHand: boolean) => ({
+  duringHand,
+  holding: chipCount(holding),
+  min: chipCount(100),
+  player: who,
+});
+
+describe("top-ups", () => {
+  it("lets a player below the smallest buy-in add chips between hands, and refuses one at or above it or in a hand", () => {
+    const atMin = toppingUp("BelowMin");
+
+    expect(rejection(atMin, chips(ann, 10))).toStrictEqual(
+      new TopUpNotAllowed({ ...holdingNow(ann, 100, false), rule: "BelowMin" })
+    );
+
+    const dealt = run(atMin, dealAt(10)).state;
+
+    expect(rejection(dealt, chips(ann, 10))).toStrictEqual(
+      new TopUpNotAllowed({
+        ...holdingNow(ann, stackOf(dealt, 0), true),
+        rule: "BelowMin",
+      })
+    );
+
+    const folded = playOut(dealt, () => Actions.Fold());
+    const short = stackOf(folded, 0) < 100 ? ann : bob;
+    const long = short === ann ? bob : ann;
+
+    expect(
+      [stackOf(folded, 0), stackOf(folded, 1)].toSorted(
+        (left, right) => left - right
+      )
+    ).toStrictEqual([95, 105]);
+    expect(run(folded, chips(short, 5)).events).toStrictEqual([
+      RoomEvents.BoughtIn({
+        amount: chipCount(5),
+        at: ms(20),
+        player: short,
+        seat: seat(short === ann ? 0 : 1),
+      }),
+    ]);
+    expect(rejection(folded, chips(long, 5))).toStrictEqual(
+      new TopUpNotAllowed({ ...holdingNow(long, 105, false), rule: "BelowMin" })
+    );
+  });
+
+  it("lets only a bust player add chips when the room rebuys only when bust", () => {
+    const called = playOut(
+      run(toppingUp("WhenBust"), dealAt(10)).state,
+      (turn) =>
+        turn === 0 ? Actions.RaiseTo({ to: chipCount(100) }) : Actions.Call()
+    );
+
+    const bust = stackOf(called, 0) === 0 ? ann : bob;
+    const winner = bust === ann ? bob : ann;
+
+    expect(
+      [stackOf(called, 0), stackOf(called, 1)].toSorted(
+        (left, right) => left - right
+      )
+    ).toStrictEqual([0, 200]);
+    expect(run(called, chips(bust, 100)).events).toHaveLength(1);
+    expect(rejection(called, chips(winner, 1))).toStrictEqual(
+      new TopUpNotAllowed({
+        ...holdingNow(winner, 200, false),
+        rule: "WhenBust",
+      })
+    );
   });
 });

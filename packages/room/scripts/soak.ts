@@ -176,6 +176,9 @@ const roomSettings = (random: Random): RoomSettings => {
           upTo: 5 + random.below(40),
         }),
     timeBankSeconds: random.pick([0, 5, 30]) ?? 0,
+    topUps:
+      random.pick(["UpToMax", "UpToMax", "BelowMin", "WhenBust"] as const) ??
+      "UpToMax",
     turnSeconds: random.pick([0, 10, 20, 30]) ?? 0,
   };
 };
@@ -222,6 +225,7 @@ const newCounts = () => ({
   timeoutStreaksEnded: 0,
   timeouts: 0,
   timeoutsKeptIn: 0,
+  topUpsRefused: 0,
   transfers: 0,
   unshownWinners: 0,
 });
@@ -570,6 +574,7 @@ const REFUSALS: readonly (readonly [
   ["showdownMucksRefused", refusedWinningMuck],
   ["seatsBeyondTableRefused", Predicate.isTagged("SeatBeyondTable")],
   ["shrinksRefused", Predicate.isTagged("SeatsStillTaken")],
+  ["topUpsRefused", Predicate.isTagged("TopUpNotAllowed")],
   ["automaticDealCallsRefused", Predicate.isTagged("DealingIsAutomatic")],
   [
     "dealsWaitingForHost",

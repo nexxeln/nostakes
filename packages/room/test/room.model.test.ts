@@ -29,6 +29,7 @@ import {
   leaks,
   learn,
   queueProblems,
+  topUpProblems,
   rejectionRoundTrips,
   seenRoundTrips,
   settingsRoundTrip,
@@ -212,6 +213,16 @@ describe("generated rooms", () => {
     { source: session },
     ({ source }) => {
       expect(queueProblems(playSession(source).steps)).toStrictEqual([]);
+    }
+  );
+
+  it.prop(
+    "top-ups: a chip request passes the room's top-up rule exactly when the rule allows it",
+    { source: session },
+    ({ source }) => {
+      expect(playSession(source).steps.flatMap(topUpProblems)).toStrictEqual(
+        []
+      );
     }
   );
 
