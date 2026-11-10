@@ -56,6 +56,8 @@ const STEP_LIMIT = 5000;
 
 const KEPT_IN_STEPS = 400;
 
+const KEPT_IN_NIGHTS = 25;
+
 const host = POOL[0] ?? PlayerIdSchema.make("p0");
 
 const awayPlayers = (state: RoomState) =>
@@ -314,7 +316,8 @@ describe("liveness", () => {
       expect(started).toBeGreaterThan(0);
       expect(started - ended).toBeLessThanOrEqual(1);
       expect(awayPlayers(state)).toStrictEqual([]);
-    }
+    },
+    { arbitrary: { runs: KEPT_IN_NIGHTS } }
   );
 
   it.prop(
