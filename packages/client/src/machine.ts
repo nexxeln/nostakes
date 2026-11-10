@@ -30,6 +30,7 @@ import {
   ANSWER_LIMIT_MS,
   CONNECT_TIMEOUT_MS,
   GREETING_TIMEOUT_MS,
+  OVERDUE_GRACE_MS,
   PING_INTERVAL_MS,
   SILENCE_LIMIT_MS,
   WAKE_PROBE_MS,
@@ -38,6 +39,7 @@ import {
 export const TIMERS = {
   connect: "connect",
   greeting: "greeting",
+  overdue: "overdue",
   ping: "ping",
   retry: "retry",
   silence: "silence",
@@ -51,14 +53,29 @@ export const replyDeadline = (id: CommandId) => `reply ${id}`;
 
 export const pongDeadline = (ping: number) => `pong ${ping}`;
 
-export const NOTHING_OWED: Owed = { pingsSent: 0, pongsHeard: 0, replies: [] };
+export const NOTHING_OWED: Owed = {
+  overdue: [],
+  pingsSent: 0,
+  pongsHeard: 0,
+  replies: [],
+};
 
-export const deadlinesOwed = ({ pingsSent, pongsHeard, replies }: Owed) => [
+const deadlinesOwed = ({ pingsSent, pongsHeard, replies }: Owed) => [
   ...replies.map(replyDeadline),
   ...Array.from({ length: Math.max(0, pingsSent - pongsHeard) }, (_, index) =>
     pongDeadline(pongsHeard + index + 1)
   ),
 ];
+
+export const answerTimers = (owed: Owed): readonly string[] => [
+  ...deadlinesOwed(owed).filter((deadline) => !owed.overdue.includes(deadline)),
+  ...(owed.overdue.length > 0 ? [TIMERS.overdue] : []),
+];
+
+const answered = (owed: Owed, deadline: string): Owed => ({
+  ...owed,
+  overdue: owed.overdue.filter((late) => late !== deadline),
+});
 
 const ConnectionInput = Schema.Struct({ url: Schema.String });
 
@@ -162,6 +179,7 @@ export const roomClientMachine = <T extends RoomTypes>(
       internalEvents: {
         ConnectTimedOut: NoPayload,
         GreetingTimedOut: NoPayload,
+        Overdue: types<{ readonly deadline: string }>(),
         PingDue: NoPayload,
         RetryDue: NoPayload,
         Silent: NoPayload,
@@ -188,16 +206,24 @@ export const roomClientMachine = <T extends RoomTypes>(
     initial: "Idle",
     on: {
       Cancel: ({ context, event }, enq) => {
-        enq.cancel(replyDeadline(event.id));
+        const deadline = replyDeadline(event.id);
+
+        const owed = answered(
+          {
+            ...context.owed,
+            replies: context.owed.replies.filter((id) => id !== event.id),
+          },
+          deadline
+        );
+
+        enq.cancel(deadline);
+
+        if (owed.overdue.length === 0) {
+          enq.cancel(TIMERS.overdue);
+        }
 
         return {
-          context: {
-            owed: {
-              ...context.owed,
-              replies: context.owed.replies.filter((id) => id !== event.id),
-            },
-            pending: withoutCommand(context.pending, event.id),
-          },
+          context: { owed, pending: withoutCommand(context.pending, event.id) },
         };
       },
       Issue: ({ context, event }) => ({
@@ -383,8 +409,8 @@ export const roomClientMachine = <T extends RoomTypes>(
               enq.cancel(TIMERS.ping);
               enq.cancel(TIMERS.silence);
 
-              for (const deadline of deadlinesOwed(context.owed)) {
-                enq.cancel(deadline);
+              for (const timer of answerTimers(context.owed)) {
+                enq.cancel(timer);
               }
 
               return { context: { owed: NOTHING_OWED } };
@@ -444,9 +470,11 @@ export const roomClientMachine = <T extends RoomTypes>(
                   return {};
                 }
 
+                const deadline = replyDeadline(event.id);
+
                 enq.raise(
-                  { type: "Unanswered" },
-                  { delay: ANSWER_LIMIT_MS, id: replyDeadline(event.id) }
+                  { deadline, type: "Overdue" },
+                  { delay: ANSWER_LIMIT_MS, id: deadline }
                 );
 
                 return {
@@ -474,6 +502,33 @@ export const roomClientMachine = <T extends RoomTypes>(
                   },
                 };
               },
+              Overdue: ({ context, event }, enq) => {
+                enq.cancel(event.deadline);
+
+                const late =
+                  deadlinesOwed(context.owed).includes(event.deadline) &&
+                  !context.owed.overdue.includes(event.deadline);
+
+                if (!late) {
+                  return {};
+                }
+
+                if (context.owed.overdue.length === 0) {
+                  enq.raise(
+                    { type: "Unanswered" },
+                    { delay: OVERDUE_GRACE_MS, id: TIMERS.overdue }
+                  );
+                }
+
+                return {
+                  context: {
+                    owed: {
+                      ...context.owed,
+                      overdue: [...context.owed.overdue, event.deadline],
+                    },
+                  },
+                };
+              },
               PingDue: ({ context }, enq) => {
                 enq(transmitFrame, context.link, Frames.Ping.make({}));
                 enq.raise(
@@ -483,10 +538,11 @@ export const roomClientMachine = <T extends RoomTypes>(
               },
               PingSent: ({ context }, enq) => {
                 const pingsSent = context.owed.pingsSent + 1;
+                const deadline = pongDeadline(pingsSent);
 
                 enq.raise(
-                  { type: "Unanswered" },
-                  { delay: ANSWER_LIMIT_MS, id: pongDeadline(pingsSent) }
+                  { deadline, type: "Overdue" },
+                  { delay: ANSWER_LIMIT_MS, id: deadline }
                 );
 
                 return { context: { owed: { ...context.owed, pingsSent } } };
@@ -503,10 +559,20 @@ export const roomClientMachine = <T extends RoomTypes>(
                 }
 
                 const pongsHeard = context.owed.pongsHeard + 1;
+                const deadline = pongDeadline(pongsHeard);
 
-                enq.cancel(pongDeadline(pongsHeard));
+                const owed = answered(
+                  { ...context.owed, pongsHeard },
+                  deadline
+                );
 
-                return { context: { owed: { ...context.owed, pongsHeard } } };
+                enq.cancel(deadline);
+
+                if (owed.overdue.length === 0) {
+                  enq.cancel(TIMERS.overdue);
+                }
+
+                return { context: { owed } };
               },
               Presence: ({ event }, enq) => {
                 enq.cancel(TIMERS.silence);
@@ -528,7 +594,24 @@ export const roomClientMachine = <T extends RoomTypes>(
                   return {};
                 }
 
-                enq.cancel(replyDeadline(event.id));
+                const deadline = replyDeadline(event.id);
+
+                const owed = answered(
+                  {
+                    ...context.owed,
+                    replies: context.owed.replies.filter(
+                      (id) => id !== event.id
+                    ),
+                  },
+                  deadline
+                );
+
+                enq.cancel(deadline);
+
+                if (owed.overdue.length === 0) {
+                  enq.cancel(TIMERS.overdue);
+                }
+
                 enq.emit({
                   id: event.id,
                   result: event.result,
@@ -537,12 +620,7 @@ export const roomClientMachine = <T extends RoomTypes>(
 
                 return {
                   context: {
-                    owed: {
-                      ...context.owed,
-                      replies: context.owed.replies.filter(
-                        (id) => id !== event.id
-                      ),
-                    },
+                    owed,
                     pending: withoutCommand(context.pending, event.id),
                   },
                 };

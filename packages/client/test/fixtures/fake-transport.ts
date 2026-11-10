@@ -29,6 +29,8 @@ export interface FakeSocket {
   readonly released: () => boolean;
   readonly accept: Effect.Effect<void>;
   readonly stall: Effect.Effect<void>;
+  readonly hold: Effect.Effect<void>;
+  readonly handOver: Effect.Effect<void>;
   readonly push: (text: string) => Effect.Effect<void>;
   readonly drop: (code: number, reason: string) => Effect.Effect<void>;
 }
@@ -110,6 +112,8 @@ export const fakeTransport = Effect.sync(() => {
         const openedAt = yield* Clock.currentTimeMillis;
         let released = false;
         let stalled = false;
+        let holding = false;
+        const held: string[] = [];
 
         yield* Effect.addFinalizer(() =>
           Effect.sync(() => {
@@ -127,10 +131,24 @@ export const fakeTransport = Effect.sync(() => {
               Queue.offerUnsafe(inbox, SocketEvents.Closed({ code, reason }));
               Queue.endUnsafe(inbox);
             }),
+          handOver: Effect.sync(() => {
+            holding = false;
+
+            for (const text of held.splice(0)) {
+              Queue.offerUnsafe(inbox, SocketEvents.Received({ text }));
+            }
+          }),
+          hold: Effect.sync(() => {
+            holding = true;
+          }),
           openedAt,
           push: (text) =>
             Effect.sync(() => {
-              Queue.offerUnsafe(inbox, SocketEvents.Received({ text }));
+              if (holding) {
+                held.push(text);
+              } else {
+                Queue.offerUnsafe(inbox, SocketEvents.Received({ text }));
+              }
             }),
           released: () => released,
           sent,

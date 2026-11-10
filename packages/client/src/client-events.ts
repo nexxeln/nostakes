@@ -51,6 +51,7 @@ export interface Owed {
   readonly replies: readonly CommandId[];
   readonly pingsSent: number;
   readonly pongsHeard: number;
+  readonly overdue: readonly string[];
 }
 
 export interface ClientInput {

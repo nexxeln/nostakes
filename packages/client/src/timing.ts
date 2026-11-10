@@ -14,6 +14,8 @@ export const SILENCE_LIMIT_MS = 30_000;
 
 export const ANSWER_LIMIT_MS = 5000;
 
+export const OVERDUE_GRACE_MS = 1000;
+
 export const WAKE_PROBE_MS = 2000;
 
 export const CLIENT_FRAME_BURST = FRAME_BURST - 2;

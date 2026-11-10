@@ -29,7 +29,7 @@ export {
 } from "./codec.js";
 
 export {
-  deadlinesOwed,
+  answerTimers,
   NOTHING_OWED,
   PING_TIMER,
   pongDeadline,
@@ -61,6 +61,7 @@ export {
   CLIENT_FRAME_BURST,
   CONNECT_TIMEOUT_MS,
   GREETING_TIMEOUT_MS,
+  OVERDUE_GRACE_MS,
   PING_INTERVAL_MS,
   SILENCE_LIMIT_MS,
   WAKE_PROBE_MS,

@@ -15,6 +15,7 @@ import {
   CommandCancelled,
   CommandTooLarge,
   GREETING_TIMEOUT_MS,
+  OVERDUE_GRACE_MS,
   PING_INTERVAL_MS,
   roomClient,
   SILENCE_LIMIT_MS,
@@ -82,6 +83,8 @@ const busyTable = (open: FakeSocket, firstSeq: number) => {
 };
 
 const ANSWER_LAG_MS = ANSWER_LIMIT_MS - 500;
+
+const UNANSWERED_AFTER_MS = ANSWER_LIMIT_MS + OVERDUE_GRACE_MS;
 
 const harness = Effect.gen(function* harness() {
   const fake = yield* fakeTransport;
@@ -484,7 +487,7 @@ describe("room client against a fake socket", () => {
   );
 
   it.effect(
-    "pings after 15 quiet seconds and drops when the pong is 5 seconds late",
+    "pings after 15 quiet seconds and drops when no pong comes within the answer limit and its grace",
     () =>
       Effect.gen(function* pingTimeout() {
         const { client, live, phase, socket } = yield* harness;
@@ -496,7 +499,7 @@ describe("room client against a fake socket", () => {
         yield* advance(PING_INTERVAL_MS);
         expect(tagsSent(open)).toEqual(["Hello", "Ping"]);
 
-        yield* advance(ANSWER_LIMIT_MS - 1);
+        yield* advance(UNANSWERED_AFTER_MS - 1);
         expect(yield* phase).toBe("Live");
 
         yield* advance(1);
@@ -566,11 +569,11 @@ describe("room client against a fake socket", () => {
 
         yield* settle;
 
-        for (let second = 1; second < 5; second += 1) {
+        for (let second = 1; second < UNANSWERED_AFTER_MS / 1000; second += 1) {
           yield* busy(1000);
         }
 
-        yield* busy(ANSWER_LIMIT_MS - 4001);
+        yield* busy(999);
         expect(yield* phase).toBe("Live");
 
         yield* advance(1);
@@ -580,14 +583,14 @@ describe("room client against a fake socket", () => {
         expect(dropped.connection).toBe("Waiting");
         expect(dropped.drop).toEqual(Option.some("Unanswered"));
         expect(dropped.pending).toEqual([issued.id]);
-        expect(dropped.seq).toEqual(Option.some(seqOf(6)));
+        expect(dropped.seq).toEqual(Option.some(seqOf(7)));
         expect(first.released()).toBe(true);
 
         yield* advance(125);
 
-        const second = yield* greet(1, 6);
+        const second = yield* greet(1, 7);
 
-        yield* second.push(serverText.reply(issued.id, 7));
+        yield* second.push(serverText.reply(issued.id, 8));
 
         const reply = yield* issued.reply;
 
@@ -613,7 +616,7 @@ describe("room client against a fake socket", () => {
         const issued = yield* client.issue(add(1));
 
         yield* settle;
-        yield* advance(ANSWER_LIMIT_MS);
+        yield* advance(UNANSWERED_AFTER_MS);
         expect((yield* client.state).drop).toEqual(Option.some("Unanswered"));
 
         yield* advance(125);
@@ -622,7 +625,7 @@ describe("room client against a fake socket", () => {
 
         expect(commandIds(second)).toEqual([issued.id]);
 
-        yield* advance(ANSWER_LIMIT_MS - 1);
+        yield* advance(UNANSWERED_AFTER_MS - 1);
         expect(yield* phase).toBe("Live");
 
         yield* advance(1);
@@ -646,6 +649,32 @@ describe("room client against a fake socket", () => {
   );
 
   it.effect(
+    "a reply that reached the socket before the client noticed its deadline pass keeps the connection, because the client is slow to hand it the frame",
+    () =>
+      Effect.gen(function* answerStillInTheClient() {
+        const { client, fake, live, phase, socket } = yield* harness;
+
+        yield* live(1);
+
+        const open = yield* socket(0);
+        const issued = yield* client.issue(add(1));
+
+        yield* advance(ANSWER_LIMIT_MS - 1);
+        yield* open.hold;
+        yield* open.push(serverText.reply(issued.id, 2));
+        yield* advance(OVERDUE_GRACE_MS - 1);
+        expect(yield* phase).toBe("Live");
+
+        yield* open.handOver;
+        yield* advance(OVERDUE_GRACE_MS * 3);
+
+        expect((yield* issued.reply)._tag).toBe("Accepted");
+        expect(yield* phase).toBe("Live");
+        expect(fake.sockets.length).toBe(1);
+      }).pipe(Effect.scoped, lowestJitter)
+  );
+
+  it.effect(
     "a ping that gets no pong drops the connection at the answer limit even while batches keep arriving",
     () =>
       Effect.gen(function* unansweredPing() {
@@ -663,11 +692,11 @@ describe("room client against a fake socket", () => {
         expect(tagsSent(open)).toEqual(["Hello", "Ping"]);
         expect(open.sent.at(-1)?.at).toBe(PING_INTERVAL_MS);
 
-        for (let second = 1; second < 5; second += 1) {
+        for (let second = 1; second < UNANSWERED_AFTER_MS / 1000; second += 1) {
           yield* busy(1000);
         }
 
-        yield* busy(ANSWER_LIMIT_MS - 4001);
+        yield* busy(999);
         expect(yield* phase).toBe("Live");
 
         yield* advance(1);
@@ -694,7 +723,7 @@ describe("room client against a fake socket", () => {
       yield* settle;
       yield* advance(500);
       yield* open.push(serverText.pong());
-      yield* advance(ANSWER_LIMIT_MS - 1501);
+      yield* advance(UNANSWERED_AFTER_MS - 1501);
       expect(tagsSent(open)).toEqual(["Hello", "Command", "Ping"]);
       expect(yield* phase).toBe("Live");
 
@@ -730,7 +759,7 @@ describe("room client against a fake socket", () => {
 
         expect((yield* first.reply)._tag).toBe("Accepted");
 
-        yield* advance(ANSWER_LIMIT_MS - 1001);
+        yield* advance(UNANSWERED_AFTER_MS - 1001);
         expect(yield* phase).toBe("Live");
 
         yield* advance(1);
@@ -840,7 +869,7 @@ describe("room client against a fake socket", () => {
         ]);
         expect(second.sent.at(-1)?.at).toBe(resentAt);
 
-        yield* advance(ANSWER_LIMIT_MS - 1);
+        yield* advance(UNANSWERED_AFTER_MS - 1);
         expect(yield* phase).toBe("Live");
 
         yield* advance(1);
@@ -877,7 +906,7 @@ describe("room client against a fake socket", () => {
 
         yield* advance(500);
         yield* open.push(serverText.pong());
-        yield* advance(ANSWER_LIMIT_MS - 3001);
+        yield* advance(UNANSWERED_AFTER_MS - 3001);
         expect(tagsSent(open)).toEqual(["Hello", "Command", "Ping", "Ping"]);
         expect(yield* Clock.currentTimeMillis).toBeGreaterThan(
           lastWakeAt + WAKE_PROBE_MS
