@@ -8,3 +8,6 @@ packages:
 allowBuilds:
   lefthook: true
   workerd: true
+
+patchedDependencies:
+  xstate@6.0.0-beta.1: patches/xstate@6.0.0-beta.1.patch

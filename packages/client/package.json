@@ -22,7 +22,8 @@
     "test": "vitest run",
     "build": "tsc -p tsconfig.build.json",
     "check": "pnpm run typecheck",
-    "pretest": "pnpm run --silent build"
+    "pretest": "pnpm run --silent build",
+    "verify": "node --expose-gc scripts/long-night.ts"
   },
   "dependencies": {
     "@nostakes/protocol": "workspace:*",

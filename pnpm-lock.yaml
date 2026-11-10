@@ -203,6 +203,9 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
+patchedDependencies:
+  xstate@6.0.0-beta.1: 26258c64af9871f5c8327042243f9491d705cc276d971ae9dc3edc84b48fed80
+
 importers:
 
   .:
@@ -377,13 +380,13 @@ importers:
         version: link:../protocol
       '@xstate/effect':
         specifier: 1.0.0-beta.0
-        version: 1.0.0-beta.0(@oxlint/plugins@1.92.0)(effect@4.1.2)(xstate@6.0.0-beta.1)
+        version: 1.0.0-beta.0(@oxlint/plugins@1.92.0)(effect@4.1.2)(xstate@6.0.0-beta.1(patch_hash=26258c64af9871f5c8327042243f9491d705cc276d971ae9dc3edc84b48fed80))
       effect:
         specifier: 4.1.2
         version: 4.1.2
       xstate:
         specifier: 6.0.0-beta.1
-        version: 6.0.0-beta.1
+        version: 6.0.0-beta.1(patch_hash=26258c64af9871f5c8327042243f9491d705cc276d971ae9dc3edc84b48fed80)
     devDependencies:
       '@effect/vitest':
         specifier: 4.1.2
@@ -3437,10 +3440,10 @@ snapshots:
 
   '@vitest/spy@5.1.0': {}
 
-  '@xstate/effect@1.0.0-beta.0(@oxlint/plugins@1.92.0)(effect@4.1.2)(xstate@6.0.0-beta.1)':
+  '@xstate/effect@1.0.0-beta.0(@oxlint/plugins@1.92.0)(effect@4.1.2)(xstate@6.0.0-beta.1(patch_hash=26258c64af9871f5c8327042243f9491d705cc276d971ae9dc3edc84b48fed80))':
     dependencies:
       effect: 4.1.2
-      xstate: 6.0.0-beta.1
+      xstate: 6.0.0-beta.1(patch_hash=26258c64af9871f5c8327042243f9491d705cc276d971ae9dc3edc84b48fed80)
     optionalDependencies:
       '@oxlint/plugins': 1.92.0
 
@@ -4213,7 +4216,7 @@ snapshots:
 
   ws@8.22.2: {}
 
-  xstate@6.0.0-beta.1: {}
+  xstate@6.0.0-beta.1(patch_hash=26258c64af9871f5c8327042243f9491d705cc276d971ae9dc3edc84b48fed80): {}
 
   y18n@5.0.8: {}
 
