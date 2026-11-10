@@ -6,6 +6,8 @@ import type { HttpServerError } from "effect/http/HttpServerError";
 import * as HttpServerRequest from "effect/http/HttpServerRequest";
 import * as HttpServerResponse from "effect/http/HttpServerResponse";
 
+import { addressOf, tooManyRequests } from "./address-limits.js";
+import type { AddressLimits, LimitedAction } from "./address-limits.js";
 import { Entropy } from "./entropy.js";
 import { refuseSocket } from "./refused-socket.js";
 import {
@@ -33,9 +35,10 @@ export interface RoomNamespace {
   readonly getByName: (name: string) => RoomStub;
 }
 
-export interface RoomRoutesOptions {
+export interface RoomRoutesOptions<R> {
   readonly allowedOrigins: readonly string[];
   readonly entropy: Layer.Layer<Entropy>;
+  readonly limits: AddressLimits<R>;
 }
 
 const CodePath = Schema.Struct({ code: Schema.String });
@@ -62,7 +65,10 @@ const jsonBody = HttpServerRequest.HttpServerRequest.pipe(
   Effect.option
 );
 
-export const roomRoutes = (rooms: RoomNamespace, options: RoomRoutesOptions) =>
+export const roomRoutes = <R>(
+  rooms: RoomNamespace,
+  options: RoomRoutesOptions<R>
+) =>
   Effect.gen(function* buildRoomRoutes() {
     const entropy = yield* Entropy.pipe(Effect.provide(options.entropy));
 
@@ -76,12 +82,35 @@ export const roomRoutes = (rooms: RoomNamespace, options: RoomRoutesOptions) =>
       handler: Effect.Effect<
         HttpServerResponse.HttpServerResponse,
         never,
-        HttpServerRequest.HttpServerRequest | HttpRouter.RouteContext
+        HttpServerRequest.HttpServerRequest | HttpRouter.RouteContext | R
       >
     ) =>
       Effect.gen(function* checkOrigin() {
         if (!(yield* fromAllowedOrigin)) {
           return yield* refuse("BadOrigin");
+        }
+
+        return yield* handler;
+      });
+
+    const limited = (
+      action: LimitedAction,
+      refusal: Effect.Effect<
+        HttpServerResponse.HttpServerResponse,
+        never,
+        HttpServerRequest.HttpServerRequest
+      >,
+      handler: Effect.Effect<
+        HttpServerResponse.HttpServerResponse,
+        never,
+        HttpServerRequest.HttpServerRequest | HttpRouter.RouteContext
+      >
+    ) =>
+      Effect.gen(function* checkAddress() {
+        const address = yield* addressOf;
+
+        if (!(yield* options.limits.allow(action, address))) {
+          return yield* refusal;
         }
 
         return yield* handler;
@@ -164,10 +193,30 @@ export const roomRoutes = (rooms: RoomNamespace, options: RoomRoutesOptions) =>
         .pipe(Effect.orDie);
     });
 
+    const connectRefusal = HttpServerRequest.HttpServerRequest.pipe(
+      Effect.flatMap((request) =>
+        request.headers.upgrade?.toLowerCase() === "websocket"
+          ? refuseSocket("TooManySockets")
+          : refuse("UpgradeRequired")
+      )
+    );
+
     return Layer.mergeAll(
-      HttpRouter.add("POST", "/rooms", guarded(createRoom)),
-      HttpRouter.add("POST", "/rooms/:code/members", guarded(joinRoom)),
-      HttpRouter.add("GET", "/rooms/:code/socket", guarded(connect)),
+      HttpRouter.add(
+        "POST",
+        "/rooms",
+        guarded(limited("create", tooManyRequests, createRoom))
+      ),
+      HttpRouter.add(
+        "POST",
+        "/rooms/:code/members",
+        guarded(limited("join", tooManyRequests, joinRoom))
+      ),
+      HttpRouter.add(
+        "GET",
+        "/rooms/:code/socket",
+        guarded(limited("connect", connectRefusal, connect))
+      ),
       HttpRouter.cors({
         allowedHeaders: ["content-type"],
         allowedMethods: ["GET", "POST"],

@@ -2,6 +2,7 @@ import * as Cloudflare from "@alchemy.run/cloudflare";
 import { Effect, Layer } from "effect";
 import * as HttpRouter from "effect/http/HttpRouter";
 
+import { unlimited } from "../../src/address-limits.js";
 import { roomRoutes } from "../../src/room-routes.js";
 import PokerTestRoom from "./poker-test-room.js";
 import { scriptedEntropy } from "./test-entropy.js";
@@ -22,6 +23,7 @@ export default class PokerTestWorker extends Cloudflare.Worker<PokerTestWorker>(
     const routes = yield* roomRoutes(rooms, {
       allowedOrigins: [TEST_ORIGIN],
       entropy: codes.layer,
+      limits: unlimited,
     });
 
     return {

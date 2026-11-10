@@ -2,12 +2,15 @@ import * as Cloudflare from "@alchemy.run/cloudflare";
 import * as Test from "@alchemy.run/test/Vitest";
 import { expect } from "@effect/vitest";
 import { Events, SeatIndexSchema } from "@nostakes/engine";
-import { CommandIdSchema } from "@nostakes/protocol";
+import { CLOSE_CODES, CommandIdSchema } from "@nostakes/protocol";
 import type { RoomPass } from "@nostakes/protocol";
 import { ChipAmountSchema, RoomViews, SeenEvents } from "@nostakes/room";
-import { Effect, Option } from "effect";
+import { Deferred, Effect, Option } from "effect";
 import * as FetchHttpClient from "effect/http/FetchHttpClient";
+import * as HttpClient from "effect/http/HttpClient";
+import * as HttpClientRequest from "effect/http/HttpClientRequest";
 
+import { ADDRESS_LIMITS } from "../src/address-limits.js";
 import { MemberCommandSchema } from "../src/poker-room.js";
 import type { MemberCommand } from "../src/poker-room.js";
 import {
@@ -25,6 +28,8 @@ import type {
   PokerSocket,
 } from "./fixtures/poker-socket.js";
 import { ProductionStack } from "./fixtures/production-stack.js";
+import { socketUrl } from "./fixtures/room-client.js";
+import { TEST_ORIGIN } from "./fixtures/toy-worker.js";
 
 const { afterAll, beforeAll, deploy, destroy, test } = Test.make({
   dev: true,
@@ -177,6 +182,110 @@ test(
 
     yield* ana.socket.disconnect;
     yield* ben.socket.disconnect;
+  }).pipe(Effect.provide(FetchHttpClient.layer)),
+  { timeout: 60_000 }
+);
+
+const createFrom = (base: string, address: string) =>
+  HttpClientRequest.post(new URL("/rooms", base)).pipe(
+    HttpClientRequest.setHeaders({
+      "cf-connecting-ip": address,
+      origin: TEST_ORIGIN,
+    }),
+    HttpClientRequest.bodyJsonUnsafe({ avatar: "fox", name: "Ana" }),
+    HttpClient.execute,
+    Effect.flatMap((response) =>
+      response.json.pipe(
+        Effect.map((body) => ({
+          body,
+          retryAfter: response.headers["retry-after"],
+          status: response.status,
+        }))
+      )
+    ),
+    Effect.orDie
+  );
+
+test(
+  "the production Worker lets one address open only its share of rooms a minute and answers the next with 429 while another address still gets in",
+  Effect.gen(function* rateLimited() {
+    const { url } = yield* deployed;
+    const base = yield* Effect.fromNullishOr(url).pipe(Effect.orDie);
+    const { limit } = ADDRESS_LIMITS.create;
+
+    const allowed = yield* Effect.all(
+      Array.from({ length: limit }, () => createFrom(base, "198.51.100.7"))
+    );
+
+    const refused = yield* createFrom(base, "198.51.100.7");
+    const elsewhere = yield* createFrom(base, "198.51.100.8");
+
+    expect(allowed.map(({ status }) => status)).toEqual(
+      Array.from({ length: limit }, () => 201)
+    );
+    expect(refused).toEqual({
+      body: { retryAfterSeconds: 60 },
+      retryAfter: "60",
+      status: 429,
+    });
+    expect(elsewhere.status).toBe(201);
+  }).pipe(Effect.provide(FetchHttpClient.layer)),
+  { timeout: 60_000 }
+);
+
+const probeSocket = (base: string, address: string) =>
+  HttpClientRequest.get(new URL("/rooms/K7P2XZ/socket", base)).pipe(
+    HttpClientRequest.setHeaders({
+      "cf-connecting-ip": address,
+      origin: TEST_ORIGIN,
+    }),
+    HttpClient.execute,
+    Effect.map((response) => response.status),
+    Effect.orDie
+  );
+
+const closeOfSocket = (base: string, address: string) =>
+  Effect.gen(function* awaitSocketClose() {
+    const closed = yield* Deferred.make<{ code: number; reason: string }>();
+
+    const socket = new WebSocket(socketUrl(base, "K7P2XZ"), {
+      headers: { "cf-connecting-ip": address, origin: TEST_ORIGIN },
+    });
+
+    socket.addEventListener("close", (event) => {
+      Deferred.doneUnsafe(
+        closed,
+        Effect.succeed({ code: event.code, reason: event.reason })
+      );
+    });
+
+    return yield* Deferred.await(closed);
+  });
+
+test(
+  "the production Worker closes a socket as TooManySockets once its address has spent the minute's connections",
+  Effect.gen(function* socketsLimited() {
+    const { url } = yield* deployed;
+    const base = yield* Effect.fromNullishOr(url).pipe(Effect.orDie);
+    const { limit } = ADDRESS_LIMITS.connect;
+
+    const fresh = yield* closeOfSocket(base, "198.51.100.9");
+
+    const probes = yield* Effect.all(
+      Array.from({ length: limit - 1 }, () =>
+        probeSocket(base, "198.51.100.9")
+      ),
+      { concurrency: 8 }
+    );
+
+    const spent = yield* closeOfSocket(base, "198.51.100.9");
+
+    expect(fresh).toEqual({ code: CLOSE_CODES.NotFound, reason: "NotFound" });
+    expect(new Set(probes)).toEqual(new Set([426]));
+    expect(spent).toEqual({
+      code: CLOSE_CODES.TooManySockets,
+      reason: "TooManySockets",
+    });
   }).pipe(Effect.provide(FetchHttpClient.layer)),
   { timeout: 60_000 }
 );
