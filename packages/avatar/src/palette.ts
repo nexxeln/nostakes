@@ -21,6 +21,8 @@ export const GOLD_LIGHT = "#fff1b3";
 
 export const CARD_RED = "#d8344a";
 
+export const CHIP_BLUE = "#3a6ff0";
+
 export const MOUTH_INSIDE = "#6e2338";
 
 export const TONGUE = "#ff8fa6";

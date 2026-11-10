@@ -8,6 +8,7 @@ import {
   MOUTHS_BY_EXPRESSION,
   mouthCorner,
   tearUnder,
+  tellingSmile,
 } from "./face.js";
 import type { Face, Lips } from "./face.js";
 import { TATTOO_ART } from "./marks.js";
@@ -148,6 +149,119 @@ const props = (pen: Pen, build: Build, expression: Expression, lips: Lips) => {
   return "";
 };
 
+interface Sitting {
+  readonly avatar: Avatar;
+  readonly expression: Expression;
+  readonly pen: Pen;
+  readonly build: Build;
+  readonly eyeScale: number;
+  readonly lips: Lips;
+}
+
+const telling = ({ build, expression }: Sitting) =>
+  build.tell && expression === "LookingDown";
+
+const eyesLayer = ({ avatar, build, expression, eyeScale, pen }: Sitting) => {
+  const face: Face = {
+    eye: build.eye,
+    pen,
+    scale: eyeScale,
+    style: avatar.eyes,
+  };
+
+  const frame: Frame = {
+    eye: build.eye,
+    pen,
+    scale: eyeScale,
+    side: build.side,
+  };
+
+  const wear = OPAQUE_WEAR[expression];
+  const opaque = COVERAGE[avatar.eyewear] === "Opaque";
+
+  const eyesHidden =
+    opaque && expression !== "LookingDown" && expression !== "Folded";
+
+  const browsHidden = opaque && expression === "Folded";
+
+  const tear = {
+    x: 100 - build.eye.x,
+    y: build.eye.y + (opaque ? 2.6 * eyeScale : 0),
+  };
+
+  return [
+    browsHidden
+      ? ""
+      : brows(face, BROWS_BY_EXPRESSION[expression], eyesHidden ? 10.6 : 0),
+    eyesHidden ? "" : EYES_BY_EXPRESSION[expression](face),
+    opaque
+      ? worn(frame, wear, EYEWEAR_ART[avatar.eyewear](frame, wear.glint))
+      : EYEWEAR_ART[avatar.eyewear](frame, "Line"),
+    expression === "Gutted" ? tearUnder(pen, tear, eyeScale) : "",
+  ].join("");
+};
+
+const mouthLayer = (sitting: Sitting) => {
+  const { avatar, build, expression, eyeScale, lips, pen } = sitting;
+
+  return [
+    telling(sitting)
+      ? tellingSmile(lips)
+      : MOUTHS_BY_EXPRESSION[expression](lips),
+    JAWS[build.jaw](lips, expression),
+    avatar.extra === "Bandaid" ? bandaid(pen, build.eye, eyeScale) : "",
+  ].join("");
+};
+
+const hatLayer = ({ avatar, build, pen }: Sitting) => {
+  const headwear = HEADWEAR_ART[avatar.headwear];
+
+  const placement =
+    avatar.headwear === "Headphones" && build.headphones !== ""
+      ? build.headphones
+      : build.crown;
+
+  if (headwear === undefined) {
+    return "";
+  }
+
+  return placement === ""
+    ? headwear(pen)
+    : `<g transform="${placement}">${headwear(pen)}</g>`;
+};
+
+const skinLayer = (sitting: Sitting) => {
+  const { avatar, build, eyeScale, pen } = sitting;
+
+  return [
+    avatar.extra === "Ace" ? tuckedAce(pen, build.side) : "",
+    TATTOO_ART[avatar.tattoo]({
+      cheek: build.cheek,
+      eye: build.eye,
+      neck: build.neck,
+      pen,
+      scale: eyeScale,
+    }),
+    sitting.expression === "Happy" || telling(sitting)
+      ? blush(build.cheek, 0.55)
+      : "",
+  ].join("");
+};
+
+const heldLayer = ({ avatar, build, expression, lips, pen }: Sitting) => {
+  const corner = mouthCorner(lips, expression);
+
+  return [
+    avatar.extra === "Hoop" ? hoop(pen, build.side) : "",
+    MOUTH_PROPS.has(avatar.extra)
+      ? moved(
+          FEATURE_SHIFT[expression],
+          heldInMouth(pen, avatar.extra, corner.at, corner.turn)
+        )
+      : "",
+  ].join("");
+};
+
 export const render = (
   avatar: Avatar,
   { expression, size }: RenderOptions
@@ -161,16 +275,7 @@ export const render = (
   };
 
   const build = BUILDS[avatar.species];
-  const coverage = COVERAGE[avatar.eyewear];
   const shift = FEATURE_SHIFT[expression];
-  const eyeScale = build.eyeScale * EYE_GROWTH;
-
-  const face: Face = {
-    eye: build.eye,
-    pen,
-    scale: eyeScale,
-    style: avatar.eyes,
-  };
 
   const lips: Lips = {
     at: build.mouth,
@@ -180,43 +285,16 @@ export const render = (
     style: avatar.mouth,
   };
 
-  const frame: Frame = {
-    eye: build.eye,
+  const sitting: Sitting = {
+    avatar,
+    build,
+    expression,
+    eyeScale: build.eyeScale * EYE_GROWTH,
+    lips,
     pen,
-    scale: eyeScale,
-    side: build.side,
   };
 
-  const wear = OPAQUE_WEAR[expression];
-  const opaque = coverage === "Opaque";
-
-  const eyesHidden =
-    opaque && expression !== "LookingDown" && expression !== "Folded";
-
-  const browsHidden = opaque && expression === "Folded";
-  const corner = mouthCorner(lips, expression);
   const topper = topperFor(pen, build, avatar, expression);
-  const headwear = HEADWEAR_ART[avatar.headwear];
-
-  const eyesLayer = [
-    browsHidden
-      ? ""
-      : brows(face, BROWS_BY_EXPRESSION[expression], eyesHidden ? 10.6 : 0),
-    eyesHidden ? "" : EYES_BY_EXPRESSION[expression](face),
-    opaque
-      ? worn(frame, wear, EYEWEAR_ART[avatar.eyewear](frame, wear.glint))
-      : EYEWEAR_ART[avatar.eyewear](frame, "Line"),
-    expression === "Gutted"
-      ? tearUnder(
-          pen,
-          {
-            x: 100 - build.eye.x,
-            y: build.eye.y + (opaque ? 2.6 * eyeScale : 0),
-          },
-          eyeScale
-        )
-      : "",
-  ].join("");
 
   return [
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="${num(size)}" height="${num(size)}">`,
@@ -224,33 +302,13 @@ export const render = (
     topper.behind,
     build.back(pen, expression),
     build.body(pen),
-    avatar.extra === "Ace" ? tuckedAce(pen, build.side) : "",
-    TATTOO_ART[avatar.tattoo]({
-      cheek: build.cheek,
-      eye: build.eye,
-      neck: build.neck,
-      pen,
-      scale: eyeScale,
-    }),
-    expression === "Happy" ? blush(build.cheek, 0.55) : "",
-    moved(
-      shift,
-      [
-        MOUTHS_BY_EXPRESSION[expression](lips),
-        JAWS[build.jaw](lips, expression),
-        avatar.extra === "Bandaid" ? bandaid(pen, build.eye, eyeScale) : "",
-      ].join("")
-    ),
+    skinLayer(sitting),
+    moved(shift, mouthLayer(sitting)),
     NECKWEAR_ART[avatar.neck](pen, build.neck),
-    headwear === undefined
-      ? ""
-      : `<g${build.crown === "" ? "" : ` transform="${build.crown}"`}>${headwear(pen)}</g>`,
-    moved(shift, eyesLayer),
+    hatLayer(sitting),
+    moved(shift, eyesLayer(sitting)),
     topper.front,
-    avatar.extra === "Hoop" ? hoop(pen, build.side) : "",
-    MOUTH_PROPS.has(avatar.extra)
-      ? moved(shift, heldInMouth(pen, avatar.extra, corner.at, corner.turn))
-      : "",
+    heldLayer(sitting),
     props(pen, build, expression, lips),
     `</svg>`,
   ].join("");

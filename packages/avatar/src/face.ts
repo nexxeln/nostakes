@@ -318,6 +318,12 @@ export const MOUTHS_BY_EXPRESSION: Readonly<
   },
 };
 
+export const tellingSmile = (lips: Lips) => {
+  const { x, y } = mouthGrid(lips);
+
+  return `<path d="M${x(-5.4)} ${y(-0.4)}Q${x(0)} ${y(5.6)} ${x(5.4)} ${y(-0.4)}Q${x(0)} ${y(2.2)} ${x(-5.4)} ${y(-0.4)}Z" fill="${MOUTH_INSIDE}" ${outlined(lips.pen, 2)}/>`;
+};
+
 export const JAWS: Readonly<
   Record<Jaw, (lips: Lips, expression: Expression) => string>
 > = {

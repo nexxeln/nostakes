@@ -1,5 +1,5 @@
 import type { Expression, Species } from "./avatar.js";
-import { INK, PAPER } from "./palette.js";
+import { CHIP_BLUE, INK, PAPER } from "./palette.js";
 import { at, line, nothing, num, outlined, pair } from "./pen.js";
 import type { Pen, Point } from "./pen.js";
 
@@ -19,6 +19,8 @@ export interface Build {
   readonly crown: string;
   readonly neck: Point;
   readonly jaw: Jaw;
+  readonly tell: boolean;
+  readonly headphones: string;
 }
 
 const silhouette = (pen: Pen, path: string, inside: string) =>
@@ -77,11 +79,13 @@ const greatWhite: Build = {
   crown: "",
   eye: { x: 37, y: 50 },
   eyeScale: 1,
+  headphones: "",
   jaw: "Plain",
   mouth: { x: 50, y: 69 },
   mouthScale: 1,
   neck: { x: 25, y: 88 },
   side: { x: 13.5, y: 62 },
+  tell: false,
   toppedThroughHat: false,
   topper: (pen) => dorsal(pen, SHARK_FIN, SHARK_FIN_EDGE),
 };
@@ -111,11 +115,13 @@ const hammerhead: Build = {
   crown: "translate(0 8.5) translate(50 20) scale(0.92) translate(-50 -20)",
   eye: { x: 15.5, y: 42.5 },
   eyeScale: 0.86,
+  headphones: "translate(0 -7) translate(50 40) scale(0.66) translate(-50 -40)",
   jaw: "Plain",
   mouth: { x: 50, y: 68 },
   mouthScale: 0.95,
   neck: { x: 27, y: 88 },
   side: { x: 7, y: 47 },
+  tell: false,
   toppedThroughHat: false,
   topper: (pen) =>
     dorsal(
@@ -146,11 +152,13 @@ const tiger: Build = {
   crown: "translate(0 1)",
   eye: { x: 36.5, y: 50 },
   eyeScale: 0.95,
+  headphones: "",
   jaw: "Plain",
   mouth: { x: 50, y: 70 },
   mouthScale: 1.1,
   neck: { x: 24, y: 88 },
   side: { x: 12.5, y: 60 },
+  tell: false,
   toppedThroughHat: false,
   topper: (pen) => dorsal(pen, TIGER_FIN, "M55 12C54 17 54 22 55.5 27"),
 };
@@ -189,11 +197,13 @@ const goldfish: Build = {
   crown: "translate(0 5)",
   eye: { x: 37, y: 53 },
   eyeScale: 1.12,
+  headphones: "",
   jaw: "Plain",
   mouth: { x: 50, y: 71 },
   mouthScale: 0.95,
   neck: { x: 26, y: 90 },
   side: { x: 15.5, y: 64 },
+  tell: true,
   toppedThroughHat: false,
   topper: nothing,
 };
@@ -205,7 +215,7 @@ const PUFFER_BELLY = "M15.2 64Q50 57 84.8 64A35 35 0 0 1 15.2 64Z";
 
 const SPIKE_ANGLES = [-160, -138, -116, -92, -68, -44, -22, 0, 160, 180];
 
-const spikes = (pen: Pen) => {
+const spikes = (pen: Pen, reach: number) => {
   const path = SPIKE_ANGLES.map((degrees) => {
     const radians = (degrees * Math.PI) / 180;
 
@@ -214,7 +224,7 @@ const spikes = (pen: Pen) => {
       y: 60 + Math.sin(radians + offset) * radius,
     });
 
-    return `M${at(around(-0.13, 33))}L${at(around(0, 41.5))}L${at(around(0.13, 33))}Z`;
+    return `M${at(around(-0.13, 33))}L${at(around(0, reach))}L${at(around(0.13, 33))}Z`;
   }).join("");
 
   return `<path d="${path}" fill="${pen.skin.shade}" ${outlined(pen, 2.1)}/>`;
@@ -225,7 +235,7 @@ const PUFFER_SPOTS =
 
 const puffer: Build = {
   back: (pen, expression) =>
-    `${spikes(pen)}${expression === "LookingDown" ? "" : pair(fin(pen, "M20 72C11 70 4 76 3 85C10 87 17 84 22 79Z"))}`,
+    `${spikes(pen, expression === "Gutted" ? 47 : 41.5)}${expression === "LookingDown" ? "" : pair(fin(pen, "M20 72C11 70 4 76 3 85C10 87 17 84 22 79Z"))}`,
   body: (pen) =>
     silhouette(
       pen,
@@ -236,11 +246,13 @@ const puffer: Build = {
   crown: "translate(0 5)",
   eye: { x: 37, y: 55 },
   eyeScale: 1,
+  headphones: "",
   jaw: "Plain",
   mouth: { x: 50, y: 73 },
   mouthScale: 0.9,
   neck: { x: 27, y: 87 },
   side: { x: 15.5, y: 64 },
+  tell: true,
   toppedThroughHat: false,
   topper: nothing,
 };
@@ -267,11 +279,13 @@ const piranha: Build = {
   crown: "",
   eye: { x: 37, y: 50 },
   eyeScale: 1,
+  headphones: "",
   jaw: "Fangs",
   mouth: { x: 50, y: 69 },
   mouthScale: 1.05,
   neck: { x: 26, y: 89 },
   side: { x: 14, y: 61 },
+  tell: false,
   toppedThroughHat: false,
   topper: nothing,
 };
@@ -303,11 +317,13 @@ const betta: Build = {
   crown: "translate(0 6) translate(50 20) scale(0.9) translate(-50 -20)",
   eye: { x: 38.5, y: 54 },
   eyeScale: 0.95,
+  headphones: "",
   jaw: "Plain",
   mouth: { x: 50, y: 71 },
   mouthScale: 0.9,
   neck: { x: 28, y: 90 },
   side: { x: 21.5, y: 64 },
+  tell: true,
   toppedThroughHat: false,
   topper: nothing,
 };
@@ -339,11 +355,13 @@ const angler: Build = {
   crown: "translate(0 8)",
   eye: { x: 35, y: 54 },
   eyeScale: 0.88,
+  headphones: "",
   jaw: "Needles",
   mouth: { x: 50, y: 72 },
   mouthScale: 1.35,
   neck: { x: 24, y: 90 },
   side: { x: 11.5, y: 64 },
+  tell: false,
   toppedThroughHat: true,
   topper: lure,
 };
@@ -375,11 +393,13 @@ const whale: Build = {
   crown: "translate(0 3)",
   eye: { x: 31, y: 59 },
   eyeScale: 0.88,
+  headphones: "",
   jaw: "Plain",
   mouth: { x: 50, y: 73 },
   mouthScale: 1.45,
   neck: { x: 22, y: 92 },
   side: { x: 7.5, y: 62 },
+  tell: true,
   toppedThroughHat: true,
   topper: spout,
 };
@@ -393,15 +413,19 @@ const LOW_ARM = "M33 75C29 83 23 87 16 86";
 
 const INNER_ARM = "M43 77C43 85 41 92 37 97";
 
-const tentacles = (pen: Pen, expression: Expression) => {
-  const path =
-    expression === "LookingDown"
-      ? CURLED_ARM + LOW_ARM
-      : CURLED_ARM + LOW_ARM + INNER_ARM;
+const heldChip = (pen: Pen) =>
+  `<circle cx="88" cy="50" r="5.6" fill="${CHIP_BLUE}" ${outlined(pen, 1.8)}/><circle cx="88" cy="50" r="5.6" ${line(pen, PAPER, 1.6)} stroke-dasharray="2 2.4"/><circle cx="88" cy="50" r="2.6" fill="${PAPER}" ${outlined(pen, 1)}/>`;
 
-  return pair(
+const tentacles = (pen: Pen, expression: Expression) => {
+  const holding = expression === "LookingDown";
+
+  const path = holding
+    ? CURLED_ARM + LOW_ARM
+    : CURLED_ARM + LOW_ARM + INNER_ARM;
+
+  return `${pair(
     `<path d="${path}" ${line(pen, INK, 12.4)}/><path d="${path}" ${line(pen, pen.skin.base, 8.4)}/>${pen.small ? "" : `<path d="M10.4 63h0M12.6 69h0M21.6 85h0M27.6 82h0" ${line(pen, pen.skin.belly, 2.4)}/>`}`
-  );
+  )}${holding ? heldChip(pen) : ""}`;
 };
 
 const octopus: Build = {
@@ -416,11 +440,13 @@ const octopus: Build = {
   crown: "translate(0 -7)",
   eye: { x: 37, y: 54 },
   eyeScale: 1.02,
+  headphones: "",
   jaw: "Plain",
   mouth: { x: 50, y: 69 },
   mouthScale: 0.85,
   neck: { x: 30, y: 84 },
   side: { x: 15.5, y: 48 },
+  tell: false,
   toppedThroughHat: false,
   topper: nothing,
 };
