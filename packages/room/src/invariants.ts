@@ -5,6 +5,7 @@ import { Option } from "effect";
 
 import { chipsOnTable, allEntries } from "./money.js";
 import { sameTableRules } from "./rules.js";
+import { seatsTakenFrom } from "./seats.js";
 import {
   DecisionClocks,
   RoomStates,
@@ -68,6 +69,12 @@ const peopleViolations = (state: Open) => [
 ];
 
 const requestViolations = (state: Open) => [
+  ...check(
+    seatsTakenFrom(state, state.settings.seats).length === 0,
+    "SeatsWithinTheTable",
+    () =>
+      `seats ${seatsTakenFrom(state, state.settings.seats).join(",")} are taken or asked for at a table of ${state.settings.seats}`
+  ),
   ...check(
     !hasDuplicates(state.requests.seats.map((request) => request.player)) &&
       !hasDuplicates(state.requests.seats.map((request) => request.seat)),

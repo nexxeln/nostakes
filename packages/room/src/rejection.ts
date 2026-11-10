@@ -21,8 +21,10 @@ import { NotAMember } from "./rejections/not-a-member.js";
 import { NotSeated } from "./rejections/not-seated.js";
 import { NotTheHost } from "./rejections/not-the-host.js";
 import { RoomIsClosed } from "./rejections/room-is-closed.js";
+import { SeatBeyondTable } from "./rejections/seat-beyond-table.js";
 import { SeatNotFree } from "./rejections/seat-not-free.js";
 import { SeatRequestPending } from "./rejections/seat-request-pending.js";
+import { SeatsStillTaken } from "./rejections/seats-still-taken.js";
 import { ServerOnly } from "./rejections/server-only.js";
 import { SettlesAfterHand } from "./rejections/settles-after-hand.js";
 import { ShuffleRanOut } from "./rejections/shuffle-ran-out.js";
@@ -49,8 +51,10 @@ export const RoomRejectionSchema = Schema.Union([
   NotSeated,
   NotTheHost,
   RoomIsClosed,
+  SeatBeyondTable,
   SeatNotFree,
   SeatRequestPending,
+  SeatsStillTaken,
   ServerOnly,
   SettlesAfterHand,
   ShuffleRanOut,
@@ -100,9 +104,13 @@ export { NotTheHost } from "./rejections/not-the-host.js";
 
 export { RoomIsClosed } from "./rejections/room-is-closed.js";
 
+export { SeatBeyondTable } from "./rejections/seat-beyond-table.js";
+
 export { SeatNotFree } from "./rejections/seat-not-free.js";
 
 export { SeatRequestPending } from "./rejections/seat-request-pending.js";
+
+export { SeatsStillTaken } from "./rejections/seats-still-taken.js";
 
 export { ServerOnly } from "./rejections/server-only.js";
 

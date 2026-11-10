@@ -54,8 +54,10 @@ export {
   NotTheHost,
   RoomIsClosed,
   RoomRejectionSchema,
+  SeatBeyondTable,
   SeatNotFree,
   SeatRequestPending,
+  SeatsStillTaken,
   ServerOnly,
   SettlesAfterHand,
   ShuffleRanOut,
@@ -89,7 +91,9 @@ export {
   BuyInRangeSchema,
   ChipAmountSchema,
   MAX_CHIP_AMOUNT,
+  MIN_SEATS,
   RoomSettingsSchema,
+  SeatCountSchema,
 } from "./settings.js";
 
 export type { BuyInRange, RoomSettings } from "./settings.js";

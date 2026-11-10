@@ -1,4 +1,9 @@
-import { ChipsSchema, TableConfigSchema, setting } from "@nostakes/engine";
+import {
+  ChipsSchema,
+  SEAT_COUNT,
+  TableConfigSchema,
+  setting,
+} from "@nostakes/engine";
 import { Schema } from "effect";
 
 export const MAX_CHIP_AMOUNT = 1_000_000_000;
@@ -36,6 +41,12 @@ export const MAX_TIME_BANK_SECONDS = 86_400;
 
 export const DEFAULT_SHOWDOWN_SECONDS = 15;
 
+export const MIN_SEATS = 2;
+
+export const SeatCountSchema = Schema.Int.check(
+  Schema.isBetween({ maximum: SEAT_COUNT, minimum: MIN_SEATS })
+);
+
 export const ApprovalSchema = Schema.Struct({
   chips: Schema.Boolean.annotate({
     description:
@@ -68,6 +79,11 @@ export const RoomSettingsSchema = Schema.Struct({
     description:
       "Seconds players have to vote on how many times to run the board. Anyone who has not voted runs it once.",
     title: "Run vote clock",
+  }),
+  seats: setting(SeatCountSchema, SEAT_COUNT, {
+    description:
+      "How many seats the table has, from 2 to 9. Players may sit only in the seats numbered below it.",
+    title: "Seats",
   }),
   showdownSeconds: setting(
     wholeSeconds(1, MAX_CLOCK_SECONDS),

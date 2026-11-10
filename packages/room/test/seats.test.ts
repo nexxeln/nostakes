@@ -14,8 +14,10 @@ import {
   RoomCommands,
   RoomEvents,
   RoomStates,
+  SeatBeyondTable,
   SeatNotFree,
   SeatRequestPending,
+  SeatsStillTaken,
 } from "../src/index.js";
 import type { RoomState } from "../src/index.js";
 import {
@@ -308,5 +310,73 @@ describe("seats", () => {
       RoomEvents.HostChanged({ at: ms(9), host: cat }),
       RoomEvents.MemberLeft({ at: ms(9), player: ann }),
     ]);
+  });
+});
+
+const tableOf = (seats: number) => ({ ...settings, seats });
+
+const resize = (seats: number) =>
+  RoomCommands.ChangeSettings({
+    at: ms(5),
+    by: as(ann),
+    settings: tableOf(seats),
+  });
+
+describe("the number of seats", () => {
+  it("refuses a seat at or past the table's seat count, and seats a player below it", () => {
+    const sixMax = runAll(openedBy(ann, tableOf(6)), [join(bob)]);
+
+    expect(rejection(sixMax, requestSeat(bob, 6, 200))).toStrictEqual(
+      new SeatBeyondTable({ seat: seat(6), seats: 6 })
+    );
+    expect(rejection(sixMax, requestSeat(bob, 8, 200))).toStrictEqual(
+      new SeatBeyondTable({ seat: seat(8), seats: 6 })
+    );
+    expect(run(sixMax, requestSeat(bob, 5, 200)).events).toStrictEqual([
+      RoomEvents.BoughtIn({
+        amount: chipCount(200),
+        at: ms(2),
+        player: bob,
+        seat: seat(5),
+      }),
+    ]);
+  });
+
+  it("refuses to shrink the table past a taken or requested seat, naming every one", () => {
+    const spread = runAll(openedBy(ann, approving), [
+      join(bob),
+      join(cat),
+      requestSeat(ann, 7, 200),
+      requestSeat(bob, 5, 200),
+      requestSeat(cat, 3, 200),
+      RoomCommands.ApproveSeat({ at: ms(3), by: as(ann), player: cat }),
+    ]);
+
+    expect(
+      rejection(spread, { ...resize(4), settings: { ...approving, seats: 4 } })
+    ).toStrictEqual(
+      new SeatsStillTaken({ seats: [seat(5), seat(7)], wanted: 4 })
+    );
+    expect(
+      rejection(spread, { ...resize(5), settings: { ...approving, seats: 5 } })
+    ).toStrictEqual(
+      new SeatsStillTaken({ seats: [seat(5), seat(7)], wanted: 5 })
+    );
+    expect(
+      rejection(spread, { ...resize(2), settings: { ...approving, seats: 2 } })
+    ).toStrictEqual(
+      new SeatsStillTaken({ seats: [seat(3), seat(5), seat(7)], wanted: 2 })
+    );
+  });
+
+  it("shrinks the table when the seats past the new count are empty, and grows it back at any time", () => {
+    const low = runAll(openedBy(ann), [join(bob), requestSeat(bob, 3, 200)]);
+    const shrunk = run(low, resize(4));
+
+    expect(shrunk.events).toStrictEqual([
+      RoomEvents.SettingsChanged({ at: ms(5), settings: tableOf(4) }),
+    ]);
+    expect(open(shrunk.state).settings.seats).toBe(4);
+    expect(open(run(shrunk.state, resize(9)).state).settings.seats).toBe(9);
   });
 });

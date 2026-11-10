@@ -215,6 +215,9 @@ export const planNight = (
     betweenHandsSeconds: recipe.betweenHandsSeconds,
     buyIn: { max: big * 50, min: big * 10 },
     runChoiceSeconds: random.between(1, 2),
+    seats: random.chance(50)
+      ? 9
+      : random.between(Math.max(2, recipe.players), 9),
     showdownSeconds: random.between(1, 2),
     table: {
       ante: Antes.NoAnte(),

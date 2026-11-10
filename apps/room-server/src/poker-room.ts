@@ -58,6 +58,7 @@ export const DEFAULT_SETTINGS: RoomSettings = Schema.decodeSync(
   betweenHandsSeconds: 5,
   buyIn: { max: 400, min: 40 },
   runChoiceSeconds: 15,
+  seats: 9,
   showdownSeconds: 15,
   table: {
     ante: Antes.NoAnte(),

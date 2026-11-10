@@ -9,10 +9,11 @@ import {
   AlreadySeated,
   BuyInOutOfRange,
   NoSeatRequest,
+  SeatBeyondTable,
   SeatNotFree,
   SeatRequestPending,
 } from "./rejection.js";
-import { heldSeat, occupantAt, seatOf } from "./state.js";
+import { SEATS, heldSeat, occupantAt, seatOf } from "./state.js";
 import type { Open } from "./state.js";
 import { onTable } from "./table.js";
 import type { Millis } from "./time.js";
@@ -34,6 +35,12 @@ export const requestSeat = (
 
   if (pending !== undefined) {
     return Result.fail(new SeatRequestPending({ player, seat: pending.seat }));
+  }
+
+  if (command.seat >= state.settings.seats) {
+    return Result.fail(
+      new SeatBeyondTable({ seat: command.seat, seats: state.settings.seats })
+    );
   }
 
   const reserved = state.requests.seats.some(
@@ -117,4 +124,12 @@ export const sitOut = (
 ) =>
   Result.flatMap(heldSeat(state, player), (seat) =>
     onTable(state.table, Commands.SetSittingOut({ seat, sittingOut }), at)
+  );
+
+export const seatsTakenFrom = (state: Open, first: number) =>
+  SEATS.filter(
+    (seat) =>
+      seat >= first &&
+      (Option.isSome(occupantAt(state.table, seat)) ||
+        state.requests.seats.some((request) => request.seat === seat))
   );

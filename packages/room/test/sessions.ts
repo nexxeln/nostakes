@@ -121,6 +121,7 @@ export const settingsFrom = (random: SeededRandom): RoomSettings => ({
     min: chips(20 + random.below(60)),
   },
   runChoiceSeconds: 1 + random.below(10),
+  seats: random.chance(1, 2) ? 9 : 2 + random.below(8),
   showdownSeconds: 1 + random.below(20),
   table: tableConfigFrom(random),
   timeBankSeconds: BANK_SECONDS[random.below(3)] ?? 0,
@@ -697,6 +698,10 @@ export interface Played {
   readonly steps: readonly Step[];
 }
 
+const OPENING_SEATS = [0, 2, 4, 6, 8, 1, 3, 5, 7].map((index) =>
+  SeatIndexSchema.make(index)
+);
+
 export const openingCommands = (
   settings: RoomSettings
 ): readonly RoomCommand[] => {
@@ -711,7 +716,9 @@ export const openingCommands = (
         at,
         buyIn: settings.buyIn.max,
         by: member(player),
-        seat: SeatIndexSchema.make(index * 2 > 8 ? index : index * 2),
+        seat:
+          OPENING_SEATS.filter((open) => open < settings.seats)[index] ??
+          SeatIndexSchema.make(index),
       })
     ),
     ...POOL.slice(1, 5).map((player) =>

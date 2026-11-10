@@ -161,6 +161,7 @@ const roomSettings = (random: Random): RoomSettings => {
     betweenHandsSeconds: random.below(4),
     buyIn: { max: chips(min * (3 + random.below(5))), min: chips(min) },
     runChoiceSeconds: 2 + random.below(10),
+    seats: random.chance(50) ? 9 : 2 + random.below(8),
     showdownSeconds: 2 + random.below(15),
     table: tableConfig(random),
     timeBankSeconds: random.pick([0, 5, 30]) ?? 0,
@@ -191,15 +192,18 @@ const newCounts = () => ({
   rebuys: 0,
   rulesQueued: 0,
   runVotesExpiredWithoutTurnClock: 0,
+  seatsBeyondTableRefused: 0,
   settlements: 0,
   showdownConcessions: 0,
   showdownExpiries: 0,
   showdownMucks: 0,
   showdownMucksRefused: 0,
   showdownTables: 0,
+  shrinksRefused: 0,
   staleExpiriesRefused: 0,
   straddlesApplied: 0,
   straddlesIgnored: 0,
+  tablesShrunk: 0,
   timeouts: 0,
   transfers: 0,
   unshownWinners: 0,
@@ -542,6 +546,15 @@ const refusedWinningMuck = (rejection: RoomRejection) =>
   Predicate.isTagged(rejection, "TableRejected") &&
   Predicate.isTagged(rejection.rejection, "WinningHandMustTable");
 
+const REFUSALS: readonly (readonly [
+  keyof Counts,
+  (rejection: RoomRejection) => boolean,
+])[] = [
+  ["showdownMucksRefused", refusedWinningMuck],
+  ["seatsBeyondTableRefused", Predicate.isTagged("SeatBeyondTable")],
+  ["shrinksRefused", Predicate.isTagged("SeatsStillTaken")],
+];
+
 const tableEventIs = (
   event: RoomEvent,
   matches: (tableEvent: Event) => boolean
@@ -574,7 +587,16 @@ const COUNTED: readonly (readonly [
   ["showdownMucks", (event) => tableEventIs(event, Events.$is("HandMucked"))],
 ];
 
+const seatCount = (state: RoomState) =>
+  RoomStates.$is("Open")(state) ? state.settings.seats : 0;
+
 const observe = (run: Run, before: RoomState, event: RoomEvent) => {
+  run.counts.tablesShrunk +=
+    RoomEvents.$is("SettingsChanged")(event) &&
+    event.settings.seats < seatCount(before)
+      ? 1
+      : 0;
+
   if (RoomEvents.$is("Table")(event)) {
     learn(run, event.event);
     countStraddles(run, before, event.event);
@@ -637,9 +659,9 @@ const send = (run: Run, command: RoomCommand) => {
   const decision = decide(run.state, command);
 
   if (Result.isFailure(decision)) {
-    run.counts.showdownMucksRefused += refusedWinningMuck(decision.failure)
-      ? 1
-      : 0;
+    for (const [name, refused] of REFUSALS) {
+      run.counts[name] += refused(decision.failure) ? 1 : 0;
+    }
 
     return decision;
   }
