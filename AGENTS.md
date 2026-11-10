@@ -27,7 +27,7 @@ XState and Foldkit arrive in later phases, each with the owner's sign-off.
 - `@nostakes/ledger` (`packages/ledger`): buy-ins, cash-outs, and settle-up transfers
 - `@nostakes/room` (`packages/room`): one poker night as a pure reducer over the engine and the ledger: members, host, seats, clocks, the queue at the end of a hand, views, and redaction
 - `@nostakes/protocol` (`packages/protocol`): the JSON frames between a room's clients and its server, the room pass, and the wire limits. It is generic over a room core's schemas, so it never imports the room, and it does no I/O.
-- `@nostakes/room-server` (`apps/room-server`): the Cloudflare Worker and one Durable Object per room, declared with Alchemy. It hosts any core that satisfies `HostedRoom` in `src/hosted-room.ts`. Its tests drive a toy core in `test/fixtures` through real WebSocket clients on local workerd.
+- `@nostakes/room-server` (`apps/room-server`): the Cloudflare Worker and one Durable Object per room, declared with Alchemy. It hosts any core that satisfies `HostedRoom` in `src/hosted-room.ts`. `src/poker-room.ts` adapts `@nostakes/room` to that port, and `src/poker-room-object.ts` and `src/worker.ts` are the production object and Worker, with allowed origins read from the `ALLOWED_ORIGINS` config. Its tests drive a toy core and the real room through real WebSocket clients on local workerd. Seeded bots in `test/fixtures/bot.ts` play whole nights, and `test/fixtures/night-checks.ts` checks every frame they received against the stored log. A live batch is redacted for each viewer's audience after the batch. A catch-up redacts each missed event for the audience right after that event, from the states the host keeps for the last 201 events, because a seat can change hands between batches.
 - `@nostakes/fence` (`tools/fence`): fixture tests for the lint rules and the hook policy. It ships nothing.
 
 ## Commands
@@ -54,7 +54,7 @@ A long-running check, such as an exhaustive enumeration or a simulator, is a scr
 - Import the package by its own name, for example `@nostakes/engine`. The name resolves to the built `dist`, and turbo's `verify` task builds the package first.
 - Print with Effect `Console`, run the program with `Effect.runPromise`, and fail the Effect on a counterexample. A failed Effect exits non-zero.
 - `verify` is not part of `check` or `test`, and turbo never caches it. Run `pnpm verify` before you commit a change to the rules a script covers.
-- `apps/room-server` is the exception. Its probes need a deployed Worker, and only the `@alchemy.run/test` harness deploys one to local workerd, so its `verify` runs `scripts/*.verify.ts` through `vitest.verify.config.ts`. Each probe fails its Effect with a tagged error on a counterexample.
+- `apps/room-server` is the exception. Its probes need a deployed Worker, and only the `@alchemy.run/test` harness deploys one to local workerd, so its `verify` runs `scripts/*.verify.ts` through `vitest.verify.config.ts`. Each probe fails its Effect with a tagged error on a counterexample. `scripts/soak.verify.ts` plays at least 1,000 hands across at least 10 rooms. Set `SOAK_SEED`, `SOAK_HANDS`, and `SOAK_ROOMS` to replay or resize it. A failed room prints its seed and code and saves its stored log to a temporary directory.
 - Integration tests that start workerd cost seconds on every commit through the hook. Keep `pnpm test` for the room server under about 30 seconds: one `beforeAll(deploy(ToyStack))` per file, files in parallel workers, and slow probes such as the 25-second hibernation idle in `verify`.
 
 ## Fence
@@ -63,12 +63,16 @@ The fence makes cheating uncomfortable. If a hook fails, fix the failure. Do not
 
 - Lefthook pre-commit runs `pnpm check` and `pnpm test`.
 - Never skip the hooks: no `--no-verify`, no `commit -n`, no `LEFTHOOK=0`, no `core.hooksPath` override. The Claude Code hook in `.claude/settings.json` denies these commands. The policy lives in `scripts/vcs-command-policy.js`.
-- `tsconfig.base.json` owns the Effect diagnostic severities. A package tsconfig may add an exact `allowedUnstableApis` entry only for a module the checker warns about. `engine` and `ledger` already allow `@effect/vitest` and `effect/Arbitrary`, because every test needs them. `apps/room-server` also allows the `effect/http` modules it uses.
+- `tsconfig.base.json` owns the Effect diagnostic severities. A package tsconfig may add an exact `allowedUnstableApis` entry only for a module the checker warns about. `engine` and `ledger` already allow `@effect/vitest` and `effect/Arbitrary`, because every test needs them. `apps/room-server` also allows the `effect/http` modules it uses, and `effect/FileSystem` and `@effect/platform-node/NodeFileSystem` for the soak's saved logs.
 - Some rules collide with common Effect forms. Use the form that passes both:
   - `unicorn/no-array-method-this-argument` reads any two-argument `.map`, `.filter`, or `.forEach` as an array call with `thisArg`. `Option.map(option, f)` and `Effect.forEach(items, f)` trip it. Write `option.pipe(Option.map(f))` and `pipe(items, Effect.forEach(f))`. `Effect.forEach(f, { concurrency })` trips it too, so write `Effect.all(items.map(f), { concurrency })`.
   - `anti-slop-effect/no-service-constructor-imports` rejects importing any `make<Name>` outside a test file. Name a factory for what it returns, such as `hostRoom` or `roomObject`.
   - `no-empty-object-type` rejects an empty `Data.TaggedEnum` variant. Give every variant a field that says something.
   - `anti-slop-effect/no-manual-tagged-construction` rejects a `_tag` in an object literal, test fixtures included. Compare wire frames as JSON text when a test needs the literal form.
+  - The Effect diagnostic `missingReturnYieldStar` wants `return yield*` on an Effect that never succeeds, and `consistent-return` rejects a generator that mixes `return;` with `return yield* ...`. Collect the outcome in a variable, leave the loop, and end with one `return yield* Option.match(outcome, { onNone: () => Effect.void, onSome: (problem) => Effect.fail(...) })`.
+  - `promise/prefer-await-to-then` reads `Effect.catch` as a promise `.catch`, and `promise/prefer-await-to-callbacks` reads a callback whose parameter is named `error` as a Node callback. Use `Effect.mapError` or `Effect.catchTag`, and name the parameter `failure`.
+  - `anti-slop/no-shape-in-symbol-names` rejects any name containing "shape". Name the thing for what it holds, such as `recipe` or `plan`.
+  - A room view or rejection holds `Option` values, which plain `JSON.stringify` cannot carry. Wrap a core's schemas in `Schema.toCodecJson` before `Schema.fromJsonString`.
 - CI runs `pnpm install --frozen-lockfile` and then `pnpm turbo run check test build`.
 
 ## Project law
