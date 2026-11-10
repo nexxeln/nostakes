@@ -12,7 +12,12 @@ import * as HttpClientRequest from "effect/http/HttpClientRequest";
 import { roomCodec } from "../../src/room-codec.js";
 import type { ClientMessage, ServerMessage } from "../../src/room-codec.js";
 import { toyRoom } from "./toy-room.js";
-import type { Profile, ToyMemberCommand, ToyTypes } from "./toy-room.js";
+import type {
+  Profile,
+  ToyMemberCommand,
+  ToySignal,
+  ToyTypes,
+} from "./toy-room.js";
 import { TEST_ORIGIN } from "./toy-worker.js";
 
 export const codec = roomCodec(toyRoom);
@@ -188,6 +193,11 @@ export const command = (id: string, payload: ToyMemberCommand) =>
     command: payload,
     id: CommandIdSchema.make(id),
   });
+
+export const signal = (payload: ToySignal) =>
+  codec.client.cases.Signal.make({ signal: payload });
+
+export const isSignal = codec.server.guards.Signal;
 
 export const isWelcome = codec.server.guards.Welcome;
 

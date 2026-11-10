@@ -17,17 +17,24 @@ export const ToyViewSchema = Schema.Struct({ total: Schema.Int });
 
 export const ToyRejectionSchema = Schema.Struct({ reason: Schema.String });
 
+export const ToySignalSchema = Schema.TaggedUnion({
+  Nod: {},
+  Wave: { count: Schema.Int },
+});
+
 export interface ToyTypes {
   readonly Command: typeof ToyCommandSchema.Type;
   readonly Event: typeof ToyEventSchema.Type;
   readonly View: typeof ToyViewSchema.Type;
   readonly Rejection: typeof ToyRejectionSchema.Type;
+  readonly Signal: typeof ToySignalSchema.Type;
 }
 
 export const toySchemas: ClientSchemas<ToyTypes> = {
   command: ToyCommandSchema,
   event: ToyEventSchema,
   rejection: ToyRejectionSchema,
+  signal: ToySignalSchema,
   view: ToyViewSchema,
 };
 

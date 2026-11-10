@@ -1,16 +1,30 @@
 import * as Cloudflare from "@alchemy.run/cloudflare";
 import * as Test from "@alchemy.run/test/Vitest";
 import { expect } from "@effect/vitest";
-import { Events, SeatIndexSchema } from "@nostakes/engine";
+import { Actions, Events, SeatIndexSchema } from "@nostakes/engine";
 import {
   CLOSE_CODES,
   CommandIdSchema,
   HttpRefusalSchema,
   PROTOCOL_VERSION,
 } from "@nostakes/protocol";
-import type { RoomPass } from "@nostakes/protocol";
-import { ChipAmountSchema, RoomViews, SeenEvents } from "@nostakes/room";
-import { Deferred, Effect, Option, Queue, Redacted, Schema } from "effect";
+import type { PlayerId, RoomPass } from "@nostakes/protocol";
+import {
+  ChipAmountSchema,
+  RoomSignalSchema,
+  RoomViews,
+  SeenEvents,
+} from "@nostakes/room";
+import type { Reaction, RoomSignal } from "@nostakes/room";
+import {
+  Deferred,
+  Effect,
+  Option,
+  Queue,
+  Redacted,
+  Schema,
+  pipe,
+} from "effect";
 import * as FetchHttpClient from "effect/http/FetchHttpClient";
 import * as HttpClient from "effect/http/HttpClient";
 import * as HttpClientRequest from "effect/http/HttpClientRequest";
@@ -187,6 +201,220 @@ test(
 
     yield* ana.socket.disconnect;
     yield* ben.socket.disconnect;
+  }).pipe(Effect.provide(FetchHttpClient.layer)),
+  { timeout: 60_000 }
+);
+
+const Signals = RoomSignalSchema.cases;
+
+const sendSignal = (socket: PokerSocket, signal: RoomSignal) =>
+  socket.send(pokerCodec.client.cases.Signal.make({ signal }));
+
+const peek = (socket: PokerSocket, looking: boolean) =>
+  sendSignal(socket, Signals.Peeking.make({ looking }));
+
+const react = (socket: PokerSocket, reaction: Reaction) =>
+  sendSignal(socket, Signals.Reaction.make({ reaction }));
+
+const reactionFrom =
+  (from: PlayerId, reaction: Reaction) =>
+  (
+    message: PokerServerMessage
+  ): message is typeof pokerCodec.server.cases.Signal.Type =>
+    guards.Signal(message) &&
+    message.from === from &&
+    RoomSignalSchema.guards.Reaction(message.signal) &&
+    message.signal.reaction === reaction;
+
+const awaitReaction = (
+  sockets: readonly PokerSocket[],
+  from: PlayerId,
+  reaction: Reaction
+) =>
+  pipe(
+    sockets,
+    Effect.forEach((socket) =>
+      awaitArrival(socket, `${reaction} relayed`, reactionFrom(from, reaction))
+    )
+  );
+
+const signalsSeen = (
+  socket: PokerSocket,
+  names: ReadonlyMap<PlayerId, string>
+) =>
+  socket.arrivals.flatMap(({ message }) =>
+    guards.Signal(message)
+      ? [
+          `${names.get(message.from) ?? message.from} ${RoomSignalSchema.match(
+            message.signal,
+            {
+              Peeking: ({ looking }) => (looking ? "peeks" : "stops peeking"),
+              Reaction: ({ reaction }) => reaction,
+            }
+          )}`,
+        ]
+      : []
+  );
+
+test(
+  "the production Worker relays a peek only from a seat still holding cards while peeks are shown, and a reaction from any member but one who has left",
+  Effect.gen(function* pokerSignals() {
+    const { url } = yield* deployed;
+    const base = yield* Effect.fromNullishOr(url).pipe(Effect.orDie);
+
+    const anaPass = yield* createPokerRoom(base, {
+      avatar: "fox",
+      name: "Ana",
+    });
+
+    const guests = yield* pipe(
+      ["Ben", "Cy", "Dee"],
+      Effect.forEach((name) =>
+        joinPokerRoom(base, anaPass.code, { avatar: "owl", name })
+      )
+    );
+
+    const players = yield* pipe(
+      [anaPass, ...guests],
+      Effect.forEach((pass, index) =>
+        greet(base, pass, ["ana", "ben", "cy", "dee"][index] ?? "guest").pipe(
+          Effect.map(({ socket, welcome }) => ({ pass, socket, welcome }))
+        )
+      )
+    );
+
+    const [ana, ben, cy, dee] = players;
+
+    if (
+      ana === undefined ||
+      ben === undefined ||
+      cy === undefined ||
+      dee === undefined
+    ) {
+      return;
+    }
+
+    const names = new Map([
+      [ana.pass.player, "Ana"],
+      [ben.pass.player, "Ben"],
+      [cy.pass.player, "Cy"],
+      [dee.pass.player, "Dee"],
+    ]);
+
+    const seated = [
+      { player: ana, seat: 0 },
+      { player: ben, seat: 2 },
+      { player: dee, seat: 4 },
+    ];
+
+    for (const { player, seat } of seated) {
+      yield* ask(
+        player.socket,
+        `sit-${seat}`,
+        Commands.RequestSeat.make({
+          buyIn: ChipAmountSchema.make(100),
+          seat: SeatIndexSchema.make(seat),
+        })
+      );
+    }
+
+    const chosen = RoomViews.$is("Open")(ana.welcome.view)
+      ? Option.some(ana.welcome.view.settings)
+      : Option.none();
+
+    for (const settings of Option.toArray(chosen)) {
+      yield* ask(
+        ana.socket,
+        "plain",
+        Commands.ChangeSettings.make({
+          settings: { ...settings, shuffle: "Plain" },
+        })
+      );
+    }
+
+    yield* ask(ana.socket, "start", Commands.StartGame.make({}));
+
+    const deal = yield* awaitArrival(ana.socket, "the deal", isDeal);
+
+    const toAct = RoomViews.$is("Open")(deal.view)
+      ? deal.view.hand.pipe(Option.flatMap(({ toAct: seat }) => seat))
+      : Option.none();
+
+    const folder =
+      seated.find(({ seat }) => Option.contains(toAct, seat))?.player ?? ana;
+
+    const holder =
+      seated.find(({ player }) => player !== folder)?.player ?? ben;
+
+    const others = (sender: typeof ana) =>
+      players.filter((player) => player !== sender).map(({ socket }) => socket);
+
+    yield* peek(cy.socket, true);
+    yield* react(cy.socket, "Clap");
+    yield* awaitReaction(others(cy), cy.pass.player, "Clap");
+
+    yield* ask(
+      folder.socket,
+      "fold",
+      Commands.Act.make({ action: Actions.Fold() })
+    );
+    yield* peek(folder.socket, true);
+    yield* react(folder.socket, "Wow");
+    yield* awaitReaction(others(folder), folder.pass.player, "Wow");
+
+    yield* peek(holder.socket, true);
+    yield* peek(holder.socket, false);
+    yield* react(holder.socket, "Laugh");
+    yield* awaitReaction(others(holder), holder.pass.player, "Laugh");
+
+    for (const settings of Option.toArray(chosen)) {
+      yield* ask(
+        ana.socket,
+        "hide peeks",
+        Commands.ChangeSettings.make({
+          settings: { ...settings, peeking: false, shuffle: "Plain" },
+        })
+      );
+    }
+
+    yield* peek(holder.socket, true);
+    yield* react(holder.socket, "Fire");
+    yield* awaitReaction(others(holder), holder.pass.player, "Fire");
+
+    yield* ask(cy.socket, "leave", Commands.LeaveRoom.make({}));
+    yield* react(cy.socket, "Cry");
+    yield* ask(cy.socket, "after leaving", Commands.SitIn.make({}));
+    yield* react(ana.socket, "Cry");
+    yield* awaitReaction(others(ana), ana.pass.player, "Cry");
+
+    const relayed = [
+      ["Cy", "Cy Clap"],
+      [names.get(folder.pass.player), `${names.get(folder.pass.player)} Wow`],
+      [names.get(holder.pass.player), `${names.get(holder.pass.player)} peeks`],
+      [
+        names.get(holder.pass.player),
+        `${names.get(holder.pass.player)} stops peeking`,
+      ],
+      [names.get(holder.pass.player), `${names.get(holder.pass.player)} Laugh`],
+      [names.get(holder.pass.player), `${names.get(holder.pass.player)} Fire`],
+      ["Ana", "Ana Cry"],
+    ];
+
+    expect(Option.isSome(toAct)).toBe(true);
+    expect(folder).not.toBe(holder);
+
+    for (const { pass, socket } of players) {
+      expect(signalsSeen(socket, names)).toEqual(
+        relayed.flatMap(([sender, seen]) =>
+          sender === names.get(pass.player) ? [] : [seen]
+        )
+      );
+      expect(socket.problems).toEqual([]);
+    }
+
+    for (const { socket } of players) {
+      yield* socket.disconnect;
+    }
   }).pipe(Effect.provide(FetchHttpClient.layer)),
   { timeout: 60_000 }
 );

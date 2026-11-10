@@ -14,6 +14,7 @@ import {
   MemberCommandSchema,
   OpenRequestSchema,
   RoomRejectionSchema,
+  RoomSignalSchema,
   RoomViewSchema,
   RoomViews,
   SeenEventSchema,
@@ -21,6 +22,7 @@ import {
 import type {
   MemberCommand,
   RoomRejection,
+  RoomSignal,
   RoomView,
   SeenEvent,
 } from "@nostakes/room";
@@ -44,12 +46,14 @@ interface SmokeTypes {
   readonly Event: SeenEvent;
   readonly View: RoomView;
   readonly Rejection: RoomRejection;
+  readonly Signal: RoomSignal;
 }
 
 const schemas: ClientSchemas<SmokeTypes> = {
   command: Schema.toCodecJson(MemberCommandSchema),
   event: Schema.toCodecJson(SeenEventSchema),
   rejection: Schema.toCodecJson(RoomRejectionSchema),
+  signal: Schema.toCodecJson(RoomSignalSchema),
   view: Schema.toCodecJson(RoomViewSchema),
 };
 

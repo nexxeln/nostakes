@@ -11,6 +11,7 @@ import {
   closingFrame,
   PING_FRAME,
   PONG_FRAME,
+  PlayerIdSchema,
   PROTOCOL_VERSION,
   ROOM_CODE_ALPHABET,
   RoomCodeSchema,
@@ -37,17 +38,22 @@ const SampleView = Schema.Struct({
 
 const SampleRejection = Schema.Struct({ reason: Schema.String });
 
+const SampleSignal = Schema.TaggedUnion({
+  Wave: { hand: Schema.Literals(["Left", "Right"]) },
+});
+
 const schemas = {
   event: SampleEvent,
   rejection: SampleRejection,
+  signal: SampleSignal,
   view: SampleView,
 };
 
-const ClientMessages = clientMessage(SampleCommand);
+const ClientMessages = clientMessage(SampleCommand, SampleSignal);
 
 const ServerMessages = serverMessage(schemas);
 
-const ClientFrames = clientFrame(SampleCommand);
+const ClientFrames = clientFrame(SampleCommand, SampleSignal);
 
 const ServerFrames = serverFrame(schemas);
 
@@ -67,10 +73,14 @@ describe("frames", () => {
   );
 
   it.prop(
-    "every command and ping frame survives a trip through JSON",
+    "every command, ping, and signal frame survives a trip through JSON",
     {
       message: Arbitrary.schema(
-        Schema.Union([ClientMessages.cases.Command, ClientMessages.cases.Ping])
+        Schema.Union([
+          ClientMessages.cases.Command,
+          ClientMessages.cases.Ping,
+          ClientMessages.cases.Signal,
+        ])
       ),
     },
     ({ message }) => {
@@ -106,6 +116,28 @@ describe("frames", () => {
       )
     ).toBe(
       `{"_tag":"Hello","after":null,"protocol":${PROTOCOL_VERSION},"token":"${tokenText}"}`
+    );
+  });
+
+  it("carries a signal from a client with no id and no sequence number, and relays it with only its sender added", () => {
+    const sent = Schema.decodeSync(ClientFrames)(
+      '{"_tag":"Signal","signal":{"_tag":"Wave","hand":"Left"}}'
+    );
+
+    expect(sent).toStrictEqual(
+      ClientMessages.cases.Signal.make({
+        signal: SampleSignal.cases.Wave.make({ hand: "Left" }),
+      })
+    );
+    expect(
+      Schema.encodeSync(ServerFrames)(
+        ServerMessages.cases.Signal.make({
+          from: PlayerIdSchema.make("aaaaaaaaaaaaaaaa"),
+          signal: SampleSignal.cases.Wave.make({ hand: "Right" }),
+        })
+      )
+    ).toBe(
+      '{"_tag":"Signal","from":"aaaaaaaaaaaaaaaa","signal":{"_tag":"Wave","hand":"Right"}}'
     );
   });
 
@@ -145,13 +177,16 @@ describe("frames", () => {
     }
   });
 
-  it("refuses frames that are not JSON, have an unknown tag, or a bad command", () => {
+  it("refuses frames that are not JSON, have an unknown tag, a bad command, or a signal the room does not know", () => {
     for (const text of [
       "not json",
       '{"_tag":"Shout"}',
       '{"_tag":"Command","command":{"_tag":"Bump"},"id":"a"}',
       '{"_tag":"Command","command":{"_tag":"Bump","by":1},"id":""}',
       `{"_tag":"Hello","after":-1,"token":"${tokenText}"}`,
+      '{"_tag":"Signal","signal":{"_tag":"Wave","hand":"Both"}}',
+      '{"_tag":"Signal","signal":{"_tag":"Shout"}}',
+      '{"_tag":"Signal"}',
     ]) {
       expect(Result.isFailure(Schema.decodeResult(ClientFrames)(text))).toBe(
         true

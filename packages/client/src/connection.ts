@@ -39,6 +39,11 @@ const fromServer = <T extends RoomTypes>(
           result,
           type: "Reply",
         }),
+        Signal: ({ from, signal }): ConnectionEvent<T> => ({
+          from,
+          signal,
+          type: "Signal",
+        }),
         Welcome: ({ build, catchUp, seq, view, you }): ConnectionEvent<T> => ({
           build,
           catchUp,
@@ -60,6 +65,7 @@ const answerOwedFor = <T extends RoomTypes>(
     ],
     Hello: (): readonly ConnectionEvent<T>[] => [],
     Ping: (): readonly ConnectionEvent<T>[] => [{ type: "PingSent" }],
+    Signal: (): readonly ConnectionEvent<T>[] => [],
   });
 
 const writeFrames = <T extends RoomTypes>(

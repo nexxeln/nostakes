@@ -104,6 +104,15 @@ export const ToyDueSchema = Schema.TaggedUnion({
 
 export type ToyDue = typeof ToyDueSchema.Type;
 
+export const ToySignalSchema = Schema.TaggedUnion({
+  Point: {},
+  Wave: {
+    count: Schema.Int.check(Schema.isBetween({ maximum: 99, minimum: 1 })),
+  },
+});
+
+export type ToySignal = typeof ToySignalSchema.Type;
+
 const MemberViewSchema = Schema.Struct({
   avatar: Avatar,
   name: Name,
@@ -160,6 +169,7 @@ export interface ToyTypes {
   readonly Due: ToyDue;
   readonly OpenRequest: Profile;
   readonly JoinRequest: Profile;
+  readonly Signal: ToySignal;
 }
 
 const emptyRoom: ToyState = {
@@ -452,6 +462,13 @@ const invariants = (state: ToyState): readonly string[] => [
   ),
 ];
 
+const signalAllowed = (state: ToyState, sender: PlayerId, signal: ToySignal) =>
+  isMember(state, sender) &&
+  ToySignalSchema.match(signal, {
+    Point: () => Option.exists(state.turn, ({ player }) => player === sender),
+    Wave: () => true,
+  });
+
 export const toyRoom: HostedRoom<ToyTypes> = {
   audienceOf,
   beaconRoundFor: () => Option.none(),
@@ -483,6 +500,7 @@ export const toyRoom: HostedRoom<ToyTypes> = {
     openRequest: ProfileSchema,
     redacted: ToyRedactedSchema,
     rejection: ToyRefusal,
+    signal: ToySignalSchema,
     view: ToyViewSchema,
   },
   serverCommand: (due, at, entropy) =>
@@ -494,6 +512,7 @@ export const toyRoom: HostedRoom<ToyTypes> = {
           ToyServerCommandSchema.cases.ExpireTurn.make({ deadline }),
       }),
     }),
+  signalAllowed,
   stamp: (by, at, command) =>
     ToyCommandSchema.cases.Member.make({ at, by, command }),
   viewFor,

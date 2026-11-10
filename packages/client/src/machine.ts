@@ -210,6 +210,7 @@ export const roomClientMachine = <T extends RoomTypes>(
         Pong: NoPayload,
         Presence: types<ConnectionPayloads<T>["Presence"]>(),
         Reply: types<ConnectionPayloads<T>["Reply"]>(),
+        Signal: types<ConnectionPayloads<T>["Signal"]>(),
         Start: NoPayload,
         Stop: NoPayload,
         Wake: NoPayload,

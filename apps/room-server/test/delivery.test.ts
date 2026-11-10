@@ -1,8 +1,13 @@
 import * as Cloudflare from "@alchemy.run/cloudflare";
 import * as Test from "@alchemy.run/test/Vitest";
 import { expect } from "@effect/vitest";
-import type { RoomPass } from "@nostakes/protocol";
-import { SeqSchema, FRAME_BURST, FRAMES_PER_SECOND } from "@nostakes/protocol";
+import type { PlayerId, RoomPass } from "@nostakes/protocol";
+import {
+  SeqSchema,
+  FRAME_BURST,
+  FRAMES_PER_SECOND,
+  SIGNAL_BURST,
+} from "@nostakes/protocol";
 import { Effect, Option, Redacted, Schema, pipe } from "effect";
 import * as FetchHttpClient from "effect/http/FetchHttpClient";
 
@@ -11,18 +16,24 @@ import {
   codec,
   command,
   isEvents,
+  isPresence,
+  isSignal,
   joinAs,
   lastSeq,
+  describeCatchUp as describeCatchUpOf,
   missedIn,
   openRoomWith,
   replyTo,
+  signal,
 } from "./fixtures/room-client.js";
 import type { RoomClient, ToyServerMessage } from "./fixtures/room-client.js";
 import { inspect, ToyStack } from "./fixtures/stack.js";
 import {
   ToyMemberCommandSchema,
   ToyRedactedSchema,
+  ToySignalSchema,
 } from "./fixtures/toy-room.js";
+import type { ToySignal } from "./fixtures/toy-room.js";
 
 const { afterAll, beforeAll, deploy, destroy, test } = Test.make({
   dev: true,
@@ -377,4 +388,229 @@ test(
     }
   }).pipe(Effect.provide(FetchHttpClient.layer)),
   { timeout: 60_000 }
+);
+
+const Signals = ToySignalSchema.cases;
+
+const wave = (count: number) => signal(Signals.Wave.make({ count }));
+
+const point = signal(Signals.Point.make({}));
+
+const describeSignal = (
+  names: ReadonlyMap<PlayerId, string>,
+  from: PlayerId,
+  sent: ToySignal
+) =>
+  `${names.get(from) ?? from} ${ToySignalSchema.match(sent, {
+    Point: () => "points",
+    Wave: ({ count }) => `waves ${count}`,
+  })}`;
+
+const signalsSeenBy = (
+  client: RoomClient,
+  names: ReadonlyMap<PlayerId, string>
+) =>
+  client.messages.flatMap((message) =>
+    isSignal(message)
+      ? [describeSignal(names, message.from, message.signal)]
+      : []
+  );
+
+const signalArrived =
+  (from: PlayerId, count: number) =>
+  (
+    message: ToyServerMessage
+  ): message is typeof codec.server.cases.Signal.Type =>
+    isSignal(message) &&
+    message.from === from &&
+    ToySignalSchema.guards.Wave(message.signal) &&
+    message.signal.count === count;
+
+const awaitSignal = (
+  clients: readonly RoomClient[],
+  from: PlayerId,
+  count: number
+) =>
+  pipe(
+    clients,
+    Effect.forEach((client) =>
+      client.next(`wave ${count}`, signalArrived(from, count))
+    )
+  );
+
+test(
+  "signals: a wave reaches every other socket in its room and never its sender or another room, is not stored, and is not replayed to a socket that reconnects",
+  Effect.gen(function* relayed() {
+    const base = yield* baseUrl;
+    const passes = yield* openRoomWith(base, ["Ana", "Ben", "Cy"]);
+    const elsewhere = yield* openRoomWith(base, ["Dee", "Eli"]);
+    const [anaPass, benPass, cyPass] = passes;
+    const [deePass, eliPass] = elsewhere;
+
+    if (
+      anaPass === undefined ||
+      benPass === undefined ||
+      cyPass === undefined ||
+      deePass === undefined ||
+      eliPass === undefined
+    ) {
+      return;
+    }
+
+    const names = new Map(
+      [anaPass, benPass, cyPass, deePass, eliPass].map(
+        (pass, index) =>
+          [
+            pass.player,
+            ["Ana", "Ben", "Cy", "Dee", "Eli"][index] ?? "",
+          ] as const
+      )
+    );
+
+    const ana = yield* joinAs(base, anaPass, "ana");
+    const ben = yield* joinAs(base, benPass, "ben");
+    const cy = yield* joinAs(base, cyPass, "cy");
+    const dee = yield* joinAs(base, deePass, "dee");
+    const eli = yield* joinAs(base, eliPass, "eli");
+    const before = yield* inspect(base, anaPass.code);
+
+    yield* ana.client.send(wave(1));
+    yield* awaitSignal([ben.client, cy.client], anaPass.player, 1);
+
+    yield* eli.client.send(wave(2));
+    yield* awaitSignal([dee.client], eliPass.player, 2);
+
+    yield* ana.client.send(
+      command("after-wave", Commands.Increment.make({ times: 1 }))
+    );
+
+    const increment = yield* ana.client.next(
+      "reply after the wave",
+      replyTo("after-wave")
+    );
+
+    const benSeen = codec.reply.guards.Accepted(increment.result)
+      ? increment.result.seq
+      : 0;
+
+    yield* ben.client.next(
+      "the increment",
+      (message): message is typeof codec.server.cases.Events.Type =>
+        isEvents(message) && message.to === benSeen
+    );
+    yield* ben.client.disconnect;
+    yield* ana.client.next(
+      "presence without Ben",
+      (message): message is typeof codec.server.cases.Presence.Type =>
+        isPresence(message) && !message.connected.includes(benPass.player)
+    );
+    yield* ana.client.send(wave(3));
+    yield* awaitSignal([cy.client], anaPass.player, 3);
+
+    const benBack = yield* joinAs(
+      base,
+      benPass,
+      "ben back",
+      Option.some(SeqSchema.make(benSeen))
+    );
+
+    yield* cy.client.send(wave(4));
+    yield* awaitSignal([ana.client, benBack.client], cyPass.player, 4);
+
+    const after = yield* inspect(base, anaPass.code);
+
+    expect(signalsSeenBy(ana.client, names)).toEqual(["Cy waves 4"]);
+    expect(signalsSeenBy(ben.client, names)).toEqual(["Ana waves 1"]);
+    expect(signalsSeenBy(benBack.client, names)).toEqual(["Cy waves 4"]);
+    expect(signalsSeenBy(cy.client, names)).toEqual([
+      "Ana waves 1",
+      "Ana waves 3",
+    ]);
+    expect(signalsSeenBy(dee.client, names)).toEqual(["Eli waves 2"]);
+    expect(signalsSeenBy(eli.client, names)).toEqual([]);
+    expect(describeCatchUpOf(benBack.welcome)).toBe("UpToDate");
+    expect(after.headSeq).toBe(before.headSeq + 1);
+    expect(after.events.filter((event) => event.includes("Wave"))).toEqual([]);
+    expect(after.replies).toBe(before.replies + 1);
+  }).pipe(Effect.provide(FetchHttpClient.layer))
+);
+
+test(
+  "signal limit: a burst past the limit loses its last waves and keeps its socket, and a point from a member without the turn is dropped",
+  Effect.gen(function* limited() {
+    const base = yield* baseUrl;
+
+    const [anaPass, benPass, cyPass] = yield* openRoomWith(base, [
+      "Ana",
+      "Ben",
+      "Cy",
+    ]);
+
+    if (
+      anaPass === undefined ||
+      benPass === undefined ||
+      cyPass === undefined
+    ) {
+      return;
+    }
+
+    const names = new Map([
+      [anaPass.player, "Ana"],
+      [benPass.player, "Ben"],
+      [cyPass.player, "Cy"],
+    ]);
+
+    const ana = yield* joinAs(base, anaPass, "ana");
+    const ben = yield* joinAs(base, benPass, "ben");
+    const cy = yield* joinAs(base, cyPass, "cy");
+    const burst = SIGNAL_BURST + 2;
+
+    expect(burst + 2).toBeLessThanOrEqual(FRAME_BURST);
+
+    for (let count = 1; count <= burst; count += 1) {
+      yield* ana.client.send(wave(count));
+    }
+
+    yield* ana.client.send(
+      command("after-burst", Commands.Increment.make({ times: 1 }))
+    );
+
+    const reply = yield* ana.client.next(
+      "reply after the burst",
+      replyTo("after-burst")
+    );
+
+    yield* ben.client.next("the increment after the burst", isEvents);
+
+    const relayedWaves = signalsSeenBy(ben.client, names);
+
+    yield* cy.client.send(
+      command("turn", Commands.StartTurn.make({ ms: 60_000 }))
+    );
+    yield* cy.client.next("reply to the turn", replyTo("turn"));
+    yield* ben.client.send(point);
+    yield* ben.client.send(wave(9));
+    yield* cy.client.send(point);
+    yield* cy.client.send(wave(10));
+    yield* awaitSignal([ana.client], benPass.player, 9);
+    yield* awaitSignal([ana.client], cyPass.player, 10);
+
+    const seenFrom = (name: string) =>
+      signalsSeenBy(ana.client, names).filter((seen) =>
+        seen.startsWith(`${name} `)
+      );
+
+    expect(codec.reply.guards.Accepted(reply.result)).toBe(true);
+    expect(yield* ana.client.closed).toEqual(Option.none());
+    expect(relayedWaves.length).toBeGreaterThanOrEqual(SIGNAL_BURST);
+    expect(relayedWaves.length).toBeLessThan(burst);
+    expect(relayedWaves).toEqual(
+      Array.from(
+        { length: relayedWaves.length },
+        (_, index) => `Ana waves ${index + 1}`
+      )
+    );
+    expect(seenFrom("Ben")).toEqual(["Ben waves 9"]);
+    expect(seenFrom("Cy")).toEqual(["Cy points", "Cy waves 10"]);
+  }).pipe(Effect.provide(FetchHttpClient.layer))
 );

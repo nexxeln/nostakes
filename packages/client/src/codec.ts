@@ -13,6 +13,7 @@ export interface RoomTypes {
   readonly Event: unknown;
   readonly View: unknown;
   readonly Rejection: unknown;
+  readonly Signal: unknown;
 }
 
 export interface ClientSchemas<T extends RoomTypes> {
@@ -20,6 +21,7 @@ export interface ClientSchemas<T extends RoomTypes> {
   readonly event: WireCodec<T["Event"]>;
   readonly view: WireCodec<T["View"]>;
   readonly rejection: WireCodec<T["Rejection"]>;
+  readonly signal: WireCodec<T["Signal"]>;
 }
 
 const utf8 = new TextEncoder();
@@ -30,7 +32,7 @@ export const fitsInFrame = (text: string) =>
   frameBytes(text) <= MAX_FRAME_BYTES;
 
 export const clientCodec = <T extends RoomTypes>(schemas: ClientSchemas<T>) => {
-  const client = clientMessage(schemas.command);
+  const client = clientMessage(schemas.command, schemas.signal);
   const server = serverMessage(schemas);
 
   return {

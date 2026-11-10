@@ -78,7 +78,13 @@ export const catchUp = <Event extends WireSchema>(event: Event) =>
     UpToDate: {},
   });
 
-export const clientMessage = <Command extends WireSchema>(command: Command) =>
+export const clientMessage = <
+  Command extends WireSchema,
+  Signal extends WireSchema,
+>(
+  command: Command,
+  signal: Signal
+) =>
   Schema.TaggedUnion({
     Command: { command, id: CommandIdSchema },
     Hello: {
@@ -87,27 +93,36 @@ export const clientMessage = <Command extends WireSchema>(command: Command) =>
       token: TokenSchema,
     },
     Ping: {},
+    Signal: { signal },
   });
 
-export const clientFrame = <Command extends WireSchema>(command: Command) =>
-  Schema.fromJsonString(clientMessage(command));
+export const clientFrame = <
+  Command extends WireSchema,
+  Signal extends WireSchema,
+>(
+  command: Command,
+  signal: Signal
+) => Schema.fromJsonString(clientMessage(command, signal));
 
 export interface ServerSchemas<
   Event extends WireSchema,
   View extends WireSchema,
   Rejection extends WireSchema,
+  Signal extends WireSchema,
 > {
   readonly event: Event;
   readonly view: View;
   readonly rejection: Rejection;
+  readonly signal: Signal;
 }
 
 export const serverMessage = <
   Event extends WireSchema,
   View extends WireSchema,
   Rejection extends WireSchema,
+  Signal extends WireSchema,
 >(
-  schemas: ServerSchemas<Event, View, Rejection>
+  schemas: ServerSchemas<Event, View, Rejection, Signal>
 ) =>
   Schema.TaggedUnion({
     Closing: { reason: CloseReasonSchema },
@@ -120,6 +135,7 @@ export const serverMessage = <
     Pong: {},
     Presence: { connected: Schema.Array(PlayerIdSchema) },
     Reply: { id: CommandIdSchema, result: replyResult(schemas.rejection) },
+    Signal: { from: PlayerIdSchema, signal: schemas.signal },
     Welcome: {
       build: welcomeBuild,
       catchUp: catchUp(schemas.event),
@@ -133,6 +149,7 @@ export const serverFrame = <
   Event extends WireSchema,
   View extends WireSchema,
   Rejection extends WireSchema,
+  Signal extends WireSchema,
 >(
-  schemas: ServerSchemas<Event, View, Rejection>
+  schemas: ServerSchemas<Event, View, Rejection, Signal>
 ) => Schema.fromJsonString(serverMessage(schemas));

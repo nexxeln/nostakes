@@ -64,7 +64,7 @@ const digestOf = (schema: Schema.Top) =>
 const { schemas } = pokerRoom;
 
 const wire = {
-  clientFrame: clientMessage(schemas.memberCommand),
+  clientFrame: clientMessage(schemas.memberCommand, schemas.signal),
   command: schemas.memberCommand,
   event: schemas.redacted,
   httpRefusal: HttpRefusalSchema,
@@ -75,6 +75,7 @@ const wire = {
   serverFrame: serverMessage({
     event: schemas.redacted,
     rejection: schemas.rejection,
+    signal: schemas.signal,
     view: schemas.view,
   }),
   view: schemas.view,

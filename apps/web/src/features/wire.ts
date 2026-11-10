@@ -2,12 +2,14 @@ import type { ClientSchemas } from "@nostakes/client";
 import {
   MemberCommandSchema,
   RoomRejectionSchema,
+  RoomSignalSchema,
   RoomViewSchema,
   SeenEventSchema,
 } from "@nostakes/room";
 import type {
   MemberCommand,
   RoomRejection,
+  RoomSignal,
   RoomView,
   SeenEvent,
 } from "@nostakes/room";
@@ -18,12 +20,14 @@ export interface PokerClientTypes {
   readonly Event: SeenEvent;
   readonly View: RoomView;
   readonly Rejection: RoomRejection;
+  readonly Signal: RoomSignal;
 }
 
 export const pokerClientSchemas: ClientSchemas<PokerClientTypes> = {
   command: Schema.toCodecJson(MemberCommandSchema),
   event: Schema.toCodecJson(SeenEventSchema),
   rejection: Schema.toCodecJson(RoomRejectionSchema),
+  signal: Schema.toCodecJson(RoomSignalSchema),
   view: Schema.toCodecJson(RoomViewSchema),
 };
 

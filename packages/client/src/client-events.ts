@@ -100,6 +100,7 @@ export interface ConnectionPayloads<T extends RoomTypes> {
   };
   readonly Reply: { readonly id: CommandId; readonly result: ReplyResult<T> };
   readonly Presence: { readonly connected: readonly PlayerId[] };
+  readonly Signal: { readonly from: PlayerId; readonly signal: T["Signal"] };
   readonly Closing: { readonly reason: CloseReason };
   readonly Closed: { readonly code: number; readonly reason: string };
 }

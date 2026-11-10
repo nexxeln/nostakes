@@ -21,6 +21,7 @@ import { ToyRefusal } from "./fixtures/toy-refusal.js";
 import {
   ToyMemberCommandSchema,
   ToyRedactedSchema,
+  ToySignalSchema,
   ToyViewSchema,
 } from "./fixtures/toy-room.js";
 import { TEST_ORIGIN } from "./fixtures/toy-worker.js";
@@ -30,12 +31,14 @@ export interface ToyClientTypes {
   readonly Event: typeof ToyRedactedSchema.Type;
   readonly View: typeof ToyViewSchema.Type;
   readonly Rejection: ToyRefusal;
+  readonly Signal: typeof ToySignalSchema.Type;
 }
 
 export const toyClientSchemas: ClientSchemas<ToyClientTypes> = {
   command: ToyMemberCommandSchema,
   event: ToyRedactedSchema,
   rejection: ToyRefusal,
+  signal: ToySignalSchema,
   view: ToyViewSchema,
 };
 

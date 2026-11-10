@@ -13,7 +13,7 @@ import {
   TokenTextSchema,
   versionMismatch,
 } from "@nostakes/protocol";
-import type { CloseReason, PlainRefusal } from "@nostakes/protocol";
+import type { CloseReason, PlainRefusal, PlayerId } from "@nostakes/protocol";
 import {
   Array as Arr,
   Clock,
@@ -34,8 +34,14 @@ import * as HttpServerResponse from "effect/http/HttpServerResponse";
 
 import { Beacon } from "./beacon.js";
 import { Entropy, liveEntropy } from "./entropy.js";
-import { fullBucket, oversized, spendFrame } from "./frame-limits.js";
-import type { FrameBucket } from "./frame-limits.js";
+import {
+  FRAME_ALLOWANCE,
+  SIGNAL_ALLOWANCE,
+  fullBucket,
+  oversized,
+  spendToken,
+} from "./frame-limits.js";
+import type { Bucket } from "./frame-limits.js";
 import type { HostedRoom, RoomTypes } from "./hosted-room.js";
 import { refuseSocket } from "./refused-socket.js";
 import {
@@ -153,7 +159,8 @@ export const roomObject = <T extends RoomTypes>(
         const instance = Hex.encode(yield* liveBytes(8));
         const served = yield* servedBuildOrNone;
         const alarmRuns: { at: number; outcome: string }[] = [];
-        const buckets = new WeakMap<cf.WebSocket, FrameBucket>();
+        const buckets = new WeakMap<cf.WebSocket, Bucket>();
+        const signalBuckets = new Map<PlayerId, Bucket>();
 
         const hosted = () =>
           loadRoom(core, storage).pipe(
@@ -186,7 +193,7 @@ export const roomObject = <T extends RoomTypes>(
 
         const liveSockets = (except: Option.Option<cf.WebSocket>) =>
           sockets().flatMap((socket) =>
-            Option.contains(except, socket)
+            Option.exists(except, (excluded) => excluded === socket)
               ? []
               : attachmentOf(socket).pipe(
                   Option.filter(AttachmentSchema.guards.Live),
@@ -201,7 +208,7 @@ export const roomObject = <T extends RoomTypes>(
 
         const pendingSince = (except: Option.Option<cf.WebSocket>) =>
           sockets().flatMap((socket) =>
-            Option.contains(except, socket)
+            Option.exists(except, (excluded) => excluded === socket)
               ? []
               : attachmentOf(socket).pipe(
                   Option.filter(AttachmentSchema.guards.Pending),
@@ -381,7 +388,11 @@ export const roomObject = <T extends RoomTypes>(
             return tooLarge;
           }
 
-          const spent = spendFrame(buckets.get(socket) ?? fullBucket(at), at);
+          const spent = spendToken(
+            FRAME_ALLOWANCE,
+            buckets.get(socket) ?? fullBucket(FRAME_ALLOWANCE, at),
+            at
+          );
 
           if (Option.isNone(spent)) {
             return Option.some("TooManyFrames");
@@ -392,6 +403,46 @@ export const roomObject = <T extends RoomTypes>(
           return frame instanceof ArrayBuffer
             ? Option.some("ProtocolViolation")
             : Option.none();
+        };
+
+        const signalAllowance = (player: PlayerId, at: number) => {
+          const spent = spendToken(
+            SIGNAL_ALLOWANCE,
+            signalBuckets.get(player) ?? fullBucket(SIGNAL_ALLOWANCE, at),
+            at
+          );
+
+          for (const bucket of Option.toArray(spent)) {
+            signalBuckets.set(player, bucket);
+          }
+
+          return Option.isSome(spent);
+        };
+
+        const relaySignal = (
+          room: RoomHost<T>,
+          from: cf.WebSocket,
+          sender: PlayerId,
+          signal: T["Signal"],
+          at: number
+        ) => {
+          const { halted, state: current } = room.snapshot();
+
+          if (
+            Option.isSome(halted) ||
+            !signalAllowance(sender, at) ||
+            !core.signalAllowed(current, sender, signal)
+          ) {
+            return;
+          }
+
+          const relayed = codecOf(room).encodeFrame(
+            codecOf(room).server.cases.Signal.make({ from: sender, signal })
+          );
+
+          for (const { socket } of liveSockets(Option.some(from))) {
+            send(socket, relayed);
+          }
         };
 
         const receive = (socket: cf.WebSocket, frame: string | ArrayBuffer) =>
@@ -513,6 +564,14 @@ export const roomObject = <T extends RoomTypes>(
                     socket,
                     codec.encodeFrame(codec.server.cases.Pong.make({}))
                   );
+                }),
+              Signal: ({ signal }) =>
+                Effect.sync(() => {
+                  for (const live of Option.toArray(
+                    attachment.pipe(Option.filter(AttachmentSchema.guards.Live))
+                  )) {
+                    relaySignal(room, socket, live.player, signal, at);
+                  }
                 }),
             });
           });

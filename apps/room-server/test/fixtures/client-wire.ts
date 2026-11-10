@@ -64,6 +64,7 @@ const describeMessage = (message: PokerServerMessage) =>
     Pong: () => "Pong",
     Presence: ({ connected }) => `Presence ${connected.length}`,
     Reply: ({ id, result }) => `Reply ${id} ${result._tag}`,
+    Signal: ({ signal }) => `Signal ${signal._tag}`,
     Welcome: ({ catchUp, seq }) =>
       `Welcome ${seq} ${pokerCodec.catchUp.match(catchUp, {
         Missed: ({ events, from }) => `missed ${from}+${events.length}`,
@@ -92,6 +93,7 @@ const describeSent = (text: string) =>
                 onSome: String,
               })}`,
             Ping: () => "Ping",
+            Signal: ({ signal }) => `Signal ${signal._tag}`,
           }),
       });
 

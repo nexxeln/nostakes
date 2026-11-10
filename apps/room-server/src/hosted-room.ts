@@ -13,6 +13,7 @@ export interface RoomTypes {
   readonly Due: unknown;
   readonly OpenRequest: unknown;
   readonly JoinRequest: unknown;
+  readonly Signal: unknown;
 }
 
 export interface RoomSchemas<T extends RoomTypes> {
@@ -23,6 +24,7 @@ export interface RoomSchemas<T extends RoomTypes> {
   readonly rejection: WireCodec<T["Rejection"]>;
   readonly openRequest: WireCodec<T["OpenRequest"]>;
   readonly joinRequest: WireCodec<T["JoinRequest"]>;
+  readonly signal: WireCodec<T["Signal"]>;
 }
 
 export interface OpenInput<OpenRequest> {
@@ -74,4 +76,9 @@ export interface HostedRoom<T extends RoomTypes> {
     at: number
   ) => T["View"];
   readonly invariants: (state: T["State"]) => readonly string[];
+  readonly signalAllowed: (
+    state: T["State"],
+    sender: PlayerId,
+    signal: T["Signal"]
+  ) => boolean;
 }

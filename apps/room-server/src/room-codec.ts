@@ -14,16 +14,17 @@ export const roomCodec = <T extends RoomTypes>(core: HostedRoom<T>) => {
   const server = serverMessage({
     event: core.schemas.redacted,
     rejection: core.schemas.rejection,
+    signal: core.schemas.signal,
     view: core.schemas.view,
   });
 
-  const client = clientMessage(core.schemas.memberCommand);
+  const client = clientMessage(core.schemas.memberCommand, core.schemas.signal);
 
   return {
     catchUp: server.cases.Welcome.fields.catchUp,
     client,
     decodeClientFrame: Schema.decodeUnknownResult(
-      clientFrame(core.schemas.memberCommand)
+      clientFrame(core.schemas.memberCommand, core.schemas.signal)
     ),
     decodeEvent: Schema.decodeSync(Schema.fromJsonString(core.schemas.event)),
     decodeReply: Schema.decodeSync(Schema.fromJsonString(reply)),

@@ -17,7 +17,12 @@ import type {
 import { MAX_MISSED_EVENTS } from "@nostakes/protocol";
 import type { CommandId, RoomPass } from "@nostakes/protocol";
 import { RoomViews, SeenEvents } from "@nostakes/room";
-import type { RoomRejection, RoomView, SeenEvent } from "@nostakes/room";
+import type {
+  RoomRejection,
+  RoomSignal,
+  RoomView,
+  SeenEvent,
+} from "@nostakes/room";
 import { Duration, Effect, Fiber, Option, Result, Stream } from "effect";
 import type { Scope } from "effect";
 
@@ -43,12 +48,14 @@ export interface PokerClientTypes {
   readonly Event: SeenEvent;
   readonly View: RoomView;
   readonly Rejection: RoomRejection;
+  readonly Signal: RoomSignal;
 }
 
 export const pokerClientSchemas: ClientSchemas<PokerClientTypes> = {
   command: pokerRoom.schemas.memberCommand,
   event: pokerRoom.schemas.redacted,
   rejection: pokerRoom.schemas.rejection,
+  signal: pokerRoom.schemas.signal,
   view: pokerRoom.schemas.view,
 };
 

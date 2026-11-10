@@ -10,6 +10,7 @@ import {
   RoomEvents,
   RoomRejectionSchema,
   RoomSettingsSchema,
+  RoomSignalSchema,
   RoomViewSchema,
   SealedDealSources,
   SeenEventSchema,
@@ -23,6 +24,7 @@ import {
   openRoom,
   redact,
   replay,
+  signalAllowed,
   viewFor,
 } from "@nostakes/room";
 import type {
@@ -35,6 +37,7 @@ import type {
   RoomEvent,
   RoomRejection,
   RoomSettings,
+  RoomSignal,
   RoomState,
   RoomView,
   SeenEvent,
@@ -110,6 +113,7 @@ export interface PokerTypes {
   readonly Due: Deadline;
   readonly OpenRequest: OpenRequest;
   readonly JoinRequest: JoinRequest;
+  readonly Signal: RoomSignal;
 }
 
 export class LogNotOpened extends Schema.TaggedError<
@@ -173,6 +177,7 @@ export const pokerRoomOn = (chain: DrandChain): HostedRoom<PokerTypes> => ({
     openRequest: Schema.toCodecJson(OpenRequestSchema),
     redacted: Schema.toCodecJson(SeenEventSchema),
     rejection: Schema.toCodecJson(RoomRejectionSchema),
+    signal: Schema.toCodecJson(RoomSignalSchema),
     view: Schema.toCodecJson(RoomViewSchema),
   },
   serverCommand: (due, at, entropy, signature) =>
@@ -226,6 +231,7 @@ export const pokerRoomOn = (chain: DrandChain): HostedRoom<PokerTypes> => ({
           deadline: clock.at,
         }),
     }),
+  signalAllowed,
   stamp: (player, at, command) => ({
     ...command,
     at: millis(at),
