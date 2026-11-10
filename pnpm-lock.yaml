@@ -298,6 +298,9 @@ importers:
 
   apps/web:
     dependencies:
+      '@effect/platform-browser':
+        specifier: 4.1.2
+        version: 4.1.2(effect@4.1.2)
       '@nostakes/avatar':
         specifier: workspace:*
         version: link:../../packages/avatar

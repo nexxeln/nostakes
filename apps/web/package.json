@@ -15,6 +15,7 @@
     "verify": "node scripts/two-players.ts"
   },
   "dependencies": {
+    "@effect/platform-browser": "4.1.2",
     "@nostakes/avatar": "workspace:*",
     "@nostakes/client": "workspace:*",
     "@nostakes/engine": "workspace:*",
