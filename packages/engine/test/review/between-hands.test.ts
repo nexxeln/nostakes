@@ -24,6 +24,7 @@ import {
   run,
   runCount,
   seat,
+  shownCards,
   stacksOf,
   startHand,
 } from "../fixtures.js";
@@ -143,7 +144,11 @@ describe("after the hand (rules 26 and 27)", () => {
       })
     ).state;
 
-    const showKing = Commands.ShowCards({ cards: cards("Kh"), seat: seat(0) });
+    const showKing = Commands.ShowCards({
+      cards: shownCards("Kh"),
+      seat: seat(0),
+    });
+
     const hunt = Commands.RabbitHunt({ seat: seat(0) });
 
     expect([
@@ -166,7 +171,7 @@ describe("after the hand (rules 26 and 27)", () => {
     expect(
       rejection(
         nextDeal,
-        Commands.ShowCards({ cards: cards("Ah"), seat: seat(1) })
+        Commands.ShowCards({ cards: shownCards("Ah"), seat: seat(1) })
       )?._tag
     ).toBe("NotInLastHand");
   });
@@ -203,7 +208,7 @@ describe("seating during a hand (rules 3 and 28)", () => {
       Commands.AddChips({ amount: chipCount(5), seat: seat(0) }),
       Commands.ChangeRules({ config: { ...baseConfig, rabbitHunt: true } }),
       Commands.StartHand({ deck, straddles: [] }),
-      Commands.ShowCards({ cards: cards("Kh"), seat: seat(0) }),
+      Commands.ShowCards({ cards: shownCards("Kh"), seat: seat(0) }),
       Commands.ChooseRuns({ runs: runCount(1), seat: seat(1) }),
       Commands.Act({ action: checks, seat: seat(0) }),
     ].map((command) => rejection(folded, command)?._tag);

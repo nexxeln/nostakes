@@ -5,6 +5,12 @@ import { CardSchema, DeckSchema } from "./cards.js";
 import { ChipsSchema, PlayerIdSchema, SeatIndexSchema } from "./primitives.js";
 import { RunCountSchema, TableConfigSchema } from "./rules.js";
 
+export const ShownCardsSchema = Schema.Array(CardSchema)
+  .check(Schema.isMinLength(1), Schema.isMaxLength(2), Schema.isUnique())
+  .pipe(Schema.brand("ShownCards"));
+
+export type ShownCards = typeof ShownCardsSchema.Type;
+
 export const CommandSchema = Schema.TaggedUnion({
   Act: { action: ActionSchema, seat: SeatIndexSchema },
   AddChips: { amount: ChipsSchema, seat: SeatIndexSchema },
@@ -12,14 +18,7 @@ export const CommandSchema = Schema.TaggedUnion({
   ChooseRuns: { runs: RunCountSchema, seat: SeatIndexSchema },
   RabbitHunt: { seat: SeatIndexSchema },
   SetSittingOut: { seat: SeatIndexSchema, sittingOut: Schema.Boolean },
-  ShowCards: {
-    cards: Schema.Array(CardSchema).check(
-      Schema.isMinLength(1),
-      Schema.isMaxLength(2),
-      Schema.isUnique()
-    ),
-    seat: SeatIndexSchema,
-  },
+  ShowCards: { cards: ShownCardsSchema, seat: SeatIndexSchema },
   SitDown: {
     buyIn: ChipsSchema,
     player: PlayerIdSchema,

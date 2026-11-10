@@ -11,6 +11,7 @@ import {
   SeatIndexSchema,
   Seats,
   ShowdownEntries,
+  ShownCardsSchema,
   TableStates,
   decide,
   evolve,
@@ -320,7 +321,9 @@ const afterHand = (
         ? Option.none()
         : Option.some(
             Commands.ShowCards({
-              cards: cards.length > 0 ? cards : hidden.slice(0, 1),
+              cards: ShownCardsSchema.make(
+                cards.length > 0 ? cards : hidden.slice(0, 1)
+              ),
               seat: shower.seat,
             })
           );

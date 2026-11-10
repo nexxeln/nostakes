@@ -11,6 +11,7 @@ import {
   RunCountSchema,
   SeatIndexSchema,
   Seats,
+  ShownCardsSchema,
   TableStates,
   Events,
   decide,
@@ -129,6 +130,8 @@ export const occupiedTable = (
   ).state;
 
 const decodeDeck = Schema.decodeSync(DeckSchema);
+
+export const shownCards = (text: string) => ShownCardsSchema.make(cards(text));
 
 export const deckStartingWith = (text: string) => {
   const top = cards(text);

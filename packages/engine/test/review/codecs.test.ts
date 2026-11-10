@@ -12,13 +12,13 @@ import {
 import type { Command, Event, Rejection } from "../../src/index.js";
 import {
   baseConfig,
-  cards,
   chipCount,
   deckStartingWith,
   folds,
   occupiedTable,
   play,
   seat,
+  shownCards,
   startHand,
 } from "../fixtures.js";
 import { playSession, session } from "../sessions.js";
@@ -197,7 +197,7 @@ describe("JSON codecs for phase 2 storage and transport", () => {
           ),
           decide(
             foldedOut,
-            Commands.ShowCards({ cards: cards("2h"), seat: seat(1) })
+            Commands.ShowCards({ cards: shownCards("2h"), seat: seat(1) })
           ),
         ].flatMap((decision) =>
           Result.match(decision, {

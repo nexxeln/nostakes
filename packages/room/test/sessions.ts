@@ -9,6 +9,7 @@ import {
   RunCountSchema,
   SeatIndexSchema,
   Seats,
+  ShownCardsSchema,
   TableStates,
 } from "@nostakes/engine";
 import type {
@@ -567,7 +568,7 @@ const afterHand = (
   return RoomCommands.ShowCards({
     at: millis(at),
     by,
-    cards: chosen.length > 0 ? chosen : hole.slice(0, 1),
+    cards: ShownCardsSchema.make(chosen.length > 0 ? chosen : hole.slice(0, 1)),
   });
 };
 

@@ -10,6 +10,7 @@ import {
   SeatIndexSchema,
   Seats,
   ShowdownEntries,
+  ShownCardsSchema,
   TableStates,
 } from "@nostakes/engine";
 import type {
@@ -733,7 +734,9 @@ const showOrHunt = (run: Run, open: Open, player: PlayerId) => {
       RoomCommands.ShowCards({
         at: at(run),
         by: member(player),
-        cards: shower.holeCards.slice(0, 1 + run.random.below(2)),
+        cards: ShownCardsSchema.make(
+          shower.holeCards.slice(0, 1 + run.random.below(2))
+        ),
       })
     );
   } else {

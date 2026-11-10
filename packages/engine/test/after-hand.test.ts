@@ -28,6 +28,7 @@ import {
   run,
   runAll,
   seat,
+  shownCards,
   startHand,
 } from "./fixtures.js";
 
@@ -36,7 +37,7 @@ const deck = deckStartingWith("Ac Kc Qc Jc Tc 9c 2d 3d 4d 5h 6h 7s 8s 9s");
 const hunting: TableConfig = { ...baseConfig, rabbitHunt: true };
 
 const shows = (index: number, text: string) =>
-  Commands.ShowCards({ cards: cards(text), seat: seat(index) });
+  Commands.ShowCards({ cards: shownCards(text), seat: seat(index) });
 
 const hunts = (index: number) => Commands.RabbitHunt({ seat: seat(index) });
 

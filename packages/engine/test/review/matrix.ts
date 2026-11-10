@@ -8,6 +8,7 @@ import {
   PendingDecisions,
   SEAT_COUNT,
   Seats,
+  ShownCardsSchema,
   TableStates,
   decide,
   evolve,
@@ -126,7 +127,10 @@ export const commandMatrix = (state: TableState): readonly Command[] => [
     }),
   ]),
   ...lastHandCards(state).map((show) =>
-    Commands.ShowCards({ cards: show.cards, seat: seat(show.seat) })
+    Commands.ShowCards({
+      cards: ShownCardsSchema.make(show.cards),
+      seat: seat(show.seat),
+    })
   ),
   ...configs(state.config).map((config) => Commands.ChangeRules({ config })),
 ];

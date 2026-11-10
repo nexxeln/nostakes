@@ -2,8 +2,17 @@ import { describe, expect, expectTypeOf, it } from "@effect/vitest";
 import { Effect, Option, Schema } from "effect";
 import * as Arbitrary from "effect/Arbitrary";
 
-import { RunCountSchema, TableStates } from "../../src/index.js";
-import type { Command, TableConfig, TableState } from "../../src/index.js";
+import {
+  RunCountSchema,
+  ShownCardsSchema,
+  TableStates,
+} from "../../src/index.js";
+import type {
+  Card,
+  Command,
+  TableConfig,
+  TableState,
+} from "../../src/index.js";
 import { playSession, session } from "../sessions.js";
 import { commandMatrix, startCommands, totalityProblems } from "./matrix.js";
 
@@ -42,6 +51,17 @@ describe("the Command type admits only what CommandSchema admits", () => {
         Schema.is(RunCountSchema)(count)
       )
     ).toStrictEqual([false, true, false, true, false, false]);
+  });
+
+  it("Rule 26: a show is one or two distinct cards, so ShowCards with no card or one card twice does not typecheck", () => {
+    expectTypeOf<readonly Card[]>().not.toExtend<
+      FieldOf<"ShowCards", "cards">
+    >();
+    expect(
+      [[], [0], [0, 1], [0, 0], [0, 1, 2]].map((shown) =>
+        Schema.is(ShownCardsSchema)(shown)
+      )
+    ).toStrictEqual([false, true, true, false, false]);
   });
 });
 

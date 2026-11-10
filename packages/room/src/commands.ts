@@ -1,9 +1,9 @@
 import {
   ActionSchema,
-  CardSchema,
   PlayerIdSchema,
   RunCountSchema,
   SeatIndexSchema,
+  ShownCardsSchema,
 } from "@nostakes/engine";
 import { Data, Schema } from "effect";
 
@@ -37,14 +37,7 @@ export const RoomCommandSchema = Schema.TaggedUnion({
   RequestChips: { ...envelope, amount: ChipAmountSchema },
   RequestSeat: { ...envelope, buyIn: ChipAmountSchema, seat: SeatIndexSchema },
   SetProfile: { ...envelope, avatar: AvatarSchema, name: NameSchema },
-  ShowCards: {
-    ...envelope,
-    cards: Schema.Array(CardSchema).check(
-      Schema.isMinLength(1),
-      Schema.isMaxLength(2),
-      Schema.isUnique()
-    ),
-  },
+  ShowCards: { ...envelope, cards: ShownCardsSchema },
   SitIn: envelope,
   SitOut: envelope,
   StartGame: envelope,

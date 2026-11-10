@@ -4,11 +4,13 @@ import * as Arbitrary from "effect/Arbitrary";
 import {
   Actions,
   Antes,
+  CardSchema,
   Commands,
   DeckSchema,
   Events,
   PendingDecisions,
   Seats,
+  ShownCardsSchema,
   TableStates,
   decide,
   evolve,
@@ -277,11 +279,11 @@ const afterHandCommand = (state: TableState, random: SeededRandom) => {
     return Commands.RabbitHunt({ seat: shower?.seat ?? seat(random.below(9)) });
   }
 
-  const hole = shower?.holeCards ?? [];
+  const hole = shower?.holeCards ?? [CardSchema.make(0)];
   const chosen = hole.filter(() => random.chance(1, 2));
 
   return Commands.ShowCards({
-    cards: chosen.length > 0 ? chosen : hole.slice(0, 1),
+    cards: ShownCardsSchema.make(chosen.length > 0 ? chosen : hole.slice(0, 1)),
     seat: shower?.seat ?? seat(random.below(9)),
   });
 };

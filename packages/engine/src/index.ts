@@ -41,7 +41,13 @@ export {
   type HandRank,
 } from "./evaluation.js";
 
-export { CommandSchema, Commands, type Command } from "./commands.js";
+export {
+  CommandSchema,
+  Commands,
+  ShownCardsSchema,
+  type Command,
+  type ShownCards,
+} from "./commands.js";
 
 export {
   BlindSchema,

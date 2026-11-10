@@ -5,6 +5,7 @@ import {
   Events,
   NotYourTurn,
   RunCountSchema,
+  ShownCardsSchema,
   TableStates,
 } from "@nostakes/engine";
 import type { Action } from "@nostakes/engine";
@@ -148,7 +149,11 @@ describe("play", () => {
     expect(
       run(
         folded,
-        RoomCommands.ShowCards({ at: ms(6), by: as(bob), cards: held })
+        RoomCommands.ShowCards({
+          at: ms(6),
+          by: as(bob),
+          cards: ShownCardsSchema.make(held),
+        })
       ).events
     ).toStrictEqual([
       RoomEvents.Table({
