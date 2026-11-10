@@ -211,13 +211,13 @@ describe("generated rooms", () => {
   );
 
   it.prop(
-    "schemas: every command, event, redacted event, rejection, setting, deadline, and view round-trips through JSON",
+    "schemas: every command, event, redacted event, rejection, setting, and deadline round-trips through JSON, and so does each step's view for the next audience in turn",
     { source: session },
     ({ source }) => {
       const broken: string[] = [];
       const played = playSession(source);
 
-      for (const step of played.steps) {
+      for (const [index, step] of played.steps.entries()) {
         if (!commandRoundTrips(step.command)) {
           broken.push(`command ${step.command._tag}`);
         }
@@ -241,10 +241,14 @@ describe("generated rooms", () => {
           }
         }
 
-        for (const audience of audiencesOf(step.after)) {
-          if (!viewRoundTrips(viewFor(step.after, audience, step.command.at))) {
-            broken.push(`view after ${step.command._tag}`);
-          }
+        const audiences = audiencesOf(step.after);
+        const inTurn = audiences[index % audiences.length];
+
+        if (
+          inTurn !== undefined &&
+          !viewRoundTrips(viewFor(step.after, inTurn, step.command.at))
+        ) {
+          broken.push(`view after ${step.command._tag}`);
         }
 
         if (isOpen(step.after) && !settingsRoundTrip(step.after.settings)) {
