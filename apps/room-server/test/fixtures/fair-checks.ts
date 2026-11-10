@@ -36,6 +36,7 @@ export const FAIRNESS_COUNT_NAMES = [
   "checkedNotWatched",
   "notChecked",
   "outagesConfirmed",
+  "outagesRelayServes",
   "failedVerdicts",
   "plainHands",
   "unjudged",
@@ -58,6 +59,7 @@ export const emptyFairness = (): FairnessCounts => ({
   handsJudged: 0,
   notChecked: 0,
   outagesConfirmed: 0,
+  outagesRelayServes: 0,
   plainHands: 0,
   sealedDeals: 0,
   sealsWithdrawn: 0,
@@ -83,7 +85,11 @@ export const proofRecord = (proof: Proof) => {
     chain: evidence.chain.chainHash,
     context: evidence.context,
     deal: Deals.$match(evidence.deal, {
-      BeaconUnavailable: ({ round }) => ({ beaconUnavailable: round }),
+      BeaconUnavailable: ({ arrival, dealtAt, round }) => ({
+        arrival,
+        beaconUnavailable: round,
+        dealtAt: Option.getOrNull(dealtAt),
+      }),
       FromBeacon: ({ round, seats, signature, sightings, spare }) => ({
         round,
         seats,
@@ -319,15 +325,7 @@ export const judgeDevice = (
             counts.notChecked += 1;
 
             if (Option.isSome(relayAnswer(round, now))) {
-              problems.push(
-                `${device} hand ${hand}: the server dealt beacon round ${round} as unavailable, and the relay serves it`
-              );
-              proofs.push({
-                device,
-                evidence,
-                hand,
-                verdict: `${verdictText(verdict)}, though the relay serves it`,
-              });
+              counts.outagesRelayServes += 1;
             } else {
               counts.outagesConfirmed += 1;
             }

@@ -6,6 +6,7 @@ import { BeaconSignatureMalformed } from "./rejections/beacon-signature-malforme
 import { CardSeenTwice } from "./rejections/card-seen-twice.js";
 import { DealtSeatsDiffer } from "./rejections/dealt-seats-differ.js";
 import { OpeningMismatch } from "./rejections/opening-mismatch.js";
+import { OutageClaimedEarly } from "./rejections/outage-claimed-early.js";
 import { RoleOutOfRange } from "./rejections/role-out-of-range.js";
 import { SealArrivedAfterRound } from "./rejections/seal-arrived-after-round.js";
 import { ShownCardDiffers } from "./rejections/shown-card-differs.js";
@@ -17,6 +18,7 @@ export const HandRejectedSchema = Schema.Union([
   BeaconSignatureMalformed,
   BeaconSignatureInvalid,
   SealArrivedAfterRound,
+  OutageClaimedEarly,
   OpeningMismatch,
   BeaconRoundMismatch,
   DealtSeatsDiffer,
@@ -45,6 +47,10 @@ export { SpareDeckMismatch } from "./rejections/spare-deck-mismatch.js";
 export { RoleOutOfRange } from "./rejections/role-out-of-range.js";
 
 export { SealArrivedAfterRound } from "./rejections/seal-arrived-after-round.js";
+
+export { OutageClaimedEarly } from "./rejections/outage-claimed-early.js";
+
+export type { OutageSighting } from "./rejections/outage-claimed-early.js";
 
 export { SealWithNoDeal } from "./rejections/seal-with-no-deal.js";
 

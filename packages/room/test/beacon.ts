@@ -1,4 +1,8 @@
-import { EpochMillisSchema, roundToSeal } from "@nostakes/shuffle";
+import {
+  beaconGiveUpTime,
+  EpochMillisSchema,
+  roundToSeal,
+} from "@nostakes/shuffle";
 
 import {
   Actors,
@@ -29,6 +33,20 @@ export const dealFromBeacon = (at: number, round: number) =>
     }),
   });
 
+export const OUTAGE_EVERY = 5;
+
+export const outageAt = (at: number, round: number) =>
+  Math.max(at, beaconGiveUpTime(drand.chain, round));
+
+export const dealWithoutBeacon = (at: number, round: number, seed: number) =>
+  RoomCommands.DealSealed({
+    at: millis(outageAt(at, round)),
+    by: Actors.Server(),
+    source: SealedDealSources.BeaconUnavailable({
+      shuffleBytes: bytesFrom(seed),
+    }),
+  });
+
 export const serverAnswer = (deadline: Deadline, seed: number): RoomCommand =>
   Deadlines.$match(deadline, {
     DealDue: ({ at }) =>
@@ -42,7 +60,10 @@ export const serverAnswer = (deadline: Deadline, seed: number): RoomCommand =>
     RunChoiceClock: ({ at }) =>
       RoomCommands.ExpireClock({ at, by: Actors.Server(), deadline: at }),
     SealDue: ({ at }) => sealAt(at, seed),
-    SealedDealDue: ({ at, round }) => dealFromBeacon(at, round),
+    SealedDealDue: ({ at, round }) =>
+      seed % OUTAGE_EVERY === 0
+        ? dealWithoutBeacon(at, round, seed)
+        : dealFromBeacon(at, round),
     ShowdownClock: ({ at }) =>
       RoomCommands.ExpireClock({ at, by: Actors.Server(), deadline: at }),
     TurnClock: ({ at }) =>

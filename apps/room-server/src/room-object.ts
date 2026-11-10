@@ -44,7 +44,9 @@ import * as HttpServerResponse from "effect/http/HttpServerResponse";
 
 import { measureAll, recorder } from "./analytics.js";
 import type { AnalyticsSink, RoomMeasures } from "./analytics.js";
-import { Beacon } from "./beacon.js";
+import type { BeaconGaveUp } from "./beacon-gave-up.js";
+import { askBeacon, Beacon } from "./beacon.js";
+import type { BeaconAnswer } from "./beacon.js";
 import { DeviceHashSchema } from "./device.js";
 import { Entropy, liveEntropy } from "./entropy.js";
 import { oversized } from "./frame-limits.js";
@@ -388,17 +390,21 @@ export const roomObject = <T extends RoomTypes, Tally>(
             )
           );
 
-        const logRefusal = (refused: RefusedDeadline) =>
+        const logFault = (fault: RefusedDeadline | BeaconGaveUp) =>
           Effect.sync(() => {
-            faults.push(refused.message);
-            note(measure("AlarmRefused", { deadline: refused.deadline }));
+            faults.push(fault.message);
           }).pipe(
             Effect.andThen(
-              Effect.logError(refused.message).pipe(
-                Effect.annotateLogs({ error: refused._tag })
+              Effect.logError(fault.message).pipe(
+                Effect.annotateLogs({ error: fault._tag })
               )
             )
           );
+
+        const noBeacon: BeaconAnswer = {
+          gaveUp: Option.none(),
+          signature: Option.none(),
+        };
 
         const armAlarm = (room: RoomHost<T>) => {
           room.armAlarm(connectionsOf(room, Option.none()).socketDeadline);
@@ -802,11 +808,11 @@ export const roomObject = <T extends RoomTypes, Tally>(
 
           const bytes = yield* entropy.bytes(core.entropyFor(due.value.due));
 
-          const signature = yield* Option.match(
+          const { gaveUp, signature } = yield* Option.match(
             core.beaconRoundFor(due.value.due),
             {
-              onNone: () => Effect.succeed(Option.none<Uint8Array>()),
-              onSome: (round) => beacon.signature(round),
+              onNone: () => Effect.succeed(noBeacon),
+              onSome: (round) => askBeacon(beacon, room.snapshot().code, round),
             }
           );
 
@@ -831,8 +837,13 @@ export const roomObject = <T extends RoomTypes, Tally>(
 
           yield* logCommit(result, command);
 
+          for (const fault of Option.toArray(gaveUp)) {
+            yield* logFault(fault);
+          }
+
           for (const refusal of Option.toArray(refused)) {
-            yield* logRefusal(refusal);
+            note(measure("AlarmRefused", { deadline: refusal.deadline }));
+            yield* logFault(refusal);
           }
 
           for (const stalled of Option.toArray(stall)) {

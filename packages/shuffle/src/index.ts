@@ -32,6 +32,7 @@ export {
   DealtSeatsDiffer,
   HandRejectedSchema,
   OpeningMismatch,
+  OutageClaimedEarly,
   RoleOutOfRange,
   SealArrivedAfterRound,
   SealWithNoDeal,
@@ -41,7 +42,7 @@ export {
   WrongPosition,
 } from "./rejection.js";
 
-export type { HandRejected, Withdrawal } from "./rejection.js";
+export type { HandRejected, OutageSighting, Withdrawal } from "./rejection.js";
 
 export {
   BeaconRoundSchema,
@@ -129,7 +130,10 @@ export type { SigningChain } from "./self-signed.js";
 
 export {
   BEACON_EARLY_MS,
-  BEACON_WAIT_LIMIT_MS,
+  BEACON_WAIT_PERIODS,
+  beaconGiveUpTime,
+  beaconWaitLimitMs,
+  OUTAGE_ARRIVAL_ALLOWANCE_MS,
   PHONE_CLOCK_TOLERANCE_MS,
   roundToSeal,
   SEAL_DELIVERY_BUDGET_MS,

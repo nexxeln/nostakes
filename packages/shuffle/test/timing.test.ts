@@ -3,7 +3,7 @@ import { Option } from "effect";
 
 import {
   BEACON_EARLY_MS,
-  BEACON_WAIT_LIMIT_MS,
+  beaconWaitLimitMs,
   EpochMillisSchema,
   PHONE_CLOCK_TOLERANCE_MS,
   QUICKNET,
@@ -139,10 +139,19 @@ const problems = (now: number, seen: readonly SealSeen[]) =>
     withdrawal,
   }));
 
+describe("the server's wait for the beacon", () => {
+  it("is five periods of the chain, which is 15 seconds on quicknet", () => {
+    expect([
+      beaconWaitLimitMs(QUICKNET),
+      beaconWaitLimitMs({ ...QUICKNET, periodSeconds: 1 }),
+    ]).toEqual([15_000, 5000]);
+  });
+});
+
 describe("a seal with no deal", () => {
   const round = 33_000_000;
   const due = roundTime(QUICKNET, round);
-  const deadline = due + BEACON_WAIT_LIMIT_MS + SEAL_DELIVERY_BUDGET_MS;
+  const deadline = due + beaconWaitLimitMs(QUICKNET) + SEAL_DELIVERY_BUDGET_MS;
 
   const seal = (overrides: Partial<SealSeen> = {}): SealSeen => ({
     dealt: false,

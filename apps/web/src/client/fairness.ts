@@ -184,17 +184,10 @@ const judged = (room: string, hand: number, evidence: HandEvidence) =>
           ),
         NotChecked: ({ round }) =>
           relayHas(round).pipe(
-            Effect.map(
-              Option.match({
-                onNone: () => FairMarks.NotChecked({ round }),
-                onSome: (signature) =>
-                  FairMarks.Failed({
-                    proof: proofText(room, hand, {
-                      evidence,
-                      relay: { round, signature },
-                    }),
-                    reason: `The server said drand's round ${round} was not available and shuffled the deck itself, but this device got round ${round} from drand and its signature is valid. The server's claim was false.`,
-                  }),
+            Effect.map((reached) =>
+              FairMarks.NotChecked({
+                reachedLater: Option.isSome(reached),
+                round,
               })
             )
           ),

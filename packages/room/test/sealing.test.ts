@@ -34,6 +34,7 @@ import {
   ann,
   as,
   bob,
+  bytesFrom,
   cat,
   dan,
   join,
@@ -105,6 +106,15 @@ const dealtSeats = (state: RoomState) => {
     : [];
 };
 
+const outage = (at: number) =>
+  RoomCommands.DealSealed({
+    at: ms(at),
+    by: Actors.Server(),
+    source: SealedDealSources.BeaconUnavailable({
+      shuffleBytes: bytesFrom(9),
+    }),
+  });
+
 describe("a checked room seals each hand", () => {
   it("seals at once when the game starts, naming the first round due 3.5 s on, in deal order from the button", () => {
     expect(nextDeadline(started)).toStrictEqual(
@@ -130,6 +140,36 @@ describe("a checked room seals each hand", () => {
     ).toStrictEqual(
       new DealNotDue({ due: Option.some(ms(ROUND_DUE)), reason: "TooEarly" })
     );
+  });
+
+  it("deals without the beacon only once the server's full wait for the sealed round has run out, and counts that hand for every member", () => {
+    const giveUpAt = ROUND_DUE + 15_000;
+
+    const dealt = run(sealedStep.state, outage(giveUpAt));
+
+    const view = viewFor(
+      dealt.state,
+      audienceOf(dealt.state, bob),
+      ms(giveUpAt)
+    );
+
+    expect({
+      early: rejection(sealedStep.state, outage(giveUpAt - 1)),
+      event: dealt.events.find(RoomEvents.$is("DealtWithoutBeacon")),
+      tonight: RoomViews.$is("Open")(view) ? view.fairness.tonight : undefined,
+    }).toStrictEqual({
+      early: new DealNotDue({
+        due: Option.some(ms(giveUpAt)),
+        reason: "TooEarly",
+      }),
+      event: RoomEvents.DealtWithoutBeacon({
+        at: ms(giveUpAt),
+        hand: 1,
+        reason: "BeaconUnavailable",
+        round: SEALED_ROUND,
+      }),
+      tonight: { fromBeacon: 0, withoutBeacon: 1 },
+    });
   });
 
   it("deals every hole card from the sealed deck at the place the beacon round orders", () => {

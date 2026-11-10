@@ -3,7 +3,7 @@ import { PlayerIdSchema, RoomCodeSchema } from "@nostakes/protocol";
 import { Option } from "effect";
 import * as Arbitrary from "effect/Arbitrary";
 
-import { fairParagraph } from "../src/features/fairness-text.js";
+import { fairParagraph, tonightLine } from "../src/features/fairness-text.js";
 import { Messages } from "../src/features/message.js";
 import { FairMarks, Screens } from "../src/features/model.js";
 import type { FairMark, Model } from "../src/features/model.js";
@@ -61,6 +61,43 @@ describe("the deck mark for each hand", () => {
       });
     }
   );
+
+  it("says what is known about a hand dealt without drand, calmly, and never calls the server a liar on that alone", () => {
+    const texts = [true, false].map((reachedLater) =>
+      fairParagraph({
+        hand: 9,
+        mark: FairMarks.NotChecked({ reachedLater, round: 4_200_000 }),
+      })
+    );
+
+    expect(
+      texts.map((text) => ({
+        accuses: /false|lie|lied|cheat/iu.test(text),
+        afterwards: text.includes("This device reached that round afterwards"),
+        claim: text.includes(
+          "The server said it could not reach drand's round 4200000 in the 15 seconds it waits"
+        ),
+        either: text.includes("This device could not reach that round either."),
+      }))
+    ).toStrictEqual([
+      { accuses: false, afterwards: true, claim: true, either: false },
+      { accuses: false, afterwards: false, claim: true, either: true },
+    ]);
+  });
+
+  it("counts tonight's sealed hands dealt without drand in one line", () => {
+    expect(
+      [
+        { fromBeacon: 31, withoutBeacon: 9 },
+        { fromBeacon: 39, withoutBeacon: 1 },
+        { fromBeacon: 1, withoutBeacon: 0 },
+      ].map(tonightLine)
+    ).toStrictEqual([
+      "Dealt without drand tonight: 9 of 40 sealed hands.",
+      "Dealt without drand tonight: 1 of 40 sealed hands.",
+      "Dealt without drand tonight: none of 1 sealed hand.",
+    ]);
+  });
 
   it("keeps one mark per hand, newest first", () => {
     const marked = judgedIn(

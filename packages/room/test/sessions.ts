@@ -51,7 +51,7 @@ import type {
   RoomState,
   TopUpRule,
 } from "../src/index.js";
-import { dealFromBeacon, sealAt } from "./beacon.js";
+import { dealFromBeacon, outageAt, sealAt } from "./beacon.js";
 import { bytesFrom, drand } from "./fixtures.js";
 import { seededRandom } from "./random.js";
 import type { SeededRandom } from "./random.js";
@@ -513,7 +513,9 @@ const serverCommand = (
 
         return variant === 1
           ? RoomCommands.DealSealed({
-              at: sent,
+              at: random.chance(1, 4)
+                ? sent
+                : millis(outageAt(sent, deadline.round)),
               by,
               source: SealedDealSources.BeaconUnavailable({
                 shuffleBytes: bytesFrom(random.below(1_000_000_000)),

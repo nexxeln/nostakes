@@ -310,15 +310,24 @@ export const DealtViewSchema = Schema.Struct({
       signature: Schema.Uint8Array,
       spare: DeckOpeningSchema,
     },
-    WithoutBeacon: { reason: Schema.Literal("BeaconUnavailable") },
+    WithoutBeacon: {
+      at: absentAs(Schema.Option(MillisSchema), Option.none()),
+      reason: Schema.Literal("BeaconUnavailable"),
+    },
   }),
   openings: Schema.Array(OpenedCardSchema),
   seal: SealViewSchema,
 });
 
+export const SealedDealsViewSchema = Schema.Struct({
+  fromBeacon: Schema.Int,
+  withoutBeacon: Schema.Int,
+});
+
 export const FairnessViewSchema = Schema.Struct({
   dealt: Schema.Option(DealtViewSchema),
   sealed: Schema.Option(SealViewSchema),
+  tonight: absentAs(SealedDealsViewSchema, { fromBeacon: 0, withoutBeacon: 0 }),
 });
 
 const MemberViewSchema = Schema.Struct({
@@ -627,8 +636,8 @@ const fairnessView = (state: Open, audience: Audience) => {
         deal: ProofDeals.$match(proof.deal, {
           FromBeacon: ({ round, signature, spare }) =>
             FairnessDeals.FromBeacon({ round, signature, spare }),
-          WithoutBeacon: ({ reason }) =>
-            FairnessDeals.WithoutBeacon({ reason }),
+          WithoutBeacon: ({ at, reason }) =>
+            FairnessDeals.WithoutBeacon({ at: Option.some(at), reason }),
         }),
         openings: proof.opened.flatMap((opened) =>
           Option.match(opened.holder, {
@@ -649,6 +658,7 @@ const fairnessView = (state: Open, audience: Audience) => {
       }))
     ),
     sealed: state.sealed.pipe(Option.map(sealView)),
+    tonight: state.sealedDeals,
   };
 };
 

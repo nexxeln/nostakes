@@ -21,7 +21,21 @@ export const SEALING_MARGIN_MS =
   SERVER_CLOCK_BUDGET_MS +
   SEAL_DELIVERY_BUDGET_MS;
 
-export const BEACON_WAIT_LIMIT_MS = 15_000;
+export const BEACON_WAIT_PERIODS = 5;
+
+const MILLIS_PER_SECOND = 1000;
+
+export const beaconWaitLimitMs = (chain: DrandChain) =>
+  BEACON_WAIT_PERIODS * chain.periodSeconds * MILLIS_PER_SECOND;
+
+export const beaconGiveUpTime = (
+  chain: DrandChain,
+  round: BeaconRound
+): EpochMillis =>
+  EpochMillisSchema.make(roundTime(chain, round) + beaconWaitLimitMs(chain));
+
+export const OUTAGE_ARRIVAL_ALLOWANCE_MS =
+  PHONE_CLOCK_TOLERANCE_MS + SERVER_CLOCK_BUDGET_MS;
 
 export const roundToSeal = (
   chain: DrandChain,
@@ -95,7 +109,7 @@ const withdrawalOf = (timing: SealTiming): Option.Option<Withdrawal> =>
 
 const overdue = (chain: DrandChain, now: EpochMillis, round: BeaconRound) =>
   now - PHONE_CLOCK_TOLERANCE_MS >=
-  roundTime(chain, round) + BEACON_WAIT_LIMIT_MS + SEAL_DELIVERY_BUDGET_MS;
+  beaconGiveUpTime(chain, round) + SEAL_DELIVERY_BUDGET_MS;
 
 const problemWith = (
   chain: DrandChain,

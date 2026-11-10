@@ -244,6 +244,7 @@ export {
   ClocksViewSchema,
   DealtViewSchema,
   FairnessViewSchema,
+  SealedDealsViewSchema,
   HandViewSchema,
   HostAwayViewSchema,
   LastHandViewSchema,

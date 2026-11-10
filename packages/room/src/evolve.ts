@@ -29,6 +29,7 @@ import type {
   Queue,
   RoomState,
   Sealed,
+  SealedDeals,
 } from "./state.js";
 import { latest } from "./time.js";
 import type { Millis } from "./time.js";
@@ -62,6 +63,7 @@ export const opened = (event: RoomEventOf<"RoomOpened">): Open =>
     record: Option.none(),
     requests: { chips: [], seats: [] },
     sealed: Option.none(),
+    sealedDeals: { fromBeacon: 0, withoutBeacon: 0 },
     settings: event.settings,
     stalled: Option.none(),
     straddlers: [],
@@ -272,6 +274,17 @@ const dealtFromSeal = (
     }),
   });
 
+const countedDeal = (state: Open, kind: keyof SealedDeals): Open =>
+  Option.isSome(state.sealed)
+    ? {
+        ...state,
+        sealedDeals: {
+          ...state.sealedDeals,
+          [kind]: state.sealedDeals[kind] + 1,
+        },
+      }
+    : state;
+
 const evolveOpen = (state: Open, event: RoomEvent): RoomState =>
   RoomEvents.$match(event, {
     BoughtIn: ({ amount, player, seat }) => ({
@@ -328,7 +341,7 @@ const evolveOpen = (state: Open, event: RoomEvent): RoomState =>
       queued: { ...state.queued, close: true },
     }),
     DealtFromBeacon: ({ round, signature, spare }) =>
-      dealtFromSeal(state, (sealed) =>
+      dealtFromSeal(countedDeal(state, "fromBeacon"), (sealed) =>
         ProofDeals.FromBeacon({
           plan: planOf(state.code, sealed, beaconOf(round, signature)),
           round,
@@ -336,8 +349,10 @@ const evolveOpen = (state: Open, event: RoomEvent): RoomState =>
           spare,
         })
       ),
-    DealtWithoutBeacon: ({ reason }) =>
-      dealtFromSeal(state, () => ProofDeals.WithoutBeacon({ reason })),
+    DealtWithoutBeacon: ({ at, reason }) =>
+      dealtFromSeal(countedDeal(state, "withoutBeacon"), () =>
+        ProofDeals.WithoutBeacon({ at, reason })
+      ),
     GamePaused: (): Open => ({ ...state, dealCalled: false, game: "Waiting" }),
     GameStarted: (): Open => ({ ...state, game: "Running" }),
     HandCancelled: ({ restored }) => cancelled(state, restored),

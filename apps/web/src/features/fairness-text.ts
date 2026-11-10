@@ -1,5 +1,9 @@
+import { beaconWaitLimitMs, QUICKNET } from "@nostakes/shuffle";
+
 import { FairMarks } from "./model.js";
 import type { FairHand, FairMark } from "./model.js";
+
+const WAIT_SECONDS = beaconWaitLimitMs(QUICKNET) / 1000;
 
 const LIMIT =
   "It proves the deck was not rigged or changed after the seal. It does not hide cards from whoever runs the server.";
@@ -22,9 +26,30 @@ export const fairParagraph = ({ hand, mark }: FairHand): string =>
       `Hand ${hand} checks out. Before the deal, the server sealed the deck. ${timingText(round, timing)} All ${cards} cards this device was shown match the sealed deck in that order. ${LIMIT}`,
     Failed: ({ reason }) =>
       `Hand ${hand} failed the check. ${reason} Copy the proof and share it with the table.`,
-    NotChecked: ({ round }) =>
-      `Hand ${hand} was not checked. The server said drand's round ${round} was not available in time and shuffled the deck itself, and this device could not get that round from drand either, so the claim stands.`,
+    NotChecked: ({ reachedLater, round }) =>
+      `Hand ${hand} was not checked. The server said it could not reach drand's round ${round} in the ${WAIT_SECONDS} seconds it waits, so it shuffled the deck itself. ${
+        reachedLater
+          ? "This device reached that round afterwards, which shows the round exists now, not whether the server could reach it then."
+          : "This device could not reach that round either."
+      }`,
   });
+
+export interface SealedDealsTonight {
+  readonly fromBeacon: number;
+  readonly withoutBeacon: number;
+}
+
+export const tonightLine = ({
+  fromBeacon,
+  withoutBeacon,
+}: SealedDealsTonight): string => {
+  const sealed = fromBeacon + withoutBeacon;
+  const hands = sealed === 1 ? "sealed hand" : "sealed hands";
+
+  return `Dealt without drand tonight: ${
+    withoutBeacon === 0 ? "none" : withoutBeacon
+  } of ${sealed} ${hands}.`;
+};
 
 export const fairSymbol = (mark: FairMark): string =>
   FairMarks.match(mark, {

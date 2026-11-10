@@ -127,7 +127,7 @@ export type ProofDeal = Data.TaggedEnum<{
     readonly plan: DealingPlan;
     readonly spare: DeckOpening;
   };
-  WithoutBeacon: { readonly reason: "BeaconUnavailable" };
+  WithoutBeacon: { readonly reason: "BeaconUnavailable"; readonly at: Millis };
 }>;
 
 export const ProofDeals = Data.taggedEnum<ProofDeal>();
@@ -144,6 +144,11 @@ export interface Proof {
 }
 
 export type Game = "Running" | "Waiting";
+
+export interface SealedDeals {
+  readonly fromBeacon: number;
+  readonly withoutBeacon: number;
+}
 
 export type Attendance = Data.TaggedEnum<{
   Attended: { readonly since: Millis };
@@ -190,6 +195,7 @@ export type RoomState = Data.TaggedEnum<{
     readonly record: Option.Option<HandRecord>;
     readonly requests: Requests;
     readonly sealed: Option.Option<Sealed>;
+    readonly sealedDeals: SealedDeals;
     readonly settings: RoomSettings;
     readonly stalled: Option.Option<Stall>;
     readonly straddlers: readonly PlayerId[];

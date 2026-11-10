@@ -1,20 +1,30 @@
-import { Data, Result } from "effect";
+import { Data, Option, Result } from "effect";
 
 import { verifyBeacon } from "./beacon.js";
+import { roundTime } from "./drand.js";
 import type { DrandChain } from "./drand.js";
 import type { HandRejected } from "./rejection.js";
+import { OutageClaimedEarly } from "./rejections/outage-claimed-early.js";
 import { SealArrivedAfterRound } from "./rejections/seal-arrived-after-round.js";
 import type {
   BeaconRound,
   DeckOpening,
   DeckSlot,
+  EpochMillis,
   HandContext,
   Seal,
   Seats,
   Seed,
   Sighting,
 } from "./schemas.js";
-import { PHONE_CLOCK_TOLERANCE_MS, sealTiming, SealTimings } from "./timing.js";
+import {
+  beaconGiveUpTime,
+  OUTAGE_ARRIVAL_ALLOWANCE_MS,
+  PHONE_CLOCK_TOLERANCE_MS,
+  SealArrivals,
+  sealTiming,
+  SealTimings,
+} from "./timing.js";
 import type { SealArrival, SealTiming } from "./timing.js";
 import { verifyHand } from "./verify.js";
 
@@ -26,7 +36,11 @@ export type Deal = Data.TaggedEnum<{
     readonly spare: DeckOpening;
     readonly sightings: readonly Sighting[];
   };
-  BeaconUnavailable: { readonly round: BeaconRound };
+  BeaconUnavailable: {
+    readonly round: BeaconRound;
+    readonly dealtAt: Option.Option<EpochMillis>;
+    readonly arrival: SealArrival;
+  };
 }>;
 
 export const Deals = Data.taggedEnum<Deal>();
@@ -116,13 +130,53 @@ const judgeBeaconDeal = (
     });
   });
 
+const outageClaimHeld = (
+  chain: DrandChain,
+  round: BeaconRound,
+  deal: Data.TaggedEnum.Value<Deal, "BeaconUnavailable">
+): Result.Result<BeaconRound, OutageClaimedEarly> => {
+  const roundAt = roundTime(chain, round);
+  const giveUpAt = beaconGiveUpTime(chain, round);
+
+  const early = (
+    seenAt: number,
+    seenBy: OutageClaimedEarly["seenBy"],
+    allowance: number
+  ) =>
+    Result.fail(
+      new OutageClaimedEarly({
+        allowance,
+        giveUpAt,
+        round,
+        roundAt,
+        seenAt,
+        seenBy,
+      })
+    );
+
+  const stampedEarly = deal.dealtAt.pipe(Option.filter((at) => at < giveUpAt));
+
+  if (Option.isSome(stampedEarly)) {
+    return early(stampedEarly.value, "the server's record", 0);
+  }
+
+  return SealArrivals.$is("Live")(deal.arrival) &&
+    deal.arrival.at + OUTAGE_ARRIVAL_ALLOWANCE_MS < giveUpAt
+    ? early(deal.arrival.at, "this device", OUTAGE_ARRIVAL_ALLOWANCE_MS)
+    : Result.succeed(round);
+};
+
 export const judgeHand = (evidence: HandEvidence): Verdict =>
   Deals.$match(evidence.deal, {
-    BeaconUnavailable: () =>
-      Verdicts.NotChecked({
-        reason: "beacon unavailable",
-        round: evidence.seal.beaconRound,
-      }),
+    BeaconUnavailable: (deal) =>
+      Result.match(
+        outageClaimHeld(evidence.chain, evidence.seal.beaconRound, deal),
+        {
+          onFailure: (reason) => Verdicts.Failed({ reason }),
+          onSuccess: (round) =>
+            Verdicts.NotChecked({ reason: "beacon unavailable", round }),
+        }
+      ),
     FromBeacon: (deal) =>
       Result.match(judgeBeaconDeal(evidence, deal), {
         onFailure: (reason) => Verdicts.Failed({ reason }),

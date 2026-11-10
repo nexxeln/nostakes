@@ -147,7 +147,7 @@ export const FairMarks = defineTaggedUnion({
   Cancelled: { round: Schema.Int },
   Checked: { cards: Schema.Int, round: Schema.Int, timing: CheckTimingSchema },
   Failed: { proof: Schema.String, reason: Schema.String },
-  NotChecked: { round: Schema.Int },
+  NotChecked: { reachedLater: Schema.Boolean, round: Schema.Int },
 });
 
 export type FairMark = typeof FairMarks.Type;

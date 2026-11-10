@@ -3,6 +3,7 @@ import type { Card, SeatIndex } from "@nostakes/engine";
 import {
   CardSchema as SealedCardSchema,
   Deals,
+  EpochMillisSchema,
   Roles,
   SealArrivals,
 } from "@nostakes/shuffle";
@@ -11,6 +12,7 @@ import type {
   DeckOpening,
   Digest,
   DrandChain,
+  EpochMillis,
   HandEvidence,
   SealArrival,
   SealSeen,
@@ -43,7 +45,11 @@ export type DealSight = Data.TaggedEnum<{
     readonly signature: Uint8Array;
     readonly spare: DeckOpening;
   };
-  WithoutBeacon: { readonly reason: "BeaconUnavailable" };
+  WithoutBeacon: {
+    readonly reason: "BeaconUnavailable";
+    readonly dealtAt: Option.Option<EpochMillis>;
+    readonly arrival: SealArrival;
+  };
 }>;
 
 export const DealSights = Data.taggedEnum<DealSight>();
@@ -328,7 +334,14 @@ export const witnessEvent = (
       { ...witness, current: Option.some(event.hand) },
       event.hand,
       (sight) =>
-        addDeal(sight, DealSights.WithoutBeacon({ reason: event.reason }))
+        addDeal(
+          sight,
+          DealSights.WithoutBeacon({
+            arrival,
+            dealtAt: Option.some(EpochMillisSchema.make(event.at)),
+            reason: event.reason,
+          })
+        )
     );
   }
 
@@ -413,14 +426,21 @@ const tableCards = (table: TableSeen): ReadonlySet<Card> =>
     ...table.shown.flatMap(({ cards }) => cards),
   ]);
 
-const dealSightOf = (deal: (typeof DealtViewSchema.Type)["deal"]): DealSight =>
+const dealSightOf = (
+  deal: (typeof DealtViewSchema.Type)["deal"],
+  arrival: SealArrival
+): DealSight =>
   Predicate.isTagged(deal, "FromBeacon")
     ? DealSights.FromBeacon({
         round: deal.round,
         signature: deal.signature,
         spare: deal.spare,
       })
-    : DealSights.WithoutBeacon({ reason: deal.reason });
+    : DealSights.WithoutBeacon({
+        arrival,
+        dealtAt: deal.at.pipe(Option.map((at) => EpochMillisSchema.make(at))),
+        reason: deal.reason,
+      });
 
 const handOnTable = (view: OpenView): Option.Option<number> =>
   view.hand.pipe(
@@ -529,7 +549,7 @@ const seenOpenView = (
                 seats: dealt.seal.seats,
               }
             ),
-            dealSightOf(dealt.deal)
+            dealSightOf(dealt.deal, caughtUp)
           ),
           dealt.openings
         )
@@ -707,10 +727,10 @@ export const evidenceFor = (
             }),
           });
     },
-    WithoutBeacon: () =>
+    WithoutBeacon: ({ arrival, dealtAt }) =>
       Result.succeed({
         ...common,
-        deal: Deals.BeaconUnavailable({ round: seal.round }),
+        deal: Deals.BeaconUnavailable({ arrival, dealtAt, round: seal.round }),
       }),
   });
 };

@@ -11,6 +11,7 @@ import {
   DeckSchema as SealedDeckSchema,
   DIGEST_BYTES,
   SaltSecretSchema,
+  beaconGiveUpTime,
   openSpare,
   roundToSeal,
   sealHand,
@@ -328,7 +329,11 @@ export const dealSealed = (
 
   const due = latest(
     betweenHandsDue(state),
-    roundAt(state.chain, sealed.round)
+    SealedDealSources.$match(command.source, {
+      BeaconUnavailable: () =>
+        millis(beaconGiveUpTime(state.chain, sealed.round)),
+      FromBeacon: () => roundAt(state.chain, sealed.round),
+    })
   );
 
   if (command.at < due) {

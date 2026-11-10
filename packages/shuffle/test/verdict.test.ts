@@ -1,9 +1,10 @@
 import { describe, expect, it } from "@effect/vitest";
-import { Array as Arr, Result } from "effect";
+import { Array as Arr, Option, Result, Schema } from "effect";
 import * as Arbitrary from "effect/Arbitrary";
 import * as Hex from "effect/encoding/Hex";
 
 import {
+  beaconGiveUpTime,
   BeaconRoundMismatch,
   BeaconSignatureInvalid,
   CardSchema,
@@ -12,6 +13,7 @@ import {
   EpochMillisSchema,
   judgeHand,
   OpeningMismatch,
+  OutageClaimedEarly,
   PHONE_CLOCK_TOLERANCE_MS,
   QUICKNET,
   RandomnessSchema,
@@ -21,6 +23,7 @@ import {
   SealArrivedAfterRound,
   sealHand,
   SEALING_MARGIN_MS,
+  SERVER_CLOCK_BUDGET_MS,
   seedOf,
   selfSignedChain,
   sha256,
@@ -207,23 +210,147 @@ describe("judgeHand on honest hands", () => {
   });
 });
 
+const withoutBeacon = (
+  game: Played,
+  sealOffset: number,
+  dealtAt: Option.Option<number>,
+  arrival: SealArrival
+): HandEvidence => {
+  const due = roundTime(drand.chain, game.hand.beacon.round);
+
+  return {
+    ...evidenceOf(game, SealArrivals.Live({ at: at(due + sealOffset) })),
+    deal: Deals.BeaconUnavailable({
+      arrival,
+      dealtAt: dealtAt.pipe(Option.map(at)),
+      round: game.hand.beacon.round,
+    }),
+  };
+};
+
 describe("judgeHand on a hand dealt without the beacon", () => {
   it.prop(
-    "never shows it as checked, whenever the seal arrived",
-    { game: played, offset: between(-60_000, 60_000) },
-    ({ game, offset }) => {
-      const due = roundTime(drand.chain, game.hand.beacon.round);
+    "never shows it as checked, and never fails a server that waited its full time, whenever the seal arrived and whatever either clock says within its budget",
+    {
+      delivery: between(0, 30_000),
+      deviceClock: between(-PHONE_CLOCK_TOLERANCE_MS, PHONE_CLOCK_TOLERANCE_MS),
+      extraWait: between(0, 60_000),
+      game: played,
+      live: Arbitrary.schema(Schema.Boolean),
+      sealOffset: between(-60_000, 60_000),
+      serverClock: between(-SERVER_CLOCK_BUDGET_MS, SERVER_CLOCK_BUDGET_MS),
+    },
+    ({
+      delivery,
+      deviceClock,
+      extraWait,
+      game,
+      live,
+      sealOffset,
+      serverClock,
+    }) => {
+      const stamped =
+        beaconGiveUpTime(drand.chain, game.hand.beacon.round) + extraWait;
 
-      const evidence = {
-        ...evidenceOf(game, SealArrivals.Live({ at: at(due + offset) })),
-        deal: Deals.BeaconUnavailable({ round: game.hand.beacon.round }),
-      };
+      const arrivedAt = at(stamped - serverClock + delivery + deviceClock);
+
+      const evidence = withoutBeacon(
+        game,
+        sealOffset,
+        Option.some(stamped),
+        live
+          ? SealArrivals.Live({ at: arrivedAt })
+          : SealArrivals.CaughtUp({ at: arrivedAt })
+      );
 
       expect(summary(judgeHand(evidence))).toEqual({
         reason: "beacon unavailable",
         round: game.hand.beacon.round,
         verdict: "not checked",
       });
+    },
+    RUNS
+  );
+
+  it.prop(
+    "fails it for every device when the server's own record of the deal comes before its full wait",
+    {
+      early: between(1, 60_000),
+      game: played,
+      live: Arbitrary.schema(Schema.Boolean),
+      sealOffset: between(-60_000, 60_000),
+    },
+    ({ early, game, live, sealOffset }) => {
+      const { round } = game.hand.beacon;
+      const giveUpAt = beaconGiveUpTime(drand.chain, round);
+      const stamped = giveUpAt - early;
+      const arrivedAt = at(giveUpAt + 1000);
+
+      const evidence = withoutBeacon(
+        game,
+        sealOffset,
+        Option.some(stamped),
+        live
+          ? SealArrivals.Live({ at: arrivedAt })
+          : SealArrivals.CaughtUp({ at: arrivedAt })
+      );
+
+      expect(summary(judgeHand(evidence))).toEqual(
+        failedWith(
+          new OutageClaimedEarly({
+            allowance: 0,
+            giveUpAt,
+            round,
+            roundAt: roundTime(drand.chain, round),
+            seenAt: stamped,
+            seenBy: "the server's record",
+          })
+        )
+      );
+    },
+    RUNS
+  );
+
+  it.prop(
+    "fails it on a live device that got the deal too long before the server's full wait could have run out, though the record looks honest",
+    {
+      early: between(1, 60_000),
+      game: played,
+      sealOffset: between(-60_000, 60_000),
+    },
+    ({ early, game, sealOffset }) => {
+      const { round } = game.hand.beacon;
+      const giveUpAt = beaconGiveUpTime(drand.chain, round);
+
+      const arrivedAt =
+        giveUpAt - PHONE_CLOCK_TOLERANCE_MS - SERVER_CLOCK_BUDGET_MS - early;
+
+      const verdicts = [Option.some(giveUpAt), Option.none<number>()].map(
+        (dealtAt) =>
+          summary(
+            judgeHand(
+              withoutBeacon(
+                game,
+                sealOffset,
+                dealtAt,
+                SealArrivals.Live({ at: at(arrivedAt) })
+              )
+            )
+          )
+      );
+
+      const failure = failedWith(
+        new OutageClaimedEarly({
+          allowance: PHONE_CLOCK_TOLERANCE_MS + SERVER_CLOCK_BUDGET_MS,
+          giveUpAt,
+          round,
+          roundAt: roundTime(drand.chain, round),
+          seenAt: arrivedAt,
+          seenBy: "this device",
+        })
+      );
+
+      expect(verdicts).toEqual([failure, failure]);
     },
     RUNS
   );

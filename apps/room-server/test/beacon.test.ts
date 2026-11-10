@@ -1,6 +1,6 @@
 import { describe, expect, it } from "@effect/vitest";
 import {
-  BEACON_WAIT_LIMIT_MS,
+  beaconWaitLimitMs,
   roundTime,
   selfSignedChain,
 } from "@nostakes/shuffle";
@@ -10,7 +10,13 @@ import * as HttpClient from "effect/http/HttpClient";
 import * as HttpClientResponse from "effect/http/HttpClientResponse";
 import { TestClock } from "effect/testing";
 
-import { Beacon, RELAY_RETRY_MS, relayBeacon } from "../src/beacon.js";
+import { BeaconGaveUp } from "../src/beacon-gave-up.js";
+import {
+  askBeacon,
+  Beacon,
+  RELAY_RETRY_MS,
+  relayBeacon,
+} from "../src/beacon.js";
 import { TEST_CHAIN, signedRound } from "./fixtures/test-beacon.js";
 
 const CHAIN = { ...TEST_CHAIN, genesisSeconds: 0 };
@@ -128,14 +134,100 @@ describe("the relay beacon", () => {
           Effect.forkChild
         );
 
-        yield* TestClock.adjust(Duration.millis(BEACON_WAIT_LIMIT_MS - 1));
+        yield* TestClock.adjust(Duration.millis(beaconWaitLimitMs(CHAIN) - 1));
 
         expect(fiber.pollUnsafe()).toBeUndefined();
 
         yield* TestClock.adjust(Duration.millis(1));
 
         expect(yield* Fiber.join(fiber)).toEqual(Option.none());
-        expect(asked.length).toBeGreaterThan(3 * 10);
+        expect(asked.length).toBeGreaterThanOrEqual(
+          3 * (beaconWaitLimitMs(CHAIN) / RELAY_RETRY_MS)
+        );
       })
+  );
+});
+
+const WAIT = beaconWaitLimitMs(CHAIN);
+
+const askedBy = (relaysLayer: Layer.Layer<Beacon>) =>
+  Beacon.use((beacon) => askBeacon(beacon, "K7P2XZ", ROUND)).pipe(
+    Effect.provide(relaysLayer)
+  );
+
+describe("asking the beacon for a sealed deal", () => {
+  it.effect(
+    "gives up once, at the full wait after the round was due, and says how long the relays were asked",
+    () =>
+      Effect.gen(function* giveUpOnce() {
+        const { layer } = relays(() => "missing");
+
+        yield* TestClock.setTime(DUE + 2000);
+
+        const fiber = yield* askedBy(layer).pipe(Effect.forkChild);
+
+        yield* TestClock.adjust(Duration.millis(WAIT - 2000 - 1));
+
+        expect(fiber.pollUnsafe()).toBeUndefined();
+
+        yield* TestClock.adjust(Duration.millis(1));
+
+        const answer = yield* Fiber.join(fiber);
+
+        expect(answer).toStrictEqual({
+          gaveUp: Option.some(
+            new BeaconGaveUp({
+              code: "K7P2XZ",
+              pastDueMs: WAIT,
+              round: ROUND,
+              triedMs: WAIT - 2000,
+            })
+          ),
+          signature: Option.none(),
+        });
+        expect(Option.getOrThrow(answer.gaveUp).message).toBe(
+          `Room K7P2XZ could not get drand round ${ROUND}: it asked the relays for ${WAIT - 2000} ms and gave up ${WAIT} ms after the round was due, so it shuffled the hand itself and every player sees that hand as not checked. Check that the Worker can reach the drand relays.`
+        );
+      })
+  );
+
+  it.effect(
+    "never says the beacon was unavailable before the full wait, even when the relays give up at once",
+    () =>
+      Effect.gen(function* waitTheFullTime() {
+        const quitter = Layer.succeed(Beacon, {
+          chain: CHAIN,
+          signature: () => Effect.succeed(Option.none<Uint8Array>()),
+        });
+
+        yield* TestClock.setTime(DUE);
+
+        const fiber = yield* askedBy(quitter).pipe(Effect.forkChild);
+
+        yield* TestClock.adjust(Duration.millis(WAIT - 1));
+
+        expect(fiber.pollUnsafe()).toBeUndefined();
+
+        yield* TestClock.adjust(Duration.millis(1));
+
+        expect(
+          (yield* Fiber.join(fiber)).gaveUp.pipe(
+            Option.map(({ pastDueMs, triedMs }) => ({ pastDueMs, triedMs }))
+          )
+        ).toStrictEqual(Option.some({ pastDueMs: WAIT, triedMs: 0 }));
+      })
+  );
+
+  it.effect("passes a round on with no give-up when a relay has it", () =>
+    Effect.gen(function* takeTheRound() {
+      const { layer } = relays(() => "real");
+
+      yield* TestClock.setTime(DUE);
+
+      expect(yield* askedBy(layer)).toStrictEqual({
+        gaveUp: Option.none(),
+        signature: Option.some(signedRound(ROUND)),
+      });
+    })
   );
 });

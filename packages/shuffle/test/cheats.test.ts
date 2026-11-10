@@ -2,7 +2,8 @@ import { describe, expect, it } from "@effect/vitest";
 import { Array as Arr, Option, Result } from "effect";
 
 import {
-  BEACON_WAIT_LIMIT_MS,
+  beaconGiveUpTime,
+  beaconWaitLimitMs,
   BeaconRoundMismatch,
   BeaconSignatureInvalid,
   CardSchema,
@@ -16,6 +17,8 @@ import {
   judgeHand,
   openDeck,
   OpeningMismatch,
+  OUTAGE_ARRIVAL_ALLOWANCE_MS,
+  OutageClaimedEarly,
   PHONE_CLOCK_TOLERANCE_MS,
   RandomnessSchema,
   roundTime,
@@ -471,7 +474,9 @@ describe("planted cheats a beacon leaves the server", () => {
   it("a sealed hand the server cancels after its round shows on every connected player's screen", () => {
     const round = ROUND;
     const due = dueAt(round);
-    const deadline = due + BEACON_WAIT_LIMIT_MS + SEAL_DELIVERY_BUDGET_MS;
+
+    const deadline =
+      due + beaconWaitLimitMs(drand.chain) + SEAL_DELIVERY_BUDGET_MS;
 
     const neverDealt: SealSeen = {
       dealt: false,
@@ -500,24 +505,92 @@ describe("planted cheats a beacon leaves the server", () => {
     }
   });
 
-  it("a hand the server says it dealt without the beacon is never shown as checked to anyone", () => {
+  it("a hand the server says it dealt without the beacon after its full wait is never shown as checked, and never as failed", () => {
     const hand = honest();
+    const giveUpAt = beaconGiveUpTime(drand.chain, ROUND);
 
     for (const arrival of [
-      live(dueAt(ROUND) - 3000),
-      live(dueAt(ROUND) + 5000),
+      live(giveUpAt - OUTAGE_ARRIVAL_ALLOWANCE_MS),
+      live(giveUpAt + 5000),
+      SealArrivals.CaughtUp({ at: EpochMillisSchema.make(giveUpAt - 9000) }),
     ]) {
       expect(
         verdictTag(
           judgeHand({
             chain: drand.chain,
             context,
-            deal: Deals.BeaconUnavailable({ round: ROUND }),
+            deal: Deals.BeaconUnavailable({
+              arrival,
+              dealtAt: Option.some(giveUpAt),
+              round: ROUND,
+            }),
             seal: hand.sealed.seal,
-            sealArrival: arrival,
+            sealArrival: live(dueAt(ROUND) - 3000),
           })
         )
       ).toBe("beacon unavailable");
     }
+  });
+
+  it("a claim that the beacon was unavailable, made before the server's full wait, fails for every device that can tell", () => {
+    const hand = honest();
+    const giveUpAt = beaconGiveUpTime(drand.chain, ROUND);
+
+    const judged = (
+      stamped: Option.Option<number>,
+      arrival: SealArrival
+    ): Verdict =>
+      judgeHand({
+        chain: drand.chain,
+        context,
+        deal: Deals.BeaconUnavailable({
+          arrival,
+          dealtAt: stamped.pipe(Option.map((at) => EpochMillisSchema.make(at))),
+          round: ROUND,
+        }),
+        seal: hand.sealed.seal,
+        sealArrival: live(dueAt(ROUND) - 3000),
+      });
+
+    expect([
+      verdictTag(
+        judged(
+          Option.some(dueAt(ROUND) + 200),
+          SealArrivals.CaughtUp({ at: EpochMillisSchema.make(giveUpAt) })
+        )
+      ),
+      verdictTag(
+        judged(
+          Option.some(giveUpAt),
+          live(giveUpAt - OUTAGE_ARRIVAL_ALLOWANCE_MS - 1)
+        )
+      ),
+      verdictTag(judged(Option.none(), live(dueAt(ROUND) + 300))),
+    ]).toEqual([
+      new OutageClaimedEarly({
+        allowance: 0,
+        giveUpAt,
+        round: ROUND,
+        roundAt: dueAt(ROUND),
+        seenAt: dueAt(ROUND) + 200,
+        seenBy: "the server's record",
+      }),
+      new OutageClaimedEarly({
+        allowance: OUTAGE_ARRIVAL_ALLOWANCE_MS,
+        giveUpAt,
+        round: ROUND,
+        roundAt: dueAt(ROUND),
+        seenAt: giveUpAt - OUTAGE_ARRIVAL_ALLOWANCE_MS - 1,
+        seenBy: "this device",
+      }),
+      new OutageClaimedEarly({
+        allowance: OUTAGE_ARRIVAL_ALLOWANCE_MS,
+        giveUpAt,
+        round: ROUND,
+        roundAt: dueAt(ROUND),
+        seenAt: dueAt(ROUND) + 300,
+        seenBy: "this device",
+      }),
+    ]);
   });
 });

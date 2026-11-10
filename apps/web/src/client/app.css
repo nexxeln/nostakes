@@ -552,6 +552,14 @@ html:has(.room) {
   line-height: var(--leading);
 }
 
+.fair-tonight {
+  margin: 0;
+  padding: var(--space-2) 0;
+  font-size: var(--text-2);
+  font-weight: var(--weight-strong);
+  box-shadow: inset 0 -1px 0 var(--color-line);
+}
+
 .face-row {
   display: flex;
   align-items: center;

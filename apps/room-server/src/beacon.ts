@@ -1,5 +1,6 @@
 import {
-  BEACON_WAIT_LIMIT_MS,
+  beaconGiveUpTime,
+  beaconWaitLimitMs,
   roundTime,
   verifyBeacon,
 } from "@nostakes/shuffle";
@@ -20,17 +21,59 @@ import * as FetchHttpClient from "effect/http/FetchHttpClient";
 import * as HttpClient from "effect/http/HttpClient";
 import * as HttpClientResponse from "effect/http/HttpClientResponse";
 
+import { BeaconGaveUp } from "./beacon-gave-up.js";
 import { RelayRoundUnusable } from "./relay-round-unusable.js";
 
-export class Beacon extends Context.Service<
-  Beacon,
-  {
-    readonly chain: DrandChain;
-    readonly signature: (
-      round: BeaconRound
-    ) => Effect.Effect<Option.Option<Uint8Array>>;
-  }
->()("@nostakes/room-server/Beacon") {}
+export interface BeaconRelays {
+  readonly chain: DrandChain;
+  readonly signature: (
+    round: BeaconRound
+  ) => Effect.Effect<Option.Option<Uint8Array>>;
+}
+
+export class Beacon extends Context.Service<Beacon, BeaconRelays>()(
+  "@nostakes/room-server/Beacon"
+) {}
+
+export interface BeaconAnswer {
+  readonly signature: Option.Option<Uint8Array>;
+  readonly gaveUp: Option.Option<BeaconGaveUp>;
+}
+
+export const askBeacon = (
+  beacon: BeaconRelays,
+  code: string,
+  round: BeaconRound
+): Effect.Effect<BeaconAnswer> =>
+  Effect.gen(function* askForTheRound() {
+    const askedAt = yield* Clock.currentTimeMillis;
+    const signature = yield* beacon.signature(round);
+
+    if (Option.isSome(signature)) {
+      return { gaveUp: Option.none(), signature };
+    }
+
+    const answeredAt = yield* Clock.currentTimeMillis;
+    const giveUpAt = beaconGiveUpTime(beacon.chain, round);
+
+    if (answeredAt < giveUpAt) {
+      yield* Effect.sleep(Duration.millis(giveUpAt - answeredAt));
+    }
+
+    const gaveUpAt = yield* Clock.currentTimeMillis;
+
+    return {
+      gaveUp: Option.some(
+        new BeaconGaveUp({
+          code,
+          pastDueMs: gaveUpAt - roundTime(beacon.chain, round),
+          round,
+          triedMs: answeredAt - askedAt,
+        })
+      ),
+      signature,
+    };
+  });
 
 export const DRAND_RELAYS: readonly string[] = [
   "https://api.drand.sh",
@@ -89,7 +132,7 @@ const fromRelay = (
 export const relayBeacon = (
   chain: DrandChain,
   relays: readonly string[],
-  waitLimitMs: number = BEACON_WAIT_LIMIT_MS
+  waitLimitMs: number = beaconWaitLimitMs(chain)
 ) =>
   Layer.effect(
     Beacon,

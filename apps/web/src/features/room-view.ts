@@ -6,7 +6,12 @@ import type { Html, HtmlBuilder } from "foldkit/html";
 import { attendanceLine } from "./attendance-line.js";
 import { commandButton } from "./buttons.js";
 import { faceButton } from "./chrome.js";
-import { fairLabel, fairParagraph, fairSymbol } from "./fairness-text.js";
+import {
+  fairLabel,
+  fairParagraph,
+  fairSymbol,
+  tonightLine,
+} from "./fairness-text.js";
 import {
   chipsSheet,
   confirmSheet,
@@ -183,11 +188,15 @@ const noticeLine = (model: Model, room: InRoom, h: H): Html =>
     ]
   );
 
-const fairnessSheet = (room: InRoom, h: H): Html =>
-  sheet(
-    h,
-    "The deck",
-    room.fairness
+const tonightNote = (view: OpenView, h: H): readonly Html[] =>
+  view.fairness.tonight.fromBeacon + view.fairness.tonight.withoutBeacon > 0
+    ? [h.p([h.Class("fair-tonight")], [tonightLine(view.fairness.tonight)])]
+    : [];
+
+const fairnessSheet = (room: InRoom, view: OpenView, h: H): Html =>
+  sheet(h, "The deck", [
+    ...tonightNote(view, h),
+    ...room.fairness
       .filter(
         ({ mark }, index) =>
           index < SHOWN_FAIR_HANDS || FairMarks.guards.Failed(mark)
@@ -218,8 +227,8 @@ const fairnessSheet = (room: InRoom, h: H): Html =>
               : h.empty,
           ]
         )
-      )
-  );
+      ),
+  ]);
 
 const sitSheet = (room: InRoom, view: OpenView, seat: number, h: H): Html =>
   sheet(h, `Sit in seat ${seat + 1}`, [
@@ -290,7 +299,7 @@ const activeSheet = (
   }
 
   if (room.fairnessOpen) {
-    return fairnessSheet(room, h);
+    return fairnessSheet(room, view, h);
   }
 
   return room.menu ? menuSheet(model, room, view, presence, h) : h.empty;

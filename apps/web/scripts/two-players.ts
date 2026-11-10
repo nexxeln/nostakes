@@ -461,7 +461,11 @@ const night = Effect.gen(function* playOneHand() {
 
   const deck = yield* calmDeck(ana);
 
-  yield* Console.log(`deck: ${deck}`);
+  yield* Console.log(
+    deck.endsWith("deck not checked")
+      ? `deck: ${deck}. The server could not reach drand in time and shuffled the hand itself; an honest outage passes this check.`
+      : `deck: ${deck}`
+  );
 
   const chipsBefore =
     (yield* stackOf(ana, "Ana")) + (yield* stackOf(ben, "Ben"));
