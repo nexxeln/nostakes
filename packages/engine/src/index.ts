@@ -144,4 +144,6 @@ export {
   type TableState,
 } from "./state.js";
 
+export { setting, type SettingLabel } from "./setting.js";
+
 export { decide, evolve, evolveAll, replay } from "./table.js";

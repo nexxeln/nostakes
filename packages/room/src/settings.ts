@@ -1,4 +1,4 @@
-import { ChipsSchema, TableConfigSchema } from "@nostakes/engine";
+import { ChipsSchema, TableConfigSchema, setting } from "@nostakes/engine";
 import { Schema } from "effect";
 
 export const MAX_CHIP_AMOUNT = 1_000_000_000;
@@ -27,6 +27,8 @@ export const MAX_CLOCK_SECONDS = 3600;
 
 export const MAX_TIME_BANK_SECONDS = 86_400;
 
+export const DEFAULT_SHOWDOWN_SECONDS = 15;
+
 export const ApprovalSchema = Schema.Struct({
   chips: Schema.Boolean,
   seats: Schema.Boolean,
@@ -37,7 +39,15 @@ export const RoomSettingsSchema = Schema.Struct({
   betweenHandsSeconds: wholeSeconds(0, MAX_CLOCK_SECONDS),
   buyIn: BuyInRangeSchema,
   runChoiceSeconds: wholeSeconds(1, MAX_CLOCK_SECONDS),
-  showdownSeconds: wholeSeconds(1, MAX_CLOCK_SECONDS),
+  showdownSeconds: setting(
+    wholeSeconds(1, MAX_CLOCK_SECONDS),
+    DEFAULT_SHOWDOWN_SECONDS,
+    {
+      description:
+        "Seconds a seat has to table or muck at an interactive showdown before the room decides for it.",
+      title: "Showdown clock",
+    }
+  ),
   table: TableConfigSchema,
   timeBankSeconds: wholeSeconds(0, MAX_TIME_BANK_SECONDS),
   turnSeconds: wholeSeconds(0, MAX_CLOCK_SECONDS),

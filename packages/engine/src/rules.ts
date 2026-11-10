@@ -2,6 +2,7 @@ import { Data, Option, Schema } from "effect";
 
 import { CHIP_LIMIT, PositiveChipsSchema, chips } from "./primitives.js";
 import type { Chips } from "./primitives.js";
+import { setting } from "./setting.js";
 
 export const MAX_RUNS = 9;
 
@@ -43,7 +44,11 @@ export const TableConfigSchema = Schema.Struct({
   bigBlind: PositiveChipsSchema,
   maxRuns: RunCountSchema,
   rabbitHunt: Schema.Boolean,
-  showdown: ShowdownRuleSchema,
+  showdown: setting(ShowdownRuleSchema, "Automatic", {
+    description:
+      "Automatic shows the first hand and then each hand that can win or tie. Interactive asks each seat in turn to table or muck.",
+    title: "Showdown",
+  }),
   smallBlind: PositiveChipsSchema,
   straddle: StraddleRulesSchema,
 })
