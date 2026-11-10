@@ -585,6 +585,25 @@ const actionBar = (room: InRoom, h: H): Html => {
   );
 };
 
+const showButton = (
+  h: H,
+  room: InRoom,
+  cards: readonly Card[],
+  label: string,
+  pendingLabel: string
+): Html =>
+  Option.match(ShownCardsSchema.makeOption(cards), {
+    onNone: () => h.empty,
+    onSome: (shown) =>
+      commandButton(
+        h,
+        room,
+        Commands.ShowCards.make({ cards: shown }),
+        label,
+        pendingLabel
+      ),
+  });
+
 const handChoices = (
   room: InRoom,
   view: OpenView,
@@ -606,15 +625,17 @@ const handChoices = (
         [
           h.span([h.Class("muted")], ["Run it"]),
           ...Array.from({ length: maxRuns }, (_, index) =>
-            commandButton(
-              h,
-              room,
-              Commands.ChooseRuns.make({
-                runs: RunCountSchema.make(index + 1),
-              }),
-              index === 0 ? "Once" : `${index + 1} times`,
-              `Choosing ${index + 1} run${index === 0 ? "" : "s"}`
-            )
+            Option.match(RunCountSchema.makeOption(index + 1), {
+              onNone: () => h.empty,
+              onSome: (count) =>
+                commandButton(
+                  h,
+                  room,
+                  Commands.ChooseRuns.make({ runs: count }),
+                  index === 0 ? "Once" : `${index + 1} times`,
+                  `Choosing ${index + 1} run${index === 0 ? "" : "s"}`
+                ),
+            })
           ),
         ]
       ),
@@ -673,26 +694,16 @@ const handChoices = (
               [h.Class("choice-row")],
               [
                 ...hidden.map((card) =>
-                  commandButton(
+                  showButton(
                     h,
                     room,
-                    Commands.ShowCards.make({
-                      cards: ShownCardsSchema.make([card]),
-                    }),
+                    [card],
                     `Show ${cardLabel(card)}`,
                     `Showing ${cardLabel(card)}`
                   )
                 ),
                 hidden.length === 2
-                  ? commandButton(
-                      h,
-                      room,
-                      Commands.ShowCards.make({
-                        cards: ShownCardsSchema.make(hidden),
-                      }),
-                      "Show both",
-                      "Showing both"
-                    )
+                  ? showButton(h, room, hidden, "Show both", "Showing both")
                   : h.empty,
                 canRabbit
                   ? commandButton(
