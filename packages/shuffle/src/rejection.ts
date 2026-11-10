@@ -1,6 +1,8 @@
 import { Schema } from "effect";
 
 import { BeaconRoundMismatch } from "./rejections/beacon-round-mismatch.js";
+import { BeaconSignatureInvalid } from "./rejections/beacon-signature-invalid.js";
+import { BeaconSignatureMalformed } from "./rejections/beacon-signature-malformed.js";
 import { CardSeenTwice } from "./rejections/card-seen-twice.js";
 import { DuplicateContribution } from "./rejections/duplicate-contribution.js";
 import { MyContributionAltered } from "./rejections/my-contribution-altered.js";
@@ -14,6 +16,8 @@ import { SpareDeckRepeatsCard } from "./rejections/spare-deck-repeats-card.js";
 import { WrongPosition } from "./rejections/wrong-position.js";
 
 export const HandRejectedSchema = Schema.Union([
+  BeaconSignatureMalformed,
+  BeaconSignatureInvalid,
   OpeningMismatch,
   NoOutsideRandomness,
   DuplicateContribution,
@@ -37,6 +41,10 @@ export { NoOutsideRandomness } from "./rejections/no-outside-randomness.js";
 export { DuplicateContribution } from "./rejections/duplicate-contribution.js";
 
 export { BeaconRoundMismatch } from "./rejections/beacon-round-mismatch.js";
+
+export { BeaconSignatureInvalid } from "./rejections/beacon-signature-invalid.js";
+
+export { BeaconSignatureMalformed } from "./rejections/beacon-signature-malformed.js";
 
 export { MyContributionLeftOut } from "./rejections/my-contribution-left-out.js";
 

@@ -100,6 +100,14 @@ export const BeaconRoundSchema = Schema.Int.check(
   Schema.isGreaterThanOrEqualTo(1)
 );
 
+export type BeaconRound = typeof BeaconRoundSchema.Type;
+
+export const EpochMillisSchema = Schema.Int.check(
+  Schema.isGreaterThanOrEqualTo(0)
+).pipe(Schema.brand("EpochMillis"));
+
+export type EpochMillis = typeof EpochMillisSchema.Type;
+
 export const ContributionSchema = Schema.TaggedUnion({
   Beacon: { randomness: RandomnessSchema, round: BeaconRoundSchema },
   Player: { seat: SeatSchema, value: RandomnessSchema },

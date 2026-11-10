@@ -18,7 +18,7 @@ Workspace `package.json` files declare the pinned stack. Keep every dependency e
 - Oxlint `1.92.0` with `oxlint-tsgolint` `7.0.2006` for type-aware rules, `@oxlint/plugins` `1.92.0`, Ultracite `8.1.1`, and Oxfmt `0.77.0`
 - Lefthook `2.2.2` and `@types/node` `24.19.2`
 - Alchemy `2.0.0-beta.85` (`alchemy`, `@alchemy.run/cloudflare`, `@alchemy.run/test`), `@cloudflare/workers-types` `5.20261108.1`, and `@effect/platform-node` `4.1.2`, which Alchemy's local Worker bridge imports. `workerd` is the only extra entry under `allowBuilds`, so its postinstall can fetch the local runtime.
-- `@noble/hashes` `2.4.0` in `packages/shuffle`, behind `sha256` and `hmacSha256` in `src/sha256.ts`. The owner approved it.
+- `@noble/hashes` `2.4.0` and `@noble/curves` `2.4.0` in `packages/shuffle`: SHA-256 and HMAC behind `src/sha256.ts`, and the drand BLS check in `src/beacon.ts`. The owner approved both.
 - XState `6.0.0-beta.1` and `@xstate/effect` `1.0.0-beta.0`, both betas and newer than most training data. Read the installed source before you change a machine. `oxlint.config.ts` loads the `@xstate/effect/oxlint` plugin, resolved from `packages/client`.
 
 Foldkit arrives in a later phase, with the owner's sign-off.

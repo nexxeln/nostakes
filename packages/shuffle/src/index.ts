@@ -26,6 +26,8 @@ export {
 
 export {
   BeaconRoundMismatch,
+  BeaconSignatureInvalid,
+  BeaconSignatureMalformed,
   CardSeenTwice,
   DuplicateContribution,
   HandRejectedSchema,
@@ -54,6 +56,7 @@ export {
   DeckSlotSchema,
   DIGEST_BYTES,
   DigestSchema,
+  EpochMillisSchema,
   HandContextSchema,
   MAX_DEALT_IN,
   OpeningSchema,
@@ -72,6 +75,7 @@ export {
 } from "./schemas.js";
 
 export type {
+  BeaconRound,
   Card,
   Contribution,
   DealIndex,
@@ -79,6 +83,7 @@ export type {
   DeckOpening,
   DeckSlot,
   Digest,
+  EpochMillis,
   HandContext,
   Opening,
   PlayerContribution,
@@ -104,6 +109,20 @@ export { dealingPlan, drawsFrom, shuffledIndices } from "./order.js";
 export type { DealingPlan, Draw } from "./order.js";
 
 export { combine } from "./seed.js";
+
+export { beaconMessage, verifyBeacon } from "./beacon.js";
+
+export type { Beacon } from "./beacon.js";
+
+export {
+  firstFutureRound,
+  QUICKNET,
+  roundTime,
+  SIGNATURE_DST,
+  SIGNATURE_SCHEME,
+} from "./drand.js";
+
+export type { DrandChain } from "./drand.js";
 
 export { dealIndexOf, verifyHand } from "./verify.js";
 

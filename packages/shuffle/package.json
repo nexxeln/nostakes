@@ -26,6 +26,7 @@
     "verify": "node scripts/sha256-against-web-crypto.ts && node scripts/order-uniformity.ts"
   },
   "dependencies": {
+    "@noble/curves": "2.4.0",
     "@noble/hashes": "2.4.0",
     "effect": "4.1.2"
   },
