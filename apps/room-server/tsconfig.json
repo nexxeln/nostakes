@@ -10,6 +10,7 @@
           "effect/http/FetchHttpClient",
           "effect/http/HttpClient",
           "effect/http/HttpClientRequest",
+          "effect/http/HttpClientResponse",
           "effect/http/HttpRouter",
           "effect/http/HttpServerError",
           "effect/http/HttpServerRequest",

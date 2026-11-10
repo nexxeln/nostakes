@@ -635,6 +635,7 @@ export const roomObject = <T extends RoomTypes>(
           return {
             alarmRuns,
             code: snapshot.pipe(Option.map(({ code }) => code)),
+            events: rows.map(({ event }) => event),
             halted: snapshot.pipe(Option.flatMap(({ halted }) => halted)),
             headSeq: snapshot.pipe(
               Option.match({

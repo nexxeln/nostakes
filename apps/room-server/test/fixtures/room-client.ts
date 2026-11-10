@@ -228,3 +228,43 @@ export const joinRoom = (base: string, code: RoomCode, profile: Profile) =>
   );
 
 export const post = postJson;
+
+export const openRoomWith = (base: string, names: readonly string[]) =>
+  Effect.gen(function* openRoomWithMembers() {
+    const [host = "Host", ...guests] = names;
+    const hostPass = yield* createRoom(base, { avatar: "fox", name: host });
+    const passes = [hostPass];
+
+    for (const name of guests) {
+      passes.push(
+        yield* joinRoom(base, hostPass.code, { avatar: "owl", name })
+      );
+    }
+
+    return passes;
+  });
+
+export const appliedSeqs = (client: RoomClient) =>
+  client.messages.flatMap((message) => {
+    if (isWelcome(message)) {
+      return message.missed.map(
+        (_, index) => message.seq - message.missed.length + 1 + index
+      );
+    }
+
+    return isEvents(message)
+      ? message.events.map((_, index) => message.from + index)
+      : [];
+  });
+
+export const lastSeq = (client: RoomClient) =>
+  Math.max(
+    0,
+    ...client.messages.flatMap((message) => {
+      if (isWelcome(message)) {
+        return [message.seq];
+      }
+
+      return isEvents(message) ? [message.to] : [];
+    })
+  );

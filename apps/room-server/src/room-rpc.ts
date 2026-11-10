@@ -33,6 +33,7 @@ export const InspectionSchema = Schema.Struct({
     Schema.Struct({ at: Schema.Int, outcome: Schema.String })
   ),
   code: Schema.OptionFromNullOr(RoomCodeSchema),
+  events: Schema.Array(Schema.String),
   halted: Schema.OptionFromNullOr(Schema.String),
   headSeq: Schema.Int,
   instance: Schema.String,
