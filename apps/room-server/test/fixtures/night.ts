@@ -230,6 +230,29 @@ const tableFrom = (
   voluntaryShows: random.chance(30) ? "BothCards" : "EitherCard",
 });
 
+export const HOST_DEAL_WAIT_MS = 6000;
+
+const longestBankSeconds = (settings: RoomSettings) =>
+  Math.max(
+    settings.timeBankSeconds,
+    TimeBankRefills.$match(settings.timeBankRefill, {
+      NoRefill: () => 0,
+      Refill: ({ upTo }) => upTo,
+    })
+  );
+
+export const slowRulesAllowanceMs = (settings: RoomSettings) => {
+  const keepsAbsentPlayersIn =
+    settings.sitOutAfterTimeouts !== 1 || settings.leavingMidHand === "PlaysOn";
+
+  return (
+    (settings.dealing === "Host" ? HOST_DEAL_WAIT_MS : 0) +
+    (keepsAbsentPlayersIn && settings.turnSeconds > 0
+      ? (settings.turnSeconds + longestBankSeconds(settings)) * 2000
+      : 0)
+  );
+};
+
 export const planNight = (
   seed: number,
   recipe: NightRecipe,
@@ -325,10 +348,15 @@ export const planNight = (
 
   const hostDeals = !clients.includes(0) && random.chance(30);
 
+  const played = hostDeals
+    ? { ...settings, dealing: "Host" as const }
+    : settings;
+
   return {
     ...plan,
     clients,
-    settings: hostDeals ? { ...settings, dealing: "Host" } : settings,
+    limitMs: plan.limitMs + recipe.hands * slowRulesAllowanceMs(played),
+    settings: played,
   };
 };
 
