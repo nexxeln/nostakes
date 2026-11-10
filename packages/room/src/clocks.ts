@@ -17,7 +17,7 @@ import type { Decision } from "./decision.js";
 import { RoomEvents } from "./events.js";
 import type { RoomEvent } from "./events.js";
 import { ActionNotOnSeat, ClockNotDue, NoSuchDeadline } from "./rejection.js";
-import { clockRuns } from "./settings.js";
+import { turnClockRuns } from "./settings.js";
 import { DecisionClocks, RoomStates, heldSeat, occupantAt } from "./state.js";
 import type { DecisionClock, Open, RoomState } from "./state.js";
 import { onTable } from "./table.js";
@@ -238,6 +238,14 @@ const turnClockFor = (after: Open, seat: SeatIndex, at: Millis) =>
     ],
   });
 
+const stopped = (
+  current: DecisionClock | undefined,
+  at: Millis
+): Option.Option<readonly RoomEvent[]> =>
+  current === undefined
+    ? Option.none()
+    : Option.some([RoomEvents.ClockStopped({ at })]);
+
 const wantedClock = (
   after: Open,
   moved: boolean,
@@ -245,20 +253,19 @@ const wantedClock = (
 ): Option.Option<readonly RoomEvent[]> => {
   const current = Option.getOrUndefined(after.clocks.decision);
 
-  if (!clockRuns(after.settings)) {
-    return current === undefined
-      ? Option.none()
-      : Option.some([RoomEvents.ClockStopped({ at })]);
-  }
-
   return PendingDecisions.$match(pendingDecisions(after.table), {
-    Bet: ({ legal }) =>
-      !moved &&
-      current !== undefined &&
-      DecisionClocks.$is("Turn")(current) &&
-      current.seat === legal.seat
+    Bet: ({ legal }) => {
+      if (!turnClockRuns(after.settings)) {
+        return stopped(current, at);
+      }
+
+      return !moved &&
+        current !== undefined &&
+        DecisionClocks.$is("Turn")(current) &&
+        current.seat === legal.seat
         ? Option.none()
-        : Option.some(turnClockFor(after, legal.seat, at)),
+        : Option.some(turnClockFor(after, legal.seat, at));
+    },
     ChooseRuns: () =>
       current !== undefined && DecisionClocks.$is("RunChoice")(current)
         ? Option.none()
@@ -268,10 +275,7 @@ const wantedClock = (
               deadline: secondsAfter(at, after.settings.runChoiceSeconds),
             }),
           ]),
-    Nothing: () =>
-      current === undefined
-        ? Option.none()
-        : Option.some([RoomEvents.ClockStopped({ at })]),
+    Nothing: () => stopped(current, at),
   });
 };
 
@@ -282,7 +286,7 @@ export const timeBankUsed = (
   at: Millis
 ): readonly RoomEvent[] =>
   events.some(movesTheAction) ||
-  !clockRuns(after.settings) ||
+  !turnClockRuns(after.settings) ||
   Option.isNone(after.clocks.decision)
     ? bankSpent(before, after, at)
     : [];

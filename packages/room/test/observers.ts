@@ -1,4 +1,11 @@
-import { Events, Seats, ShowdownEntries, TableStates } from "@nostakes/engine";
+import {
+  Events,
+  PendingDecisions,
+  Seats,
+  ShowdownEntries,
+  TableStates,
+  pendingDecisions,
+} from "@nostakes/engine";
 import type { Card, Event, PlayerId, SeatIndex } from "@nostakes/engine";
 import { Option, Predicate, Result, Schema } from "effect";
 
@@ -580,10 +587,13 @@ const bankProblems = (
 
 const unclocked = (step: Step): readonly string[] =>
   isOpen(step.after) &&
-  step.after.settings.turnSeconds > 0 &&
+  (step.after.settings.turnSeconds > 0 ||
+    PendingDecisions.$is("ChooseRuns")(pendingDecisions(step.after.table))) &&
   inHand(step.after) &&
   Option.isNone(nextDeadline(step.after))
-    ? [`a clocked hand has no deadline after ${step.command._tag}`]
+    ? [
+        `a hand waiting on ${pendingDecisions(step.after.table)._tag} has no deadline after ${step.command._tag}`,
+      ]
     : [];
 
 const runningBank = (state: RoomState): readonly PlayerId[] =>

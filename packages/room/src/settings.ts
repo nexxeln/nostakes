@@ -44,4 +44,5 @@ export const RoomSettingsSchema = Schema.Struct({
 
 export type RoomSettings = typeof RoomSettingsSchema.Type;
 
-export const clockRuns = (settings: RoomSettings) => settings.turnSeconds > 0;
+export const turnClockRuns = (settings: RoomSettings) =>
+  settings.turnSeconds > 0;

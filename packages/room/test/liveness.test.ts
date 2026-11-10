@@ -1,12 +1,17 @@
 import { describe, expect, it } from "@effect/vitest";
 import {
+  Actions,
   ChipsSchema,
   Events,
+  PendingDecisions,
   PlayerIdSchema,
+  RunCountSchema,
   SeatIndexSchema,
   Seats,
   TableStates,
+  pendingDecisions,
 } from "@nostakes/engine";
+import type { Event, LegalActions, PlayerId } from "@nostakes/engine";
 import { Option, Result, Schema } from "effect";
 import * as Arbitrary from "effect/Arbitrary";
 
@@ -24,7 +29,14 @@ import {
   openRoom,
   replay,
 } from "../src/index.js";
-import type { Deadline, RoomCommand, RoomState } from "../src/index.js";
+import type {
+  Deadline,
+  Decision,
+  Open,
+  RoomCommand,
+  RoomSettings,
+  RoomState,
+} from "../src/index.js";
 import { bytesFrom } from "./fixtures.js";
 import { seededRandom } from "./random.js";
 import { POOL, settingsFrom } from "./sessions.js";
@@ -69,6 +81,31 @@ const awayPlayers = (state: RoomState) =>
       })
     : [];
 
+const shove = (legal: LegalActions) =>
+  Option.match(legal.raise, {
+    onNone: () =>
+      Option.match(legal.call, {
+        onNone: () => Actions.Check(),
+        onSome: () => Actions.Call(),
+      }),
+    onSome: ({ maxTo }) => Actions.RaiseTo({ to: maxTo }),
+  });
+
+const ownerOf = (state: Open, seat: number): Option.Option<PlayerId> => {
+  const occupant = state.table.seats[seat];
+
+  return occupant !== undefined && Seats.$is("Occupied")(occupant)
+    ? Option.some(occupant.player)
+    : Option.none();
+};
+
+const tableEvents = (decision: Decision, counted: (event: Event) => boolean) =>
+  Result.isSuccess(decision)
+    ? decision.success.filter(
+        (event) => RoomEvents.$is("Table")(event) && counted(event.event)
+      ).length
+    : 0;
+
 const dealable = (state: RoomState) =>
   RoomStates.$is("Open")(state)
     ? state.table.seats.filter(
@@ -76,6 +113,62 @@ const dealable = (state: RoomState) =>
           Seats.$is("Occupied")(seat) && !seat.sittingOut && seat.stack > 0
       ).length
     : 0;
+
+const startedRoom = (
+  settings: RoomSettings,
+  players: number,
+  below: (bound: number) => number
+) => {
+  let state = replay(
+    openRoom({
+      at: millis(0),
+      avatar: "",
+      code: RoomCodeSchema.make("liveness"),
+      host,
+      name: "host",
+      settings,
+    })
+  );
+
+  const run = (command: RoomCommand) => {
+    const decision = decide(state, command);
+
+    if (Result.isSuccess(decision)) {
+      state = evolveAll(state, decision.success);
+    }
+  };
+
+  for (const [index, player] of POOL.slice(0, players).entries()) {
+    run(
+      RoomCommands.Join({
+        at: millis(0),
+        avatar: "",
+        by: Actors.Member({ player }),
+        name: player,
+      })
+    );
+    run(
+      RoomCommands.RequestSeat({
+        at: millis(0),
+        buyIn: ChipsSchema.make(
+          settings.buyIn.min +
+            below(settings.buyIn.max - settings.buyIn.min + 1)
+        ),
+        by: Actors.Member({ player }),
+        seat: SeatIndexSchema.make(index),
+      })
+    );
+  }
+
+  run(
+    RoomCommands.StartGame({
+      at: millis(0),
+      by: Actors.Member({ player: host }),
+    })
+  );
+
+  return state;
+};
 
 describe("liveness", () => {
   it.prop(
@@ -91,16 +184,7 @@ describe("liveness", () => {
         turnSeconds: 1 + random.below(30),
       };
 
-      let state = replay(
-        openRoom({
-          at: millis(0),
-          avatar: "",
-          code: RoomCodeSchema.make("liveness"),
-          host,
-          name: "host",
-          settings,
-        })
-      );
+      let state = startedRoom(settings, players, random.below);
 
       const run = (command: RoomCommand) => {
         const decision = decide(state, command);
@@ -111,37 +195,6 @@ describe("liveness", () => {
 
         return decision;
       };
-
-      const seated = POOL.slice(0, players);
-
-      for (const [index, player] of seated.entries()) {
-        run(
-          RoomCommands.Join({
-            at: millis(0),
-            avatar: "",
-            by: Actors.Member({ player }),
-            name: player,
-          })
-        );
-        run(
-          RoomCommands.RequestSeat({
-            at: millis(0),
-            buyIn: ChipsSchema.make(
-              settings.buyIn.min +
-                random.below(settings.buyIn.max - settings.buyIn.min + 1)
-            ),
-            by: Actors.Member({ player }),
-            seat: SeatIndexSchema.make(index),
-          })
-        );
-      }
-
-      run(
-        RoomCommands.StartGame({
-          at: millis(0),
-          by: Actors.Member({ player: host }),
-        })
-      );
 
       const refused: string[] = [];
       let started = 0;
@@ -209,6 +262,99 @@ describe("liveness", () => {
       expect(steps).toBeLessThan(STEP_LIMIT);
       expect(started).toBeGreaterThan(0);
       expect(ended).toBe(started);
+      expect(dealable(state)).toBeLessThan(2);
+    }
+  );
+
+  it.prop(
+    "with no turn clock, a hand in progress waits without a deadline only on a bet, never on a run vote, so players who answer bets and never vote still finish every hand",
+    { night },
+    ({ night: { players, setup } }) => {
+      const random = seededRandom(setup);
+      const base = settingsFrom(random);
+
+      const settings: RoomSettings = {
+        ...base,
+        approval: { chips: false, seats: false },
+        table: {
+          ...base.table,
+          maxRuns: RunCountSchema.make(2 + random.below(2)),
+        },
+        turnSeconds: 0,
+      };
+
+      let state = startedRoom(settings, players, random.below);
+
+      const run = (command: RoomCommand) => {
+        const decision = decide(state, command);
+
+        if (Result.isSuccess(decision)) {
+          state = evolveAll(state, decision.success);
+        }
+
+        return decision;
+      };
+
+      const stalled: string[] = [];
+      let started = 0;
+      let ended = 0;
+      let votesExpired = 0;
+      let steps = 0;
+
+      for (; steps < STEP_LIMIT; steps += 1) {
+        const deadline = nextDeadline(state);
+
+        if (Option.isSome(deadline)) {
+          const decision = run(serverAnswer(deadline.value, steps));
+
+          started += tableEvents(decision, Events.$is("HandStarted"));
+          ended += tableEvents(decision, Events.$is("HandEnded"));
+          votesExpired += Deadlines.$is("RunChoiceClock")(deadline.value)
+            ? tableEvents(decision, Events.$is("RunsAgreed"))
+            : 0;
+          continue;
+        }
+
+        if (
+          !RoomStates.$is("Open")(state) ||
+          !TableStates.$is("InHand")(state.table)
+        ) {
+          break;
+        }
+
+        const open = state;
+
+        const answer = PendingDecisions.$match(pendingDecisions(open.table), {
+          Bet: ({ legal }) =>
+            Option.map(ownerOf(open, legal.seat), (player) =>
+              RoomCommands.Act({
+                action: shove(legal),
+                at: open.now,
+                by: Actors.Member({ player }),
+              })
+            ),
+          ChooseRuns: () => Option.none(),
+          Nothing: () => Option.none(),
+        });
+
+        if (Option.isNone(answer)) {
+          stalled.push(
+            `${pendingDecisions(open.table)._tag} waits with no deadline`
+          );
+          break;
+        }
+
+        const decision = run(answer.value);
+
+        started += tableEvents(decision, Events.$is("HandStarted"));
+        ended += tableEvents(decision, Events.$is("HandEnded"));
+      }
+
+      expect(stalled).toStrictEqual([]);
+      expect(steps).toBeLessThan(STEP_LIMIT);
+      expect(started).toBeGreaterThan(0);
+      expect(ended).toBe(started);
+      expect(votesExpired).toBeGreaterThan(0);
       expect(dealable(state)).toBeLessThan(2);
     }
   );

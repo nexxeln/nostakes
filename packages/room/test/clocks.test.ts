@@ -14,7 +14,7 @@ import {
   nextDeadline,
   timeBankLeft,
 } from "../src/index.js";
-import type { RoomEvent, RoomState } from "../src/index.js";
+import type { RoomEvent, RoomSettings, RoomState } from "../src/index.js";
 import {
   ann,
   as,
@@ -239,24 +239,40 @@ describe("the host acting for a seat", () => {
   });
 });
 
+const threeRuns = (chosen: RoomSettings): RoomSettings => ({
+  ...chosen,
+  table: { ...chosen.table, maxRuns: RunCountSchema.make(3) },
+});
+
+const allInVote = (chosen: RoomSettings) =>
+  run(
+    runAll(openedBy(ann, chosen), [
+      join(bob),
+      sit(ann, 0, 100),
+      sit(bob, 1, 100),
+      RoomCommands.StartGame({ at: ms(3), by: as(ann) }),
+      dealAt(10),
+      act(ann, Actions.RaiseTo({ to: ChipsSchema.make(100) }), 20),
+    ]),
+    act(bob, Actions.Call(), 30)
+  );
+
+const runChoices = (events: readonly RoomEvent[]) =>
+  events.flatMap((event) =>
+    RoomEvents.$is("Table")(event) &&
+    (Events.$is("RunsChosen")(event.event) ||
+      Events.$is("RunsAgreed")(event.event) ||
+      Events.$is("HandEnded")(event.event))
+      ? [event.event]
+      : []
+  );
+
+const changeSettings = (chosen: RoomSettings, at: number) =>
+  RoomCommands.ChangeSettings({ at: ms(at), by: as(ann), settings: chosen });
+
 describe("run-choice clock", () => {
   it("shares one deadline among the seats choosing, and chooses one run for each seat still choosing when it expires, which ends the hand", () => {
-    const allIn = runAll(
-      openedBy(ann, {
-        ...clocked,
-        table: { ...clocked.table, maxRuns: RunCountSchema.make(3) },
-      }),
-      [
-        join(bob),
-        sit(ann, 0, 100),
-        sit(bob, 1, 100),
-        RoomCommands.StartGame({ at: ms(3), by: as(ann) }),
-        dealAt(10),
-        act(ann, Actions.RaiseTo({ to: ChipsSchema.make(100) }), 20),
-      ]
-    );
-
-    const called = run(allIn, act(bob, Actions.Call(), 30));
+    const called = allInVote(threeRuns(clocked));
 
     expect(called.events.at(-1)).toStrictEqual(
       RoomEvents.RunClockStarted({ at: ms(30), deadline: ms(10_030) })
@@ -268,19 +284,52 @@ describe("run-choice clock", () => {
 
     const expired = run(oneChose.state, expire(10_030));
 
-    expect(
-      expired.events.flatMap((event) =>
-        RoomEvents.$is("Table")(event) &&
-        (Events.$is("RunsChosen")(event.event) ||
-          Events.$is("RunsAgreed")(event.event))
-          ? [event.event]
-          : []
-      )
-    ).toStrictEqual([
+    expect(runChoices(expired.events)).toStrictEqual([
       Events.RunsChosen({ runs: RunCountSchema.make(1), seat: seat(1) }),
       Events.RunsAgreed({ runs: RunCountSchema.make(1) }),
+      Events.HandEnded({ handNumber: 1 }),
     ]);
     expect(openOf(expired.state).clocks.decision).toStrictEqual(Option.none());
+  });
+
+  it("runs the vote clock in a room with no turn clock, and runs the board once for seats that never choose without marking them away", () => {
+    const called = allInVote(threeRuns(settings));
+
+    expect(deadlineOf(called.state)).toStrictEqual(
+      Option.some(Deadlines.RunChoiceClock({ at: ms(10_030) }))
+    );
+
+    const expired = run(called.state, expire(10_030));
+
+    expect(runChoices(expired.events)).toStrictEqual([
+      Events.RunsChosen({ runs: RunCountSchema.make(1), seat: seat(0) }),
+      Events.RunsAgreed({ runs: RunCountSchema.make(1) }),
+      Events.HandEnded({ handNumber: 1 }),
+    ]);
+    expect(openOf(expired.state).clocks.decision).toStrictEqual(Option.none());
+    expect(openOf(expired.state).away).toStrictEqual([]);
+  });
+
+  it("keeps the one vote clock while the host turns the turn clock off and on during the vote", () => {
+    const unclocked = threeRuns(settings);
+    const withTurns = threeRuns(clocked);
+
+    for (const [first, second] of [
+      [unclocked, withTurns],
+      [withTurns, unclocked],
+    ] as const) {
+      const called = allInVote(first);
+      const changed = run(called.state, changeSettings(second, 40));
+      const back = run(changed.state, changeSettings(first, 50));
+
+      expect([...changed.events, ...back.events]).toStrictEqual([
+        RoomEvents.SettingsChanged({ at: ms(40), settings: second }),
+        RoomEvents.SettingsChanged({ at: ms(50), settings: first }),
+      ]);
+      expect(deadlineOf(back.state)).toStrictEqual(
+        Option.some(Deadlines.RunChoiceClock({ at: ms(10_030) }))
+      );
+    }
   });
 });
 
