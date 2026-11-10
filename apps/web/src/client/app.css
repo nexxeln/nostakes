@@ -29,6 +29,24 @@ select {
   outline-offset: 2px;
 }
 
+.button,
+.card-panel,
+.text-input,
+.room-row,
+.request,
+.sheet,
+.status-line > * {
+  --sheet: var(--shadow-sheet-1);
+  --press: var(--press-1);
+  box-shadow: var(--sheet);
+}
+
+.button:active:not(:disabled),
+.room-row:active {
+  translate: var(--press);
+  box-shadow: var(--shadow-sheet-0);
+}
+
 .page {
   margin: 0 auto;
   max-width: calc(var(--size-page) + var(--inset-left) + var(--inset-right));
@@ -116,8 +134,10 @@ select {
 .hero {
   display: flex;
   flex-direction: column;
+  align-items: center;
   gap: var(--space-2);
   padding: var(--space-3) 0 var(--space-2);
+  text-align: center;
 }
 
 .brand {
@@ -136,6 +156,10 @@ select {
   font-size: var(--text-4);
 }
 
+.home .brand {
+  font-size: 3.375rem;
+}
+
 .tagline,
 .muted {
   color: var(--color-ink-muted);
@@ -147,14 +171,22 @@ select {
 }
 
 .card-panel {
+  --sheet: var(--shadow-sheet-2);
   background: var(--color-raised);
   color: var(--color-raised-ink);
-  border-radius: var(--radius-3);
-  box-shadow: var(--shadow-2);
+  border-radius: var(--radius-4);
   padding: var(--space-4);
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
+}
+
+.home .card-panel {
+  --sheet: none;
+  background: none;
+  color: inherit;
+  border-radius: 0;
+  padding: 0;
 }
 
 .join-panel {
@@ -192,19 +224,26 @@ select {
 }
 
 .text-input {
+  --sheet:
+    var(--shadow-sheet-0),
+    calc(var(--sheet-step-x) * 0.5) calc(var(--sheet-step-y) * 0.5) 0
+      var(--color-sheet-shadow);
   background: var(--color-field);
   color: var(--color-field-ink);
-  border: 1px solid var(--color-line);
+  border: 0;
   border-radius: var(--radius-2);
   padding: var(--space-2) var(--space-3);
   min-height: var(--size-touch);
   width: 100%;
-  transition: border-color var(--duration-1) var(--ease);
+}
+
+.text-input::placeholder {
+  color: var(--color-ink-muted);
 }
 
 .text-input:focus {
-  border-color: var(--color-line-strong);
-  outline: none;
+  outline: 2px solid var(--color-ink-muted);
+  outline-offset: 1px;
 }
 
 .code-input {
@@ -217,33 +256,31 @@ select {
   align-items: center;
   justify-content: center;
   gap: var(--space-2);
-  background: transparent;
-  color: var(--color-ink);
-  border: 1px solid var(--color-line-strong);
-  border-radius: var(--radius-round);
+  background: var(--color-raised);
+  color: var(--color-raised-ink);
+  border: 0;
+  border-radius: var(--radius-3);
   padding: var(--space-2) var(--space-4);
   min-height: var(--size-touch);
-  font-weight: 500;
+  font-weight: var(--weight-body);
   cursor: pointer;
   transition:
     background-color var(--duration-1) var(--ease),
-    transform var(--duration-1) var(--ease);
-}
-
-.button:active:not(:disabled) {
-  transform: scale(0.97);
+    translate var(--duration-1) var(--ease),
+    box-shadow var(--duration-1) var(--ease);
 }
 
 .button.primary {
+  --sheet: var(--shadow-sheet-2);
+  --press: var(--press-2);
   background: var(--color-accent);
-  border-color: transparent;
   color: var(--color-on-accent);
-  font-weight: 600;
-  box-shadow: var(--shadow-action);
+  font-size: 1.0625rem;
 }
 
 .button.quiet {
-  border-color: transparent;
+  --sheet: none;
+  background: transparent;
   color: var(--color-ink-muted);
 }
 
@@ -252,6 +289,7 @@ select {
 }
 
 .button:disabled {
+  --sheet: var(--shadow-sheet-0);
   opacity: 0.4;
   cursor: not-allowed;
 }
@@ -325,11 +363,17 @@ html:has(.room) {
 }
 
 .status-line > * {
-  padding: var(--space-2) var(--space-3);
+  --sheet: var(--shadow-sheet-2);
+  padding: var(--space-2) var(--space-4);
   border-radius: var(--radius-3);
-  background: var(--color-raised);
-  box-shadow: var(--shadow-2);
+  background: var(--color-toast);
+  color: var(--color-on-toast);
   text-align: center;
+}
+
+.status-line > .problem {
+  background: var(--color-accent);
+  color: var(--color-on-accent);
 }
 
 .room-body {
@@ -378,7 +422,7 @@ html:has(.room) {
   font-size: var(--text-1);
   color: var(--color-ink-muted);
   border: 1px solid var(--color-line-strong);
-  border-radius: var(--radius-round);
+  border-radius: var(--radius-tab);
   padding: 0 var(--space-2);
 }
 
@@ -430,12 +474,13 @@ html:has(.room) {
   min-height: 2.25rem;
   padding: var(--space-1) var(--space-3);
   font-size: var(--text-2);
-  border-color: var(--color-line);
+  border-radius: var(--radius-2);
 }
 
 .button.chip.is-picked {
+  --sheet: var(--shadow-sheet-0);
+  translate: var(--press-1);
   background: var(--color-ink);
-  border-color: var(--color-ink);
   color: var(--color-page);
 }
 
@@ -481,12 +526,15 @@ html:has(.room) {
   width: 100%;
   min-height: var(--size-touch);
   padding: var(--space-2) var(--space-3);
-  border: 1px solid var(--color-line);
+  border: 0;
   border-radius: var(--radius-3);
   background: var(--color-raised);
   color: var(--color-raised-ink);
   text-align: left;
   cursor: pointer;
+  transition:
+    translate var(--duration-1) var(--ease),
+    box-shadow var(--duration-1) var(--ease);
 }
 
 .room-row-code {
@@ -510,7 +558,7 @@ html:has(.room) {
 }
 
 .fair-mark {
-  font-weight: 600;
+  font-weight: var(--weight-strong);
   min-width: var(--size-touch);
   justify-content: center;
 }
@@ -729,7 +777,8 @@ html:has(.room) {
   width: var(--size-face-bar);
   height: var(--size-face-bar);
   padding: 0;
-  border-radius: 50%;
+  border-radius: 18%;
+  background: var(--color-face);
   overflow: hidden;
 }
 
@@ -800,6 +849,7 @@ html:has(.room) {
 }
 
 .sheet {
+  --sheet: var(--shadow-sheet-3);
   position: relative;
   width: 100%;
   max-width: var(--size-sheet);
@@ -814,7 +864,18 @@ html:has(.room) {
   background: var(--color-raised);
   color: var(--color-raised-ink);
   border-radius: var(--radius-4) var(--radius-4) 0 0;
-  box-shadow: var(--shadow-2);
+}
+
+.sheet::before {
+  content: "";
+  position: absolute;
+  top: var(--space-2);
+  left: 50%;
+  width: 36px;
+  height: 4px;
+  margin-left: -18px;
+  border-radius: 2px;
+  background: var(--color-line);
 }
 @media (min-width: 40rem) {
   .sheet-layer {
@@ -827,8 +888,11 @@ html:has(.room) {
 
 .sheet-title {
   margin: 0 0 var(--space-2);
-  font-size: var(--text-4);
-  font-weight: 600;
+  font-family: var(--font-display);
+  font-size: 1.375rem;
+  font-weight: var(--weight-display);
+  font-variation-settings: var(--settings-display);
+  letter-spacing: -0.01em;
 }
 
 .sheet .button {
@@ -864,6 +928,7 @@ html:has(.room) {
 }
 
 .request {
+  --sheet: var(--shadow-sheet-2);
   display: flex;
   align-items: center;
   gap: var(--space-2);
@@ -871,7 +936,6 @@ html:has(.room) {
   border-radius: var(--radius-3);
   background: var(--color-raised);
   color: var(--color-raised-ink);
-  box-shadow: var(--shadow-2);
   font-size: var(--text-2);
 }
 
