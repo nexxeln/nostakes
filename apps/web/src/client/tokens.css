@@ -38,6 +38,13 @@
   --size-bar: 3rem;
   --size-page: 26rem;
   --size-sheet: 34rem;
+  --size-face-preview: 10.5rem;
+  --size-face-option: 3.75rem;
+  --size-face-strip: 2.75rem;
+  --size-face-bar: 2rem;
+  --lift-face: -4px;
+  --tilt-face: 1.5deg;
+  --zoom-face-part: 1.75;
 
   --display-in-light: inline-flex;
   --display-in-dark: none;

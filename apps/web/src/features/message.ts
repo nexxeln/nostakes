@@ -1,10 +1,16 @@
+import { AvatarSchema } from "@nostakes/avatar";
 import { PlayerIdSchema, RoomCodeSchema } from "@nostakes/protocol";
 import { MemberCommandSchema, SeenEventSchema } from "@nostakes/room";
 import { Schema } from "effect";
 import { defineMessageUnion } from "foldkit/message";
 import { defineTaggedUnion } from "foldkit/schema";
 
-import { CopiedSchema, LinkSchema, ThemeSchema } from "./model.js";
+import {
+  CopiedSchema,
+  FacePartSchema,
+  LinkSchema,
+  ThemeSchema,
+} from "./model.js";
 import { TableIntentSchema } from "./table/snapshot.js";
 
 export const ReplyOutcomes = defineTaggedUnion({
@@ -26,17 +32,22 @@ export const Messages = defineMessageUnion({
   ChangedJoinCode: { value: Schema.String },
   ChangedName: { value: Schema.String },
   ChangedSetting: { path: Schema.String, value: Schema.String },
+  ChoseFacePart: { part: FacePartSchema },
   ChoseTheme: { theme: ThemeSchema },
+  ClickedCancelFace: {},
   ClickedCancelSeat: {},
   ClickedCloseSettings: {},
   ClickedCopyLink: {},
   ClickedCopySettlement: {},
+  ClickedEditFace: {},
   ClickedHome: {},
   ClickedOpenSettings: {},
   ClickedRequestChips: {},
   ClickedRoomCommand: { command: MemberCommandSchema, label: Schema.String },
+  ClickedSaveFace: {},
   ClickedSaveSettings: {},
   ClickedSeat: { seat: Schema.Int },
+  ClickedShuffleFace: {},
   ClickedSit: { seat: Schema.Int },
   CompletedCopy: { copied: CopiedSchema },
   CompletedForget: { code: RoomCodeSchema },
@@ -49,7 +60,7 @@ export const Messages = defineMessageUnion({
   GotLink: { link: LinkSchema },
   GotReply: { key: Schema.Int, outcome: ReplyOutcomes },
   GotTableIntent: { intent: TableIntentSchema },
-  PickedAvatar: { avatar: Schema.String },
+  PickedAvatar: { avatar: AvatarSchema },
   ReleasedConnection: {},
   SubmittedCreate: {},
   SubmittedInvite: {},

@@ -1,3 +1,4 @@
+import { AvatarSchema } from "@nostakes/avatar";
 import {
   CloseReasonSchema,
   PlayerIdSchema,
@@ -9,20 +10,18 @@ import { defineTaggedUnion } from "foldkit/schema";
 
 import { HintSchema, TableEventSchema } from "./table/snapshot.js";
 
-export const AVATARS = [
-  "🦊",
-  "🐻",
-  "🐼",
-  "🐸",
-  "🦉",
-  "🐙",
-  "🦁",
-  "🐯",
-  "🐨",
-  "🐧",
-  "🐢",
-  "🦄",
-] as const;
+export const FacePartSchema = Schema.Literals([
+  "Animal",
+  "Colour",
+  "Markings",
+  "Eyes",
+  "Mouth",
+  "Cheeks",
+  "Extras",
+  "Backdrop",
+]);
+
+export type FacePart = typeof FacePartSchema.Type;
 
 export const ThemeSchema = Schema.Literals(["Light", "Dark"]);
 
@@ -111,6 +110,8 @@ export const Screens = defineTaggedUnion({
 export type Screen = typeof Screens.Type;
 
 export const ModelSchema = Schema.Struct({
+  faceDraft: Schema.Option(AvatarSchema),
+  facePart: FacePartSchema,
   joinCode: Schema.String,
   learned: Schema.Array(HintSchema),
   nextKey: Schema.Int,

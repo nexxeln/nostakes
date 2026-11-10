@@ -1,3 +1,4 @@
+import { avatarFor, codeFor } from "@nostakes/avatar";
 import { Actions, ChipsSchema, SeatIndexSchema } from "@nostakes/engine";
 import type { Action } from "@nostakes/engine";
 import { RoomCodeSchema } from "@nostakes/protocol";
@@ -19,9 +20,11 @@ import {
   ForgetRoom,
   JoinRoom,
   SaveLearned,
+  SaveProfile,
   SaveSound,
   SendToRoom,
   ShowPath,
+  ShuffleFace,
   WakeRoom,
 } from "../client/commands.js";
 import type { RoomConnection } from "../client/connection.js";
@@ -67,6 +70,8 @@ const freshRoom = (code: InRoom["code"], player: InRoom["player"]): InRoom => ({
 
 export const init = (flags: Flags): Return => {
   const base = {
+    faceDraft: Option.none(),
+    facePart: "Animal" as const,
     joinCode: "",
     learned: flags.learned,
     nextKey: 1,
@@ -308,6 +313,40 @@ const settle = (room: InRoom, key: number, outcome: ReplyOutcome): InRoom => {
   });
 };
 
+const ownMember = (room: InRoom) =>
+  openViewOf(room).pipe(
+    Option.flatMap((view) =>
+      Option.fromNullishOr(
+        view.members.find((member) => member.player === room.player)
+      )
+    )
+  );
+
+const saveFace = (model: Model): Return =>
+  inRoom(model, (room) =>
+    Option.match(Option.all([model.faceDraft, ownMember(room)]), {
+      onNone: () => ({ model: { ...model, faceDraft: Option.none() } }),
+      onSome: ([draft, member]) => {
+        const profile = { ...model.profile, avatar: codeFor(draft) };
+
+        const sent = send(
+          { ...model, faceDraft: Option.none(), profile },
+          room,
+          Commands.SetProfile.make({
+            avatar: profile.avatar,
+            name: member.name,
+          }),
+          "Changing your face"
+        );
+
+        return {
+          ...sent,
+          commands: [...(sent.commands ?? []), SaveProfile({ profile })],
+        };
+      },
+    })
+  );
+
 export const update = (model: Model, message: Message): Return =>
   Messages.match(message, {
     AcquiredConnection: () =>
@@ -332,9 +371,13 @@ export const update = (model: Model, message: Message): Return =>
           Option.map((draft) => ({ ...draft, [path]: value }))
         ),
       })),
+    ChoseFacePart: ({ part }) => ({ model: { ...model, facePart: part } }),
     ChoseTheme: ({ theme }) => ({
       commands: [ApplyTheme({ theme: Option.some(theme) })],
       model: { ...model, theme: Option.some(theme) },
+    }),
+    ClickedCancelFace: () => ({
+      model: { ...model, faceDraft: Option.none() },
     }),
     ClickedCancelSeat: () =>
       editRoom(model, (room) => ({
@@ -361,11 +404,26 @@ export const update = (model: Model, message: Message): Return =>
           }
         )
       ),
+    ClickedEditFace: () =>
+      inRoom(model, (room) => ({
+        model: {
+          ...model,
+          faceDraft: Option.some(
+            avatarFor(
+              ownMember(room).pipe(
+                Option.map(({ avatar }) => avatar),
+                Option.getOrElse(() => model.profile.avatar)
+              )
+            )
+          ),
+        },
+      })),
     ClickedHome: () =>
       inRoom(model, (room) => ({
         commands: [ShowPath({ path: "/" }), ForgetRoom({ code: room.code })],
         model: {
           ...model,
+          faceDraft: Option.none(),
           screen: Screens.Home({ busy: false, problem: Option.none() }),
         },
       })),
@@ -383,6 +441,7 @@ export const update = (model: Model, message: Message): Return =>
         : inRoom(model, (room) =>
             isLive(room) ? send(model, room, command, label) : { model }
           ),
+    ClickedSaveFace: () => saveFace(model),
     ClickedSaveSettings: () =>
       inRoom(model, (room) =>
         Option.match(room.settings, {
@@ -403,6 +462,7 @@ export const update = (model: Model, message: Message): Return =>
         })
       ),
     ClickedSeat: ({ seat }) => pickSeat(model, seat),
+    ClickedShuffleFace: () => ({ commands: [ShuffleFace()], model }),
     ClickedSit: ({ seat }) => sit(model, seat),
     CompletedCopy: ({ copied }) =>
       editRoom(model, (room) => ({ ...room, copied })),
@@ -440,9 +500,18 @@ export const update = (model: Model, message: Message): Return =>
     GotReply: ({ key, outcome }) =>
       editRoom(model, (room) => settle(room, key, outcome)),
     GotTableIntent: ({ intent }) => fromTable(model, intent),
-    PickedAvatar: ({ avatar }) => ({
-      model: { ...model, profile: { ...model.profile, avatar } },
-    }),
+    PickedAvatar: ({ avatar }) => {
+      if (Option.isSome(model.faceDraft)) {
+        return { model: { ...model, faceDraft: Option.some(avatar) } };
+      }
+
+      const profile = { ...model.profile, avatar: codeFor(avatar) };
+
+      return {
+        commands: [SaveProfile({ profile })],
+        model: { ...model, profile },
+      };
+    },
     ReleasedConnection: () =>
       editRoom(model, (room) => ({ ...room, connected: false })),
     SubmittedCreate: () => {

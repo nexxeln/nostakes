@@ -1,10 +1,12 @@
+import { avatarFor } from "@nostakes/avatar";
 import { Option } from "effect";
 import type { Document, Html, HtmlBuilder } from "foldkit/html";
 
 import { themeSwitch } from "./chrome.js";
+import { faceBuilder, faceSheet } from "./face-builder.js";
 import { Messages } from "./message.js";
 import type { Message } from "./message.js";
-import { AVATARS, Screens } from "./model.js";
+import { Screens } from "./model.js";
 import type { Model } from "./model.js";
 import { roomView } from "./room-view.js";
 
@@ -35,26 +37,7 @@ const profileFields = (model: Model, h: H): readonly Html[] => [
     [h.Class("field")],
     [
       h.span([h.Class("field-label")], ["Your face"]),
-      h.div(
-        [h.Class("avatars"), h.Role("radiogroup"), h.AriaLabel("Your face")],
-        AVATARS.map((avatar) =>
-          h.button(
-            [
-              h.Type("button"),
-              h.Key(avatar),
-              h.Class(
-                avatar === model.profile.avatar
-                  ? "avatar-choice is-picked"
-                  : "avatar-choice"
-              ),
-              h.Role("radio"),
-              h.AriaChecked(avatar === model.profile.avatar),
-              h.OnClick(Messages.PickedAvatar({ avatar })),
-            ],
-            [avatar]
-          )
-        )
-      ),
+      faceBuilder(avatarFor(model.profile.avatar), model.facePart, h),
     ]
   ),
 ];
@@ -161,7 +144,17 @@ export const view = (model: Model, h: H): Document => ({
     Home: ({ busy, problem }) => homeView(model, busy, problem, h),
     Invited: ({ busy, code, problem }) =>
       invitedView(model, code, busy, problem, h),
-    Room: ({ room }) => roomView(model, room, h),
+    Room: ({ room }) =>
+      h.div(
+        [h.Class("screen")],
+        [
+          roomView(model, room, h),
+          Option.match(model.faceDraft, {
+            onNone: () => h.empty,
+            onSome: (draft) => faceSheet(draft, model.facePart, h),
+          }),
+        ]
+      ),
   }),
   title: Screens.match(model.screen, {
     Home: () => "nostakes",

@@ -1,6 +1,7 @@
+import { codeFor, parseAvatar, randomAvatar } from "@nostakes/avatar";
 import { RoomCodeSchema, RoomPassSchema } from "@nostakes/protocol";
 import type { RoomPass } from "@nostakes/protocol";
-import { Effect, Option, Schema } from "effect";
+import { Effect, Option, Random, Schema } from "effect";
 
 import {
   ProfileSchema,
@@ -83,6 +84,10 @@ export const forgetPass = (code: string) =>
     globalThis.localStorage.removeItem(passKey(code));
   });
 
+const SEED_LIMIT = 2_147_483_646;
+
+export const randomSeed = Random.nextIntBetween(0, SEED_LIMIT);
+
 const ROOM_PATH = /^\/r\/(?<code>[^/]+)\/?$/u;
 
 export const readFlags = Effect.gen(function* readFlags() {
@@ -93,10 +98,16 @@ export const readFlags = Effect.gen(function* readFlags() {
     Option.flatMap(Schema.decodeOption(RoomCodeSchema))
   );
 
-  const profile = (yield* readItem(PROFILE_KEY)).pipe(
+  const shuffled = codeFor(randomAvatar(yield* randomSeed));
+
+  const stored = (yield* readItem(PROFILE_KEY)).pipe(
     Option.flatMap(Schema.decodeOption(profileJson)),
-    Option.getOrElse(() => ({ avatar: "🦊", name: "" }))
+    Option.getOrElse(() => ({ avatar: shuffled, name: "" }))
   );
+
+  const profile = Option.isSome(parseAvatar(stored.avatar))
+    ? stored
+    : { ...stored, avatar: shuffled };
 
   const saved = yield* Option.match(invite, {
     onNone: () => Effect.succeedNone,

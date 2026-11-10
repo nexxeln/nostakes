@@ -1,3 +1,4 @@
+import { randomAvatar } from "@nostakes/avatar";
 import {
   HttpRefusalSchema,
   RoomCodeSchema,
@@ -12,13 +13,14 @@ import * as HttpClientRequest from "effect/http/HttpClientRequest";
 import { Command, Navigation } from "foldkit";
 
 import { Messages, ReplyOutcomes } from "../features/message.js";
-import { ThemeSchema } from "../features/model.js";
+import { ProfileSchema, ThemeSchema } from "../features/model.js";
 import { rejectionText } from "../features/rejections.js";
 import { HintSchema } from "../features/table/snapshot.js";
 import { roomPath } from "../features/wire.js";
 import { RoomConnection } from "./connection.js";
 import {
   forgetPass,
+  randomSeed,
   storeLearned,
   storePass,
   storeProfile,
@@ -214,5 +216,19 @@ export const SaveLearned = Command.define("SaveLearned", {
   args: { learned: Schema.Array(HintSchema) },
   execute: ({ learned }) =>
     storeLearned(learned).pipe(Effect.as(Messages.CompletedPreference())),
+  messages: [Messages.CompletedPreference],
+});
+
+export const ShuffleFace = Command.define("ShuffleFace", {
+  execute: randomSeed.pipe(
+    Effect.map((seed) => Messages.PickedAvatar({ avatar: randomAvatar(seed) }))
+  ),
+  messages: [Messages.PickedAvatar],
+});
+
+export const SaveProfile = Command.define("SaveProfile", {
+  args: { profile: ProfileSchema },
+  execute: ({ profile }) =>
+    storeProfile(profile).pipe(Effect.as(Messages.CompletedPreference())),
   messages: [Messages.CompletedPreference],
 });

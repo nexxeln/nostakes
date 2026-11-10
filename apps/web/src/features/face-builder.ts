@@ -1,0 +1,262 @@
+import {
+  ACCENTS,
+  ACCESSORIES,
+  BACKDROPS,
+  CHEEKS,
+  codeFor,
+  EYES,
+  FURS,
+  MARKINGS,
+  MOUTHS,
+  render,
+  SPECIES,
+} from "@nostakes/avatar";
+import type { Avatar, Expression } from "@nostakes/avatar";
+import type { Html, HtmlBuilder } from "foldkit/html";
+
+import { Messages } from "./message.js";
+import type { Message } from "./message.js";
+import type { FacePart } from "./model.js";
+
+type H = HtmlBuilder<Message>;
+
+const PREVIEW_PX = 168;
+
+const OPTION_PX = 60;
+
+const STRIP_PX = 44;
+
+interface Choice {
+  readonly key: string;
+  readonly label: string;
+  readonly avatar: Avatar;
+  readonly picked: boolean;
+}
+
+interface PartPicker {
+  readonly label: string;
+  readonly closeUp: boolean;
+  readonly choices: (avatar: Avatar) => readonly Choice[];
+}
+
+const spaced = (name: string) => name.replaceAll(/(?<=[a-z])(?=[A-Z])/gu, " ");
+
+const choicesOf =
+  <K extends keyof Avatar>(key: K, options: readonly Avatar[K][]) =>
+  (avatar: Avatar): readonly Choice[] =>
+    options.map((option) => ({
+      avatar: { ...avatar, [key]: option },
+      key: `${key}-${option}`,
+      label: spaced(option),
+      picked: avatar[key] === option,
+    }));
+
+const PICKERS: Readonly<Record<FacePart, PartPicker>> = {
+  Animal: {
+    choices: choicesOf("species", SPECIES),
+    closeUp: false,
+    label: "Animal",
+  },
+  Backdrop: {
+    choices: choicesOf("backdrop", BACKDROPS),
+    closeUp: false,
+    label: "Backdrop",
+  },
+  Cheeks: {
+    choices: choicesOf("cheeks", CHEEKS),
+    closeUp: true,
+    label: "Cheeks",
+  },
+  Colour: { choices: choicesOf("fur", FURS), closeUp: false, label: "Colour" },
+  Extras: {
+    choices: choicesOf("accessory", ACCESSORIES),
+    closeUp: false,
+    label: "Extras",
+  },
+  Eyes: { choices: choicesOf("eyes", EYES), closeUp: true, label: "Eyes" },
+  Markings: {
+    choices: choicesOf("marking", MARKINGS),
+    closeUp: true,
+    label: "Markings",
+  },
+  Mouth: { choices: choicesOf("mouth", MOUTHS), closeUp: true, label: "Mouth" },
+};
+
+const PART_ORDER: readonly FacePart[] = [
+  "Animal",
+  "Colour",
+  "Markings",
+  "Eyes",
+  "Mouth",
+  "Cheeks",
+  "Extras",
+  "Backdrop",
+];
+
+const accentChoices = choicesOf("accent", ACCENTS);
+
+const STRIP: readonly { expression: Expression; label: string }[] = [
+  { expression: "Resting", label: "Waiting" },
+  { expression: "LookingDown", label: "Looking at cards" },
+  { expression: "Thinking", label: "Thinking" },
+  { expression: "Happy", label: "Won a pot" },
+  { expression: "Gutted", label: "Lost a pot" },
+  { expression: "Folded", label: "Folded" },
+];
+
+export const face = (
+  avatar: Avatar,
+  expression: Expression,
+  size: number,
+  className: string,
+  h: H
+): Html =>
+  h.span(
+    [
+      h.Class(className),
+      h.AriaHidden(true),
+      h.InnerHTML(render(avatar, { expression, size })),
+    ],
+    []
+  );
+
+const preview = (avatar: Avatar, h: H): Html =>
+  h.div(
+    [h.Class("face-stage")],
+    [
+      h.div(
+        [h.Key(codeFor(avatar)), h.Class("face-preview")],
+        [
+          face(avatar, "Resting", PREVIEW_PX, "face-frame is-resting", h),
+          face(avatar, "Happy", PREVIEW_PX, "face-frame is-happy", h),
+        ]
+      ),
+      h.button(
+        [
+          h.Type("button"),
+          h.Class("button face-shuffle"),
+          h.OnClick(Messages.ClickedShuffleFace()),
+        ],
+        ["Shuffle"]
+      ),
+      h.ul(
+        [
+          h.Class("face-strip"),
+          h.AriaLabel("How your face reacts at the table"),
+        ],
+        STRIP.map(({ expression, label }) =>
+          h.li(
+            [h.Key(expression), h.Title(label)],
+            [face(avatar, expression, STRIP_PX, "face-frame", h)]
+          )
+        )
+      ),
+    ]
+  );
+
+const tabs = (part: FacePart, h: H): Html =>
+  h.div(
+    [h.Class("face-tabs"), h.Role("tablist"), h.AriaLabel("Parts")],
+    PART_ORDER.map((each) =>
+      h.button(
+        [
+          h.Type("button"),
+          h.Key(each),
+          h.Role("tab"),
+          h.AriaSelected(each === part),
+          h.Class(each === part ? "face-tab is-picked" : "face-tab"),
+          h.OnClick(Messages.ChoseFacePart({ part: each })),
+        ],
+        [PICKERS[each].label]
+      )
+    )
+  );
+
+const optionGrid = (
+  label: string,
+  choices: readonly Choice[],
+  closeUp: boolean,
+  h: H
+): Html =>
+  h.div(
+    [h.Class("face-options"), h.Role("radiogroup"), h.AriaLabel(label)],
+    choices.map((choice) =>
+      h.button(
+        [
+          h.Type("button"),
+          h.Key(choice.key),
+          h.Role("radio"),
+          h.AriaChecked(choice.picked),
+          h.AriaLabel(choice.label),
+          h.Title(choice.label),
+          h.Class(choice.picked ? "face-option is-picked" : "face-option"),
+          h.OnClick(Messages.PickedAvatar({ avatar: choice.avatar })),
+        ],
+        [
+          face(
+            choice.avatar,
+            "Resting",
+            OPTION_PX,
+            closeUp ? "face-frame is-close-up" : "face-frame",
+            h
+          ),
+        ]
+      )
+    )
+  );
+
+export const faceBuilder = (avatar: Avatar, part: FacePart, h: H): Html => {
+  const picker = PICKERS[part];
+
+  return h.div(
+    [h.Class("face-builder")],
+    [
+      preview(avatar, h),
+      tabs(part, h),
+      optionGrid(picker.label, picker.choices(avatar), picker.closeUp, h),
+      part === "Extras" && avatar.accessory !== "None"
+        ? optionGrid("Extra colour", accentChoices(avatar), false, h)
+        : h.empty,
+    ]
+  );
+};
+
+export const faceSheet = (draft: Avatar, part: FacePart, h: H): Html =>
+  h.div(
+    [h.Class("face-sheet")],
+    [
+      h.section(
+        [
+          h.Class("card-panel face-sheet-panel"),
+          h.Role("dialog"),
+          h.AriaModal(true),
+          h.AriaLabel("Your face"),
+        ],
+        [
+          h.h2([h.Class("panel-title")], ["Your face"]),
+          faceBuilder(draft, part, h),
+          h.div(
+            [h.Class("choice-row")],
+            [
+              h.button(
+                [
+                  h.Type("button"),
+                  h.Class("button primary"),
+                  h.OnClick(Messages.ClickedSaveFace()),
+                ],
+                ["Save my face"]
+              ),
+              h.button(
+                [
+                  h.Type("button"),
+                  h.Class("button quiet"),
+                  h.OnClick(Messages.ClickedCancelFace()),
+                ],
+                ["Cancel"]
+              ),
+            ]
+          ),
+        ]
+      ),
+    ]
+  );

@@ -7,7 +7,7 @@ import { Option } from "effect";
 import type { Html, HtmlBuilder } from "foldkit/html";
 
 import { cardLabel } from "./cards.js";
-import { soundSwitch, themeSwitch } from "./chrome.js";
+import { faceButton, soundSwitch, themeSwitch } from "./chrome.js";
 import { Messages } from "./message.js";
 import type { Message } from "./message.js";
 import type { InRoom, Model } from "./model.js";
@@ -122,6 +122,15 @@ const header = (
         [h.Class("bar-end")],
         [
           connectionLine(room, h),
+          Option.match(view, {
+            onNone: () => h.empty,
+            onSome: (open) =>
+              faceButton(
+                open.members.find(({ player }) => player === room.player)
+                  ?.avatar ?? model.profile.avatar,
+                h
+              ),
+          }),
           soundSwitch(model.sound, h),
           themeSwitch(h),
           Option.match(view, {

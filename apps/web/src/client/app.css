@@ -180,28 +180,6 @@ select {
   text-transform: uppercase;
 }
 
-.avatars {
-  display: grid;
-  grid-template-columns: repeat(6, 1fr);
-  gap: var(--space-2);
-}
-
-.avatar-choice {
-  aspect-ratio: 1;
-  font-size: var(--text-4);
-  background: var(--color-face);
-  border: 0;
-  border-radius: var(--radius-face);
-  box-shadow: var(--shadow-face);
-  cursor: pointer;
-}
-
-.avatar-choice.is-picked {
-  box-shadow:
-    0 0 0 2px var(--color-raised),
-    0 0 0 4px var(--color-ring);
-}
-
 .button {
   display: inline-flex;
   align-items: center;
@@ -761,4 +739,214 @@ select {
   margin: 0 calc(var(--space-4) * -1);
   height: calc(100dvh - var(--size-bar));
   min-height: 30rem;
+}
+
+.screen {
+  display: contents;
+}
+
+.face-builder {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.face-stage {
+  display: grid;
+  justify-items: center;
+  gap: var(--space-3);
+  padding-top: var(--space-2);
+}
+
+.face-frame {
+  display: block;
+  border-radius: 50%;
+  overflow: hidden;
+  line-height: 0;
+}
+
+.face-frame svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.face-preview {
+  position: relative;
+  width: var(--size-face-preview);
+  height: var(--size-face-preview);
+  border-radius: 50%;
+  box-shadow: var(--shadow-2);
+  animation: face-bob var(--duration-3) var(--ease) 0s 1;
+}
+
+.face-preview .face-frame {
+  position: absolute;
+  inset: 0;
+  transition: opacity var(--duration-2) var(--ease);
+}
+
+.face-preview .is-happy {
+  opacity: 0;
+}
+
+.face-stage:hover .is-happy,
+.face-preview:active .is-happy {
+  opacity: 1;
+}
+
+.face-stage:hover .is-resting,
+.face-preview:active .is-resting {
+  opacity: 0;
+}
+
+@keyframes face-bob {
+  50% {
+    transform: translateY(var(--lift-face)) rotate(var(--tilt-face));
+  }
+}
+
+.face-strip {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--space-2);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.face-strip .face-frame {
+  width: var(--size-face-strip);
+  height: var(--size-face-strip);
+  box-shadow: var(--shadow-face);
+}
+
+.face-tabs {
+  display: flex;
+  gap: var(--space-2);
+  overflow-x: auto;
+  scrollbar-width: none;
+  margin: 0 calc(-1 * var(--space-4));
+  padding: var(--space-1) var(--space-4);
+}
+
+.face-tab {
+  flex: none;
+  min-height: var(--size-touch);
+  padding: 0 var(--space-4);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-round);
+  background: var(--color-field);
+  color: var(--color-ink-muted);
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color var(--duration-1) var(--ease);
+}
+
+.face-tab.is-picked {
+  background: var(--color-ink);
+  border-color: transparent;
+  color: var(--color-page);
+}
+
+.face-options {
+  display: grid;
+  grid-template-columns: repeat(
+    auto-fill,
+    minmax(var(--size-face-option), 1fr)
+  );
+  gap: var(--space-2);
+}
+
+.face-option {
+  aspect-ratio: 1;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: none;
+  cursor: pointer;
+  transition: transform var(--duration-1) var(--ease-back);
+}
+
+.face-option .face-frame {
+  width: 100%;
+  height: 100%;
+  box-shadow: var(--shadow-face);
+}
+
+.face-option:hover {
+  transform: scale(1.06);
+}
+
+.face-option:active {
+  transform: scale(0.94);
+}
+
+.face-option:focus-visible {
+  outline: 2px solid var(--color-ring);
+  outline-offset: 3px;
+}
+
+.face-option.is-picked .face-frame {
+  box-shadow:
+    0 0 0 2px var(--color-raised),
+    0 0 0 4px var(--color-ring);
+}
+
+.is-close-up svg {
+  transform: scale(var(--zoom-face-part));
+  transform-origin: 50% 64%;
+}
+
+.face-button {
+  width: var(--size-face-bar);
+  height: var(--size-face-bar);
+  padding: 0;
+  border-radius: 50%;
+  overflow: hidden;
+}
+
+.face-button .face-frame {
+  width: 100%;
+  height: 100%;
+}
+
+.face-sheet {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: var(--space-3);
+  background: var(--color-scrim);
+}
+
+.face-sheet-panel {
+  width: 100%;
+  max-width: var(--size-sheet);
+  max-height: calc(100dvh - var(--space-5));
+  overflow-y: auto;
+  animation: face-sheet-rise var(--duration-2) var(--ease);
+}
+
+@keyframes face-sheet-rise {
+  from {
+    transform: translateY(var(--space-4));
+    opacity: 0;
+  }
+}
+
+@media (min-width: 40rem) {
+  .face-sheet {
+    align-items: center;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .face-preview,
+  .face-sheet-panel {
+    animation: none;
+  }
 }

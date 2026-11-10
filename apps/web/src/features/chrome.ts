@@ -1,5 +1,7 @@
+import { avatarFor } from "@nostakes/avatar";
 import type { Html, HtmlBuilder } from "foldkit/html";
 
+import { face } from "./face-builder.js";
 import { Messages } from "./message.js";
 import type { Message } from "./message.js";
 
@@ -39,4 +41,18 @@ export const soundSwitch = (on: boolean, h: H): Html =>
       h.OnClick(Messages.SwitchedSound({ on: !on })),
     ],
     [on ? "Mute" : "Unmute"]
+  );
+
+const BAR_FACE_PX = 32;
+
+export const faceButton = (avatar: string, h: H): Html =>
+  h.button(
+    [
+      h.Type("button"),
+      h.Class("bar-button face-button"),
+      h.AriaLabel("Change your face"),
+      h.Title("Change your face"),
+      h.OnClick(Messages.ClickedEditFace()),
+    ],
+    [face(avatarFor(avatar), "Resting", BAR_FACE_PX, "face-frame", h)]
   );
