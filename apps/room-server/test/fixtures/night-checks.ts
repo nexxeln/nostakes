@@ -66,6 +66,7 @@ export const COUNT_NAMES = [
   "clientBots",
   "clientCommands",
   "clientCommandsTraced",
+  "clientDeafCommands",
   "clientDropsBlackHole",
   "clientDropsBotClose",
   "clientDropsDeafSilence",
@@ -138,6 +139,7 @@ export const emptyCounts = (): NightCounts => ({
   clientBots: 0,
   clientCommands: 0,
   clientCommandsTraced: 0,
+  clientDeafCommands: 0,
   clientDropsBlackHole: 0,
   clientDropsBotClose: 0,
   clientDropsDeafSilence: 0,
@@ -212,6 +214,7 @@ export interface NightEvidence {
 export interface NightVerdict {
   readonly problems: readonly string[];
   readonly counts: NightCounts;
+  readonly deafReplyMs: readonly number[];
   readonly transfers: readonly number[];
   readonly replayMs: number;
   readonly views: number;
@@ -684,6 +687,9 @@ const addClientStats = (checker: Checker, client: ClientBotRecord) => {
   const { stats } = client;
 
   counts.clientBots += 1;
+  counts.clientDeafCommands += client.commands.filter(
+    ({ issuedOnDeafLine }) => issuedOnDeafLine
+  ).length;
   counts.clientCommands += stats.commands;
   counts.clientIssuedBeforeDrop += stats.issuedBeforeDrop;
   counts.clientResent += stats.resent;
@@ -1408,6 +1414,15 @@ const checkStorage = (checker: Checker, evidence: NightEvidence) => {
   }
 };
 
+const deafReplyTimes = (clients: readonly ClientBotRecord[]) =>
+  clients.flatMap(({ commands }) =>
+    commands.flatMap(({ answeredAt, issuedAt, issuedOnDeafLine }) =>
+      issuedOnDeafLine
+        ? Option.toArray(answeredAt).map((at) => at - issuedAt)
+        : []
+    )
+  );
+
 export const checkNight = (evidence: NightEvidence): NightVerdict => {
   const checker: Checker = {
     code: evidence.code,
@@ -1446,6 +1461,7 @@ export const checkNight = (evidence: NightEvidence): NightVerdict => {
 
     return {
       counts: checker.counts,
+      deafReplyMs: deafReplyTimes(evidence.clients),
       problems: checker.problems,
       replayMs: 0,
       transfers: [],
@@ -1535,6 +1551,7 @@ export const checkNight = (evidence: NightEvidence): NightVerdict => {
 
   return {
     counts: checker.counts,
+    deafReplyMs: deafReplyTimes(evidence.clients),
     problems: checker.problems,
     replayMs,
     transfers,

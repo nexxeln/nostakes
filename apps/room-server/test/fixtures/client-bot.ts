@@ -77,8 +77,11 @@ export interface ClientDrop {
 export interface ClientCommand {
   readonly id: CommandId;
   readonly command: MemberCommand;
+  readonly issuedAt: number;
+  issuedOnDeafLine: boolean;
   pendingAtDrop: boolean;
   outcome: Option.Option<Result.Result<PokerReply, string>>;
+  answeredAt: Option.Option<number>;
 }
 
 export interface HandEnd {
@@ -548,8 +551,11 @@ export const startClientBot = (setup: ClientBotSetup) => {
         }
 
         const entry: ClientCommand = {
+          answeredAt: Option.none(),
           command: planned.command,
           id: issued.success.id,
+          issuedAt: wallClock(),
+          issuedOnDeafLine: false,
           outcome: Option.none(),
           pendingAtDrop: false,
         };
@@ -566,14 +572,25 @@ export const startClientBot = (setup: ClientBotSetup) => {
           yield* disrupt;
         }
 
+        entry.issuedOnDeafLine =
+          !control.closing && wire.lastLine()?.mode === "Deaf";
+
+        if (entry.issuedOnDeafLine) {
+          note(`${entry.id} went out on a deaf line`);
+        }
+
         const outcome = yield* awaitReply(issued.success.reply);
+        const answeredAt = wallClock();
 
         entry.outcome = Option.some(outcome);
+        entry.answeredAt = Result.isSuccess(outcome)
+          ? Option.some(answeredAt)
+          : Option.none();
         note(
           `outcome ${entry.id} ${Result.match(outcome, {
             onFailure: (why) => `failed: ${why}`,
             onSuccess: (reply) => reply._tag,
-          })}`
+          })} after ${Math.round(answeredAt - entry.issuedAt)} ms`
         );
         stats.rejected +=
           Result.isSuccess(outcome) &&

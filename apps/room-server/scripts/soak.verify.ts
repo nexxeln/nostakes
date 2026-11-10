@@ -72,6 +72,7 @@ const HAND_BUDGET_MS = 12_000;
 
 const INFORMATIONAL: ReadonlySet<CountName> = new Set([
   "catchUpsSkipped",
+  "clientDeafCommands",
   "clientDropsDeafSilence",
   "clientDropsUnexplained",
   "clientFailedAttempts",
@@ -126,6 +127,10 @@ const summarize = (
     0
   );
 
+  const deafReplies = results.flatMap(({ verdict }) => verdict.deafReplyMs);
+
+  const slowestDeafReply = Math.max(0, ...deafReplies);
+
   const gaps = COUNT_NAMES.filter(
     (name) => counts[name] === 0 && !INFORMATIONAL.has(name)
   );
@@ -146,6 +151,7 @@ const summarize = (
     `  frames checked ${counts.framesChecked}, views checked ${counts.viewsChecked}, viewFor ${views > 0 ? ((viewMs * 1000) / views).toFixed(1) : "n/a"} µs each over ${views}`,
     `  client bots ${counts.clientBots}: commands ${counts.clientCommands}, traced to the log ${counts.clientCommandsTraced}, issued right before a drop ${counts.clientIssuedBeforeDrop}, resent after a drop ${counts.clientResent}`,
     `  client drops: bot close ${counts.clientDropsBotClose}, server restart ${counts.clientDropsRestart}, silence limit ${counts.clientDropsSilenceLimit}, black hole ${counts.clientDropsBlackHole}; deaf and silent ${counts.clientDropsDeafSilence}, unexplained ${counts.clientDropsUnexplained}, failed reconnects ${counts.clientFailedAttempts}`,
+    `  commands issued on a deaf line ${counts.clientDeafCommands}, answered ${deafReplies.length}, slowest reply ${slowestDeafReply.toFixed(0)} ms`,
     `  client wakes ${counts.clientWakes}, naps ${counts.clientNaps}, skipped ranges ${counts.clientSkippedRanges}, past batches echoed ${counts.clientEchoes}, events checked ${counts.clientEventsChecked}, views checked ${counts.clientViewsChecked}, unexpected refusals ${counts.clientUnexpectedRefusals}`,
     `  replay of the longest night (${longest?.plan.code ?? "none"}, ${longest?.verdict.counts.hands ?? 0} hands, ${longest?.verdict.counts.events ?? 0} events): ${(longest?.verdict.replayMs ?? 0).toFixed(1)} ms`,
     `  settlement transfers per room: ${results.map((result) => result.verdict.transfers.join(",")).join(" ")} (total ${counts.transfers})`,
