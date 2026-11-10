@@ -12,6 +12,7 @@ import {
   SeatIndexSchema,
   Seats,
   ShownCardsSchema,
+  TableConfigSchema,
   TableStates,
   Events,
   decide,
@@ -47,14 +48,14 @@ export const cards = (text: string) =>
     .filter((word) => word.length > 0)
     .map((word) => decodeCard(word));
 
-export const baseConfig: TableConfig = {
+export const baseConfig: TableConfig = TableConfigSchema.make({
   ante: Antes.NoAnte(),
   bigBlind: chipCount(10),
   maxRuns: runCount(1),
   rabbitHunt: false,
   smallBlind: chipCount(5),
   straddle: { button: false, underTheGun: 0 },
-};
+});
 
 export const fold = (state: TableState, events: readonly Event[]) => {
   let current = state;

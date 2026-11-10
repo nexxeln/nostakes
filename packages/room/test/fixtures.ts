@@ -4,6 +4,7 @@ import {
   PlayerIdSchema,
   RunCountSchema,
   SeatIndexSchema,
+  TableConfigSchema,
 } from "@nostakes/engine";
 import type { PlayerId } from "@nostakes/engine";
 import { Result } from "effect";
@@ -52,14 +53,14 @@ export const settings: RoomSettings = {
   betweenHandsSeconds: 0,
   buyIn: { max: chipCount(1000), min: chipCount(100) },
   runChoiceSeconds: 10,
-  table: {
+  table: TableConfigSchema.make({
     ante: Antes.NoAnte(),
     bigBlind: chipCount(10),
     maxRuns: RunCountSchema.make(1),
     rabbitHunt: false,
     smallBlind: chipCount(5),
     straddle: { button: false, underTheGun: 0 },
-  },
+  }),
   timeBankSeconds: 0,
   turnSeconds: 0,
 };

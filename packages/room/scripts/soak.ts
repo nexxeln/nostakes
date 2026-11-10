@@ -11,6 +11,7 @@ import {
   Seats,
   ShowdownEntries,
   ShownCardsSchema,
+  TableConfigSchema,
   TableStates,
 } from "@nostakes/engine";
 import type {
@@ -128,7 +129,7 @@ const tableConfig = (random: Random): TableConfig => {
   const smallBlind = 1 + random.below(5);
   const bigBlind = smallBlind * (1 + random.below(2));
 
-  return {
+  return TableConfigSchema.make({
     ante: anteOf(random, bigBlind),
     bigBlind: chips(bigBlind),
     maxRuns: RunCountSchema.make(1 + random.below(3)),
@@ -138,7 +139,7 @@ const tableConfig = (random: Random): TableConfig => {
       button: random.chance(50),
       underTheGun: random.chance(60) ? 2 : random.below(2),
     },
-  };
+  });
 };
 
 const roomSettings = (random: Random): RoomSettings => {

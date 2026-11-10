@@ -41,13 +41,15 @@ export const TableConfigSchema = Schema.Struct({
   rabbitHunt: Schema.Boolean,
   smallBlind: PositiveChipsSchema,
   straddle: StraddleRulesSchema,
-}).check(
-  Schema.makeFilter((config) =>
-    config.smallBlind <= config.bigBlind
-      ? undefined
-      : "the small blind must not exceed the big blind"
+})
+  .check(
+    Schema.makeFilter((config) =>
+      config.smallBlind <= config.bigBlind
+        ? undefined
+        : "the small blind must not exceed the big blind"
+    )
   )
-);
+  .pipe(Schema.brand("TableConfig"));
 
 export type TableConfig = typeof TableConfigSchema.Type;
 

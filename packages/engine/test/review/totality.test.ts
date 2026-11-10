@@ -1,10 +1,12 @@
 import { describe, expect, expectTypeOf, it } from "@effect/vitest";
 import { Effect, Option, Schema } from "effect";
+import type { Brand } from "effect";
 import * as Arbitrary from "effect/Arbitrary";
 
 import {
   RunCountSchema,
   ShownCardsSchema,
+  TableConfigSchema,
   TableStates,
 } from "../../src/index.js";
 import type {
@@ -13,6 +15,7 @@ import type {
   TableConfig,
   TableState,
 } from "../../src/index.js";
+import { baseConfig, chipCount } from "../fixtures.js";
 import { playSession, session } from "../sessions.js";
 import { commandMatrix, startCommands, totalityProblems } from "./matrix.js";
 
@@ -62,6 +65,19 @@ describe("the Command type admits only what CommandSchema admits", () => {
         Schema.is(ShownCardsSchema)(shown)
       )
     ).toStrictEqual([false, true, true, false, false]);
+  });
+
+  it("Rule 7: table rules come only from TableConfigSchema, so a ChangeRules config literal with the small blind above the big blind does not typecheck", () => {
+    expectTypeOf<
+      Omit<TableConfig, keyof Brand.Brand<"TableConfig">>
+    >().not.toExtend<FieldOf<"ChangeRules", "config">>();
+    expect(
+      [
+        baseConfig,
+        { ...baseConfig, smallBlind: chipCount(20) },
+        { ...baseConfig, bigBlind: chipCount(0), smallBlind: chipCount(0) },
+      ].map((config) => Schema.is(TableConfigSchema)(config))
+    ).toStrictEqual([true, false, false]);
   });
 });
 

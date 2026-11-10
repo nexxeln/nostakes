@@ -12,6 +12,7 @@ import {
   SeatIndexSchema,
   Seats,
   ShownCardsSchema,
+  TableConfigSchema,
   TableStates,
   decide,
   evolve,
@@ -86,7 +87,7 @@ const randomConfig = (random: Random): TableConfig => {
   const smallBlind = 1 + random.below(5);
   const bigBlind = smallBlind * (1 + random.below(3));
 
-  return {
+  return TableConfigSchema.make({
     ante: anteOf(random, bigBlind),
     bigBlind: chipCount(bigBlind),
     maxRuns: runCount(1 + random.below(4)),
@@ -96,7 +97,7 @@ const randomConfig = (random: Random): TableConfig => {
       button: random.chance(50),
       underTheGun: random.chance(60) ? 2 : random.below(3),
     },
-  };
+  });
 };
 
 const ORDERED_DECK = Schema.decodeSync(DeckSchema)(

@@ -11,6 +11,7 @@ import {
   PendingDecisions,
   Seats,
   ShownCardsSchema,
+  TableConfigSchema,
   TableStates,
   decide,
   evolve,
@@ -72,26 +73,27 @@ const anteOf = (kind: number, amount: number): Ante => {
     : Antes.NoAnte();
 };
 
-export const configOf = (source: Session): TableConfig => ({
-  ante: anteOf(source.anteKind, source.anteAmount),
-  bigBlind: chipCount(source.smallBlind + source.bigBlindExtra),
-  maxRuns: runCount(source.maxRuns),
-  rabbitHunt: source.rabbitHunt,
-  smallBlind: chipCount(source.smallBlind),
-  straddle: { button: source.button, underTheGun: source.underTheGun },
-});
+export const configOf = (source: Session): TableConfig =>
+  TableConfigSchema.make({
+    ante: anteOf(source.anteKind, source.anteAmount),
+    bigBlind: chipCount(source.smallBlind + source.bigBlindExtra),
+    maxRuns: runCount(source.maxRuns),
+    rabbitHunt: source.rabbitHunt,
+    smallBlind: chipCount(source.smallBlind),
+    straddle: { button: source.button, underTheGun: source.underTheGun },
+  });
 
 const randomConfig = (random: SeededRandom): TableConfig => {
   const small = 1 + random.below(10);
 
-  return {
+  return TableConfigSchema.make({
     ante: anteOf(random.below(3), 1 + random.below(12)),
     bigBlind: chipCount(small + random.below(12)),
     maxRuns: runCount(1 + random.below(4)),
     rabbitHunt: random.chance(1, 2),
     smallBlind: chipCount(small),
     straddle: { button: random.chance(1, 2), underTheGun: random.below(4) },
-  };
+  });
 };
 
 const decodeDeck = Schema.decodeSync(DeckSchema);

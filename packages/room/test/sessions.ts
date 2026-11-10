@@ -10,6 +10,7 @@ import {
   SeatIndexSchema,
   Seats,
   ShownCardsSchema,
+  TableConfigSchema,
   TableStates,
 } from "@nostakes/engine";
 import type {
@@ -97,14 +98,14 @@ const anteOf = (kind: number, amount: number): Ante => {
 export const tableConfigFrom = (random: SeededRandom): TableConfig => {
   const small = 1 + random.below(5);
 
-  return {
+  return TableConfigSchema.make({
     ante: anteOf(random.below(3), 1 + random.below(small * 2)),
     bigBlind: chips(small * (1 + random.below(2))),
     maxRuns: RunCountSchema.make(1 + random.below(3)),
     rabbitHunt: random.chance(1, 2),
     smallBlind: chips(small),
     straddle: { button: random.chance(1, 2), underTheGun: random.below(3) },
-  };
+  });
 };
 
 const CLOCK_SECONDS = [0, 5, 30];
