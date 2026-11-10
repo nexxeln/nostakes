@@ -48,8 +48,9 @@ export const previewHead = ({ description, title }: LinkPreview) =>
   [
     `<title>${escaped(title)}</title>`,
     meta("name", "description", description),
-    meta("property", "og:type", "website"),
+    meta("property", "og:type", "video.other"),
     meta("property", "og:site_name", "nostakes"),
+    meta("property", "og:url", `${SITE_ORIGIN}/`),
     meta("property", "og:title", title),
     meta("property", "og:description", description),
     meta("property", "og:image", `${SITE_ORIGIN}${PREVIEW_IMAGE.path}`),

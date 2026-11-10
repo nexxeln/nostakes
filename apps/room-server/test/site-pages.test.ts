@@ -19,7 +19,7 @@ const Offset = Schema.Int.check(
 const CLIP = Uint8Array.from({ length: 1000 }, (_, index) => index % 251);
 
 const pageText = (title: string) =>
-  `<title>${title}</title><meta property="og:image" content="https://nostakes.club/preview/card.png" />`;
+  `<title>${title}</title><meta property="og:url" content="https://nostakes.club/" /><meta property="og:image" content="https://nostakes.club/preview/card.png" />`;
 
 const ASSET_FILES = new Map<string, Response>([
   [
@@ -131,7 +131,7 @@ describe("the site's pages", () => {
       Effect.gen(function* servePages() {
         const decoder = new TextDecoder();
         const home = yield* answer("/");
-        const invite = yield* answer("/r/QT8VND");
+        const invite = yield* answer("/r/QT8VND?mute=1");
 
         expect({
           home: decoder.decode(home.body),
@@ -139,9 +139,9 @@ describe("the site's pages", () => {
           invite: decoder.decode(invite.body),
           type: invite.headers["content-type"],
         }).toEqual({
-          home: `<title>home</title><meta property="og:image" content="${STAGE}/preview/card.png" />`,
+          home: `<title>home</title><meta property="og:url" content="${STAGE}/" /><meta property="og:image" content="${STAGE}/preview/card.png" />`,
           homeCache: "public, max-age=0, must-revalidate",
-          invite: `<title>invite</title><meta property="og:image" content="${STAGE}/preview/card.png" />`,
+          invite: `<title>invite</title><meta property="og:url" content="${STAGE}/r/QT8VND" /><meta property="og:image" content="${STAGE}/preview/card.png" />`,
           type: "text/html; charset=utf-8",
         });
       })

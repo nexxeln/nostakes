@@ -32,6 +32,9 @@ export const INVITE_PAGE = "/invite.html";
 
 export const PAGE_ORIGIN = siteOrigin("production");
 
+const pageUrlTag = (address: string) =>
+  `<meta property="og:url" content="${address}" />`;
+
 const MEDIA_CACHE = "public, max-age=86400";
 
 export type ByteRange = Data.TaggedEnum<{
@@ -115,10 +118,12 @@ const page = (assets: AssetFetcher, path: string) =>
     }
 
     const html = new TextEncoder().encode(
-      (yield* Effect.promise(() => response.text())).replaceAll(
-        PAGE_ORIGIN,
-        url.origin
-      )
+      (yield* Effect.promise(() => response.text()))
+        .replace(
+          pageUrlTag(`${PAGE_ORIGIN}/`),
+          pageUrlTag(url.origin + url.pathname)
+        )
+        .replaceAll(PAGE_ORIGIN, url.origin)
     );
 
     return HttpServerResponse.uint8Array(html, {
