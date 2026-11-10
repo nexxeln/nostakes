@@ -5,6 +5,7 @@ import { Config, Effect, Layer } from "effect";
 
 import SiteWorker, { siteStage } from "../src/site-worker.js";
 import { siteOrigin } from "../src/site.js";
+import WwwWorker from "../src/www-worker.js";
 
 export const STATE_STORE = "nostakes-state";
 
@@ -29,6 +30,10 @@ export default Alchemy.Stack(
   Effect.gen(function* siteStack() {
     const stage = yield* siteStage;
     const site = yield* SiteWorker;
+
+    if (stage === "production") {
+      yield* WwwWorker;
+    }
 
     return { origin: siteOrigin(stage), url: site.url };
   })
