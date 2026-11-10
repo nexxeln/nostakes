@@ -13,7 +13,9 @@
   },
   "dependencies": {
     "@alchemy.run/cloudflare": "2.0.0-beta.85",
+    "@nostakes/engine": "workspace:*",
     "@nostakes/protocol": "workspace:*",
+    "@nostakes/room": "workspace:*",
     "alchemy": "2.0.0-beta.85",
     "effect": "4.1.2"
   },

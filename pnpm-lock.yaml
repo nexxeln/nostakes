@@ -252,9 +252,15 @@ importers:
       '@alchemy.run/cloudflare':
         specifier: 2.0.0-beta.85
         version: 2.0.0-beta.85(@effect/platform-bun@4.1.2(effect@4.1.2))(@effect/platform-node@4.1.2(effect@4.1.2)(redis@6.3.1))(@types/node@24.19.2)(alchemy@2.0.0-beta.85(@effect/platform-bun@4.1.2(effect@4.1.2))(@effect/platform-node@4.1.2(effect@4.1.2)(redis@6.3.1))(effect@4.1.2)(vite@8.3.6(@types/node@24.19.2)(yaml@2.9.1))(ws@8.22.2))(effect@4.1.2)(typescript@7.0.2)(vite@8.3.6(@types/node@24.19.2)(yaml@2.9.1))
+      '@nostakes/engine':
+        specifier: workspace:*
+        version: link:../../packages/engine
       '@nostakes/protocol':
         specifier: workspace:*
         version: link:../../packages/protocol
+      '@nostakes/room':
+        specifier: workspace:*
+        version: link:../../packages/room
       alchemy:
         specifier: 2.0.0-beta.85
         version: 2.0.0-beta.85(@effect/platform-bun@4.1.2(effect@4.1.2))(@effect/platform-node@4.1.2(effect@4.1.2)(redis@6.3.1))(effect@4.1.2)(vite@8.3.6(@types/node@24.19.2)(yaml@2.9.1))(ws@8.22.2)
