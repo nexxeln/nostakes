@@ -1,6 +1,11 @@
-import { CommandIdSchema, RoomPassSchema } from "@nostakes/protocol";
+import {
+  CommandIdSchema,
+  PING_FRAME,
+  PING_INTERVAL_MS,
+  RoomPassSchema,
+} from "@nostakes/protocol";
 import type { RoomCode, RoomPass, Seq } from "@nostakes/protocol";
-import { Duration, Effect, Option, Queue, Schema } from "effect";
+import { Duration, Effect, Option, Queue, Schedule, Schema } from "effect";
 import * as HttpClient from "effect/http/HttpClient";
 import * as HttpClientRequest from "effect/http/HttpClientRequest";
 
@@ -163,6 +168,15 @@ export const connect = (
 
     return client;
   });
+
+export const keepAlive = (client: RoomClient) =>
+  client
+    .sendText(PING_FRAME)
+    .pipe(
+      Effect.repeat(Schedule.spaced(Duration.millis(PING_INTERVAL_MS))),
+      Effect.forkScoped,
+      Effect.asVoid
+    );
 
 export const hello = (
   pass: RoomPass,

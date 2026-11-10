@@ -1,18 +1,18 @@
 import * as Cloudflare from "@alchemy.run/cloudflare";
 import * as Test from "@alchemy.run/test/Vitest";
 import {
-  PING_FRAME,
   PING_INTERVAL_MS,
   PONG_FRAME,
   SOCKET_SILENCE_LIMIT_MS,
 } from "@nostakes/protocol";
-import { Console, Duration, Effect, Option, Schedule } from "effect";
+import { Console, Effect, Option, Schedule } from "effect";
 import * as FetchHttpClient from "effect/http/FetchHttpClient";
 
 import {
   codec,
   isPresence,
   joinAs,
+  keepAlive,
   openRoomWith,
 } from "../test/fixtures/room-client.js";
 import { SilenceUnnoticed } from "../test/fixtures/silence-unnoticed.js";
@@ -47,12 +47,7 @@ test(
     const ben = yield* joinAs(base, benPass, "ben goes quiet");
     const quietFrom = performance.now();
 
-    yield* ana.client
-      .sendText(PING_FRAME)
-      .pipe(
-        Effect.repeat(Schedule.spaced(Duration.millis(PING_INTERVAL_MS))),
-        Effect.forkScoped
-      );
+    yield* keepAlive(ana.client);
 
     yield* Console.log(
       `waiting for the server to drop the quiet socket after ${SOCKET_SILENCE_LIMIT_MS} ms`

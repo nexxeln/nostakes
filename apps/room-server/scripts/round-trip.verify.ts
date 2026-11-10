@@ -9,6 +9,7 @@ import {
   command,
   isEvents,
   joinAs,
+  keepAlive,
   openRoomWith,
   replyTo,
 } from "../test/fixtures/room-client.js";
@@ -81,6 +82,10 @@ test(
 
     const [sender, ...receivers] = clients;
 
+    for (const client of clients) {
+      yield* keepAlive(client);
+    }
+
     const from = yield* Effect.fromNullishOr(
       receivers.length === 3 ? sender : undefined
     ).pipe(
@@ -141,6 +146,6 @@ test(
         spacingMs: SPACING_MS,
       })
     );
-  }).pipe(Effect.provide(FetchHttpClient.layer)),
+  }).pipe(Effect.scoped, Effect.provide(FetchHttpClient.layer)),
   { timeout: 300_000 }
 );
