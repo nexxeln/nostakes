@@ -530,6 +530,7 @@ const fairnessView = (state: Open, audience: Audience) => {
 
   return {
     dealt: state.proof.pipe(
+      Option.filter(() => !TableStates.$is("InHand")(state.table)),
       Option.map((proof) => ({
         deal: ProofDeals.$match(proof.deal, {
           FromBeacon: ({ round, signature, spare }) =>

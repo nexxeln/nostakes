@@ -1,5 +1,12 @@
 import { describe, expect, it } from "@effect/vitest";
-import { Events, Seats, TableStates } from "@nostakes/engine";
+import {
+  Actions,
+  Events,
+  PendingDecisions,
+  Seats,
+  TableStates,
+  pendingDecisions,
+} from "@nostakes/engine";
 import { selfSignedChain } from "@nostakes/shuffle";
 import { Option, Schema } from "effect";
 
@@ -17,7 +24,9 @@ import {
   SeenEventSchema,
   audienceOf,
   nextDeadline,
+  RoomViews,
   redact,
+  viewFor,
 } from "../src/index.js";
 import type { RoomEvent, RoomState } from "../src/index.js";
 import { dealFromBeacon, sealAt } from "./beacon.js";
@@ -155,6 +164,55 @@ describe("a checked room seals each hand", () => {
       }))
     ).toStrictEqual(expected);
     expect(dealt.events[0]?._tag).toBe("DealtFromBeacon");
+  });
+
+  it("keeps the dealt hand's proof out of the view while the hand is played, and shows it once the hand is over", () => {
+    const dealt = run(
+      sealedStep.state,
+      dealFromBeacon(ROUND_DUE, SEALED_ROUND)
+    );
+
+    const during = viewFor(
+      dealt.state,
+      audienceOf(dealt.state, ann),
+      ms(ROUND_DUE)
+    );
+
+    expect(
+      RoomViews.$is("Open")(during) && Option.isNone(during.fairness.dealt)
+    ).toBe(true);
+
+    let folded = dealt.state;
+
+    while (isInHand(folded)) {
+      const pending = pendingDecisions(openOf(folded).table);
+
+      if (!PendingDecisions.$is("Bet")(pending)) {
+        break;
+      }
+
+      const actor = Option.getOrThrow(
+        Option.fromUndefinedOr(
+          openOf(folded).table.seats[pending.legal.seat]
+        ).pipe(Option.filter(Seats.$is("Occupied")))
+      ).player;
+
+      folded = run(
+        folded,
+        RoomCommands.Act({
+          action: pending.legal.canCheck ? Actions.Check() : Actions.Fold(),
+          at: ms(ROUND_DUE + 1),
+          by: as(actor),
+        })
+      ).state;
+    }
+
+    const after = viewFor(folded, audienceOf(folded, ann), ms(ROUND_DUE + 2));
+
+    expect(
+      RoomViews.$is("Open")(after) &&
+        Option.exists(after.fairness.dealt, ({ seal }) => seal.hand === 1)
+    ).toBe(true);
   });
 
   it("refuses a beacon round other than the sealed one, and a signature made with another key", () => {
