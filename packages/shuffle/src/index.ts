@@ -33,13 +33,15 @@ export {
   HandRejectedSchema,
   OpeningMismatch,
   RoleOutOfRange,
+  SealArrivedAfterRound,
+  SealWithNoDeal,
   ShownCardDiffers,
   SpareDeckMismatch,
   SpareDeckRepeatsCard,
   WrongPosition,
 } from "./rejection.js";
 
-export type { HandRejected } from "./rejection.js";
+export type { HandRejected, Withdrawal } from "./rejection.js";
 
 export {
   BeaconRoundSchema,
@@ -119,6 +121,22 @@ export {
 } from "./drand.js";
 
 export type { DrandChain } from "./drand.js";
+
+export {
+  BEACON_EARLY_MS,
+  BEACON_WAIT_LIMIT_MS,
+  PHONE_CLOCK_TOLERANCE_MS,
+  roundToSeal,
+  SEAL_DELIVERY_BUDGET_MS,
+  SealArrivals,
+  SEALING_MARGIN_MS,
+  sealsWithNoDeal,
+  sealTiming,
+  SealTimings,
+  SERVER_CLOCK_BUDGET_MS,
+} from "./timing.js";
+
+export type { SealArrival, SealSeen, SealTiming } from "./timing.js";
 
 export { dealIndexOf, verifyHand } from "./verify.js";
 
