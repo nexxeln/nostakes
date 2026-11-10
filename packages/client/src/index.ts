@@ -26,6 +26,14 @@ export {
   type ServerMessage,
 } from "./codec.js";
 
+export {
+  PING_TIMER,
+  roomClientMachine,
+  SILENCE_TIMER,
+  TIMERS,
+  type RoomClientMachine,
+} from "./machine.js";
+
 export { BatchFits, fitBatch, fitWelcome, type BatchFit } from "./sequence.js";
 
 export { SocketEvents, type SocketEvent } from "./socket-event.js";
