@@ -1,11 +1,13 @@
 import {
   Actions,
   Antes,
+  CHIP_LIMIT,
   ChipsSchema,
   Commands,
   DeckSchema,
   Events,
   PendingDecisions,
+  Phases,
   PlayerIdSchema,
   RunCountSchema,
   SeatIndexSchema,
@@ -25,16 +27,21 @@ import type {
   Command,
   Event,
   LegalActions,
+  Rejection,
   TableConfig,
   TableState,
 } from "@nostakes/engine";
-import { Console, Effect, Option, Result, Schema } from "effect";
+import { Console, Effect, Option, Predicate, Result, Schema } from "effect";
 
 const DEFAULT_SEED = 20_261_110;
 
 const DEFAULT_HANDS = 1_000_000;
 
 const HANDS_PER_TABLE = 400;
+
+const DEEP_STACK = 900_719_925_474_099;
+
+const DEEP_POT = 2 ** 50;
 
 class SimulationViolation extends Schema.TaggedError<
   SimulationViolation,
@@ -258,6 +265,115 @@ const illegalInHand = (state: TableState, random: Random): Command => {
   return Commands.ChangeRules({ config: randomConfig(random) });
 };
 
+const chipsOnTable = (state: TableState) => {
+  let total = 0;
+
+  if (TableStates.$is("InHand")(state)) {
+    total += state.hand.deadMoney;
+
+    for (const player of state.hand.players) {
+      total += player.committedTotal - player.won;
+    }
+  }
+
+  for (const seat of state.seats) {
+    total += Seats.$is("Occupied")(seat) ? seat.stack : 0;
+  }
+
+  return total;
+};
+
+const pastTheLimit = (
+  state: TableState,
+  random: Random,
+  nextPlayer: () => string
+): Option.Option<Command> => {
+  const onTable = chipsOnTable(state);
+  const empty = random.pick(empties(state));
+  const seated = random.pick(occupied(state));
+
+  if (onTable === 0) {
+    return Option.none();
+  }
+
+  if (random.chance(30)) {
+    return Option.some(
+      Commands.ChangeRules({
+        config: TableConfigSchema.make({
+          ...randomConfig(random),
+          bigBlind: chipCount(2 ** 52),
+          straddle: { button: true, underTheGun: 1 + random.below(2) },
+        }),
+      })
+    );
+  }
+
+  const tooMany = chipCount(CHIP_LIMIT - onTable + 1);
+
+  if (empty !== undefined && random.chance(50)) {
+    return Option.some(
+      Commands.SitDown({
+        buyIn: tooMany,
+        player: PlayerIdSchema.make(nextPlayer()),
+        seat: seatAt(empty),
+      })
+    );
+  }
+
+  return Option.some(
+    Commands.AddChips({ amount: tooMany, seat: seatAt(seated?.index ?? 0) })
+  );
+};
+
+const cappedCall = (before: TableState, event: Event) => {
+  if (
+    !Events.$is("Called")(event) ||
+    event.allIn ||
+    !TableStates.$is("InHand")(before) ||
+    !Phases.$is("Betting")(before.hand.phase)
+  ) {
+    return false;
+  }
+
+  const committed =
+    before.hand.players.find((player) => player.seat === event.seat)
+      ?.committedThisStreet ?? 0;
+
+  return event.amount < before.hand.phase.currentBet - committed;
+};
+
+const closesStreet = (event: Event) =>
+  Events.$is("Folded")(event) ||
+  Events.$is("Checked")(event) ||
+  Events.$is("Called")(event) ||
+  Events.$is("RaisedTo")(event) ||
+  Events.$is("HoleCardsDealt")(event);
+
+const skippedDecision = (after: TableState, event: Event) => {
+  if (
+    !closesStreet(event) ||
+    !TableStates.$is("InHand")(after) ||
+    after.hand.street !== "Preflop" ||
+    Phases.$is("Betting")(after.hand.phase) ||
+    after.hand.players.some((player) => player.holeCards.length === 0)
+  ) {
+    return false;
+  }
+
+  const bet = after.hand.straddles.at(-1)?.amount ?? after.config.bigBlind;
+
+  const live = after.hand.players.filter(
+    (player) => player.status !== "Folded"
+  );
+
+  return (
+    live.length > 1 &&
+    live.some(
+      (player) => player.status === "Active" && player.committedThisStreet < bet
+    )
+  );
+};
+
 const churn = (state: TableState, random: Random, nextPlayer: () => string) => {
   const seated = occupied(state);
   const roll = random.below(4);
@@ -332,24 +448,6 @@ const afterHand = (
   );
 };
 
-const chipsOnTable = (state: TableState) => {
-  let total = 0;
-
-  for (const seat of state.seats) {
-    total += Seats.$is("Occupied")(seat) ? seat.stack : 0;
-  }
-
-  if (TableStates.$is("InHand")(state)) {
-    total += state.hand.deadMoney;
-
-    for (const player of state.hand.players) {
-      total += player.committedTotal - player.won;
-    }
-  }
-
-  return total;
-};
-
 const bankrollChange = (event: Event) => {
   if (Events.$is("PlayerSat")(event)) {
     return event.buyIn;
@@ -368,18 +466,24 @@ const newCounts = () => ({
   boardsRunThree: 0,
   boardsRunTwo: 0,
   buttonStraddles: 0,
+  cappedCalls: 0,
+  chipLimitRejected: 0,
+  deadDecisionsSkipped: 0,
+  deepPots: 0,
   doubleStraddles: 0,
   everyPlayerAntes: 0,
   illegalRejected: 0,
   mucks: 0,
   noAntes: 0,
   oddChips: 0,
+  oneRunCutShort: 0,
   rabbitHunts: 0,
   runOuts: 0,
   shortAllIns: 0,
   sidePots: 0,
   singleStraddles: 0,
   splitPots: 0,
+  straddleLimitRejected: 0,
   voluntaryShows: 0,
   walks: 0,
 });
@@ -397,11 +501,37 @@ interface Finished {
   readonly hands: number;
 }
 
-const countHand = (counts: Counts, hand: readonly Event[]) => {
+interface Seen {
+  readonly cappedCall: boolean;
+  readonly skippedDecision: boolean;
+}
+
+const countFixedCases = (
+  counts: Counts,
+  hand: readonly Event[],
+  seen: Seen
+) => {
+  const runs = hand.find(Events.$is("RunsAgreed"))?.runs ?? 0;
+  const chosen = hand.filter(Events.$is("RunsChosen")).length;
+  const tabled = hand.find(Events.$is("HandsTabled"))?.hands.length ?? 0;
+
+  counts.oneRunCutShort += runs === 1 && chosen > 0 && chosen < tabled ? 1 : 0;
+  counts.cappedCalls += seen.cappedCall ? 1 : 0;
+  counts.deadDecisionsSkipped += seen.skippedDecision ? 1 : 0;
+  counts.deepPots += hand.some(
+    (event) => Events.$is("PotAwarded")(event) && event.amount > DEEP_POT
+  )
+    ? 1
+    : 0;
+};
+
+const countHand = (counts: Counts, hand: readonly Event[], seen: Seen) => {
   const started = hand.find(Events.$is("HandStarted"));
   const straddles = hand.filter(Events.$is("StraddlePosted"));
   const awards = hand.filter(Events.$is("PotAwarded"));
   const runs = hand.find(Events.$is("RunsAgreed"))?.runs ?? 0;
+
+  countFixedCases(counts, hand, seen);
 
   const acted = hand.some(
     (event) => Events.$is("Called")(event) || Events.$is("RaisedTo")(event)
@@ -444,6 +574,33 @@ const countHand = (counts: Counts, hand: readonly Event[]) => {
   counts.rabbitHunts += hand.filter(Events.$is("RabbitHunted")).length;
 };
 
+const countRejection = (
+  counts: Counts,
+  rejection: Rejection,
+  mustReject: boolean
+) => {
+  counts.illegalRejected += mustReject ? 1 : 0;
+  counts.chipLimitRejected += Predicate.isTagged(rejection, "ChipLimitExceeded")
+    ? 1
+    : 0;
+  counts.straddleLimitRejected += Predicate.isTagged(
+    rejection,
+    "StraddleAboveChipLimit"
+  )
+    ? 1
+    : 0;
+};
+
+const noticed = (
+  seen: Seen,
+  before: TableState,
+  event: Event,
+  after: TableState
+): Seen => ({
+  cappedCall: seen.cappedCall || cappedCall(before, event),
+  skippedDecision: seen.skippedDecision || skippedDecision(after, event),
+});
+
 const countAnte = (counts: Counts, config: TableConfig) => {
   Antes.$match(config.ante, {
     BigBlindPays: () => {
@@ -477,6 +634,7 @@ const simulate = (
   let bankroll = 0;
   let log: Command[] = [];
   let hand: Event[] = [];
+  let seen: Seen = { cappedCall: false, skippedDecision: false };
 
   const violation = (detail: string): Result.Result<boolean, Broken> =>
     Result.fail({ detail, hand: hands, log });
@@ -490,7 +648,7 @@ const simulate = (
     log.push(command);
 
     if (Result.isFailure(decision)) {
-      counts.illegalRejected += mustReject ? 1 : 0;
+      countRejection(counts, decision.failure, mustReject);
 
       return Result.succeed(false);
     }
@@ -500,17 +658,21 @@ const simulate = (
     }
 
     for (const event of decision.success) {
+      const before = state;
+
       state = evolve(state, event);
       bankroll += bankrollChange(event);
 
       if (Events.$is("HandStarted")(event)) {
-        countHand(counts, hand);
+        countHand(counts, hand, seen);
         countAnte(counts, state.config);
         hand = [];
+        seen = { cappedCall: false, skippedDecision: false };
         hands += 1;
       }
 
       hand.push(event);
+      seen = noticed(seen, before, event, state);
 
       const broken = invariants(state);
 
@@ -536,11 +698,12 @@ const simulate = (
     log = [];
     apply(Commands.ChangeRules({ config: randomConfig(random) }), false);
     const seats = 2 + random.below(8);
+    const floor = random.chance(5) ? DEEP_STACK : 20;
 
     for (let index = 0; index < seats; index += 1) {
       apply(
         Commands.SitDown({
-          buyIn: chipCount(20 + random.below(400)),
+          buyIn: chipCount(floor + random.below(400)),
           player: PlayerIdSchema.make(nextPlayer()),
           seat: seatAt(index),
         }),
@@ -574,6 +737,12 @@ const simulate = (
       apply(churn(state, random, nextPlayer), false);
     }
 
+    if (random.chance(1)) {
+      Option.map(pastTheLimit(state, random, nextPlayer), (command) =>
+        apply(command, true)
+      );
+    }
+
     const shown = afterHand(state, random);
 
     if (Option.isSome(shown) && random.chance(25)) {
@@ -600,7 +769,7 @@ const simulate = (
     }
   }
 
-  countHand(counts, hand);
+  countHand(counts, hand, seen);
 
   return Result.succeed({ counts, hands });
 };
@@ -631,7 +800,7 @@ const program = Effect.gen(function* simulator() {
   );
 
   for (const [name, count] of Object.entries(counts)) {
-    yield* Console.log(`${name.padEnd(18)} ${String(count).padStart(9)}`);
+    yield* Console.log(`${name.padEnd(22)} ${String(count).padStart(9)}`);
   }
 
   const gaps = Object.entries(counts).filter(([, count]) => count === 0);
