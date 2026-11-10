@@ -1,4 +1,6 @@
-/* oxlint-disable no-bitwise -- SHA-256 (FIPS 180-4) is defined on 32-bit words with xor, and, not, shifts, and rotations. This file is the in-repo stand-in for an audited synchronous library such as @noble/hashes until the owner signs one off; swap the body of sha256 and keep its signature. */
+/* oxlint-disable no-bitwise -- SHA-256 (FIPS 180-4) and HMAC (RFC 2104) are defined on 32-bit words and bytes with xor, and, not, shifts, and rotations. This file is the in-repo stand-in for an audited synchronous library such as @noble/hashes until the owner signs one off; swap the bodies of sha256 and hmacSha256 and keep their signatures. */
+
+import { concatBytes } from "./bytes.js";
 
 const BLOCK_BYTES = 64;
 
@@ -182,4 +184,24 @@ export const sha256 = (message: Uint8Array): Uint8Array => {
   }
 
   return digest;
+};
+
+const HMAC_BLOCK_BYTES = 64;
+
+const INNER_PAD = 0x36;
+
+const OUTER_PAD = 0x5c;
+
+export const hmacSha256 = (
+  key: Uint8Array,
+  message: Uint8Array
+): Uint8Array => {
+  const block = new Uint8Array(HMAC_BLOCK_BYTES);
+
+  block.set(key.length > HMAC_BLOCK_BYTES ? sha256(key) : key);
+
+  const inner = block.map((byte) => byte ^ INNER_PAD);
+  const outer = block.map((byte) => byte ^ OUTER_PAD);
+
+  return sha256(concatBytes([outer, sha256(concatBytes([inner, message]))]));
 };

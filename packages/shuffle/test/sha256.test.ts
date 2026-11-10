@@ -1,11 +1,31 @@
 import { describe, expect, it } from "@effect/vitest";
 import { Effect } from "effect";
+import * as Arbitrary from "effect/Arbitrary";
 import * as Hex from "effect/encoding/Hex";
 
-import { sha256 } from "../src/index.js";
-import { bytesUpTo } from "./arbitraries.js";
+import { hmacSha256, sha256 } from "../src/index.js";
+import { between, bytesOfLength, bytesUpTo } from "./arbitraries.js";
 
 const text = (value: string) => new TextEncoder().encode(value);
+
+const webCryptoHmac = (key: Uint8Array, message: Uint8Array) =>
+  Effect.gen(function* signWithWebCrypto() {
+    const imported = yield* Effect.promise(() =>
+      globalThis.crypto.subtle.importKey(
+        "raw",
+        Uint8Array.from(key),
+        { hash: "SHA-256", name: "HMAC" },
+        false,
+        ["sign"]
+      )
+    );
+
+    const mac = yield* Effect.promise(() =>
+      globalThis.crypto.subtle.sign("HMAC", imported, Uint8Array.from(message))
+    );
+
+    return Hex.encode(new Uint8Array(mac));
+  });
 
 const webCryptoDigest = (message: Uint8Array) =>
   Effect.promise(() =>
@@ -68,5 +88,45 @@ describe("sha256", () => {
         expect(Hex.encode(sha256(message))).toBe(expected);
       }),
     { arbitrary: { runs: 500 } }
+  );
+});
+
+describe("hmacSha256", () => {
+  it.each([
+    [
+      "RFC 4231 case 1",
+      new Uint8Array(20).fill(0x0b),
+      text("Hi There"),
+      "b0344c61d8db38535ca8afceaf0bf12b881dc200c9833da726e9376c2e32cff7",
+    ],
+    [
+      "RFC 4231 case 2",
+      text("Jefe"),
+      text("what do ya want for nothing?"),
+      "5bdcc146bf60754e6a042426089575c75a003f089d2739839dec58b964ec3843",
+    ],
+    [
+      "RFC 4231 case 6, a key longer than one block",
+      new Uint8Array(131).fill(0xaa),
+      text("Test Using Larger Than Block-Size Key - Hash Key First"),
+      "60e431591ee0b67f0d8a26aacbf5b77f8e0bc6213728c5140546040f0ee37f54",
+    ],
+  ])("matches %s", (_, key, message, mac) => {
+    expect(Hex.encode(hmacSha256(key, message))).toBe(mac);
+  });
+
+  it.effect.prop(
+    "matches Web Crypto HMAC on random non-empty keys and messages",
+    {
+      key: between(1, 150).pipe(Arbitrary.flatMap(bytesOfLength)),
+      message: bytesUpTo(300),
+    },
+    ({ key, message }) =>
+      Effect.gen(function* againstWebCryptoHmac() {
+        const expected = yield* webCryptoHmac(key, message);
+
+        expect(Hex.encode(hmacSha256(key, message))).toBe(expected);
+      }),
+    { arbitrary: { runs: 300 } }
   );
 });
