@@ -122,6 +122,7 @@ export {
   BuyInRangeSchema,
   ChipAmountSchema,
   DealingSchema,
+  LeavingMidHandSchema,
   MAX_CHIP_AMOUNT,
   MAX_REFILL_HANDS,
   MAX_TIMEOUTS_IN_A_ROW,

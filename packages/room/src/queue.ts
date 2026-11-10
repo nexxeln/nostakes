@@ -7,7 +7,7 @@ import type { Step } from "./batch.js";
 import { actAutomatically } from "./clocks.js";
 import { closingSteps } from "./closing.js";
 import type { Decision } from "./decision.js";
-import { handInProgress, occupantAt, seatOf } from "./state.js";
+import { handInProgress, isMember, occupantAt, seatOf } from "./state.js";
 import type { ChipRequest, Open } from "./state.js";
 import { onTable } from "./table.js";
 import type { Millis } from "./time.js";
@@ -55,8 +55,12 @@ export const endOfHand = (state: Open, at: Millis): Option.Option<Decision> => {
 };
 
 const isLeaving = (state: Open, seat: SeatIndex) =>
-  Option.exists(occupantAt(state.table, seat), (occupant) =>
-    state.queued.leaving.includes(occupant.player)
+  Option.exists(
+    occupantAt(state.table, seat),
+    (occupant) =>
+      state.queued.leaving.includes(occupant.player) &&
+      (state.settings.leavingMidHand === "ActedFor" ||
+        !isMember(state, occupant.player))
   );
 
 export const actForLeavingSeat = (

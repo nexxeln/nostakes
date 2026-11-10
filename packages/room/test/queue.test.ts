@@ -151,6 +151,74 @@ describe("leaving during a hand", () => {
     ).toStrictEqual([ann, bob, dan]);
   });
 
+  it("lets a seat that leaves play the hand out when the room says so, and cashes it out when the hand ends", () => {
+    const playsOn = runAll(
+      openedBy(ann, { ...settings, leavingMidHand: "PlaysOn" }),
+      [
+        join(bob),
+        join(cat),
+        sit(ann, 0),
+        sit(bob, 1),
+        sit(cat, 2),
+        RoomCommands.StartGame({ at: ms(3), by: as(ann) }),
+        dealAt(10),
+      ]
+    );
+
+    const leaving = run(
+      playsOn,
+      RoomCommands.LeaveSeat({ at: ms(15), by: as(ann) })
+    );
+
+    expect(leaving.events).toStrictEqual([
+      RoomEvents.LeaveQueued({ at: ms(15), player: ann }),
+    ]);
+
+    const raised = run(
+      leaving.state,
+      act(ann, Actions.RaiseTo({ to: ChipsSchema.make(40) }))
+    );
+
+    expect(tags(raised.events)).toStrictEqual(["RaisedTo"]);
+
+    const ended = runAll(raised.state, [
+      act(bob, Actions.Fold(), 21),
+      act(cat, Actions.Fold(), 22),
+    ]);
+
+    expect(openOf(ended).entries.get(ann)).toStrictEqual([
+      BoughtIn({ amount: amount(200), player: ann }),
+      CashedOut({ amount: amount(215), player: ann }),
+    ]);
+  });
+
+  it("still acts for a seat whose player left the room when the room lets leavers play on", () => {
+    const playsOn = runAll(
+      openedBy(ann, { ...settings, leavingMidHand: "PlaysOn" }),
+      [
+        join(bob),
+        join(cat),
+        sit(ann, 0),
+        sit(bob, 1),
+        sit(cat, 2),
+        RoomCommands.StartGame({ at: ms(3), by: as(ann) }),
+        dealAt(10),
+      ]
+    );
+
+    const left = run(
+      playsOn,
+      RoomCommands.LeaveRoom({ at: ms(15), by: as(bob) })
+    );
+
+    const reached = run(left.state, act(ann, Actions.Call()));
+
+    expect(tags(reached.events).slice(0, 2)).toStrictEqual([
+      "Called",
+      "Folded",
+    ]);
+  });
+
   it("stands a seat that is not dealt in at once, even during a hand", () => {
     const joined = runAll(midHand, [sit(dan, 5, 200, 12)]);
 

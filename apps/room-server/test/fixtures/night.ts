@@ -204,6 +204,25 @@ const clientIndices = (random: Random, bots: number, percent: number) => {
   return drawn.length === bots ? drawn.slice(1) : drawn;
 };
 
+const tableFrom = (
+  random: Random,
+  small: number
+): EncodedSettings["table"] => ({
+  allInHands: random.chance(40) ? "Hidden" : "FaceUp",
+  ante: Antes.NoAnte(),
+  bigBlind: small * 2,
+  maxRuns: random.between(1, 3),
+  rabbitHunt: random.chance(50),
+  rabbitHunters: random.chance(30) ? "StillIn" : "DealtIn",
+  runCount: random.chance(25) ? "Fixed" : "Vote",
+  showdown: random.chance(80) ? "Interactive" : "Automatic",
+  showdownOrder: random.chance(30) ? "LastAggressor" : "RiverAggressor",
+  smallBlind: small,
+  straddle: { button: random.chance(50), underTheGun: random.below(3) },
+  straddleSize: random.chance(30) ? "TwoBigBlinds" : "Doubling",
+  voluntaryShows: random.chance(30) ? "BothCards" : "EitherCard",
+});
+
 export const planNight = (
   seed: number,
   recipe: NightRecipe,
@@ -223,27 +242,14 @@ export const planNight = (
     approval: { chips: random.chance(50), seats: random.chance(50) },
     betweenHandsSeconds: recipe.betweenHandsSeconds,
     buyIn: { max: big * 50, min: big * 10 },
+    leavingMidHand: random.chance(40) ? "PlaysOn" : "ActedFor",
     runChoiceSeconds: random.between(1, 2),
     seats: random.chance(50)
       ? 9
       : random.between(Math.max(2, recipe.players), 9),
     showdownSeconds: random.between(1, 2),
     sitOutAfterTimeouts: [1, 1, 1, 0, 2][random.below(5)] ?? 1,
-    table: {
-      allInHands: random.chance(40) ? "Hidden" : "FaceUp",
-      ante: Antes.NoAnte(),
-      bigBlind: big,
-      maxRuns: random.between(1, 3),
-      rabbitHunt: random.chance(50),
-      rabbitHunters: random.chance(30) ? "StillIn" : "DealtIn",
-      runCount: random.chance(25) ? "Fixed" : "Vote",
-      showdown: random.chance(80) ? "Interactive" : "Automatic",
-      showdownOrder: random.chance(30) ? "LastAggressor" : "RiverAggressor",
-      smallBlind: small,
-      straddle: { button: random.chance(50), underTheGun: random.below(3) },
-      straddleSize: random.chance(30) ? "TwoBigBlinds" : "Doubling",
-      voluntaryShows: random.chance(30) ? "BothCards" : "EitherCard",
-    },
+    table: tableFrom(random, small),
     timeBankRefill:
       recipe.turnSeconds > 0 && random.chance(50)
         ? TimeBankRefills.Refill({

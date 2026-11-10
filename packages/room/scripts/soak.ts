@@ -168,6 +168,7 @@ const roomSettings = (random: Random): RoomSettings => {
     betweenHandsSeconds: random.below(4),
     buyIn: { max: chips(min * (3 + random.below(5))), min: chips(min) },
     dealing: random.chance(30) ? "Host" : "Automatic",
+    leavingMidHand: random.chance(40) ? "PlaysOn" : "ActedFor",
     runChoiceSeconds: 2 + random.below(10),
     seats: random.chance(50) ? 9 : 2 + random.below(8),
     showdownSeconds: 2 + random.below(15),
@@ -212,6 +213,7 @@ const newCounts = () => ({
   fixedRunOuts: 0,
   hostChanges: 0,
   hostDeals: 0,
+  leaversPlayedOn: 0,
   midHandLeaves: 0,
   queuedAdds: 0,
   rebuys: 0,
@@ -705,11 +707,20 @@ const checkViews = (run: Run, command: RoomCommand) => {
   }
 };
 
+const leaverActing = (state: RoomState, command: RoomCommand) =>
+  RoomCommands.$is("Act")(command) &&
+  Actors.$is("Member")(command.by) &&
+  RoomStates.$is("Open")(state) &&
+  state.queued.leaving.includes(command.by.player);
+
 const send = (run: Run, command: RoomCommand) => {
   run.log.commands.push(command);
   run.now = Math.max(run.now, command.at);
 
   const decision = decide(run.state, command);
+
+  run.counts.leaversPlayedOn +=
+    Result.isSuccess(decision) && leaverActing(run.state, command) ? 1 : 0;
 
   if (Result.isFailure(decision)) {
     for (const [name, refused] of REFUSALS) {

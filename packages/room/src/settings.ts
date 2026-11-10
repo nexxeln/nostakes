@@ -97,6 +97,10 @@ export const TopUpRuleSchema = Schema.Literals([
 
 export type TopUpRule = typeof TopUpRuleSchema.Type;
 
+export const LeavingMidHandSchema = Schema.Literals(["ActedFor", "PlaysOn"]);
+
+export type LeavingMidHand = typeof LeavingMidHandSchema.Type;
+
 export const DealingSchema = Schema.Literals(["Automatic", "Host"]);
 
 export type Dealing = typeof DealingSchema.Type;
@@ -124,6 +128,11 @@ const settingsFields = (shuffleWhenAbsent: Shuffle) => ({
     description:
       "Automatic deals the next hand once the pause after a hand is over. Host waits for the host to deal each hand.",
     title: "Who deals",
+  }),
+  leavingMidHand: setting(LeavingMidHandSchema, "ActedFor", {
+    description:
+      "What happens to a player who leaves their seat during a hand they are in. ActedFor: the room checks or folds for them whenever the action reaches them. PlaysOn: they play the hand out on their own clock, and stand up when it ends. A player who leaves the room is always acted for.",
+    title: "Leaving during a hand",
   }),
   runChoiceSeconds: wholeSeconds(1, MAX_CLOCK_SECONDS).annotate({
     description:
