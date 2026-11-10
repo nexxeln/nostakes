@@ -12,11 +12,13 @@ import type * as HttpClient from "effect/http/HttpClient";
 import type { ManagedResource, Update } from "foldkit";
 
 import {
+  ApplyTheme,
   CopyRoomLink,
   CopyText,
   CreateRoom,
   ForgetRoom,
   JoinRoom,
+  SaveSound,
   SendToRoom,
   ShowPath,
   WakeRoom,
@@ -65,9 +67,11 @@ export const init = (flags: Flags): Return => {
     nextKey: 1,
     now: 0,
     profile: flags.profile,
+    sound: flags.sound,
+    theme: flags.theme,
   };
 
-  return Option.match(flags.saved, {
+  const opened: Return = Option.match(flags.saved, {
     onNone: () =>
       Option.match(flags.invite, {
         onNone: () => ({
@@ -94,6 +98,8 @@ export const init = (flags: Flags): Return => {
       },
     }),
   });
+
+  return { ...opened, commands: [ApplyTheme({ theme: flags.theme })] };
 };
 
 const withRoom = (model: Model, room: InRoom): Model => ({
@@ -257,6 +263,10 @@ export const update = (model: Model, message: Message): Return =>
           Option.map((draft) => ({ ...draft, [path]: value }))
         ),
       })),
+    ChoseTheme: ({ theme }) => ({
+      commands: [ApplyTheme({ theme: Option.some(theme) })],
+      model: { ...model, theme: Option.some(theme) },
+    }),
     ClickedAction: ({ action }) => act(model, action),
     ClickedCancelSeat: () =>
       editRoom(model, (room) => ({
@@ -344,6 +354,7 @@ export const update = (model: Model, message: Message): Return =>
       editRoom(model, (room) => ({ ...room, copied })),
     CompletedForget: () => ({ model }),
     CompletedNavigation: () => ({ model }),
+    CompletedPreference: () => ({ model }),
     CompletedWake: () => ({ model }),
     EnteredRoom: ({ code, player }) => ({
       commands: [ShowPath({ path: roomPath(code) })],
@@ -483,6 +494,10 @@ export const update = (model: Model, message: Message): Return =>
               },
       });
     },
+    SwitchedSound: ({ on }) => ({
+      commands: [SaveSound({ on })],
+      model: { ...model, sound: on },
+    }),
     Ticked: ({ now }) => ({ model: { ...model, now } }),
     WokePage: ({ visible }) =>
       inRoom(model, () =>

@@ -29,6 +29,8 @@ const start = init({
   invite: Option.some(CODE),
   profile: { avatar: "🦊", name: "Ana" },
   saved: Option.some({ code: CODE, player: PLAYER }),
+  sound: false,
+  theme: Option.none(),
 }).model;
 
 const StepSchema = Schema.TaggedUnion({

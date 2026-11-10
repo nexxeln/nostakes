@@ -2,10 +2,20 @@ import { RoomCodeSchema, RoomPassSchema } from "@nostakes/protocol";
 import type { RoomPass } from "@nostakes/protocol";
 import { Effect, Option, Schema } from "effect";
 
-import { ProfileSchema, SavedPassSchema } from "../features/model.js";
-import type { Flags, Profile } from "../features/model.js";
+import {
+  ProfileSchema,
+  SavedPassSchema,
+  ThemeSchema,
+} from "../features/model.js";
+import type { Flags, Profile, Theme } from "../features/model.js";
 
 const PROFILE_KEY = "nostakes.profile";
+
+const THEME_KEY = "nostakes.theme";
+
+const SOUND_KEY = "nostakes.sound";
+
+const SOUND_OFF = "off";
 
 const passKey = (code: string) => `nostakes.pass.${code}`;
 
@@ -47,6 +57,18 @@ export const storePass = (pass: RoomPass) =>
 export const storeProfile = (profile: Profile) =>
   writeItem(PROFILE_KEY, Schema.encodeSync(profileJson)(profile));
 
+export const storeTheme = (theme: Option.Option<Theme>) =>
+  Option.match(theme, {
+    onNone: () =>
+      Effect.sync(() => {
+        globalThis.localStorage.removeItem(THEME_KEY);
+      }),
+    onSome: (chosen) => writeItem(THEME_KEY, chosen),
+  });
+
+export const storeSound = (on: boolean) =>
+  writeItem(SOUND_KEY, on ? "on" : SOUND_OFF);
+
 export const forgetPass = (code: string) =>
   Effect.sync(() => {
     globalThis.localStorage.removeItem(passKey(code));
@@ -78,7 +100,17 @@ export const readFlags = Effect.gen(function* readFlags() {
       ),
   });
 
-  const flags: Flags = { invite, profile, saved };
+  const theme = (yield* readItem(THEME_KEY)).pipe(
+    Option.flatMap(Schema.decodeUnknownOption(ThemeSchema))
+  );
+
+  const mutedHere =
+    new URLSearchParams(globalThis.location.search).get("mute") === "1";
+
+  const sound =
+    !mutedHere && !Option.contains(yield* readItem(SOUND_KEY), SOUND_OFF);
+
+  const flags: Flags = { invite, profile, saved, sound, theme };
 
   return flags;
 });

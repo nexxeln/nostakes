@@ -1,6 +1,7 @@
 import { Option } from "effect";
 import type { Document, Html, HtmlBuilder } from "foldkit/html";
 
+import { themeSwitch } from "./chrome.js";
 import { Messages } from "./message.js";
 import type { Message } from "./message.js";
 import { AVATARS, Screens } from "./model.js";
@@ -67,10 +68,19 @@ const homeView = (
   h.main(
     [h.Class("page home")],
     [
-      h.h1([h.Class("brand")], ["nostakes"]),
-      h.p(
-        [h.Class("tagline")],
-        ["Poker night with friends. No money on the table, just the count."]
+      h.header(
+        [h.Class("bar")],
+        [h.span([h.Class("bar-end")], [themeSwitch(h)])]
+      ),
+      h.div(
+        [h.Class("hero")],
+        [
+          h.h1([h.Class("brand")], ["nostakes"]),
+          h.p(
+            [h.Class("tagline")],
+            ["Poker night with friends. No money on the table, just the count."]
+          ),
+        ]
       ),
       h.form(
         [h.Class("card-panel"), h.OnSubmit(Messages.SubmittedCreate())],
@@ -83,26 +93,27 @@ const homeView = (
         ]
       ),
       h.form(
-        [h.Class("card-panel"), h.OnSubmit(Messages.SubmittedJoin())],
+        [h.Class("join-panel"), h.OnSubmit(Messages.SubmittedJoin())],
         [
-          h.label(
-            [h.Class("field")],
+          h.span([h.Class("field-label")], ["Have a code?"]),
+          h.div(
+            [h.Class("join-row")],
             [
-              h.span([h.Class("field-label")], ["Have a code?"]),
               h.input([
                 h.Type("text"),
                 h.Class("text-input code-input"),
                 h.Value(model.joinCode),
                 h.Maxlength(6),
                 h.Placeholder("ABC234"),
+                h.AriaLabel("Room code"),
                 h.Autocapitalize("characters"),
                 h.OnInput((value) => Messages.ChangedJoinCode({ value })),
               ]),
+              h.button(
+                [h.Type("submit"), h.Class("button"), h.Disabled(busy)],
+                ["Join"]
+              ),
             ]
-          ),
-          h.button(
-            [h.Type("submit"), h.Class("button"), h.Disabled(busy)],
-            ["Join with the code"]
           ),
         ]
       ),
@@ -120,8 +131,17 @@ const invitedView = (
   h.main(
     [h.Class("page home")],
     [
-      h.h1([h.Class("brand")], ["nostakes"]),
-      h.p([h.Class("tagline")], [`You're invited to room ${code}.`]),
+      h.header(
+        [h.Class("bar")],
+        [h.span([h.Class("bar-end")], [themeSwitch(h)])]
+      ),
+      h.div(
+        [h.Class("hero")],
+        [
+          h.h1([h.Class("brand")], ["nostakes"]),
+          h.p([h.Class("tagline")], [`You're invited to room ${code}.`]),
+        ]
+      ),
       h.form(
         [h.Class("card-panel"), h.OnSubmit(Messages.SubmittedInvite())],
         [

@@ -22,6 +22,10 @@ export const AVATARS = [
   "🦄",
 ] as const;
 
+export const ThemeSchema = Schema.Literals(["Light", "Dark"]);
+
+export type Theme = typeof ThemeSchema.Type;
+
 export const ProfileSchema = Schema.Struct({
   avatar: Schema.String,
   name: Schema.String,
@@ -110,6 +114,8 @@ export const ModelSchema = Schema.Struct({
   now: Schema.Int,
   profile: ProfileSchema,
   screen: Screens,
+  sound: Schema.Boolean,
+  theme: Schema.Option(ThemeSchema),
 });
 
 export type Model = typeof ModelSchema.Type;
@@ -125,6 +131,8 @@ export const FlagsSchema = Schema.Struct({
   invite: Schema.Option(RoomCodeSchema),
   profile: ProfileSchema,
   saved: Schema.Option(SavedPassSchema),
+  sound: Schema.Boolean,
+  theme: Schema.Option(ThemeSchema),
 });
 
 export type Flags = typeof FlagsSchema.Type;

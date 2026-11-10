@@ -12,6 +12,7 @@ import { Option } from "effect";
 import type { Html, HtmlBuilder } from "foldkit/html";
 
 import { cardBack, cardLabel, cardSlot, cardView } from "./cards.js";
+import { soundSwitch, themeSwitch } from "./chrome.js";
 import { Messages } from "./message.js";
 import type { Message } from "./message.js";
 import type { InRoom, Model } from "./model.js";
@@ -124,39 +125,51 @@ const rulesText = (view: OpenView) => {
   return `Blinds ${table.smallBlind}/${table.bigBlind}${ante} · buy-in ${buyIn.min}–${buyIn.max}`;
 };
 
-const header = (room: InRoom, view: Option.Option<OpenView>, h: H): Html =>
+const header = (
+  model: Model,
+  room: InRoom,
+  view: Option.Option<OpenView>,
+  h: H
+): Html =>
   h.header(
     [h.Class("room-header")],
     [
       h.span([h.Class("brand small")], ["nostakes"]),
-      h.span([h.Class("room-code")], [room.code]),
       h.button(
         [
           h.Type("button"),
-          h.Class("button quiet"),
+          h.Class("room-code"),
+          h.AriaLabel("Copy the room link"),
           h.OnClick(Messages.ClickedCopyLink()),
         ],
-        [room.copied === "Link" ? "Link copied" : "Copy link"]
+        [room.copied === "Link" ? "Link copied" : room.code]
       ),
       Option.match(view, {
         onNone: () => h.empty,
         onSome: (open) => h.span([h.Class("rules-line")], [rulesText(open)]),
       }),
-      connectionLine(room, h),
-      Option.match(view, {
-        onNone: () => h.empty,
-        onSome: (open) =>
-          open.host === room.player
-            ? h.button(
-                [
-                  h.Type("button"),
-                  h.Class("button quiet"),
-                  h.OnClick(Messages.ClickedOpenSettings()),
-                ],
-                ["Settings"]
-              )
-            : h.empty,
-      }),
+      h.span(
+        [h.Class("bar-end")],
+        [
+          connectionLine(room, h),
+          soundSwitch(model.sound, h),
+          themeSwitch(h),
+          Option.match(view, {
+            onNone: () => h.empty,
+            onSome: (open) =>
+              open.host === room.player
+                ? h.button(
+                    [
+                      h.Type("button"),
+                      h.Class("bar-button"),
+                      h.OnClick(Messages.ClickedOpenSettings()),
+                    ],
+                    ["Settings"]
+                  )
+                : h.empty,
+          }),
+        ]
+      ),
     ]
   );
 
@@ -1299,7 +1312,7 @@ export const roomView = (model: Model, room: InRoom, h: H): Html => {
   return h.main(
     [h.Class("page room")],
     [
-      header(room, open, h),
+      header(model, room, open, h),
       noticeLine(room, h),
       Option.match(view, {
         onNone: () =>

@@ -5,7 +5,7 @@ import { Schema } from "effect";
 import { defineMessageUnion } from "foldkit/message";
 import { defineTaggedUnion } from "foldkit/schema";
 
-import { CopiedSchema, LinkSchema } from "./model.js";
+import { CopiedSchema, LinkSchema, ThemeSchema } from "./model.js";
 
 export const ReplyOutcomes = defineTaggedUnion({
   Accepted: { seq: Schema.Int },
@@ -25,6 +25,7 @@ export const Messages = defineMessageUnion({
   ChangedJoinCode: { value: Schema.String },
   ChangedName: { value: Schema.String },
   ChangedSetting: { path: Schema.String, value: Schema.String },
+  ChoseTheme: { theme: ThemeSchema },
   ClickedAction: { action: ActionSchema },
   ClickedCancelSeat: {},
   ClickedCloseSettings: {},
@@ -40,6 +41,7 @@ export const Messages = defineMessageUnion({
   CompletedCopy: { copied: CopiedSchema },
   CompletedForget: { code: RoomCodeSchema },
   CompletedNavigation: { path: Schema.String },
+  CompletedPreference: {},
   CompletedWake: {},
   EnteredRoom: { code: RoomCodeSchema, player: PlayerIdSchema },
   FailedConnection: { problem: Schema.String },
@@ -51,6 +53,7 @@ export const Messages = defineMessageUnion({
   SubmittedCreate: {},
   SubmittedInvite: {},
   SubmittedJoin: {},
+  SwitchedSound: { on: Schema.Boolean },
   Ticked: { now: Schema.Int },
   WokePage: { visible: Schema.Boolean },
 });

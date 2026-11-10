@@ -12,10 +12,17 @@ import * as HttpClientRequest from "effect/http/HttpClientRequest";
 import { Command, Navigation } from "foldkit";
 
 import { Messages, ReplyOutcomes } from "../features/message.js";
+import { ThemeSchema } from "../features/model.js";
 import { rejectionText } from "../features/rejections.js";
 import { roomPath } from "../features/wire.js";
 import { RoomConnection } from "./connection.js";
-import { forgetPass, storePass, storeProfile } from "./storage.js";
+import {
+  forgetPass,
+  storePass,
+  storeProfile,
+  storeSound,
+  storeTheme,
+} from "./storage.js";
 
 const encodeJoin = Schema.encodeSync(Schema.toCodecJson(JoinRequestSchema));
 
@@ -171,4 +178,32 @@ export const ForgetRoom = Command.define("ForgetRoom", {
   execute: ({ code }) =>
     forgetPass(code).pipe(Effect.as(Messages.CompletedForget({ code }))),
   messages: [Messages.CompletedForget],
+});
+
+export const ApplyTheme = Command.define("ApplyTheme", {
+  args: { theme: Schema.Option(ThemeSchema) },
+  execute: ({ theme }) =>
+    Effect.sync(() => {
+      const root = globalThis.document.documentElement;
+
+      Option.match(theme, {
+        onNone: () => {
+          delete root.dataset.theme;
+        },
+        onSome: (chosen) => {
+          root.dataset.theme = chosen === "Dark" ? "dark" : "light";
+        },
+      });
+    }).pipe(
+      Effect.andThen(storeTheme(theme)),
+      Effect.as(Messages.CompletedPreference())
+    ),
+  messages: [Messages.CompletedPreference],
+});
+
+export const SaveSound = Command.define("SaveSound", {
+  args: { on: Schema.Boolean },
+  execute: ({ on }) =>
+    storeSound(on).pipe(Effect.as(Messages.CompletedPreference())),
+  messages: [Messages.CompletedPreference],
 });
