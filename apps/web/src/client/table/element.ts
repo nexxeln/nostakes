@@ -228,13 +228,41 @@ const ringRadius = (frame: Element, size: number) => {
   return radius.endsWith("%") ? (size * amount) / 100 : amount;
 };
 
-const placeRing = (
-  svg: SVGSVGElement,
-  ring: SVGRectElement,
-  size: number,
-  radius: number
-) => {
-  const gap = 5;
+const RING_GAP = 6;
+
+const POT_STACKED_MIN = 50;
+
+const POT_FLAT_H = 24;
+
+const POT_ABOVE_BOARD = 10;
+
+const POT_FLAT_ABOVE_BOARD = 3;
+
+const potTab = (geo: Geo) => {
+  if (geo.boardInStrip) {
+    return {
+      h: geo.strip.h - 20,
+      stacked: true,
+      w: 2 * (geo.pot.x - geo.strip.x) - 18,
+      y: geo.pot.y,
+    };
+  }
+
+  const stacked = geo.cardW * 1.2 >= POT_STACKED_MIN;
+  const h = stacked ? Math.min(66, geo.cardW * 1.2) : POT_FLAT_H;
+  const boardTop = (geo.board[0]?.y ?? geo.pot.y) - geo.cardW * 0.7;
+  const gap = stacked ? POT_ABOVE_BOARD : POT_FLAT_ABOVE_BOARD;
+
+  return {
+    h,
+    stacked,
+    w: Math.min(88, geo.cardW * 1.6),
+    y: boardTop - gap - h / 2,
+  };
+};
+
+const placeRing = (svg: SVGSVGElement, size: number, radius: number) => {
+  const gap = RING_GAP;
   const width = size + 2 * gap;
 
   svg.style.left = `${-gap - 4}px`;
@@ -244,17 +272,36 @@ const placeRing = (
 
   const corner = Math.min(radius + gap, width / 2);
 
-  for (const [name, value] of [
-    ["x", 4],
-    ["y", 4],
-    ["width", width],
-    ["height", width],
-    ["rx", corner],
-    ["ry", corner],
-  ] as const) {
-    ring.setAttribute(name, String(value));
+  for (const rect of svg.querySelectorAll("rect")) {
+    for (const [name, value] of [
+      ["x", 4],
+      ["y", 4],
+      ["width", width],
+      ["height", width],
+      ["rx", corner],
+      ["ry", corner],
+    ] as const) {
+      rect.setAttribute(name, String(value));
+    }
   }
 };
+
+const ringIn = (svg: SVGSVGElement) => {
+  svg.classList.add("ring");
+  svgEl("rect", svg).classList.add("track");
+
+  const run = svgEl("rect", svg);
+
+  run.classList.add("run");
+  run.setAttribute("pathLength", "100");
+
+  return run;
+};
+
+const CHIP_COLOURS = 5;
+
+const chipClass = (index: number) =>
+  `paper-chip chip-${((index % CHIP_COLOURS) + CHIP_COLOURS) % CHIP_COLOURS}`;
 
 const paintRing = (ring: SVGRectElement, fraction: number, pulse: number) => {
   ring.setAttribute("stroke-dasharray", `${(fraction * 100).toFixed(2)} 200`);
@@ -954,9 +1001,7 @@ export class NostakesTable extends HTMLElement {
       until: 0,
     };
     this.#selfRingSvg = svgEl("svg", this.#self);
-    this.#selfRingSvg.classList.add("ring");
-    this.#selfRing = svgEl("rect", this.#selfRingSvg);
-    this.#selfRing.setAttribute("pathLength", "100");
+    this.#selfRing = ringIn(this.#selfRingSvg);
     this.#dealer = el("div", "dealer gone", this.#room, "D");
   }
 
@@ -1211,7 +1256,7 @@ export class NostakesTable extends HTMLElement {
       const root = el("div", "pile empty");
 
       this.#room.insertBefore(root, this.#fx);
-      el("div", "dot", root);
+      el("div", `dot ${chipClass(info.seat)}`, root);
       this.#piles.set(info.seat, {
         amount: el("div", "amt", root, "0"),
         root,
@@ -1236,12 +1281,7 @@ export class NostakesTable extends HTMLElement {
     const act = el("div", "act", line);
     const note = el("div", "note", line);
     const ringSvg = svgEl("svg", root);
-
-    ringSvg.classList.add("ring");
-
-    const ring = svgEl("rect", ringSvg);
-
-    ring.setAttribute("pathLength", "100");
+    const ring = ringIn(ringSvg);
 
     const shown = el("div", "shown", root);
 
@@ -1352,12 +1392,7 @@ export class NostakesTable extends HTMLElement {
         tile.root.classList.add(spot.side);
       }
 
-      placeRing(
-        tile.ringSvg,
-        tile.ring,
-        geo.tile,
-        ringRadius(tile.frame, geo.tile)
-      );
+      placeRing(tile.ringSvg, geo.tile, ringRadius(tile.frame, geo.tile));
     }
   }
 
@@ -1368,8 +1403,13 @@ export class NostakesTable extends HTMLElement {
       top: `${geo.strip.y}px`,
       width: `${geo.strip.w}px`,
     });
+    const tab = potTab(geo);
+
     this.#potRoot.style.left = `${geo.pot.x}px`;
-    this.#potRoot.style.top = `${geo.pot.y}px`;
+    this.#potRoot.style.top = `${tab.y}px`;
+    this.#potRoot.style.setProperty("--pot-w", `${tab.w}px`);
+    this.#potRoot.style.setProperty("--pot-h", `${tab.h}px`);
+    toggle(this.#potRoot, "flat", !tab.stacked);
 
     for (const [index, point] of geo.board.entries()) {
       const slot = this.#slots[index];
@@ -1406,12 +1446,7 @@ export class NostakesTable extends HTMLElement {
       width: `${size}px`,
     });
     this.#self.style.setProperty("--t", `${size}px`);
-    placeRing(
-      this.#selfRingSvg,
-      this.#selfRing,
-      size,
-      ringRadius(this.#selfFrame, size)
-    );
+    placeRing(this.#selfRingSvg, size, ringRadius(this.#selfFrame, size));
 
     const cardW = geo.handCardW;
     const spread = cardW * 0.5;
@@ -1710,6 +1745,12 @@ export class NostakesTable extends HTMLElement {
       sides.length === 0
         ? ""
         : sides.map((amount) => `side ${formatChips(amount)}`).join(" · ");
+
+    this.#potRoot.style.setProperty(
+      "--pot-len",
+      String(Math.max(2, formatChips(main).length))
+    );
+    toggle(this.#potRoot, "split", side !== "");
 
     if (this.#potSide.textContent !== side) {
       this.#potSide.textContent = side;
@@ -2399,7 +2440,7 @@ export class NostakesTable extends HTMLElement {
     );
 
     for (let index = 0; index < count; index += 1) {
-      const chip = el("div", "fly fchip");
+      const chip = el("div", `fly fchip ${chipClass(index)}`);
 
       this.#fly(
         chip,
@@ -2492,7 +2533,7 @@ export class NostakesTable extends HTMLElement {
 
       for (let index = 0; index < chipsPerPile; index += 1) {
         this.#fly(
-          el("div", "fly fchip"),
+          el("div", `fly fchip ${chipClass(index + seat)}`),
           from,
           { x: geo.pot.x, y: geo.pot.y - 14 },
           {
@@ -2538,7 +2579,7 @@ export class NostakesTable extends HTMLElement {
     this.#pot.set(0, performance.now());
 
     for (let index = 0; index < count; index += 1) {
-      const chip = el("div", "fly fchip");
+      const chip = el("div", `fly fchip ${chipClass(index)}`);
 
       this.#fly(
         chip,
