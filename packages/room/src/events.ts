@@ -17,6 +17,7 @@ import {
 } from "@nostakes/shuffle";
 import { Data, Effect, Schema } from "effect";
 
+import { DeadlineSchema } from "./deadline.js";
 import { AvatarSchema, NameSchema, RoomCodeSchema } from "./identity.js";
 import { ChipAmountSchema, RoomSettingsSchema } from "./settings.js";
 import { SettlementSchema } from "./settlement.js";
@@ -147,12 +148,14 @@ export const roomEventFields = {
   },
   SettingsChanged: { at, settings: RoomSettingsSchema },
   ShowdownClockStarted: { at, deadline: MillisSchema, seat: SeatIndexSchema },
+  StallCleared: { at },
   StraddleDeclared: { at, on: Schema.Boolean, player: PlayerIdSchema },
   TableAttended: {
     at,
     player: PlayerIdSchema,
     quietSince: Schema.Option(MillisSchema),
   },
+  TableStalled: { at, deadline: DeadlineSchema },
   TableUnattended: { at },
   TableWentQuiet: { at },
   TimeBankRefilled: {

@@ -8,6 +8,7 @@ import {
 import { BeaconRoundSchema } from "@nostakes/shuffle";
 import { Data, Schema } from "effect";
 
+import { DeadlineSchema } from "./deadline.js";
 import { ActorSchema, AvatarSchema, NameSchema } from "./identity.js";
 import { ChipAmountSchema, RequestedSettingsSchema } from "./settings.js";
 import { MillisSchema } from "./time.js";
@@ -46,6 +47,7 @@ export const RoomCommandSchema = Schema.TaggedUnion({
   LeaveSeat: envelope,
   MuckHand: envelope,
   NoteAttendance: { ...envelope, connected: Schema.Array(PlayerIdSchema) },
+  NoteStall: { ...envelope, deadline: DeadlineSchema },
   PauseGame: envelope,
   QuietTable: envelope,
   RabbitHunt: envelope,

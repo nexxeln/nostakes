@@ -55,6 +55,7 @@ export const opened = (event: RoomEventOf<"RoomOpened">): Open =>
     requests: { chips: [], seats: [] },
     sealed: Option.none(),
     settings: event.settings,
+    stalled: Option.none(),
     straddlers: [],
     table: initialTable(event.settings.table),
   });
@@ -377,6 +378,7 @@ const evolveOpen = (state: Open, event: RoomEvent): RoomState =>
         state,
         Option.some(DecisionClocks.Showdown({ deadline, seat, startedAt: at }))
       ),
+    StallCleared: (): Open => ({ ...state, stalled: Option.none() }),
     StraddleDeclared: ({ on, player }) => ({
       ...state,
       straddlers: on
@@ -387,6 +389,10 @@ const evolveOpen = (state: Open, event: RoomEvent): RoomState =>
     TableAttended: ({ at }): Open => ({
       ...state,
       attendance: Attendances.Attended({ since: at }),
+    }),
+    TableStalled: ({ at, deadline }): Open => ({
+      ...state,
+      stalled: Option.some({ deadline, since: at }),
     }),
     TableUnattended: ({ at }): Open => ({
       ...state,

@@ -5,16 +5,16 @@ import {
   PendingDecisions,
   pendingDecisions,
   RunCountSchema,
-  SeatIndexSchema,
   TableStates,
 } from "@nostakes/engine";
 import type { Command, Event, PlayerId, SeatIndex } from "@nostakes/engine";
-import { BeaconRoundSchema } from "@nostakes/shuffle";
-import { Data, Option, Result, Schema } from "effect";
+import { Option, Result } from "effect";
 
 import { quietDueAt } from "./attendance.js";
 import { andThen } from "./batch.js";
 import type { RoomCommandOf } from "./commands.js";
+import { Deadlines } from "./deadline.js";
+import type { Deadline } from "./deadline.js";
 import { dealDue } from "./dealing.js";
 import type { Decision } from "./decision.js";
 import { RoomEvents } from "./events.js";
@@ -32,28 +32,8 @@ import {
 } from "./state.js";
 import type { DecisionClock, Open, RoomState } from "./state.js";
 import { onTable } from "./table.js";
-import {
-  MillisSchema,
-  earliest,
-  secondsAfter,
-  wholeSecondsBetween,
-} from "./time.js";
+import { earliest, secondsAfter, wholeSecondsBetween } from "./time.js";
 import type { Millis } from "./time.js";
-
-export const DeadlineSchema = Schema.TaggedUnion({
-  DealDue: { at: MillisSchema },
-  QueueDue: { at: MillisSchema },
-  QuietDue: { at: MillisSchema },
-  RunChoiceClock: { at: MillisSchema },
-  SealDue: { at: MillisSchema },
-  SealedDealDue: { at: MillisSchema, round: BeaconRoundSchema },
-  ShowdownClock: { at: MillisSchema, seat: SeatIndexSchema },
-  TurnClock: { at: MillisSchema, seat: SeatIndexSchema },
-});
-
-export type Deadline = typeof DeadlineSchema.Type;
-
-export const Deadlines = Data.taggedEnum<Deadline>();
 
 const dealingDeadline = (state: Open): Option.Option<Deadline> =>
   sealedDealDue(state).pipe(

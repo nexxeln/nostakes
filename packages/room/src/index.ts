@@ -108,14 +108,11 @@ export type { Opening } from "./room.js";
 
 export type { Decision } from "./decision.js";
 
-export {
-  DeadlineSchema,
-  Deadlines,
-  nextDeadline,
-  timeBankLeft,
-} from "./clocks.js";
+export { nextDeadline, timeBankLeft } from "./clocks.js";
 
-export type { Deadline } from "./clocks.js";
+export { DeadlineSchema, Deadlines } from "./deadline.js";
+
+export type { Deadline } from "./deadline.js";
 
 export { deckFromBytes } from "./dealing.js";
 
@@ -219,6 +216,7 @@ export {
   SeenEventSchema,
   SeenEvents,
   SeenTableEventSchema,
+  StallViewSchema,
   audienceOf,
   redact,
   viewFor,

@@ -25,6 +25,7 @@ import type {
 } from "@nostakes/shuffle";
 import { Data, Option, Result } from "effect";
 
+import type { Deadline } from "./deadline.js";
 import type { Holder, OpenedCard } from "./events.js";
 import type { RoomCode } from "./identity.js";
 import { NotSeated } from "./rejection.js";
@@ -152,6 +153,11 @@ export type Attendance = Data.TaggedEnum<{
 
 export const Attendances = Data.taggedEnum<Attendance>();
 
+export interface Stall {
+  readonly deadline: Deadline;
+  readonly since: Millis;
+}
+
 export type Entries = ReadonlyMap<PlayerId, readonly LedgerEntry<PlayerId>[]>;
 
 export type RoomState = Data.TaggedEnum<{
@@ -183,6 +189,7 @@ export type RoomState = Data.TaggedEnum<{
     readonly requests: Requests;
     readonly sealed: Option.Option<Sealed>;
     readonly settings: RoomSettings;
+    readonly stalled: Option.Option<Stall>;
     readonly straddlers: readonly PlayerId[];
     readonly table: TableState;
   };

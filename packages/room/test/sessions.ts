@@ -449,6 +449,16 @@ const serverCommand = (
     return attendanceNote(state, random, at, by);
   }
 
+  if (random.chance(1, 8)) {
+    return RoomCommands.NoteStall({
+      at: millis(at),
+      by,
+      deadline: Option.getOrElse(nextDeadline(state), () =>
+        Deadlines.QueueDue({ at: millis(at) })
+      ),
+    });
+  }
+
   return Option.match(nextDeadline(state), {
     onNone: () =>
       random.chance(1, 2)

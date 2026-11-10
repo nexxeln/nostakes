@@ -340,6 +340,10 @@ const attendanceField = absentAs(
 
 const departedField = absentAs(Schema.Array(MemberViewSchema), []);
 
+export const StallViewSchema = Schema.Struct({ since: MillisSchema });
+
+const stalledField = absentAs(Schema.Option(StallViewSchema), Option.none());
+
 export const RoomViewSchema = Schema.TaggedUnion({
   Closed: {
     code: RoomCodeSchema,
@@ -385,6 +389,7 @@ export const RoomViewSchema = Schema.TaggedUnion({
     seats: Schema.Array(SeatViewSchema),
     settings: RoomSettingsSchema,
     showdown: Schema.Option(ShowdownChoicesSchema),
+    stalled: stalledField,
     you: youField,
   },
 });
@@ -687,6 +692,7 @@ const openView = (state: Open, audience: Audience, at: Millis): RoomView => {
     seats: seatsView(state),
     settings: state.settings,
     showdown: showdownFor(state, viewer),
+    stalled: state.stalled.pipe(Option.map(({ since }) => ({ since }))),
     you: Audiences.$match(audience, {
       Seated: ({ player }) => viewer.pipe(Option.map(() => player)),
       Spectator: () => Option.none(),

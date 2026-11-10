@@ -39,6 +39,7 @@ import {
   sitOut,
 } from "./seats.js";
 import { RoomSettingsSchema } from "./settings.js";
+import { clearingStall, noteStall } from "./stalls.js";
 import { RoomStates, handInProgress, isOpen, queueWaiting } from "./state.js";
 import type { Open, RoomState } from "./state.js";
 import { MillisSchema, latest } from "./time.js";
@@ -128,6 +129,8 @@ const decideOpen = (state: Open, command: RoomCommand): Decision =>
       byMember(state, muck, (player) => play(state, player, muck)),
     NoteAttendance: (note) =>
       Result.flatMap(fromServer(note), () => noteAttendance(state, note)),
+    NoteStall: (note) =>
+      Result.flatMap(fromServer(note), () => noteStall(state, note)),
     PauseGame: (pause) =>
       byHost(state, pause, () => pauseGame(state, pause.at)),
     QuietTable: (quiet) =>
@@ -263,7 +266,7 @@ export const decide = (state: RoomState, command: RoomCommand): Decision =>
 
       return Result.flatMap(decideOpen(open, { ...command, at }), (events) =>
         Result.map(followThrough(open, events, at), (all) =>
-          withOpenings(open, all)
+          clearingStall(open, command, withOpenings(open, all), at)
         )
       );
     },
