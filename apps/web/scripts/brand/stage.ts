@@ -301,21 +301,33 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: var(--color-
   transition: opacity 400ms cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 .brand-card.off { opacity: 0; }
-.brand-face { width: 28.6vw; height: 28.6vw; border-radius: 50%; overflow: hidden; line-height: 0; box-shadow: var(--shadow-2); flex: none; }
-.brand-face svg, .brand-cast svg { width: 100%; height: 100%; display: block; }
+.brand-face, .brand-cast span {
+  position: relative; flex: none; line-height: 0; border-radius: var(--radius-face); background: var(--color-face);
+  box-shadow: -0.1vw -0.12vw 0 var(--color-sheet-edge), 0 0 0 0.08vw var(--color-sheet-gap), 0.5vw 0.9vw 0 var(--color-sheet-shadow);
+}
+.brand-face { width: 28.6vw; height: 28.6vw; }
+.brand-face svg, .brand-cast svg { position: absolute; left: 0; top: -5%; width: 100%; height: 100%; display: block; overflow: visible; }
 .brand-words { display: flex; flex-direction: column; gap: 1.5vw; }
-.brand-word { font-size: 9.3vw; font-weight: 650; letter-spacing: -0.035em; line-height: 1; }
+.brand-word, .corner-word {
+  font-family: var(--font-display); font-weight: var(--weight-display); font-variation-settings: var(--settings-display);
+  letter-spacing: var(--tracking-display); line-height: 1; color: var(--color-brand); text-shadow: 0.045em 0.055em 0 var(--color-brand-shadow);
+}
+.brand-word { font-size: 9.3vw; }
 .brand-line { font-size: 3.2vw; color: var(--color-ink-muted); letter-spacing: -0.01em; }
-.brand-cast { display: flex; margin-top: 1.5vw; }
-.brand-cast span { width: 5vw; height: 5vw; border-radius: 50%; overflow: hidden; line-height: 0; margin-right: -0.8vw; box-shadow: 0 0 0 0.33vw var(--color-page); }
-.corner-word { position: absolute; z-index: 9; left: 2.4vw; top: 2vw; font: 650 2.2vw/1 var(--font-body); letter-spacing: -0.02em; color: var(--color-ink); opacity: 0.9; pointer-events: none; }
+.brand-cast { display: flex; gap: 1.1vw; margin-top: 2.2vw; }
+.brand-cast span { width: 5.4vw; height: 5.4vw; box-shadow: var(--shadow-sheet-1); }
+.corner-word { position: absolute; z-index: 9; left: 2.4vw; top: 2vw; font-size: 2.2vw; pointer-events: none; }
 `;
 
 const faceSpan = (avatar: Avatar, size: number, className: string) => {
   const span = document.createElement("span");
 
   span.className = className;
-  span.innerHTML = render(avatar, { expression: "Resting", size });
+  span.innerHTML = render(avatar, {
+    expression: "Resting",
+    size,
+    theme: "Light",
+  });
 
   return span;
 };

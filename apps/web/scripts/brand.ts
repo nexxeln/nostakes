@@ -61,47 +61,71 @@ const browser = Effect.acquireRelease(
   (opened: Browser) => Effect.promise(() => opened.close())
 );
 
-const sharkSvg = (size: number) =>
-  render(DEFAULT_AVATAR, { expression: "Resting", size });
+const PAPER = {
+  ground: "#f6f1e8",
+  shadow: "rgba(40,24,70,0.32)",
+  stock: "#fffdf8",
+} as const;
+
+const TILE = { side: 82, x: 9, y: 15 } as const;
+
+const TILE_CORNER = 0.13;
+
+const FACE_RISE = 0.05;
+
+const TILE_SHADOW = { x: 1.2, y: 2.2 } as const;
 
 const svgInside = (svg: string) =>
   svg.slice(svg.indexOf(">") + 1, svg.lastIndexOf("</svg>"));
 
-const roundSvg = (svg: string) =>
-  [
+const tileSvg = (pixels: number) => {
+  const face = render(DEFAULT_AVATAR, {
+    expression: "Resting",
+    size: Math.round((pixels * TILE.side) / 100),
+    theme: "Light",
+  });
+
+  const corner = TILE.side * TILE_CORNER;
+
+  const sheet = (dx: number, dy: number, fill: string) =>
+    `<rect x="${TILE.x + dx}" y="${TILE.y + dy}" width="${TILE.side}" height="${TILE.side}" rx="${corner}" fill="${fill}"/>`;
+
+  return [
     '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">',
-    '<defs><clipPath id="nostakes-face"><circle cx="50" cy="50" r="50"/></clipPath></defs>',
-    `<g clip-path="url(#nostakes-face)">${svgInside(svg)}</g>`,
+    sheet(TILE_SHADOW.x, TILE_SHADOW.y, PAPER.shadow),
+    sheet(0, 0, PAPER.stock),
+    `<svg x="${TILE.x}" y="${TILE.y - TILE.side * FACE_RISE}" width="${TILE.side}" height="${TILE.side}" viewBox="0 0 100 100" overflow="visible">${svgInside(face)}</svg>`,
     "</svg>",
   ].join("");
+};
 
 interface Picture {
   readonly size: number;
-  readonly round: boolean;
-  readonly safeZone: boolean;
+  readonly share: number;
+  readonly ground: string;
 }
 
-const MASKABLE_FACE_SHARE = 0.8;
+const ON_GLASS = "transparent";
 
-const MASKABLE_BACKGROUND = "#0f1012";
+const APPLE_SHARE = 0.8;
 
-const pictureHtml = ({ round, safeZone, size }: Picture) => {
-  const face = safeZone ? Math.round(size * MASKABLE_FACE_SHARE) : size;
-  const inset = (size - face) / 2;
+const MASKABLE_SHARE = 0.64;
+
+const pictureHtml = ({ ground, share, size }: Picture) => {
+  const drawn = Math.round(size * share);
 
   return [
     "<!doctype html><html><head><style>",
-    `html,body{margin:0;background:${safeZone ? MASKABLE_BACKGROUND : "transparent"}}`,
-    `body{padding:${inset}px}`,
-    `div{width:${face}px;height:${face}px;line-height:0;overflow:hidden;border-radius:${round ? "50%" : "0"}}`,
-    "svg{width:100%;height:100%;display:block}",
-    `</style></head><body><div>${sharkSvg(face)}</div></body></html>`,
+    `html,body{margin:0;width:${size}px;height:${size}px;background:${ground}}`,
+    "body{display:grid;place-items:center}",
+    `svg{width:${drawn}px;height:${drawn}px;display:block}`,
+    `</style></head><body>${tileSvg(drawn)}</body></html>`,
   ].join("");
 };
 
 const picture = (page: Page, wanted: Picture) =>
   Effect.gen(function* drawPicture() {
-    const step = `draw the shark at ${wanted.size}px`;
+    const step = `draw the shark's tile at ${wanted.size}px`;
 
     yield* attempt(step, () =>
       page.setViewportSize({ height: wanted.size, width: wanted.size })
@@ -169,28 +193,25 @@ const icons = (opened: Browser) =>
   Effect.gen(function* drawIcons() {
     const page = yield* attempt("open an icon page", () => opened.newPage());
 
-    const round = (size: number) =>
-      picture(page, { round: true, safeZone: false, size });
+    const onGlass = (size: number) =>
+      picture(page, { ground: ON_GLASS, share: 1, size });
 
-    const square = (size: number) =>
-      picture(page, { round: false, safeZone: false, size });
+    const onPaper = (size: number, share: number) =>
+      picture(page, { ground: PAPER.ground, share, size });
 
-    yield* write("favicon.svg", roundSvg(sharkSvg(32)));
+    yield* write("favicon.svg", tileSvg(32));
     yield* write(
       "favicon.ico",
       icoOf([
-        { png: yield* round(16), size: 16 },
-        { png: yield* round(32), size: 32 },
-        { png: yield* round(48), size: 48 },
+        { png: yield* onGlass(16), size: 16 },
+        { png: yield* onGlass(32), size: 32 },
+        { png: yield* onGlass(48), size: 48 },
       ])
     );
-    yield* write("apple-touch-icon.png", yield* square(180));
-    yield* write("icon-192.png", yield* round(192));
-    yield* write("icon-512.png", yield* round(512));
-    yield* write(
-      "icon-maskable-512.png",
-      yield* picture(page, { round: true, safeZone: true, size: 512 })
-    );
+    yield* write("apple-touch-icon.png", yield* onPaper(180, APPLE_SHARE));
+    yield* write("icon-192.png", yield* onGlass(192));
+    yield* write("icon-512.png", yield* onGlass(512));
+    yield* write("icon-maskable-512.png", yield* onPaper(512, MASKABLE_SHARE));
   });
 
 type Cue = "brand-on" | "brand-off" | "next";
@@ -429,9 +450,9 @@ const encode = (frames: readonly Frame[], endAt: number) =>
 
 const clip = (opened: Browser, stageUrl: string) =>
   Effect.gen(function* recordClip() {
-    const context = yield* attempt("open a dark, muted window", () =>
+    const context = yield* attempt("open a light, muted window", () =>
       opened.newContext({
-        colorScheme: "dark",
+        colorScheme: "light",
         deviceScaleFactor: VIEW_SCALE,
         reducedMotion: "no-preference",
         viewport: VIEW,
