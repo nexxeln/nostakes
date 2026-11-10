@@ -850,6 +850,10 @@ export class NostakesTable extends HTMLElement {
   #dealerTransform = "";
   #dealerFlight: Animation | null = null;
   #hand!: HTMLDivElement;
+  #entry!: HTMLDivElement;
+  #entryLine!: HTMLDivElement;
+  #entryAction!: HTMLButtonElement;
+  #entryNote!: HTMLDivElement;
   #handCards: HTMLDivElement[] = [];
   #handLabel!: HTMLDivElement;
   #chip!: HTMLButtonElement;
@@ -904,6 +908,7 @@ export class NostakesTable extends HTMLElement {
     this.#buildMiddle();
     this.#buildSelf();
     this.#buildHand();
+    this.#buildEntry();
     this.#fx = el("div", "fx", this.#room);
     this.#buildPicker();
     this.#buildRail();
@@ -1276,6 +1281,24 @@ export class NostakesTable extends HTMLElement {
     this.#hand.addEventListener("pointercancel", this.#onHandEnd);
   }
 
+  #buildEntry() {
+    this.#entry = el("div", "entry gone", this.#room);
+    this.#entry.setAttribute("role", "group");
+    this.#entry.setAttribute("aria-label", "Coming in");
+    this.#entryLine = el("div", "line", this.#entry);
+    this.#entryAction = el("button", "post-action", this.#entry);
+    this.#entryAction.type = "button";
+    this.#entryNote = el("div", "note", this.#entry);
+    this.#entryAction.addEventListener("click", () => {
+      const offer = this.#snap?.entry;
+
+      if (offer !== null && offer !== undefined) {
+        this.#sound.unlock();
+        this.#emit(TableIntents.Posting.make({ post: offer.post }));
+      }
+    });
+  }
+
   #buildRail() {
     this.#rail = el("div", "rail", this.#room);
     el("div", "scrim", this.#rail);
@@ -1586,6 +1609,14 @@ export class NostakesTable extends HTMLElement {
     }
 
     const chipSize = geo.chip.size;
+    const selfEdge = geo.self.x + geo.self.size / 2;
+    const chipEdge = geo.chip.x - chipSize / 2;
+
+    Object.assign(this.#entry.style, {
+      left: `${(selfEdge + chipEdge) / 2}px`,
+      top: `${geo.hand.y}px`,
+      width: `${Math.max(140, chipEdge - selfEdge - 16)}px`,
+    });
 
     this.#chip.style.setProperty("--c", `${chipSize}px`);
     Object.assign(this.#chip.style, {
@@ -1913,6 +1944,7 @@ export class NostakesTable extends HTMLElement {
       me !== undefined && dealt > 0 && (me.status !== "Folded" || showable);
 
     toggle(this.#hand, "gone", !holding);
+    this.#renderEntry(snapshot.entry, holding);
 
     for (const [index, holder] of this.#handCards.entries()) {
       const card = snapshot.heroCards[index];
@@ -1936,6 +1968,30 @@ export class NostakesTable extends HTMLElement {
     this.#renderChip(snapshot, me);
     this.#renderShowdown(snapshot);
     this.#renderKeys(this.#canAct() ? snapshot.legal : null, me, holding);
+  }
+
+  #renderEntry(offer: TableSnapshot["entry"], holding: boolean) {
+    const shown = offer !== null && !holding;
+
+    toggle(this.#entry, "gone", !shown);
+
+    if (!shown) {
+      return;
+    }
+
+    toggle(this.#entry, "posting", !offer.post);
+
+    for (const [node, text] of [
+      [this.#entryLine, offer.line],
+      [this.#entryAction, offer.action],
+      [this.#entryNote, offer.note],
+    ] as const) {
+      if (node.textContent !== text) {
+        node.textContent = text;
+      }
+    }
+
+    toggle(this.#entryNote, "gone", offer.note === "");
   }
 
   #renderPickable(tile: Tile, info: SeatSnapshot) {

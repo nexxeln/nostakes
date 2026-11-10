@@ -146,6 +146,7 @@ const opening: TableSnapshot = {
   boards: [BOARD],
   buttonSeat: 4,
   clock: { key: "hero", remainingMs: 21_000, seat: 0, totalMs: 30_000 },
+  entry: null,
   events: [
     { happening: Happenings.Start.make({ hand: HAND }), id: 1 },
     { happening: Happenings.Check.make({ seat: 1 }), id: 2 },

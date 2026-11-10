@@ -127,6 +127,15 @@ export const SeatPostSchema = Schema.Struct({
 
 export type SeatPost = typeof SeatPostSchema.Type;
 
+export const EntryOfferSchema = Schema.Struct({
+  action: Schema.String,
+  line: Schema.String,
+  note: Schema.String,
+  post: Schema.Boolean,
+});
+
+export type EntryOffer = typeof EntryOfferSchema.Type;
+
 export const ShownReactionSchema = Schema.Struct({
   id: Schema.Int,
   reaction: ReactionSchema,
@@ -145,6 +154,7 @@ export const TableSnapshotSchema = Schema.Struct({
   boards: Schema.Array(Schema.Array(CardTextSchema)),
   buttonSeat: Schema.NullOr(Schema.Int),
   clock: Schema.NullOr(ActionClockSchema),
+  entry: Schema.NullOr(EntryOfferSchema),
   events: Schema.Array(TableEventSchema),
   handId: Schema.Int,
   heroCards: Schema.Array(CardTextSchema),
@@ -173,6 +183,7 @@ export const TableIntentSchema = Schema.TaggedUnion({
   Muck: {},
   Peek: { looking: Schema.Boolean },
   Pick: { seat: Schema.Int },
+  Posting: { post: Schema.Boolean },
   Raise: { to: Schema.Int },
   React: { reaction: ReactionSchema },
   Runs: { runs: Schema.Int },

@@ -6,6 +6,7 @@ import type { SeenEvent, SeenTableEvent } from "@nostakes/room";
 import { Match, Option } from "effect";
 
 import type { InRoom } from "../model.js";
+import { entryOf, entryWords, waitingNote } from "../posting.js";
 import { isActing, isLive, isYou } from "../room.js";
 import type { OpenView } from "../room.js";
 import { isPeeking } from "../signals.js";
@@ -293,7 +294,7 @@ const occupiedSeat = (
     }),
     cardsHeld,
     name: mine ? "You" : (member?.name ?? "Someone"),
-    note: noteOf(occupant, here),
+    note: noteOf(occupant, here) || waitingNote(view, seat, occupant),
     peeking:
       view.settings.peeking &&
       (status === "In" || status === "AllIn") &&
@@ -624,6 +625,14 @@ export const tableSnapshot = (
     afterHand: afterHandOf(view, room, heroSeat),
     bigBlind: view.settings.table.bigBlind,
     clock: clockOf(view, room),
+    entry: Option.getOrNull(
+      entryOf(view).pipe(
+        Option.map((entry) => ({
+          ...entryWords(entry),
+          post: !entry.posting,
+        }))
+      )
+    ),
     events: room.events,
     heroSeat: Option.getOrNull(heroSeat),
     hostTools: isYou(view, view.host),

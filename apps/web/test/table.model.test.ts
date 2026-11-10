@@ -119,6 +119,7 @@ const actionOf = (intent: TableIntent): Option.Option<Action> =>
       Muck: () => Option.none(),
       Peek: () => Option.none(),
       Pick: () => Option.none(),
+      Posting: () => Option.none(),
       Raise: ({ to }) =>
         Schema.decodeOption(ChipsSchema)(to).pipe(
           Option.map((amount) => Actions.RaiseTo({ to: amount }))

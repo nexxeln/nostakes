@@ -75,6 +75,7 @@ const showdown: TableSnapshot = {
   boards: BOARDS.slice(0, boards),
   buttonSeat: 2,
   clock: null,
+  entry: null,
   events: [],
   handId: 7,
   heroCards: SHOWN[0] ?? [],
@@ -194,7 +195,51 @@ const dead: TableSnapshot = {
   seats: start.seats.filter(({ seat }) => seat !== EMPTY_AT),
 };
 
+const WAITING_SEAT = 4;
+
+const sittingBy = (seat: SeatSnapshot): SeatSnapshot =>
+  seat.seat === 0 || seat.seat === WAITING_SEAT
+    ? {
+        ...seat,
+        bet: 0,
+        cardsHeld: 0,
+        note: "Waits for BB",
+        stack: seat.stack + seat.bet,
+        status: "Out",
+      }
+    : seat;
+
+const waitingForBig: TableSnapshot = {
+  ...start,
+  clock: { key: "waiting", remainingMs: 21_000, seat: 1, totalMs: 30_000 },
+  entry: {
+    action: "Post 2 to come in",
+    line: "Waiting for the big blind",
+    note: "",
+    post: true,
+  },
+  heroCards: [],
+  legal: null,
+  seats: start.seats.map(sittingBy),
+  toAct: 1,
+};
+
+const postingIn: TableSnapshot = {
+  ...waitingForBig,
+  entry: {
+    action: "Wait for the big blind instead",
+    line: "Posting 2 + 1 dead to come in",
+    note: "The next hand is already set, so this counts from the one after.",
+    post: false,
+  },
+  seats: waitingForBig.seats.map((seat) =>
+    seat.seat === 0 ? { ...seat, note: "Posting in" } : seat
+  ),
+};
+
 const SCENES = new Map<string, TableSnapshot>([
+  ["posting", postingIn],
+  ["waiting", waitingForBig],
   ["dead", dead],
   ["mid", mid],
   ["start", start],

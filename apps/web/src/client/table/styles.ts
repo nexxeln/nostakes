@@ -211,6 +211,22 @@ export const tableCss = `
 .hand-label .sub { display: block; font-size: var(--text-1); color: var(--color-ink-muted); font-weight: var(--weight-body); margin-top: 2px; }
 .armed .hand-label { padding: var(--space-1) var(--space-3); border-radius: var(--radius-3); background: var(--color-toast); color: var(--color-on-toast); box-shadow: var(--shadow-sheet-2); }
 
+.entry {
+  position: absolute; z-index: 6; transform: translate(-50%, -50%); display: flex; flex-direction: column; align-items: center; gap: var(--space-2);
+  text-align: center; line-height: var(--leading-tight); text-wrap: balance;
+}
+.entry.gone, .entry .note.gone { display: none; }
+.entry .line { font-size: var(--text-2); font-weight: var(--weight-strong); color: var(--color-ink); }
+.entry .post-action {
+  font: inherit; font-size: var(--text-2); font-weight: var(--weight-strong); line-height: var(--leading-tight); min-height: 44px; max-width: 100%;
+  padding: var(--space-2) var(--space-4); border: 0; border-radius: var(--radius-3); cursor: pointer;
+  background: var(--color-raised); color: var(--color-raised-ink); box-shadow: var(--shadow-sheet-2);
+  transition: translate var(--duration-1) var(--ease), box-shadow var(--duration-1) var(--ease);
+}
+.entry .post-action:active { translate: var(--press-2); box-shadow: var(--shadow-sheet-0); }
+.entry .post-action:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 3px; }
+.entry.posting .post-action { background: transparent; box-shadow: none; color: var(--color-ink-muted); font-weight: var(--weight-body); text-decoration: underline; text-underline-offset: 3px; min-height: 36px; }
+.entry .note { font-size: var(--text-1); color: var(--color-ink-muted); }
 .chipctl { position: absolute; z-index: 9; width: var(--c); height: var(--c); cursor: grab; touch-action: none; border: 0; padding: 0; background: none; font: inherit; color: inherit; }
 .chipctl:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 4px; border-radius: 50%; }
 .chipctl .disc {

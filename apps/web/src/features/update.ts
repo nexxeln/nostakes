@@ -454,6 +454,12 @@ const fromTable = (model: Model, intent: TableIntent): Return =>
       Peek: ({ looking }) => peek(model, looking),
       Pick: ({ seat }) =>
         editRoom(model, (room) => ({ ...room, picked: Option.some(seat) })),
+      Posting: ({ post }) =>
+        afterHand(
+          model,
+          Commands.ChoosePosting.make({ post }),
+          post ? "Posting to come in" : "Waiting for the big blind"
+        ),
       Raise: ({ to }) =>
         Option.match(Schema.decodeOption(ChipsSchema)(to), {
           onNone: () => ({ model }),

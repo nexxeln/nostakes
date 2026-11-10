@@ -11,6 +11,7 @@ import { Messages } from "./message.js";
 import type { Message } from "./message.js";
 import { pageTheme } from "./model.js";
 import type { Confirm, InRoom, Model, Theme } from "./model.js";
+import { entryOf, entryWords } from "./posting.js";
 import { isLive, isYou, nameOf } from "./room.js";
 import type { OpenView } from "./room.js";
 import { rulesCard } from "./rules-view.js";
@@ -111,7 +112,14 @@ const statusOf = (view: OpenView, seated: Option.Option<Occupant>) => {
         return `+${waitingChips.amount} on the way`;
       }
 
-      return occupant.sittingOut ? "Sitting out" : "";
+      if (occupant.sittingOut) {
+        return "Sitting out";
+      }
+
+      return Option.match(entryOf(view), {
+        onNone: () => "",
+        onSome: (entry) => entryWords(entry).line,
+      });
     },
   });
 };
