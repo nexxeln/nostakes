@@ -1,6 +1,6 @@
 # Agent instructions
 
-This file is the repo law for agents and contributors. It holds the commands, the validation rules, the architecture constraints, and the stop rules. The fence (types, lint, hooks, CI) enforces most of it. Fence wins over prose.
+This file is the repo law for agents and contributors. `VISION.md` says what the product is for. Read it before you design anything. It holds the commands, the validation rules, the architecture constraints, and the stop rules. The fence (types, lint, hooks, CI) enforces most of it. Fence wins over prose.
 
 nostakes is a web app where groups of friends play poker online, at most 9 players per room. Chip accounting must be exactly right.
 
