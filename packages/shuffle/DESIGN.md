@@ -88,7 +88,7 @@ The owner decided against B as a fallback. If drand cannot be reached, the hand 
 1. **Seal (server, as hand k−1 ends).** Draw two secret decks D0 and D1 (as today, from entropy through `deckFromBytes`) and a 32-byte salt secret. Each salt is HMAC-SHA-256(secret, slot ‖ position). Each leaf is RFC6962-leaf(framed("nostakes/shuffle/v1/card", room, k, slot, position, card, salt)). This gives roots R0 and R1. Fix the seats dealt in, in deal order from the button. Name beacon round r = `roundToSeal(QUICKNET, now)`, the first quicknet round due at least 3.5 s from now. Store D0, D1 and the secret in the log (server-only), and broadcast the seal {R0, R1, r, seats} as a public event.
 2. **Client, on receiving the seal:** records `Live { at }` with its own clock if the page was in the foreground on a live connection, else `CaughtUp { at }`.
 3. **Withdraw or deal.** If the hand can no longer be dealt (the table broke up, the night ended), the server withdraws the seal before round r is due. Otherwise it deals.
-4. **Beacon (server).** When round r is due, fetch it from a relay, check it with `verifyBeacon` (a relay can lie too), and pass {round, signature} to the room in the Deal command. If it has nothing after `BEACON_WAIT_LIMIT_MS` (10 s), it deals from its own entropy and marks the hand "beacon unavailable".
+4. **Beacon (server).** When round r is due, fetch it from a relay, check it with `verifyBeacon` (a relay can lie too), and pass {round, signature} to the room in the Deal command. If it has nothing after `BEACON_WAIT_LIMIT_MS` (15 s since the round was due; 10 s before the room was wired), it deals from its own entropy and marks the hand "beacon unavailable".
 5. **Order (pure room).** seed = `seedOf(context, seal, beacon)` = H("seed", room, k, R0, R1, seats, r, randomness). The first draw picks the dealt slot s. A Fisher–Yates shuffle over the 52 positions gives order[deal index] = sealed position. The engine receives the deck D_s[order[0..51]] and is otherwise unchanged.
 6. **Deal.** Each card that is dealt, shown, or hunted is paired with its opening: hole cards only to their holder, public cards to everyone, shown hands to everyone. The spare deck D_(1−s) and its salts are published in full when the hand starts, with the beacon signature.
 7. **Client check (no UI action needed).** `judgeHand` on what the device saw gives the verdict. `sealsWithNoDeal` over the seals it saw names any sealed hand that was neither dealt nor withdrawn in time.
@@ -111,7 +111,7 @@ For hand k, with seal (R0, R1, r, seats) that my device received live, by its ow
 - The dealt deck may repeat a card. The spare catches that in half the hands; otherwise only a player who sees both copies does.
 - A device that was away when the seal arrived, or got it too close to round r, checks every card but cannot confirm the timing itself. Its verdict says so (`NotWatched`, `TooCloseToCall`).
 - A phone whose clock is more than 1 s slow could call a late seal "in time" (section 4). The other players' phones would not.
-- "Beacon unavailable" is the server's second way out, next to cancelling: it can see round r, dislike the deal, claim drand was down, and deal from its own entropy. Every player sees the hand as not checked, and this package cannot prove the claim false. A client that fetches round r itself and gets it could (not built; inferred). Count these hands per night.
+- "Beacon unavailable" is the server's second way out, next to cancelling: it can see round r, dislike the deal, claim drand was down, and deal from its own entropy. Every player sees the hand as not checked, and this package cannot prove the claim false. A client that fetches round r itself and gets it disproves the claim; the soak bots do exactly that against the test relay (section 12). Count these hands per night.
 - If the drand threshold group (12 of 22 League of Entropy nodes at quicknet's launch, per drand's October 2023 post; inferred as current) colludes with the operator, the order check is lost.
 
 ### A delayed reveal as a host setting (argued separately, not the base design)
@@ -175,7 +175,7 @@ The embedding app must only pass `Live` when it handled the seal promptly. A bac
 
 ### A seal with no deal
 
-`sealsWithNoDeal(chain, now, seen)` lists every sealed hand that was not dealt and either (a) was never withdrawn and is past its round by more than the server's 10 s wait for the beacon, or (b) was withdrawn, but the withdrawal did not reach this device in time by the same rule as a seal ("after the round", "too close to the round", or "while away"). A withdrawal that arrives before the round could exist costs the server nothing to allow, because the server did not know the deal yet. Without that rule, every night's end and every broken table would raise a false alarm. Run it only on a log that has caught up.
+`sealsWithNoDeal(chain, now, seen)` lists every sealed hand that was not dealt and either (a) was never withdrawn and is past its round by more than the server's 15 s wait for the beacon, or (b) was withdrawn, but the withdrawal did not reach this device in time by the same rule as a seal ("after the round", "too close to the round", or "while away"). A withdrawal that arrives before the round could exist costs the server nothing to allow, because the server did not know the deal yet. Without that rule, every night's end and every broken table would raise a false alarm. Run it only on a log that has caught up.
 
 ### The verdict
 
@@ -281,7 +281,7 @@ Every row is a test in test/cheats.test.ts, test/verify.test.ts, test/verdict.te
 
 Removed with B: "drop or alter a player's value", "grind over subsets of player values" (511 deals), "list one source twice" and "deal with no outside randomness".
 
-## 7. How it would fit (not built)
+## 7. How it would fit (the plan before wiring; section 12 records what was built)
 
 - **engine:** no change. It still receives a 52-card deck in StartHand.
 - **room: commands and events.**
@@ -321,6 +321,110 @@ Removed with B: "drop or alter a player's value", "grind over subsets of player 
 - **The server must check the beacon too.** A relay can serve a bad value; dealing from it would fail every player's check.
 - **The client does not need a relay to check the beacon**: the signature is enough.
 
-## 11. Not built in this task
+## 11. Not built in the package task (built since, see section 12)
 
 Every room, server, and client change in section 7, and a client fetch of round r to disprove a "beacon unavailable" claim. `dealIndexOf` mirrors the engine's layout (hole cards at i and n+i, then community cards in draw order). If the engine ever burns cards, `dealIndexOf` must change with it.
+
+## 12. Wired into real hands (built)
+
+Labels as above: "run" means I ran it here, "inferred" means I did not.
+
+### The setting
+
+`RoomSettings.shuffle` is `Checked` or `Plain`. A stored log from before the setting decodes as `Plain`; an open request or a `ChangeSettings` that leaves it out decodes as `Checked` (`RequestedSettingsSchema`), and the server's default settings are `Checked`. A change applies from the next seal: a hand already sealed is dealt sealed.
+
+### The seal
+
+- **When.** `nextDeadline` reports `SealDue` once a deal is coming in a checked room, at the later of now and 5 s (the 3.5 s sealing margin plus half a period) before the pause ends. With the default 5 s pause that is the moment the hand ends; with a long pause the seal comes late enough that the seats are not frozen for the whole pause. With host dealing, the seal follows the host's call.
+- **What.** The server sends `SealHand { decks: two 128-byte entropy blocks, secret: 32 bytes, round }`, with `round = roundToSeal(chain, now)`. The room refuses a round a fresh seal could no longer name (`SealRoundTooSoon`), a secret of the wrong size, and short decks; takes the seats in deal order from the engine's own dry run of `StartHand`; and emits `HandSealed`. The stored event keeps both decks and the secret; `redact` gives every audience only the hand number, the roots, the round, and the seats.
+- **The chain** is data in `RoomOpened.chain` (quicknet for a log from before it existed). The server's core is built for one chain (`pokerRoomOn`); the room checks every signature against the chain in its own log. A device must check against the chain it trusts (quicknet), not the one the server names.
+
+### Seats after a seal
+
+A seal _binds_ once a fresh seal at that moment would have to name a later round (`roundToSeal(chain, now) > round`), which is 0 to 3 s after sealing. A withdrawal before that point reaches every phone within its budgets in time, so it raises no alarm (property `sealTiming`, section 4); after it, a withdrawal would.
+
+- Before the seal binds, a sealed seat that sits out or leaves, a pause, or a close withdraws the seal (`SealWithdrawn { reason: SeatsChanged | GamePaused | RoomClosing }`), and the room seals again.
+- After it binds, the sealed seats are frozen: a seat that leaves is dealt in, acted for, and stands up when the hand ends; a seat that sits out is dealt in and stays sitting out; a close is queued until the hand ends; a pause stops the next deal, not this one.
+- A seat that sits down or sits in after the seal waits for the next hand: the deal sits it out around `StartHand` and back in after, in the same batch.
+- The end-of-hand queue never runs in a batch that deals hole cards; `QueueDue` / `RunQueue` runs it in the next batch (section "What broke").
+
+### The deal
+
+- `SealedDealDue` comes at the later of the end of the pause and the sealed round's time. The server's `Beacon` service fetches the round and sends `DealSealed { source: FromBeacon { round, signature } | BeaconUnavailable { shuffleBytes } }`.
+- The room refuses a round other than the sealed one (`BeaconRoundWrong`) and a signature that does not check against its chain (`BeaconRejected`), orders the dealt deck with `seedOf` and `dealingPlan`, and gives the engine `D_s` in plan order; it refuses to deal if the engine would deal other seats than the sealed ones (`SealedSeatsMoved`, a room bug if ever seen). `DealtFromBeacon { hand, round, signature, spare }` is public. `DealtWithoutBeacon { hand, round, reason: BeaconUnavailable }` is the only other way a sealed hand is dealt, from fresh entropy, with no openings.
+- The live beacon layer asks `api.drand.sh`, `api2.drand.sh`, `drand.cloudflare.com` and `api3.drand.sh` in turn from the moment the round is due, retries every 500 ms with a 2 s timeout per request, keeps only a signature that `verifyBeacon` accepts, and gives up 15 s after the round was due (`BEACON_WAIT_LIMIT_MS`, raised from 10 s so a device does not call a hand overdue while the server may still deal it). Tested against fake relays on the test clock (run); never run against the real relays from this machine.
+
+### Openings and views
+
+- Every revealing table event (hole cards, streets of every run, rabbit hunts, shown, tabled and showdown hands) is followed by `CardsOpened { hand, holder, openings: [{ role, opening }] }`. Hole cards go to their holder (`holder: Some { seat, player }`); everyone else gets the event with no openings. Everything else is public. The role comes from the card's place in the dealt deck; a card opened once to everyone is not opened again. Mucked and folded cards get no opening.
+- The view always carries the pending seal (`fairness.sealed`) and, once the hand is over, the dealt hand's seal, deal, and the openings this viewer may see (`fairness.dealt`), for a device that missed the events.
+
+### Devices
+
+`@nostakes/room` exports the device side, pure and generic over nothing but the room's own views and redacted events:
+
+| Function | Does |
+| --- | --- |
+| `witnessEvent(witness, event, arrival)` | Folds one redacted event in, with how it arrived (`SealArrivals.Live { at }` or `CaughtUp { at }`) |
+| `witnessView(witness, view, at)` | Folds a view in; anything first seen in a view counts as caught up |
+| `evidenceFor(witness, hand, room, chain)` | `judgeHand`'s input for one hand, or what is missing: `NotSealed` (a plain hand), `NoDeal` (withdrawn or not dealt yet), `NoSeal`, `NoDealtSeats`, `Unopened { cards }` (a card shown with no opening: a server fault) |
+| `sealsSeen(witness)` | Input for `sealsWithNoDeal` |
+| `handsWitnessed(witness)` | Every hand the device saw |
+
+The shown side of each sighting comes from the table the device was shown (its own hole cards by seat and pass, the community cards in draw order across runs, each seat's shown cards), never from the opening, so a card swapped on the table fails `ShownCardDiffers` or is reported `Unopened`.
+
+### The lines the web app needs
+
+```ts
+let witness = emptyWitness;
+// for each event the client applies; Live only if the page is visible, the connection is Live, and the event came in a live batch:
+witness = witnessEvent(
+  witness,
+  event,
+  live ? SealArrivals.Live({ at: now }) : SealArrivals.CaughtUp({ at: now })
+);
+// for each view: witness = witnessView(witness, view, now);
+const verdict = Result.map(
+  evidenceFor(witness, hand, roomCode, QUICKNET),
+  judgeHand
+); // after the hand ends
+// on NotChecked { round }: fetch `https://api.drand.sh/${QUICKNET.chainHash}/public/${round}` from the device, and if verifyBeacon accepts its signature, show that the server's "beacon unavailable" was false.
+const unexplained = sealsWithNoDeal(QUICKNET, now, sealsSeen(witness)); // after a catch-up: sealed hands never dealt
+```
+
+`@nostakes/client` does not say whether an applied event came live or in a catch-up; when the app cannot tell, it should pass `CaughtUp`, which costs only the in-time badge. Run `judgeHand` off the main path: about 13 to 16 ms per hand on this machine (run), more on a phone (inferred).
+
+### The soak bots are the first devices
+
+Every bot device, raw or client, folds the frames it received into a witness and judges every hand it saw (run). A failed verdict, a card shown with no opening, a seal with no deal (never withdrawn, or withdrawn after the round), and a `BeaconUnavailable` deal whose round the bot's own fetch from the test relay can get each fail the night, and the soak saves the proofs (hex) beside the log. The test beacon is a self-signed chain with a 1 s period, inside workerd, that is down on every 29th round; tests never touch the network. Every `DealtFromBeacon` hand in the log must come back checked by at least one bot, and a checked room may not deal a plain hand.
+
+### Planted cheats (each run through the small night in `pnpm test`, seen to fail, then restored)
+
+| Cheat planted in the server's code | Caught by | What the night reported |
+| --- | --- | --- |
+| Swap the first board card with a later sealed card after the seal | Every device that saw the flop | `cards 10 were shown with no opening` |
+| The same swap, sending the sealed card's honest opening for the board place | The secrecy check: the opening shows a card nobody was dealt | `saw cards 12 it may not see` |
+| Deal a hole card from a later sealed position | The holder's device | `cards 0 were shown with no opening` |
+| Order the deck with the round after the sealed one (room's round check removed) | Every device | `FAILED: The seal named beacon round …, and the deck was ordered with beacon round …+1` (`BeaconRoundMismatch`) |
+| Pass a made-up beacon value (room's signature check removed, bytes flipped) | Every device | `FAILED: … is not a point that drand could have signed with` (`BeaconSignatureMalformed`) |
+| Hold a sealed seat out of the deal (room's seat check removed) | Every device | `FAILED: The seal said seats 2, 0, 1 … and the hand was dealt to seats 0, 1` (`DealtSeatsDiffer`), and unopened cards |
+| Send hole-card openings to everyone | The secrecy checks | `saw cards 45,39 it may not see` |
+| Report "beacon unavailable" on even rounds while the test beacon was up | Every device's own fetch from the test relay, and the log check | `the server dealt beacon round … as unavailable, and the relay serves it` |
+
+With the room's own checks in place, the round, signature and seat cheats are refused by the room before any player sees them (`BeaconRoundWrong`, `BeaconRejected`, `SealedSeatsMoved`; room tests, run).
+
+### What it costs (run)
+
+- **Bytes per hand**, six seats, automatic showdowns, twenty hands, one player's frames, as JSON: storage 4.1 KB plain and 16.8 KB checked (`HandSealed` 0.5 KB, `DealtFromBeacon` 2.8 KB with the spare deck, `CardsOpened` 9.3 KB); events on the wire 4.0 KB plain and 12.1 KB checked; views on the wire 51 KB plain and 68.5 KB checked (125 KB before views kept the proof to between hands). A between-hands view is 9.8 KB. The client caps its own frames at 8 KB; the server sends larger ones, and the cap there is the Workers WebSocket message limit of 1 MiB (inferred from Cloudflare's documentation).
+- **Wait per hand.** The small night's checked room, with a 0 s pause and a 1 s test period: 13.0 s beyond the pause over 4 sealed deals, 3.25 s per hand. With quicknet's 3 s period and the default 5 s pause, the arithmetic in section 4 gives about 0.4 s plus the relay's 0.2 to 1.8 s (inferred).
+- **CPU.** The room checks each sealed deal's BLS signature: about 16 to 18 ms per hand here, against under a millisecond for a plain deal. Openings recompute the sealed tree, about 1 ms per revealing batch.
+
+### What broke when real hands ran
+
+- **A leaver stood up inside the deal batch.** Heads-up, a player who left after the seal bound was dealt in, folded by the room at once, and stood up by the end-of-hand queue in the same batch, so the batch that dealt their cards changed who held the seat and the server redacted their own cards from them. Fixed with `QueueDue` / `RunQueue`; the small night found it.
+- **Withdraw and reseal reuse the hand number**, so a device must tell seals apart by their roots, not by hand.
+- **A plain hand inherited the last checked hand's proof** in its view until the model's secrecy property flagged the old board's openings; the proof is now dropped when another hand starts.
+- **Views carried the proof on every frame**, 7.5 KB each; now only between hands.
+- **The seal freezes the seats.** With the seal at the end of the hand, every seat change in the pause after the first 0 to 3 s waits a hand. That is why a long pause seals late, and why a leave after binding still costs the leaver a hand (and maybe a blind).
+- **The BLS check made the room's properties 10 to 30 times slower** for checked rooms; the generic generators now make one room in twenty checked, with forced-checked properties beside them.
+- **The production Worker now reaches drand** whenever a checked hand is dealt, including in local `pnpm dev` and the web app's two-player script (inferred from the code; not run here).
