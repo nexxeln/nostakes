@@ -30,6 +30,9 @@ import type { ManagedResource, Update } from "foldkit";
 import {
   ApplyDeck,
   ApplyTheme,
+  LoadPageCounter,
+  SaveCounting,
+  SendReport,
   CheckRoom,
   CopyRoomLink,
   CopyText,
@@ -51,9 +54,19 @@ import type { RoomConnection } from "../client/connection.js";
 import { Messages, ReplyOutcomes } from "./message.js";
 import type { Message, ReplyOutcome } from "./message.js";
 import { FairMarks, Screens } from "./model.js";
-import type { Flags, InRoom, Model, RulesSheet } from "./model.js";
+import type { Flags, InRoom, Link, Model, RulesSheet } from "./model.js";
 import { considerUpdate } from "./page-update.js";
 import { rejectionText } from "./rejections.js";
+import {
+  ClientReportSchema,
+  errorName,
+  MAX_ERROR_REPORTS,
+  namesKnown,
+  reportBuild,
+  reportScreen,
+  scrubMessage,
+} from "./reports.js";
+import type { ClientReport } from "./reports.js";
 import {
   isActing,
   recordChanged,
@@ -120,8 +133,13 @@ const checksFor = (model: Model) =>
     ? model.rooms.map(({ record }) => CheckRoom({ code: record.code }))
     : [];
 
+const reported = (model: Model, report: ClientReport) =>
+  model.counting ? [SendReport({ report })] : [];
+
 export const init = (flags: Flags): Return => {
   const base = {
+    build: flags.build ?? "dev",
+    counting: flags.counting ?? false,
     deck: flags.deck,
     faceDraft: Option.none(),
     facePart: "Species" as const,
@@ -132,6 +150,7 @@ export const init = (flags: Flags): Return => {
     now: 0,
     profile: flags.profile,
     reloadedFor: flags.reloadedFor,
+    reporting: { errors: 0, reconnects: 0 },
     rooms: flags.rooms,
     sound: flags.sound,
     systemTheme: flags.systemTheme,
@@ -171,6 +190,16 @@ export const init = (flags: Flags): Return => {
     commands: [
       ApplyTheme({ theme: flags.theme }),
       ApplyDeck({ deck: flags.deck }),
+      ...(opened.model.counting ? [LoadPageCounter()] : []),
+      ...Option.toArray(flags.reloadedFor).flatMap((target) =>
+        reported(
+          opened.model,
+          ClientReportSchema.cases.ForcedReload.make({
+            build: reportBuild(opened.model),
+            reason: target._tag,
+          })
+        )
+      ),
       ...checksFor(opened.model),
     ],
   };
@@ -189,6 +218,27 @@ const inRoom = (model: Model, step: (room: InRoom) => Return): Return =>
 
 const editRoom = (model: Model, edit: (room: InRoom) => InRoom): Return =>
   inRoom(model, (room) => ({ model: withRoom(model, edit(room)) }));
+
+const droppedLine = (model: Model, link: Link) =>
+  link.phase === "Waiting" &&
+  roomOf(model).pipe(
+    Option.flatMap((room) => room.link),
+    Option.exists((before) => before.phase === "Live")
+  );
+
+const sendReconnects = (model: Model): Return =>
+  model.counting && model.reporting.reconnects > 0
+    ? {
+        commands: reported(
+          model,
+          ClientReportSchema.cases.Reconnects.make({
+            build: reportBuild(model),
+            reconnects: model.reporting.reconnects,
+          })
+        ),
+        model: { ...model, reporting: { ...model.reporting, reconnects: 0 } },
+      }
+    : { model };
 
 const editRoomThenUpdate = (
   model: Model,
@@ -609,6 +659,27 @@ export const update = (model: Model, message: Message): Return =>
   Messages.match(message, {
     AcquiredConnection: () =>
       editRoom(model, (room) => ({ ...room, connected: true })),
+    CaughtError: ({ message: text, name }) =>
+      model.counting && model.reporting.errors < MAX_ERROR_REPORTS
+        ? {
+            commands: reported(
+              model,
+              ClientReportSchema.cases.ClientError.make({
+                build: reportBuild(model),
+                message: scrubMessage(text, namesKnown(model)),
+                name: errorName(name),
+                screen: reportScreen(model),
+              })
+            ),
+            model: {
+              ...model,
+              reporting: {
+                ...model.reporting,
+                errors: model.reporting.errors + 1,
+              },
+            },
+          }
+        : { model },
     ChangedDraft: ({ field, value }) =>
       editRoom(model, (room) => ({
         ...room,
@@ -839,10 +910,22 @@ export const update = (model: Model, message: Message): Return =>
       },
     }),
     GotLink: ({ link }) =>
-      editRoomThenUpdate({ ...model, now: link.receivedAt }, (room) => ({
-        ...room,
-        link: Option.some(link),
-      })),
+      editRoomThenUpdate(
+        {
+          ...model,
+          now: link.receivedAt,
+          reporting: droppedLine(model, link)
+            ? {
+                ...model.reporting,
+                reconnects: model.reporting.reconnects + 1,
+              }
+            : model.reporting,
+        },
+        (room) => ({
+          ...room,
+          link: Option.some(link),
+        })
+      ),
     GotReply: ({ key, outcome }) =>
       editRoom(model, (room) => settle(room, key, outcome)),
     GotTableIntent: ({ intent }) => fromTable(model, intent),
@@ -892,8 +975,8 @@ export const update = (model: Model, message: Message): Return =>
           nextKey: model.nextKey + 1,
         },
       })),
-    JudgedHand: ({ hand, mark }) =>
-      editRoom(model, (room) => ({
+    JudgedHand: ({ hand, mark }) => {
+      const kept = editRoom(model, (room) => ({
         ...room,
         fairness: [
           { hand, mark },
@@ -901,7 +984,20 @@ export const update = (model: Model, message: Message): Return =>
         ]
           .toSorted((one, other) => other.hand - one.hand)
           .slice(0, KEPT_FAIR_HANDS),
-      })),
+      }));
+
+      return FairMarks.guards.Failed(mark)
+        ? {
+            ...kept,
+            commands: reported(
+              model,
+              ClientReportSchema.cases.DeckCheckFailed.make({
+                build: reportBuild(model),
+              })
+            ),
+          }
+        : kept;
+    },
     PickedAvatar: ({ avatar }) => wearFace(model, avatar, false),
     ReleasedConnection: () =>
       editRoom(model, (room) => ({ ...room, connected: false })),
@@ -1026,6 +1122,14 @@ export const update = (model: Model, message: Message): Return =>
               },
       });
     },
+    SwitchedCounting: ({ on }) => ({
+      commands: [SaveCounting({ on })],
+      model: {
+        ...model,
+        counting: on,
+        reporting: on ? model.reporting : { errors: 0, reconnects: 0 },
+      },
+    }),
     SwitchedSound: ({ on }) => ({
       commands: [SaveSound({ on })],
       model: { ...model, sound: on },
@@ -1038,7 +1142,7 @@ export const update = (model: Model, message: Message): Return =>
         }),
       }),
     WokePage: ({ visible }) =>
-      inRoom(model, () =>
-        visible ? { commands: [WakeRoom()], model } : { model }
-      ),
+      visible
+        ? inRoom(model, () => ({ commands: [WakeRoom()], model }))
+        : sendReconnects(model),
   });

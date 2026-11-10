@@ -419,7 +419,7 @@ const menuFoot = (model: Model, view: OpenView, h: H): Html => {
   return h.div(
     [h.Class("menu-foot")],
     [
-      deviceToggles(model.sound, model.deck, h),
+      deviceToggles(model.sound, model.deck, model.counting, h),
       h.span(
         [h.Class("menu-foot-end")],
         [

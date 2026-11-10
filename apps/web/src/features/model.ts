@@ -230,7 +230,16 @@ export const KnownRoomSchema = Schema.Struct({
 
 export type KnownRoom = typeof KnownRoomSchema.Type;
 
+export const ReportingSchema = Schema.Struct({
+  errors: Schema.Int,
+  reconnects: Schema.Int,
+});
+
+export type Reporting = typeof ReportingSchema.Type;
+
 export const ModelSchema = Schema.Struct({
+  build: Schema.String,
+  counting: Schema.Boolean,
   deck: DeckSchema,
   faceDraft: Schema.Option(AvatarSchema),
   facePart: FacePartSchema,
@@ -241,6 +250,7 @@ export const ModelSchema = Schema.Struct({
   now: Schema.Int,
   profile: ProfileSchema,
   reloadedFor: Schema.Option(ReloadTargets),
+  reporting: ReportingSchema,
   rooms: Schema.Array(KnownRoomSchema),
   screen: Screens,
   sound: Schema.Boolean,
@@ -261,6 +271,8 @@ export const SavedPassSchema = Schema.Struct({
 export type SavedPass = typeof SavedPassSchema.Type;
 
 export const FlagsSchema = Schema.Struct({
+  build: Schema.optionalKey(Schema.String),
+  counting: Schema.optionalKey(Schema.Boolean),
   deck: DeckSchema,
   invite: Schema.Option(RoomCodeSchema),
   learned: Schema.Array(HintSchema),

@@ -43,6 +43,8 @@ const SUN = `<svg viewBox="0 0 20 20" width="20" height="20" fill="none" stroke=
 
 const SUITS = `<svg viewBox="0 0 20 20" width="20" height="20"><circle cx="6" cy="6" r="3" class="pip-spade"/><circle cx="14" cy="6" r="3" class="pip-heart"/><circle cx="6" cy="14" r="3" class="pip-diamond"/><circle cx="14" cy="14" r="3" class="pip-club"/></svg>`;
 
+const COUNTS = `<svg viewBox="0 0 20 20" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 16V11M8.5 16V6M13 16V9M17.5 16V4"/></svg>`;
+
 const iconToggle = (
   h: H,
   look: {
@@ -67,7 +69,12 @@ const iconToggle = (
     [h.span([h.AriaHidden(true), h.InnerHTML(look.svg)], [])]
   );
 
-export const deviceToggles = (sound: boolean, deck: Deck, h: H): Html =>
+export const deviceToggles = (
+  sound: boolean,
+  deck: Deck,
+  counting: boolean,
+  h: H
+): Html =>
   h.div(
     [h.Class("device-toggles")],
     [
@@ -113,6 +120,16 @@ export const deviceToggles = (sound: boolean, deck: Deck, h: H): Html =>
         Messages.ChoseDeck({
           deck: deck === "FourColour" ? "TwoColour" : "FourColour",
         })
+      ),
+      iconToggle(
+        h,
+        {
+          className: counting ? "is-on counting" : "counting",
+          label: "Anonymous counts",
+          pressed: counting,
+          svg: COUNTS,
+        },
+        Messages.SwitchedCounting({ on: !counting })
       ),
     ]
   );

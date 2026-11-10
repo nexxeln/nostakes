@@ -109,6 +109,29 @@ const schemeChanges = Stream.suspend(() =>
   Stream.fromEventListener(globalThis.matchMedia(DARK_SCHEME), "change")
 ).pipe(Stream.map(() => Messages.ChangedSystemTheme({ theme: systemTheme() })));
 
+const caught = (failure: Error | string) =>
+  Predicate.isString(failure)
+    ? Messages.CaughtError({ message: failure, name: "Error" })
+    : Messages.CaughtError({ message: failure.message, name: failure.name });
+
+const pageErrors = Stream.merge(
+  Stream.fromEventListener<ErrorEvent>(globalThis.window, "error").pipe(
+    Stream.map((event) =>
+      caught(Predicate.isError(event.error) ? event.error : event.message)
+    )
+  ),
+  Stream.fromEventListener<PromiseRejectionEvent>(
+    globalThis.window,
+    "unhandledrejection"
+  ).pipe(
+    Stream.map((event) =>
+      caught(
+        Predicate.isError(event.reason) ? event.reason : "unhandled rejection"
+      )
+    )
+  )
+);
+
 const pageVisible = () => globalThis.document.visibilityState === "visible";
 
 const wakes = Stream.merge(
@@ -174,6 +197,14 @@ export const subscriptions = Subscription.make<
             clockRunning(room) || signalsShowing(room) || waitsToClaimHost(room)
         ),
       }),
+    }
+  ),
+  errors: entry(
+    { counting: Schema.Boolean },
+    {
+      dependenciesToStream: ({ counting }) =>
+        counting ? pageErrors : Stream.empty,
+      modelToDependencies: (model) => ({ counting: model.counting }),
     }
   ),
   fairness: entry(

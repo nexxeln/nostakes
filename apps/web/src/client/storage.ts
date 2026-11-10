@@ -22,6 +22,8 @@ import type {
 } from "../features/model.js";
 import { HintSchema } from "../features/table/snapshot.js";
 import type { Hint } from "../features/table/snapshot.js";
+import { readCounting } from "./counting.js";
+import { pageBuild } from "./page-build.js";
 
 const PROFILE_KEY = "nostakes.profile";
 
@@ -256,6 +258,8 @@ export const readFlags = Effect.gen(function* readFlags() {
   );
 
   const flags: Flags = {
+    build: Option.getOrElse(pageBuild(), () => "dev"),
+    counting: yield* readCounting,
     deck,
     invite,
     learned,

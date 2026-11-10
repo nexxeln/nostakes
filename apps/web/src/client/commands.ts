@@ -11,6 +11,7 @@ import {
 } from "@nostakes/room";
 import type { JoinRequest } from "@nostakes/room";
 import { Clock, Effect, Match, Option, Schema } from "effect";
+import * as FetchHttpClient from "effect/http/FetchHttpClient";
 import * as HttpClient from "effect/http/HttpClient";
 import * as HttpClientRequest from "effect/http/HttpClientRequest";
 import { Command, Navigation } from "foldkit";
@@ -25,9 +26,12 @@ import {
   ThemeSchema,
 } from "../features/model.js";
 import { refusalText } from "../features/refusals.js";
+import { ClientReportSchema, REPORTS_PATH } from "../features/reports.js";
 import { HintSchema } from "../features/table/snapshot.js";
 import { roomPath } from "../features/wire.js";
 import { RoomConnection } from "./connection.js";
+import { countingOn, deviceHeaders, storeCounting } from "./counting.js";
+import { loadPageCounter } from "./page-counter.js";
 import { roomIsGone } from "./room-check.js";
 import {
   forgetPass,
@@ -50,9 +54,14 @@ class EntryRefused extends Schema.TaggedError<
 >()("EntryRefused", { reason: Schema.String }) {}
 
 const passFrom = (url: string, request: JoinRequest) =>
-  HttpClientRequest.post(new URL(url, globalThis.location.href)).pipe(
-    HttpClientRequest.bodyJsonUnsafe(encodeJoin(request)),
-    HttpClient.execute,
+  deviceHeaders.pipe(
+    Effect.flatMap((headers) =>
+      HttpClientRequest.post(new URL(url, globalThis.location.href)).pipe(
+        HttpClientRequest.setHeaders(headers),
+        HttpClientRequest.bodyJsonUnsafe(encodeJoin(request)),
+        HttpClient.execute
+      )
+    ),
     Effect.mapError(
       () => new EntryRefused({ reason: "The room server is not answering." })
     ),
@@ -291,6 +300,48 @@ export const ApplyDeck = Command.define("ApplyDeck", {
       Effect.andThen(storeDeck(deck)),
       Effect.as(Messages.CompletedPreference())
     ),
+  messages: [Messages.CompletedPreference],
+});
+
+export const SaveCounting = Command.define("SaveCounting", {
+  args: { on: Schema.Boolean },
+  execute: ({ on }) =>
+    storeCounting(on).pipe(
+      Effect.andThen(on ? loadPageCounter : Effect.void),
+      Effect.as(Messages.CompletedPreference())
+    ),
+  messages: [Messages.CompletedPreference],
+});
+
+export const LoadPageCounter = Command.define("LoadPageCounter", {
+  execute: loadPageCounter.pipe(Effect.as(Messages.CompletedPreference())),
+  messages: [Messages.CompletedPreference],
+});
+
+const encodeReport = Schema.encodeSync(
+  Schema.fromJsonString(ClientReportSchema)
+);
+
+export const SendReport = Command.define("SendReport", {
+  args: { report: ClientReportSchema },
+  execute: ({ report }) =>
+    Effect.suspend(() =>
+      countingOn()
+        ? HttpClientRequest.post(
+            new URL(REPORTS_PATH, globalThis.location.href)
+          ).pipe(
+            HttpClientRequest.bodyText(
+              encodeReport(report),
+              "application/json"
+            ),
+            HttpClient.execute,
+            Effect.provideService(FetchHttpClient.RequestInit, {
+              keepalive: true,
+            }),
+            Effect.ignore
+          )
+        : Effect.void
+    ).pipe(Effect.as(Messages.CompletedPreference())),
   messages: [Messages.CompletedPreference],
 });
 

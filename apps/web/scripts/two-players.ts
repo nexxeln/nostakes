@@ -91,6 +91,14 @@ const click = (page: Page, step: string, name: string | RegExp) =>
     page.getByRole("button", { exact: true, name }).first().click()
   );
 
+const ENTRY_PATH = /\/rooms(?:\/[2-9A-Z]{6}\/members)?$/u;
+
+const DEVICE_HEADER = "x-nostakes-device";
+
+const DEVICE_ID = /^[A-Za-z0-9_-]{22}$/u;
+
+const REPORTS_PATH = "/rooms/reports";
+
 const TABLE = "nostakes-table";
 
 const sitDown = (page: Page, who: string) =>
@@ -397,6 +405,26 @@ const night = Effect.gen(function* playOneHand() {
   yield* serveBuild(ana, FIRST_BUILD);
   yield* serveBuild(ben, FIRST_BUILD);
 
+  const devices: string[] = [];
+  const reports: string[] = [];
+  const traffic = { devices, reports };
+
+  for (const page of [ana, ben]) {
+    page.context().on("request", (request) => {
+      if (request.method() === "POST" && ENTRY_PATH.test(request.url())) {
+        traffic.devices.push(request.headers()[DEVICE_HEADER] ?? "none");
+      }
+    });
+
+    page.context().on("response", (response) => {
+      if (response.url().endsWith(REPORTS_PATH)) {
+        traffic.reports.push(
+          `${response.status()} ${response.request().postData() ?? ""}`
+        );
+      }
+    });
+  }
+
   ana.on("load", () => {
     loads.ana += 1;
   });
@@ -495,6 +523,28 @@ const night = Effect.gen(function* playOneHand() {
       detail: `Ana's page loaded ${loads.ana} times and Ben's ${loads.ben}`,
       step: "reload each page exactly once for the new build",
     })
+  );
+  yield* holds(
+    traffic.devices.length === 2 &&
+      new Set(traffic.devices).size === 2 &&
+      traffic.devices.every((device) => DEVICE_ID.test(device)),
+    new NightFailed({
+      detail: `opening and joining sent the device ids ${traffic.devices.join(", ") || "none"}`,
+      step: "send each device's random number with opening and joining",
+    })
+  );
+  yield* holds(
+    traffic.reports.filter(
+      (report) => report.startsWith("204 ") && report.includes("ForcedReload")
+    ).length >= 2 &&
+      traffic.reports.every((report) => report.startsWith("204 ")),
+    new NightFailed({
+      detail: `the pages' reports were answered ${traffic.reports.join(" | ") || "never"}`,
+      step: "report each forced reload, and have every report accepted",
+    })
+  );
+  yield* Console.log(
+    `the pages sent their device ids and ${traffic.reports.length} reports, all accepted`
   );
 });
 
