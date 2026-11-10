@@ -2,6 +2,7 @@ import { Schema } from "effect";
 
 import { ActionNotOnSeat } from "./rejections/action-not-on-seat.js";
 import { AlreadyAMember } from "./rejections/already-a-member.js";
+import { AlreadyLeaving } from "./rejections/already-leaving.js";
 import { AlreadySeated } from "./rejections/already-seated.js";
 import { AlreadyTheHost } from "./rejections/already-the-host.js";
 import { BuyInOutOfRange } from "./rejections/buy-in-out-of-range.js";
@@ -27,6 +28,7 @@ import { TableRejected } from "./rejections/table-rejected.js";
 export const RoomRejectionSchema = Schema.Union([
   ActionNotOnSeat,
   AlreadyAMember,
+  AlreadyLeaving,
   AlreadySeated,
   AlreadyTheHost,
   BuyInOutOfRange,
@@ -55,6 +57,8 @@ export type RoomRejection = typeof RoomRejectionSchema.Type;
 export { ActionNotOnSeat } from "./rejections/action-not-on-seat.js";
 
 export { AlreadyAMember } from "./rejections/already-a-member.js";
+
+export { AlreadyLeaving } from "./rejections/already-leaving.js";
 
 export { AlreadySeated } from "./rejections/already-seated.js";
 

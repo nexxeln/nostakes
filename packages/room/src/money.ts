@@ -12,6 +12,7 @@ import type { RoomCommandOf } from "./commands.js";
 import type { Decision } from "./decision.js";
 import { RoomEvents } from "./events.js";
 import {
+  AlreadyLeaving,
   ChipRequestPending,
   ChipsOverMax,
   NoChipRequest,
@@ -54,7 +55,14 @@ export const addChips = (
   seat: SeatIndex,
   amount: Chips,
   at: Millis
-) => onTable(state.table, Commands.AddChips({ amount, seat }), at);
+): Decision =>
+  dealtIn(state, seat)
+    ? Option.match(occupantAt(state.table, seat), {
+        onNone: () => Result.succeed([]),
+        onSome: ({ player }) =>
+          Result.succeed([RoomEvents.ChipsQueued({ amount, at, player })]),
+      })
+    : onTable(state.table, Commands.AddChips({ amount, seat }), at);
 
 export const standUp = (state: Open, seat: SeatIndex, at: Millis) =>
   onTable(state.table, Commands.StandUp({ seat }), at);
@@ -143,8 +151,20 @@ export const answerChips = (
   );
 };
 
-export const leaveSeat = (state: Open, player: PlayerId, at: Millis) =>
-  Result.flatMap(heldSeat(state, player), (seat) => standUp(state, seat, at));
+export const leaveSeat = (
+  state: Open,
+  player: PlayerId,
+  at: Millis
+): Decision =>
+  Result.flatMap(heldSeat(state, player), (seat): Decision => {
+    if (!dealtIn(state, seat)) {
+      return standUp(state, seat, at);
+    }
+
+    return state.queued.leaving.includes(player)
+      ? Result.fail(new AlreadyLeaving({ player }))
+      : Result.succeed([RoomEvents.LeaveQueued({ at, player })]);
+  });
 
 export const chipsOnTable = (state: Open) => {
   let total = 0;

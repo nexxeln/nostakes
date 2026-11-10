@@ -1,6 +1,6 @@
 import type { PlayerId } from "@nostakes/engine";
 import { PlayerIdSchema } from "@nostakes/engine";
-import { Result, Schema } from "effect";
+import { Option, Result, Schema } from "effect";
 
 import { fromHost, fromMember, fromServer, fromSomeone } from "./authority.js";
 import { actForSeat, clockEvents, expireClock } from "./clocks.js";
@@ -16,7 +16,9 @@ import { AvatarSchema, NameSchema, RoomCodeSchema } from "./identity.js";
 import { joinRoom, leaveRoom, setProfile, transferHost } from "./members.js";
 import { answerChips, leaveSeat, requestChips } from "./money.js";
 import { play } from "./play.js";
+import { actForLeavingSeat, endOfHand } from "./queue.js";
 import { RoomIsClosed } from "./rejection.js";
+import { changeSettings } from "./rules.js";
 import { answerSeat, declareStraddle, requestSeat, sitOut } from "./seats.js";
 import { RoomSettingsSchema } from "./settings.js";
 import { RoomStates, isOpen } from "./state.js";
@@ -71,6 +73,8 @@ const decideOpen = (state: Open, command: RoomCommand): Decision =>
       byHost(state, approve, () => answerChips(state, approve, true)),
     ApproveSeat: (approve) =>
       byHost(state, approve, () => answerSeat(state, approve, true)),
+    ChangeSettings: (change) =>
+      byHost(state, change, () => changeSettings(state, change)),
     ChooseRuns: (choose) =>
       byMember(state, choose, (player) => play(state, player, choose)),
     Deal: (dealing) =>
@@ -121,16 +125,41 @@ const decideOpen = (state: Open, command: RoomCommand): Decision =>
       byHost(state, transfer, () => transferHost(state, transfer)),
   });
 
+const consequence = (state: Open, at: Millis) =>
+  Option.orElse(endOfHand(state, at), () => actForLeavingSeat(state, at));
+
 const followThrough = (
   before: Open,
-  events: readonly RoomEvent[],
+  caused: readonly RoomEvent[],
   at: Millis
-): readonly RoomEvent[] => {
-  const after = evolveAll(before, events);
+): Decision => {
+  const events = [...caused];
+  let current = evolveAll(before, caused);
 
-  return isOpen(after)
-    ? [...events, ...clockEvents(before, after, events, at)]
-    : events;
+  while (isOpen(current)) {
+    const next = consequence(current, at);
+
+    if (Option.isNone(next)) {
+      break;
+    }
+
+    if (Result.isFailure(next.value)) {
+      return next.value;
+    }
+
+    if (next.value.success.length === 0) {
+      break;
+    }
+
+    events.push(...next.value.success);
+    current = evolveAll(current, next.value.success);
+  }
+
+  return Result.succeed(
+    isOpen(current)
+      ? [...events, ...clockEvents(before, current, events, at)]
+      : events
+  );
 };
 
 export const decide = (state: RoomState, command: RoomCommand): Decision =>
@@ -139,7 +168,7 @@ export const decide = (state: RoomState, command: RoomCommand): Decision =>
     Open: (open) => {
       const at = latest(command.at, open.now);
 
-      return Result.map(decideOpen(open, { ...command, at }), (events) =>
+      return Result.flatMap(decideOpen(open, { ...command, at }), (events) =>
         followThrough(open, events, at)
       );
     },

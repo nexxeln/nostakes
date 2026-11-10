@@ -7,7 +7,7 @@ import {
 import { Data, Schema } from "effect";
 
 import { ActorSchema, AvatarSchema, NameSchema } from "./identity.js";
-import { ChipAmountSchema } from "./settings.js";
+import { ChipAmountSchema, RoomSettingsSchema } from "./settings.js";
 import { MillisSchema } from "./time.js";
 
 const envelope = { at: MillisSchema, by: ActorSchema };
@@ -19,6 +19,7 @@ export const RoomCommandSchema = Schema.TaggedUnion({
   ActForSeat: naming,
   ApproveChips: naming,
   ApproveSeat: naming,
+  ChangeSettings: { ...envelope, settings: RoomSettingsSchema },
   ChooseRuns: {
     ...envelope,
     runs: Schema.Int.check(Schema.isGreaterThanOrEqualTo(1)),

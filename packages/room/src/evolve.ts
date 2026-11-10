@@ -11,7 +11,7 @@ import {
   RoomStates,
   occupantAt,
 } from "./state.js";
-import type { DecisionClock, Open, RoomState } from "./state.js";
+import type { DecisionClock, Open, Queue, RoomState } from "./state.js";
 import { latest } from "./time.js";
 import type { Millis } from "./time.js";
 
@@ -58,6 +58,14 @@ const onTable = (state: Open, event: Event, at: Millis): Open => {
     return vacated(next, event.player, event.seat);
   }
 
+  if (Events.$is("RulesChanged")(event)) {
+    return {
+      ...next,
+      queued: { ...next.queued, rules: Option.none() },
+      settings: { ...next.settings, table: event.config },
+    };
+  }
+
   if (Events.$is("SittingOutChanged")(event) && !event.sittingOut) {
     return {
       ...next,
@@ -75,6 +83,14 @@ const onTable = (state: Open, event: Event, at: Millis): Open => {
         },
       }
     : next;
+};
+
+const withoutFirstChips = (queue: Queue, player: PlayerId): Queue => {
+  const first = queue.chips.findIndex((queued) => queued.player === player);
+
+  return first === -1
+    ? queue
+    : { ...queue, chips: queue.chips.toSpliced(first, 1) };
 };
 
 const withoutSeatRequest = (state: Open, player: PlayerId): Open => ({
@@ -121,6 +137,7 @@ const evolveOpen = (state: Open, event: RoomEvent): RoomState =>
     BoughtIn: ({ amount, player, seat }) => ({
       ...state,
       entries: withEntry(state.entries, boughtIn(player, amount)),
+      queued: withoutFirstChips(state.queued, player),
       table: evolveTable(
         state.table,
         Option.isSome(occupantAt(state.table, seat))
@@ -139,6 +156,13 @@ const evolveOpen = (state: Open, event: RoomEvent): RoomState =>
       ),
     ChipsApproved: ({ player }) => withoutChipRequest(state, player),
     ChipsDenied: ({ player }) => withoutChipRequest(state, player),
+    ChipsQueued: ({ amount, player }) => ({
+      ...withoutChipRequest(state, player),
+      queued: {
+        ...state.queued,
+        chips: [...state.queued.chips, { amount, player }],
+      },
+    }),
     ChipsRequested: ({ amount, player }) => ({
       ...state,
       requests: {
@@ -150,6 +174,13 @@ const evolveOpen = (state: Open, event: RoomEvent): RoomState =>
     GamePaused: (): Open => ({ ...state, game: "Waiting" }),
     GameStarted: (): Open => ({ ...state, game: "Running" }),
     HostChanged: ({ host }) => ({ ...state, host }),
+    LeaveQueued: ({ player }) => ({
+      ...state,
+      queued: {
+        ...state.queued,
+        leaving: [...state.queued.leaving, player],
+      },
+    }),
     MarkedAway: ({ seat }) => ({ ...state, away: [...state.away, seat] }),
     MemberJoined: ({ at, avatar, name, player }) => ({
       ...state,
@@ -174,6 +205,10 @@ const evolveOpen = (state: Open, event: RoomEvent): RoomState =>
       ),
     }),
     RoomOpened: (opening) => opened(opening),
+    RulesQueued: ({ config }) => ({
+      ...state,
+      queued: { ...state.queued, rules: Option.some(config) },
+    }),
     RunClockStarted: ({ deadline }) =>
       withDecision(state, Option.some(DecisionClocks.RunChoice({ deadline }))),
     SeatApproved: ({ player }) => withoutSeatRequest(state, player),
@@ -185,6 +220,7 @@ const evolveOpen = (state: Open, event: RoomEvent): RoomState =>
         seats: [...state.requests.seats, { buyIn, player, seat }],
       },
     }),
+    SettingsChanged: ({ settings }) => ({ ...state, settings }),
     StraddleDeclared: ({ on, player }) => ({
       ...state,
       straddlers: on

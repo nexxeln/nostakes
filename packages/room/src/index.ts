@@ -23,6 +23,7 @@ export type { Actor, RoomCode } from "./identity.js";
 export {
   ActionNotOnSeat,
   AlreadyAMember,
+  AlreadyLeaving,
   AlreadySeated,
   AlreadyTheHost,
   BuyInOutOfRange,

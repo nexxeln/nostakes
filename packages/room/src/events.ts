@@ -1,4 +1,9 @@
-import { EventSchema, PlayerIdSchema, SeatIndexSchema } from "@nostakes/engine";
+import {
+  EventSchema,
+  PlayerIdSchema,
+  SeatIndexSchema,
+  TableConfigSchema,
+} from "@nostakes/engine";
 import { Data, Schema } from "effect";
 
 import { AvatarSchema, NameSchema, RoomCodeSchema } from "./identity.js";
@@ -22,11 +27,13 @@ export const RoomEventSchema = Schema.TaggedUnion({
   },
   ChipsApproved: { at, player: PlayerIdSchema },
   ChipsDenied: { at, player: PlayerIdSchema },
+  ChipsQueued: { amount: ChipAmountSchema, at, player: PlayerIdSchema },
   ChipsRequested: { amount: ChipAmountSchema, at, player: PlayerIdSchema },
   ClockStopped: { at },
   GamePaused: { at },
   GameStarted: { at },
   HostChanged: { at, host: PlayerIdSchema },
+  LeaveQueued: { at, player: PlayerIdSchema },
   MarkedAway: { at, seat: SeatIndexSchema },
   MemberJoined: {
     at,
@@ -47,6 +54,7 @@ export const RoomEventSchema = Schema.TaggedUnion({
     host: PlayerIdSchema,
     settings: RoomSettingsSchema,
   },
+  RulesQueued: { at, config: TableConfigSchema },
   RunClockStarted: { at, deadline: MillisSchema },
   SeatApproved: { at, player: PlayerIdSchema },
   SeatDenied: { at, player: PlayerIdSchema },
@@ -56,6 +64,7 @@ export const RoomEventSchema = Schema.TaggedUnion({
     player: PlayerIdSchema,
     seat: SeatIndexSchema,
   },
+  SettingsChanged: { at, settings: RoomSettingsSchema },
   StraddleDeclared: { at, on: Schema.Boolean, player: PlayerIdSchema },
   Table: { at, event: EventSchema },
   TimeBankSpent: {

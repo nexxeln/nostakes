@@ -77,7 +77,7 @@ export const handOffHost = (
     : [];
 
 const standIfSeated = (state: Open, player: PlayerId, at: Millis) =>
-  Option.isSome(seatOf(state, player))
+  Option.isSome(seatOf(state, player)) && !state.queued.leaving.includes(player)
     ? leaveSeat(state, player, at)
     : Result.succeed([]);
 
