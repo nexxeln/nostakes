@@ -4,6 +4,12 @@ import { Effect, Schema } from "effect";
 
 import { serveRooms } from "./serve-rooms.js";
 import {
+  AssetFetcherSchema,
+  assetsFrom,
+  PAGE_ROUTES,
+  sitePages,
+} from "./site-pages.js";
+import {
   ROOM_ROUTES,
   SITE_HOSTS,
   siteOrigin,
@@ -31,7 +37,7 @@ export default class SiteWorker extends Cloudflare.Worker<SiteWorker>()(
       assets: {
         directory: WEB_ASSETS,
         notFoundHandling: "single-page-application",
-        runWorkerFirst: ROOM_ROUTES,
+        runWorkerFirst: [...ROOM_ROUTES, ...PAGE_ROUTES],
       },
       compatibility: { date: "2026-05-28" },
       domain: { name: SITE_HOSTS[stage], zoneName: ZONE },
@@ -40,5 +46,19 @@ export default class SiteWorker extends Cloudflare.Worker<SiteWorker>()(
       workersDev: false,
     } as const;
   }),
-  serveRooms(siteStage.pipe(Effect.map((stage) => [siteOrigin(stage)])))
+  Effect.gen(function* serveSite() {
+    const env = yield* Cloudflare.WorkerEnvironment;
+
+    const assets = {
+      fetch: (request: Request) =>
+        assetsFrom(
+          Schema.decodeUnknownOption(AssetFetcherSchema)(env.ASSETS)
+        ).fetch(request),
+    };
+
+    return yield* serveRooms(
+      siteStage.pipe(Effect.map((stage) => [siteOrigin(stage)])),
+      sitePages(assets)
+    );
+  })
 ) {}

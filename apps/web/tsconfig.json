@@ -9,9 +9,11 @@
           "@effect/platform-node/NodeServices",
           "@effect/vitest",
           "effect/Arbitrary",
+          "effect/FileSystem",
           "effect/http/HttpClient",
           "effect/http/HttpClientRequest",
-          "effect/process/ChildProcess"
+          "effect/process/ChildProcess",
+          "effect/process/ChildProcessSpawner"
         ]
       }
     ],

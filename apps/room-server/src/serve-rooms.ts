@@ -1,5 +1,5 @@
 import * as Cloudflare from "@alchemy.run/cloudflare";
-import { Config, Effect, Schema } from "effect";
+import { Config, Effect, Layer, Schema } from "effect";
 import * as HttpRouter from "effect/http/HttpRouter";
 
 import { cloudflareAddressLimits } from "./address-limits.js";
@@ -21,7 +21,8 @@ export const configuredOrigins = Effect.gen(function* configuredOrigins() {
 });
 
 export const serveRooms = <R>(
-  origins: Effect.Effect<readonly string[], Config.ConfigError, R>
+  origins: Effect.Effect<readonly string[], Config.ConfigError, R>,
+  pages: Layer.Layer<never, never, HttpRouter.HttpRouter> = Layer.empty
 ) =>
   Effect.gen(function* buildRoomService() {
     const rooms = yield* PokerRoom;
@@ -35,6 +36,8 @@ export const serveRooms = <R>(
     });
 
     return {
-      fetch: yield* HttpRouter.toHttpEffect(routes).pipe(Effect.orDie),
+      fetch: yield* HttpRouter.toHttpEffect(Layer.mergeAll(routes, pages)).pipe(
+        Effect.orDie
+      ),
     };
   }).pipe(Effect.provide(Cloudflare.Workers.RateLimitBinding));

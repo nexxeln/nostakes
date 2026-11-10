@@ -10,6 +10,7 @@
     "typecheck:fast": "tsrs --noEmit -p tsconfig.json",
     "test": "vitest run",
     "build": "vite build",
+    "brand": "node scripts/brand.ts",
     "check": "pnpm run typecheck",
     "verify": "node scripts/two-players.ts"
   },
