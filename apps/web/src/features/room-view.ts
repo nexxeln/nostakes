@@ -815,6 +815,57 @@ const myArea = (
 const balanceOf = (view: OpenView, player: PlayerId) =>
   view.balances.find((balance) => balance.player === player);
 
+const holdsUpTheGame = (view: OpenView, player: PlayerId) =>
+  view.hand.pipe(
+    Option.flatMap(({ toAct, toShow }) => Option.orElse(toAct, () => toShow)),
+    Option.flatMap((seat) => Option.fromNullishOr(view.seats[seat])),
+    Option.flatMap(({ occupant }) => occupant),
+    Option.exists((occupant) => occupant.player === player)
+  );
+
+const hostTools = (
+  room: InRoom,
+  view: OpenView,
+  player: PlayerId,
+  seated: boolean,
+  h: H
+): readonly Html[] => {
+  if (view.host !== room.player || player === room.player) {
+    return [];
+  }
+
+  return [
+    holdsUpTheGame(view, player)
+      ? commandButton(
+          h,
+          room,
+          Commands.ActForSeat.make({ player }),
+          "Act for them",
+          "Acting for them",
+          "button chip"
+        )
+      : h.empty,
+    seated
+      ? commandButton(
+          h,
+          room,
+          Commands.RemoveFromSeat.make({ player }),
+          "Remove from seat",
+          "Removing from seat",
+          "button chip"
+        )
+      : h.empty,
+    commandButton(
+      h,
+      room,
+      Commands.TransferHost.make({ to: player }),
+      "Make host",
+      "Handing over the host",
+      "button chip"
+    ),
+  ];
+};
+
 const membersPanel = (
   room: InRoom,
   view: OpenView,
@@ -867,6 +918,7 @@ const membersPanel = (
                   net === 0 ? "" : ` · ${net > 0 ? "+" : ""}${net}`,
                 ]
               ),
+              ...hostTools(room, view, member.player, seat !== undefined, h),
             ]
           );
         })
