@@ -17,6 +17,7 @@ import { Command, Navigation } from "foldkit";
 
 import { Messages, ReplyOutcomes } from "../features/message.js";
 import {
+  CopiedSchema,
   ProfileSchema,
   ReloadTargets,
   RoomRecordSchema,
@@ -192,14 +193,14 @@ export const CopyRoomLink = Command.define("CopyRoomLink", {
 });
 
 export const CopyText = Command.define("CopyText", {
-  args: { text: Schema.String },
-  execute: ({ text }) =>
+  args: { copied: CopiedSchema, text: Schema.String },
+  execute: ({ copied, text }) =>
     Effect.tryPromise(() =>
       globalThis.navigator.clipboard.writeText(text)
     ).pipe(
       Effect.match({
         onFailure: () => Messages.CompletedCopy({ copied: "Nothing" }),
-        onSuccess: () => Messages.CompletedCopy({ copied: "Settlement" }),
+        onSuccess: () => Messages.CompletedCopy({ copied }),
       })
     ),
   messages: [Messages.CompletedCopy],

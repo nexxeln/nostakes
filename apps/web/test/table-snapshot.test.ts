@@ -30,6 +30,8 @@ const roomWith = (
   copied: "Nothing",
   drafts: { buyIn: "", chips: "", seat: Option.none() },
   events: [],
+  fairness: [],
+  fairnessOpen: false,
   link: Option.some({
     newBuild: Option.none(),
     phase: live ? "Live" : "Waiting",

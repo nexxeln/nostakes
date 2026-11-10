@@ -11,6 +11,7 @@
           "@effect/vitest",
           "effect/Arbitrary",
           "effect/FileSystem",
+          "effect/http/FetchHttpClient",
           "effect/http/HttpClient",
           "effect/http/HttpClientRequest",
           "effect/process/ChildProcess",

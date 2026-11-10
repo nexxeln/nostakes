@@ -9,8 +9,10 @@ import type { Html, HtmlBuilder } from "foldkit/html";
 import { attendanceLine } from "./attendance-line.js";
 import { faceButton, soundSwitch, themeSwitch } from "./chrome.js";
 import { face } from "./face-builder.js";
+import { fairLabel, fairParagraph, fairSymbol } from "./fairness-text.js";
 import { Messages } from "./message.js";
 import type { Message } from "./message.js";
+import { FairMarks } from "./model.js";
 import type { InRoom, Model } from "./model.js";
 import { updateLine } from "./page-update.js";
 import { hasLeft, isLive, isYou, nameOf, viewOf } from "./room.js";
@@ -86,6 +88,33 @@ const rulesText = (view: OpenView) => {
   return `Blinds ${table.smallBlind}/${table.bigBlind}${ante} · buy-in ${buyIn.min}–${buyIn.max}`;
 };
 
+const SHOWN_FAIR_HANDS = 5;
+
+const fairButton = (room: InRoom, h: H): Html => {
+  const failed = room.fairness.find(({ mark }) =>
+    FairMarks.guards.Failed(mark)
+  );
+
+  const shown = failed ?? room.fairness[0];
+
+  return shown === undefined
+    ? h.empty
+    : h.button(
+        [
+          h.Type("button"),
+          h.Class(
+            failed === undefined
+              ? "bar-button fair-mark"
+              : "bar-button fair-mark is-alarm"
+          ),
+          h.AriaLabel(fairLabel(shown)),
+          h.Title(fairLabel(shown)),
+          h.OnClick(Messages.ClickedFairness()),
+        ],
+        [fairSymbol(shown.mark)]
+      );
+};
+
 const header = (
   model: Model,
   room: InRoom,
@@ -104,6 +133,7 @@ const header = (
         ],
         [room.copied === "Link" ? "Link copied" : "Invite"]
       ),
+      fairButton(room, h),
       h.span(
         [h.Class("bar-end")],
         [
@@ -184,6 +214,44 @@ const sheet = (h: H, title: string, body: readonly Html[]): Html =>
         ]
       ),
     ]
+  );
+
+const fairnessSheet = (room: InRoom, h: H): Html =>
+  sheet(
+    h,
+    "The deck",
+    room.fairness
+      .filter(
+        ({ mark }, index) =>
+          index < SHOWN_FAIR_HANDS || FairMarks.guards.Failed(mark)
+      )
+      .map((judged) =>
+        h.div(
+          [h.Key(`fair-${judged.hand}`), h.Class("fair-hand")],
+          [
+            h.p(
+              [
+                h.Class(
+                  FairMarks.guards.Failed(judged.mark)
+                    ? "fair-text is-alarm"
+                    : "fair-text"
+                ),
+              ],
+              [fairParagraph(judged)]
+            ),
+            FairMarks.guards.Failed(judged.mark)
+              ? h.button(
+                  [
+                    h.Type("button"),
+                    h.Class("button small"),
+                    h.OnClick(Messages.ClickedCopyProof({ hand: judged.hand })),
+                  ],
+                  [room.copied === "Proof" ? "Proof copied" : "Copy the proof"]
+                )
+              : h.empty,
+          ]
+        )
+      )
   );
 
 const sitSheet = (room: InRoom, view: OpenView, seat: number, h: H): Html =>
@@ -489,6 +557,10 @@ const activeSheet = (
 
   if (Option.isSome(room.picked)) {
     return playerSheet(room, view, h);
+  }
+
+  if (room.fairnessOpen) {
+    return fairnessSheet(room, h);
   }
 
   return room.menu ? menuSheet(model, room, view, presence, h) : h.empty;

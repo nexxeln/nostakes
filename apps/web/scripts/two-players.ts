@@ -358,6 +358,24 @@ const toldToWait = (page: Page, who: string) =>
       .waitFor({ state: "attached", timeout: 60_000 })
   );
 
+const calmDeck = (page: Page) =>
+  Effect.gen(function* readTheDeckMark() {
+    const deck = yield* attempt("see the deck mark for the hand", () =>
+      page.locator(".fair-mark").getAttribute("aria-label", { timeout: 45_000 })
+    );
+
+    const alarmed = yield* count(page, ".fair-mark.is-alarm");
+
+    return yield* alarmed > 0
+      ? Effect.fail(
+          new NightFailed({
+            detail: deck ?? "",
+            step: "check the deck of hand 1",
+          })
+        )
+      : Effect.succeed(deck ?? "");
+  });
+
 const night = Effect.gen(function* playOneHand() {
   const firstDeploy = yield* Scope.make();
 
@@ -412,6 +430,10 @@ const night = Effect.gen(function* playOneHand() {
   const result = yield* playHand([ana, ben], ana);
 
   yield* Console.log(`hand 1 played with gestures, pot: ${result}`);
+
+  const deck = yield* calmDeck(ana);
+
+  yield* Console.log(`deck: ${deck}`);
 
   const chipsBefore =
     (yield* stackOf(ana, "Ana")) + (yield* stackOf(ben, "Ben"));

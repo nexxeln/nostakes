@@ -48,7 +48,7 @@ import {
 import type { RoomConnection } from "../client/connection.js";
 import { Messages, ReplyOutcomes } from "./message.js";
 import type { Message, ReplyOutcome } from "./message.js";
-import { Screens } from "./model.js";
+import { FairMarks, Screens } from "./model.js";
 import type { Flags, InRoom, Model } from "./model.js";
 import { considerUpdate } from "./page-update.js";
 import { rejectionText } from "./rejections.js";
@@ -91,6 +91,8 @@ const freshRoom = (code: InRoom["code"], player: InRoom["player"]): InRoom => ({
   copied: "Nothing",
   drafts: { buyIn: "", chips: "", seat: Option.none() },
   events: [],
+  fairness: [],
+  fairnessOpen: false,
   link: Option.none(),
   menu: false,
   notice: Option.none(),
@@ -104,6 +106,8 @@ const freshRoom = (code: InRoom["code"], player: InRoom["player"]): InRoom => ({
   shown: Option.none(),
   update: Option.none(),
 });
+
+const KEPT_FAIR_HANDS = 30;
 
 const checksFor = (model: Model) =>
   Screens.guards.Home(model.screen)
@@ -574,6 +578,15 @@ export const update = (model: Model, message: Message): Return =>
         commands: [CopyRoomLink({ code: room.code })],
         model,
       })),
+    ClickedCopyProof: ({ hand }) =>
+      inRoom(model, (room) => ({
+        commands: room.fairness.flatMap((judged) =>
+          judged.hand === hand && FairMarks.guards.Failed(judged.mark)
+            ? [CopyText({ copied: "Proof", text: judged.mark.proof })]
+            : []
+        ),
+        model,
+      })),
     ClickedCopySettlement: () =>
       inRoom(model, (room) =>
         Option.match(
@@ -581,7 +594,12 @@ export const update = (model: Model, message: Message): Return =>
           {
             onNone: () => ({ model }),
             onSome: (closed) => ({
-              commands: [CopyText({ text: settlementText(closed) })],
+              commands: [
+                CopyText({
+                  copied: "Settlement",
+                  text: settlementText(closed),
+                }),
+              ],
               model,
             }),
           }
@@ -601,6 +619,8 @@ export const update = (model: Model, message: Message): Return =>
         ),
       },
     }),
+    ClickedFairness: () =>
+      editRoom(model, (room) => ({ ...room, fairnessOpen: true })),
     ClickedHome: () =>
       inRoom(model, (room) => ({
         commands: [ShowPath({ path: "/" }), ForgetRoom({ code: room.code })],
@@ -666,6 +686,7 @@ export const update = (model: Model, message: Message): Return =>
       editRoom(model, (room) => ({
         ...room,
         drafts: { ...room.drafts, seat: Option.none() },
+        fairnessOpen: false,
         menu: false,
         picked: Option.none(),
         settings: Option.none(),
@@ -751,6 +772,16 @@ export const update = (model: Model, message: Message): Return =>
           ),
           nextKey: model.nextKey + 1,
         },
+      })),
+    JudgedHand: ({ hand, mark }) =>
+      editRoom(model, (room) => ({
+        ...room,
+        fairness: [
+          { hand, mark },
+          ...room.fairness.filter((judged) => judged.hand !== hand),
+        ]
+          .toSorted((one, other) => other.hand - one.hand)
+          .slice(0, KEPT_FAIR_HANDS),
       })),
     PickedAvatar: ({ avatar }) => {
       if (Option.isSome(model.faceDraft)) {

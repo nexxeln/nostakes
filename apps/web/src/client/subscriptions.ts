@@ -85,6 +85,17 @@ const roomSignals = RoomConnection.get.pipe(
   Stream.unwrap
 );
 
+const roomFairness = (code: string) =>
+  RoomConnection.get.pipe(
+    Effect.flatMap((client) =>
+      Effect.promise(() => import("./fairness.js")).pipe(
+        Effect.map(({ fairnessMarks }) => fairnessMarks(client, code))
+      )
+    ),
+    Effect.catchTag("ResourceNotAvailable", () => Effect.succeed(Stream.empty)),
+    Stream.unwrap
+  );
+
 const ticks = Stream.tick(TICK).pipe(
   Stream.mapEffect(() => Clock.currentTimeMillis),
   Stream.map((now) => Messages.Ticked({ now }))
@@ -152,6 +163,22 @@ export const subscriptions = Subscription.make<
         ticking: Option.exists(
           roomOf(model),
           (room) => clockRunning(room) || signalsShowing(room)
+        ),
+      }),
+    }
+  ),
+  fairness: entry(
+    { connected: Schema.Option(Schema.String) },
+    {
+      dependenciesToStream: ({ connected }) =>
+        Option.match(connected, {
+          onNone: () => Stream.empty,
+          onSome: roomFairness,
+        }),
+      modelToDependencies: (model) => ({
+        connected: roomOf(model).pipe(
+          Option.filter(({ connected }) => connected),
+          Option.map(({ code }) => code)
         ),
       }),
     }

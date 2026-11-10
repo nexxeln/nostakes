@@ -14,6 +14,7 @@ import { defineTaggedUnion } from "foldkit/schema";
 import {
   CopiedSchema,
   FacePartSchema,
+  FairMarks,
   LinkSchema,
   ThemeSchema,
 } from "./model.js";
@@ -43,8 +44,10 @@ export const Messages = defineMessageUnion({
   ClickedCancelFace: {},
   ClickedCloseSettings: {},
   ClickedCopyLink: {},
+  ClickedCopyProof: { hand: Schema.Int },
   ClickedCopySettlement: {},
   ClickedEditFace: {},
+  ClickedFairness: {},
   ClickedHome: {},
   ClickedKnownRoom: { code: RoomCodeSchema },
   ClickedMenu: {},
@@ -81,6 +84,7 @@ export const Messages = defineMessageUnion({
     receivedAt: Schema.Int,
     signal: RoomSignalSchema,
   },
+  JudgedHand: { hand: Schema.Int, mark: FairMarks },
   PickedAvatar: { avatar: AvatarSchema },
   ReleasedConnection: {},
   SentSignal: {

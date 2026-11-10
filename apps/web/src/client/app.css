@@ -505,6 +505,32 @@ html:has(.room) {
   border-color: currentColor;
 }
 
+.fair-mark {
+  font-weight: 600;
+  min-width: var(--size-touch);
+  justify-content: center;
+}
+
+.fair-mark.is-alarm,
+.fair-text.is-alarm {
+  color: var(--color-alert);
+}
+
+.fair-hand {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
+  padding: var(--space-2) 0;
+  box-shadow: inset 0 -1px 0 var(--color-line);
+}
+
+.fair-text {
+  margin: 0;
+  font-size: var(--text-2);
+  line-height: var(--leading);
+}
+
 .face-row {
   display: flex;
   align-items: center;

@@ -104,7 +104,34 @@ export const DraftsSchema = Schema.Struct({
 
 export type Drafts = typeof DraftsSchema.Type;
 
-export const CopiedSchema = Schema.Literals(["Nothing", "Link", "Settlement"]);
+export const CopiedSchema = Schema.Literals([
+  "Nothing",
+  "Link",
+  "Settlement",
+  "Proof",
+]);
+
+export const CheckTimingSchema = Schema.Literals([
+  "InTime",
+  "TooCloseToCall",
+  "NotWatched",
+]);
+
+export const FairMarks = defineTaggedUnion({
+  Cancelled: { round: Schema.Int },
+  Checked: { cards: Schema.Int, round: Schema.Int, timing: CheckTimingSchema },
+  Failed: { proof: Schema.String, reason: Schema.String },
+  NotChecked: { round: Schema.Int },
+});
+
+export type FairMark = typeof FairMarks.Type;
+
+export const FairHandSchema = Schema.Struct({
+  hand: Schema.Int,
+  mark: FairMarks,
+});
+
+export type FairHand = typeof FairHandSchema.Type;
 
 export const InRoomSchema = Schema.Struct({
   clockSamples: Schema.Array(Schema.Int),
@@ -113,6 +140,8 @@ export const InRoomSchema = Schema.Struct({
   copied: CopiedSchema,
   drafts: DraftsSchema,
   events: Schema.Array(TableEventSchema),
+  fairness: Schema.Array(FairHandSchema),
+  fairnessOpen: Schema.Boolean,
   link: Schema.Option(LinkSchema),
   menu: Schema.Boolean,
   notice: Schema.Option(Schema.String),
