@@ -4,6 +4,7 @@ import type { Action } from "@nostakes/engine";
 import { PlayerIdSchema, RoomCodeSchema } from "@nostakes/protocol";
 import {
   MemberCommandSchema,
+  NotSeated,
   RoomViewSchema,
   SeenEventSchema,
 } from "@nostakes/room";
@@ -93,7 +94,9 @@ const messagesFor = (
         key: issued[pick % Math.max(1, issued.length)] ?? 404,
         outcome: accepted
           ? ReplyOutcomes.Accepted({ seq: 1 })
-          : ReplyOutcomes.Rejected({ reason: "no" }),
+          : ReplyOutcomes.Rejected({
+              rejection: new NotSeated({ player: PLAYER }),
+            }),
       }),
     ],
   });

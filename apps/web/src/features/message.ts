@@ -2,6 +2,7 @@ import { AvatarSchema } from "@nostakes/avatar";
 import { PlayerIdSchema, RoomCodeSchema } from "@nostakes/protocol";
 import {
   MemberCommandSchema,
+  RoomRejectionSchema,
   RoomViewSchema,
   SeenEventSchema,
 } from "@nostakes/room";
@@ -20,7 +21,7 @@ import { TableIntentSchema } from "./table/snapshot.js";
 export const ReplyOutcomes = defineTaggedUnion({
   Accepted: { seq: Schema.Int },
   Lost: { reason: Schema.String },
-  Rejected: { reason: Schema.String },
+  Rejected: { rejection: RoomRejectionSchema },
 });
 
 export type ReplyOutcome = typeof ReplyOutcomes.Type;

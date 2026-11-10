@@ -39,6 +39,7 @@ import { Messages, ReplyOutcomes } from "./message.js";
 import type { Message, ReplyOutcome } from "./message.js";
 import { Screens } from "./model.js";
 import type { Flags, InRoom, Model } from "./model.js";
+import { rejectionText } from "./rejections.js";
 import {
   isActing,
   isLegal,
@@ -366,9 +367,9 @@ const settle = (room: InRoom, key: number, outcome: ReplyOutcome): InRoom => {
       notice: Option.some(`${sent.label} did not reach the room: ${reason}`),
       pending,
     }),
-    Rejected: ({ reason }) => ({
+    Rejected: ({ rejection }) => ({
       ...room,
-      notice: Option.some(reason),
+      notice: Option.some(rejectionText(rejection, viewOf(room))),
       pending,
     }),
   });

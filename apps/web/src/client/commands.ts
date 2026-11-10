@@ -14,7 +14,6 @@ import { Command, Navigation } from "foldkit";
 
 import { Messages, ReplyOutcomes } from "../features/message.js";
 import { ProfileSchema, ThemeSchema } from "../features/model.js";
-import { rejectionText } from "../features/rejections.js";
 import { HintSchema } from "../features/table/snapshot.js";
 import { roomPath } from "../features/wire.js";
 import { RoomConnection } from "./connection.js";
@@ -102,6 +101,20 @@ export const JoinRoom = Command.define("JoinRoom", {
   messages: [Messages.EnteredRoom, Messages.FailedEntry],
 });
 
+const LOST_TEXT = {
+  ClientRefused: "the room turned this device away",
+  ClientStopped: "the connection closed first",
+  CommandCancelled: "it was cancelled",
+  CommandInvalid: "the page could not put it into words the room reads",
+  CommandTooLarge: "it was too large to send",
+  ResourceNotAvailable: "the page is not connected to the room",
+} as const;
+
+const UNAVAILABLE_TEXT = {
+  RoomHalted: "the room has stopped",
+  StorageFailed: "the room could not save it",
+} as const;
+
 export const SendToRoom = Command.define("SendToRoom", {
   args: { command: MemberCommandSchema, key: Schema.Int },
   execute: ({ command, key }) =>
@@ -111,7 +124,9 @@ export const SendToRoom = Command.define("SendToRoom", {
         onFailure: (failure) =>
           Messages.GotReply({
             key,
-            outcome: ReplyOutcomes.Lost({ reason: failure._tag }),
+            outcome: ReplyOutcomes.Lost({
+              reason: `${LOST_TEXT[failure._tag]}.`,
+            }),
           }),
         onSuccess: (result) =>
           Messages.GotReply({
@@ -119,11 +134,9 @@ export const SendToRoom = Command.define("SendToRoom", {
             outcome: Match.valueTags(result, {
               Accepted: ({ seq }) => ReplyOutcomes.Accepted({ seq }),
               Rejected: ({ rejection }) =>
-                ReplyOutcomes.Rejected({ reason: rejectionText(rejection) }),
+                ReplyOutcomes.Rejected({ rejection }),
               Unavailable: ({ reason }) =>
-                ReplyOutcomes.Lost({
-                  reason: `The room is unavailable: ${reason}.`,
-                }),
+                ReplyOutcomes.Lost({ reason: `${UNAVAILABLE_TEXT[reason]}.` }),
             }),
           }),
       })
