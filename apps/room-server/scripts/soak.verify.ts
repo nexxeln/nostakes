@@ -63,6 +63,7 @@ const TEMPER: Temper = {
 
 const CHAOS: ClientTemper = {
   blackHolePercent: 0.3,
+  deafAtClosePercent: 25,
   deafPercent: 0.1,
   dropPercent: 0.6,
   echoPercent: 0.5,
@@ -156,7 +157,7 @@ const summarize = (
     `  frames checked ${counts.framesChecked}, views checked ${counts.viewsChecked}, viewFor ${views > 0 ? ((viewMs * 1000) / views).toFixed(1) : "n/a"} µs each over ${views}`,
     `  client bots ${counts.clientBots}: commands ${counts.clientCommands}, traced to the log ${counts.clientCommandsTraced}, issued right before a drop ${counts.clientIssuedBeforeDrop}, resent after a drop ${counts.clientResent}`,
     `  client drops: bot close ${counts.clientDropsBotClose}, server restart ${counts.clientDropsRestart}, unanswered on a deaf line ${counts.clientDropsDeafUnanswered}, black hole ${counts.clientDropsBlackHole}; server silence limit ${counts.clientDropsSilenceLimit}, deaf and silent ${counts.clientDropsDeafSilence}, unanswered on a clear line ${counts.clientDropsUnansweredOnClearLine}, unexplained ${counts.clientDropsUnexplained}, failed reconnects ${counts.clientFailedAttempts}`,
-    `  commands issued on a deaf line ${counts.clientDeafCommands}, answered ${deafReplies.length}, slowest reply ${slowestDeafReply.toFixed(0)} ms (bound ${DEAF_REPLY_BOUND_MS} ms)`,
+    `  commands issued on a deaf line ${counts.clientDeafCommands}, answered ${deafReplies.length}, slowest reply ${slowestDeafReply.toFixed(0)} ms (bound ${DEAF_REPLY_BOUND_MS} ms), lines deafened as the room closed ${counts.clientDeafAtClose}`,
     `  client wakes ${counts.clientWakes}, naps ${counts.clientNaps}, skipped ranges ${counts.clientSkippedRanges}, past batches echoed ${counts.clientEchoes}, events checked ${counts.clientEventsChecked}, views checked ${counts.clientViewsChecked}, unexpected refusals ${counts.clientUnexpectedRefusals}`,
     `  replay of the longest night (${longest?.plan.code ?? "none"}, ${longest?.verdict.counts.hands ?? 0} hands, ${longest?.verdict.counts.events ?? 0} events): ${(longest?.verdict.replayMs ?? 0).toFixed(1)} ms`,
     `  settlement transfers per room: ${results.map((result) => result.verdict.transfers.join(",")).join(" ")} (total ${counts.transfers})`,

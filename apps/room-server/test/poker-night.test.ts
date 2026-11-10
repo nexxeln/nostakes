@@ -36,6 +36,7 @@ const TEMPER: Temper = {
 
 const CHAOS: ClientTemper = {
   blackHolePercent: 1.5,
+  deafAtClosePercent: 0,
   deafPercent: 0,
   dropPercent: 1.5,
   echoPercent: 1,

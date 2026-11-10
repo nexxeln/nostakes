@@ -1,4 +1,9 @@
-import { Activities, ANSWER_LIMIT_MS, BACKOFF_CAP_MS } from "@nostakes/client";
+import {
+  Activities,
+  ANSWER_LIMIT_MS,
+  BACKOFF_CAP_MS,
+  OVERDUE_GRACE_MS,
+} from "@nostakes/client";
 import { Antes, Events, Seats, ShowdownEntries } from "@nostakes/engine";
 import type { Card, Event, PlayerId, SeatIndex } from "@nostakes/engine";
 import { MAX_MISSED_EVENTS } from "@nostakes/protocol";
@@ -59,7 +64,7 @@ export const CLOCK_TOLERANCE_MS = 50;
 export const DEAF_REPLY_MARGIN_MS = 5000;
 
 export const DEAF_REPLY_BOUND_MS =
-  ANSWER_LIMIT_MS + BACKOFF_CAP_MS + DEAF_REPLY_MARGIN_MS;
+  ANSWER_LIMIT_MS + OVERDUE_GRACE_MS + BACKOFF_CAP_MS + DEAF_REPLY_MARGIN_MS;
 
 export const COUNT_NAMES = [
   "antePosts",
@@ -71,6 +76,7 @@ export const COUNT_NAMES = [
   "clientBots",
   "clientCommands",
   "clientCommandsTraced",
+  "clientDeafAtClose",
   "clientDeafCommands",
   "clientDropsBlackHole",
   "clientDropsBotClose",
@@ -146,6 +152,7 @@ export const emptyCounts = (): NightCounts => ({
   clientBots: 0,
   clientCommands: 0,
   clientCommandsTraced: 0,
+  clientDeafAtClose: 0,
   clientDeafCommands: 0,
   clientDropsBlackHole: 0,
   clientDropsBotClose: 0,
@@ -696,6 +703,7 @@ const addClientStats = (checker: Checker, client: ClientBotRecord) => {
   const { stats } = client;
 
   counts.clientBots += 1;
+  counts.clientDeafAtClose += stats.deafAtClose;
   counts.clientDeafCommands += client.commands.filter(
     ({ issuedOnDeafLine }) => issuedOnDeafLine
   ).length;

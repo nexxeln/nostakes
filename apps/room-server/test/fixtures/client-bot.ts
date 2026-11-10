@@ -1,6 +1,7 @@
 import {
   Activities,
   ANSWER_LIMIT_MS,
+  OVERDUE_GRACE_MS,
   PING_INTERVAL_MS,
   roomClient,
 } from "@nostakes/client";
@@ -59,6 +60,7 @@ export interface ClientTemper {
   readonly blackHolePercent: number;
   readonly waitOutSilencePercent: number;
   readonly deafPercent: number;
+  readonly deafAtClosePercent: number;
   readonly napPercent: number;
   readonly echoPercent: number;
   readonly wakePercent: number;
@@ -111,6 +113,7 @@ export interface ClientBotStats {
   dropsDeafUnanswered: number;
   dropsDeafSilence: number;
   dropsUnansweredOnClearLine: number;
+  deafAtClose: number;
   dropsUnexplained: number;
   failedAttempts: number;
   wakes: number;
@@ -231,6 +234,7 @@ export const startClientBot = (setup: ClientBotSetup) => {
 
   const stats: ClientBotStats = {
     commands: 0,
+    deafAtClose: 0,
     dropsBlackHole: 0,
     dropsBotClose: 0,
     dropsDeafSilence: 0,
@@ -367,7 +371,7 @@ export const startClientBot = (setup: ClientBotSetup) => {
 
         if (cause === "SilenceLimit") {
           problems.push(
-            `${label}: the server's silence limit closed a deaf line, which the client should have dropped as Unanswered within ${PING_INTERVAL_MS + ANSWER_LIMIT_MS} ms`
+            `${label}: the server's silence limit closed a deaf line, which the client should have dropped as Unanswered within ${PING_INTERVAL_MS + ANSWER_LIMIT_MS + OVERDUE_GRACE_MS} ms`
           );
         }
 
@@ -725,16 +729,34 @@ export const startClientBot = (setup: ClientBotSetup) => {
 
       note("saw the room closing");
 
+      const lineAtClose = wire.lastLine();
+
+      if (
+        lineAtClose?.raw.readyState === WebSocket.OPEN &&
+        random.chance(chaos.deafAtClosePercent)
+      ) {
+        note(`deafening line ${lineAtClose.number} as the room closes`);
+        stats.deafAtClose += 1;
+        wire.deafen();
+      }
+
       let wokeAt = 0;
+      let deafSeen = 0;
 
       while (!control.stop) {
         const line = wire.lastLine();
 
-        if (
-          line !== undefined &&
-          line.mode !== "Clear" &&
-          line.raw.readyState <= WebSocket.OPEN
-        ) {
+        const open =
+          line !== undefined && line.raw.readyState <= WebSocket.OPEN;
+
+        if (open && line.mode === "Deaf" && line.number !== deafSeen) {
+          deafSeen = line.number;
+          note(
+            `line ${line.number} is deaf at close; the client must drop it as unanswered`
+          );
+        }
+
+        if (open && line.mode === "BlackHole") {
           note(`mending line ${line.number}, which is ${line.mode}`);
           wire.closeFromBot();
         }
