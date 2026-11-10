@@ -18,8 +18,9 @@ Workspace `package.json` files declare the pinned stack. Keep every dependency e
 - Oxlint `1.92.0` with `oxlint-tsgolint` `7.0.2006` for type-aware rules, `@oxlint/plugins` `1.92.0`, Ultracite `8.1.1`, and Oxfmt `0.77.0`
 - Lefthook `2.2.2` and `@types/node` `24.19.2`
 - Alchemy `2.0.0-beta.85` (`alchemy`, `@alchemy.run/cloudflare`, `@alchemy.run/test`), `@cloudflare/workers-types` `5.20261108.1`, and `@effect/platform-node` `4.1.2`, which Alchemy's local Worker bridge imports. `workerd` is the only extra entry under `allowBuilds`, so its postinstall can fetch the local runtime.
+- XState `6.0.0-beta.1` and `@xstate/effect` `1.0.0-beta.0`, both betas and newer than most training data. Read the installed source before you change a machine. `oxlint.config.ts` loads the `@xstate/effect/oxlint` plugin, resolved from `packages/client`.
 
-XState and Foldkit arrive in later phases, each with the owner's sign-off.
+Foldkit arrives in a later phase, with the owner's sign-off.
 
 ## Packages
 
@@ -27,6 +28,7 @@ XState and Foldkit arrive in later phases, each with the owner's sign-off.
 - `@nostakes/ledger` (`packages/ledger`): buy-ins, cash-outs, and settle-up transfers
 - `@nostakes/room` (`packages/room`): one poker night as a pure reducer over the engine and the ledger: members, host, seats, clocks, the queue at the end of a hand, views, and redaction
 - `@nostakes/protocol` (`packages/protocol`): the JSON frames between a room's clients and its server, the room pass, and the wire limits. It is generic over a room core's schemas, so it never imports the room, and it does no I/O.
+- `@nostakes/client` (`packages/client`): the headless room client. It holds one connection, resumes after a drop without missing or repeating an event, resends unanswered commands with their ids, and exposes the view, the applied events, the connection state, and presence. Like `protocol` it is generic over a core's schemas and never imports the room. It reads no `window` or `document`. Its unit and model tests use a fake socket and the test clock. Its tests against the real server live in `apps/room-server/test/client-room.test.ts`, because a package may not import app code.
 - `@nostakes/room-server` (`apps/room-server`): the Cloudflare Worker and one Durable Object per room, declared with Alchemy. It hosts any core that satisfies `HostedRoom` in `src/hosted-room.ts`. `src/poker-room.ts` adapts `@nostakes/room` to that port, and `src/poker-room-object.ts` and `src/worker.ts` are the production object and Worker, with allowed origins read from the `ALLOWED_ORIGINS` config. Its tests drive a toy core and the real room through real WebSocket clients on local workerd. Seeded bots in `test/fixtures/bot.ts` play whole nights, and `test/fixtures/night-checks.ts` checks every frame they received against the stored log. A live batch is redacted for each viewer's audience after the batch. A catch-up redacts each missed event for the audience right after that event, from the states the host keeps for the last 201 events, because a seat can change hands between batches.
 - `@nostakes/fence` (`tools/fence`): fixture tests for the lint rules and the hook policy. It ships nothing.
 
@@ -73,6 +75,7 @@ The fence makes cheating uncomfortable. If a hook fails, fix the failure. Do not
   - `promise/prefer-await-to-then` reads `Effect.catch` as a promise `.catch`, and `promise/prefer-await-to-callbacks` reads a callback whose parameter is named `error` as a Node callback. Use `Effect.mapError` or `Effect.catchTag`, and name the parameter `failure`.
   - `anti-slop/no-shape-in-symbol-names` rejects any name containing "shape". Name the thing for what it holds, such as `recipe` or `plan`.
   - A room view or rejection holds `Option` values, which plain `JSON.stringify` cannot carry. Wrap a core's schemas in `Schema.toCodecJson` before `Schema.fromJsonString`.
+- `xstate-effect/no-inline-effect` rejects an Effect returned from an inline `enq` callback and inline Effect logic passed to `enq.spawn`. Declare Effect work in `setupEffect({ actors })`.
 - CI runs `pnpm install --frozen-lockfile` and then `pnpm turbo run check test build`.
 
 ## Project law
@@ -100,7 +103,8 @@ The fence makes cheating uncomfortable. If a hook fails, fix the failure. Do not
 - `protocol` owns the wire. `room-server` owns identity, storage, delivery, and limits, and depends on `protocol`. The pure room core plugs into the server through `HostedRoom` in one module and never sees a socket, a token, or a sequence number.
 - Lifecycles with side effects are XState machines. This is a deliberate reading of rat-stack's "lifecycles are machines" rule. A pure reducer has no side effect to retry, cancel, or resume, so it needs no actor. A lifecycle that waits, times out, or talks to the network gets a machine.
 - The room server has no XState machine. Its only lifecycle is "wait until a deadline, then act", and that deadline is data in the core's state (`nextDeadline`), re-read on every start and after every commit and armed as the Durable Object alarm. There is no hidden state for a machine to own. Every change to a room goes through one synchronous commit function in `src/room-host.ts` that cannot await.
-- The client's connection lifecycle (connect, hello, live, backoff, resume) does have hidden state and side effects. It will be an XState machine in the client package.
+- The client's connection lifecycle has hidden state and side effects, so it is one XState machine, `roomClientMachine` in `packages/client/src/machine.ts`. XState owns the states (Idle, Connecting, Greeting, Live, Waiting, Refused, Stopped) and which transitions are legal. Declared Effect actors own the work. The Online state invokes the connection actor, so the socket lives exactly as long as Online. Time, backoff jitter, and the socket are the Effect services `Clock`, `Random`, and `Transport`, each with a live and a test layer. The embedding app sends `wake` when the page becomes visible or the network returns.
+- Arm a machine timer as a named delayed event with an id, and cancel it on exit. XState's built-in `xstate.after` and `xstate.done.actor` events are not in a machine's event type, so a pure model test could only fire them through an unsafe cast. For the same reason a child actor relays named events to its parent instead of finishing with output.
 - `Effect.sleep` inside a loop fails lint (`nostakes-patterns/no-sleep-in-loop`). Waiting belongs in a machine.
 
 ## Source control
