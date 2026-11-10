@@ -406,8 +406,14 @@ const passes = (page: Page, step: string) =>
     );
   });
 
+const opens = (page: Page) =>
+  Effect.gen(function* raiseToEight() {
+    yield* press(page, ["8", "Enter"], "type a raise to 8 and send it");
+    yield* heard(page, /^(?:Raise to|Bet) 8$/u, "the table hears the raise");
+  });
+
 const toRiver = (pages: readonly Page[]) =>
-  Effect.gen(function* checkItDown() {
+  Effect.gen(function* raiseThenCheckItDown() {
     for (let step = 0; step < 8; step += 1) {
       const page = yield* whoseTurn(pages);
       const { board } = yield* cardsOn(page);
@@ -416,7 +422,9 @@ const toRiver = (pages: readonly Page[]) =>
         return page;
       }
 
-      yield* passes(page, "call or check to see the next card");
+      yield* step === 0
+        ? opens(page)
+        : passes(page, "call or check to see the next card");
     }
 
     return yield* new NightFailed({
@@ -449,10 +457,44 @@ const bluffs = (bettor: Page, caller: Page) =>
         .locator(`${HAND}.offering`)
         .waitFor({ state: "attached", timeout: 15_000 })
     );
-    yield* attempt("the bettor taps the cards to show them", () =>
-      bettor.locator(HAND).click()
+    yield* attempt("the bettor taps the edge of the lower card", () =>
+      bettor
+        .locator(`${HAND}.offering .hc`)
+        .first()
+        .click({ position: { x: 6, y: 30 } })
+    );
+    yield* attempt("the shown card turns up", () =>
+      bettor
+        .locator(`${HAND} .hc.up`)
+        .first()
+        .waitFor({ state: "attached", timeout: 15_000 })
+    );
+    yield* attempt("the bettor taps the cards again to show the other", () =>
+      bettor.locator(`${HAND}.offering`).click()
+    );
+    yield* attempt("both cards are face up", () =>
+      bettor
+        .locator(`${HAND} .hc.up`)
+        .nth(1)
+        .waitFor({ state: "attached", timeout: 15_000 })
     );
   });
+
+const recordedHand = (page: Page) =>
+  attempt("read what the page recorded of the hand", () =>
+    page.evaluate(() => {
+      const host = globalThis.document.querySelector("nostakes-moment");
+
+      return host === null
+        ? "no moment element"
+        : JSON.stringify(
+            Object.getOwnPropertyDescriptor(
+              Object.getPrototypeOf(host),
+              "hand"
+            )?.get?.call(host) ?? null
+          );
+    })
+  );
 
 const momentOn = (page: Page, who: string) =>
   attempt(`${who} sees the bluff called out`, () =>
@@ -460,7 +502,21 @@ const momentOn = (page: Page, who: string) =>
       .locator(MOMENT)
       .first()
       .getAttribute("data-moment", { timeout: 20_000 })
-  ).pipe(Effect.map((id) => id ?? ""));
+  ).pipe(
+    Effect.map((id) => id ?? ""),
+    Effect.catchTag("NightFailed", (failure) =>
+      recordedHand(page).pipe(
+        Effect.flatMap((recorded) =>
+          Effect.fail(
+            new NightFailed({
+              detail: `${failure.detail}; the page recorded ${recorded}`,
+              step: failure.step,
+            })
+          )
+        )
+      )
+    )
+  );
 
 const showsABluff = (ana: Page, ben: Page) =>
   Effect.gen(function* playUntilABluff() {
@@ -475,17 +531,14 @@ const showsABluff = (ana: Page, ben: Page) =>
       if (hasNothing(mine.hole, mine.board)) {
         yield* bluffs(page, other);
         bluffed = true;
-      } else {
+      } else if (hasNothing(theirs.hole, mine.board)) {
         yield* passes(page, "check the river");
-
-        if (hasNothing(theirs.hole, mine.board)) {
-          yield* whoseTurn([other]);
-          yield* bluffs(other, page);
-          bluffed = true;
-        } else {
-          yield* passes(other, "check the river behind");
-          yield* Console.log("  nobody could bluff that board; dealing again");
-        }
+        yield* whoseTurn([other]);
+        yield* bluffs(other, page);
+        bluffed = true;
+      } else {
+        yield* drag(page, HAND, 170, "fold a river nobody can bluff");
+        yield* Console.log("  nobody could bluff that board; dealing again");
       }
     }
 
