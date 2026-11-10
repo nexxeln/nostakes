@@ -54,7 +54,7 @@ Workspace `package.json` files declare the pinned stack. Keep every dependency e
 - `pnpm verify:status`: print each Verify job's real outcome on the last ten commits on `main` (success, failure, cancelled, running, queued, or never ran, which means a newer push replaced it in the queue) and the newest finished result of every job. It exits non-zero while the newest finished result of any job is a failure. Run it after you push instead of reading `gh run list`, where a replaced run and a failed one look alike.
 - `pnpm smoke <base-url>`: play one hand against a running site, local or deployed. It asks again every 5 seconds, for up to 3 minutes, while opening the first room answers `RoomUnavailable`. CI runs it against the production Worker on local workerd.
 - `pnpm plan:<stage>`: show what a deploy of `production` or `preview` would change. Add `--first` before the first deploy. It never writes to Cloudflare.
-- `pnpm deploy:<stage> --confirm=<stage>`: check, test, build, deploy, and smoke the stage. Only the owner deploys. Agents never run it.
+- `pnpm deploy:<stage> --confirm=<stage>`: check, test, build, deploy, and smoke the stage. The owner approves every `production` deploy, each time. The lead agent may deploy `preview` from `main` when there is something worth seeing there. Delegated workers never deploy either stage: they report the command and what to check afterwards.
 - `pnpm turbo run check test build`: the full gate. CI runs it after a frozen install.
 
 ### Verification scripts
@@ -130,4 +130,5 @@ The fence makes cheating uncomfortable. If a hook fails, fix the failure. Do not
 ## Boundaries and sign-off
 
 - Safe by default: code and tests inside a package, a new or tighter test or lint rule, a targeted override with a written reason, an `allowedUnstableApis` entry the checker asks for, a new verification script, and edits to `AGENTS.md` and `README.md`.
-- Needs owner sign-off: adding, removing, or bumping any dependency, because pins are exact and CI installs cold. Any edit that loosens `oxlint.config.ts`, the diagnostics in `tsconfig.base.json`, `lefthook.yml`, `.claude/settings.json`, or `scripts/vcs-command-policy.js`. A new package or app. Anything that brings I/O, a clock, or randomness into `engine` or `ledger`.
+- Routine dependency bumps need no sign-off: a patch or minor release of something already pinned, with no breaking change for this repo, landed through the normal gate with CI and the Verify jobs green, and reported to the owner afterwards. Read the release notes first and keep every pin exact.
+- Needs owner sign-off: adding or removing a dependency, a major version, a bump with a breaking change or a migration, and any new patch under `patches/`, because pins are exact and CI installs cold. Any edit that loosens `oxlint.config.ts`, the diagnostics in `tsconfig.base.json`, `lefthook.yml`, `.claude/settings.json`, or `scripts/vcs-command-policy.js`. A new package or app. Anything that brings I/O, a clock, or randomness into `engine` or `ledger`.
