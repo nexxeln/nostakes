@@ -5,6 +5,7 @@ import { Option, Result } from "effect";
 import {
   RoomEvents,
   RoomStates,
+  audienceOf,
   evolve,
   invariants,
   nextDeadline,
@@ -34,7 +35,7 @@ import {
   viewRoundTrips,
 } from "./observers.js";
 import type { Knowledge } from "./observers.js";
-import { playSession, session } from "./sessions.js";
+import { POOL, playSession, session } from "./sessions.js";
 
 describe("generated rooms", () => {
   it.prop(
@@ -150,6 +151,34 @@ describe("generated rooms", () => {
             broken.push(
               `view after ${step.command._tag} shows ${leaked.join(",")} to ${JSON.stringify(audience)}`
             );
+          }
+        }
+      }
+
+      expect(broken).toStrictEqual([]);
+    }
+  );
+
+  it.prop(
+    "audience: a seat never changes hands inside a batch that deals hole cards, so redacting a batch for each player's audience after it equals redacting each event for that player's audience right after the event",
+    { source: session },
+    ({ source }) => {
+      const broken: string[] = [];
+      const played = playSession(source);
+
+      for (const step of played.steps) {
+        let during = step.before;
+
+        for (const event of step.events) {
+          during = evolve(during, event);
+
+          for (const player of POOL) {
+            const atEvent = redact(event, audienceOf(during, player));
+            const atBatch = redact(event, audienceOf(step.after, player));
+
+            if (JSON.stringify(atEvent) !== JSON.stringify(atBatch)) {
+              broken.push(`${step.command._tag}: ${event._tag} for ${player}`);
+            }
           }
         }
       }
