@@ -4,7 +4,6 @@ import {
   RoomCodeSchema,
   RoomPassSchema,
 } from "@nostakes/protocol";
-import type { HttpRefusal } from "@nostakes/protocol";
 import { JoinRequestSchema, MemberCommandSchema } from "@nostakes/room";
 import type { JoinRequest } from "@nostakes/room";
 import { Effect, Match, Option, Schema } from "effect";
@@ -14,6 +13,7 @@ import { Command, Navigation } from "foldkit";
 
 import { Messages, ReplyOutcomes } from "../features/message.js";
 import { ProfileSchema, ThemeSchema } from "../features/model.js";
+import { refusalText } from "../features/refusals.js";
 import { HintSchema } from "../features/table/snapshot.js";
 import { roomPath } from "../features/wire.js";
 import { RoomConnection } from "./connection.js";
@@ -33,18 +33,6 @@ class EntryRefused extends Schema.TaggedError<
   EntryRefused,
   { readonly brand: unique symbol }
 >()("EntryRefused", { reason: Schema.String }) {}
-
-const REFUSAL_TEXT = {
-  BadOrigin: "The room server does not accept this page's address.",
-  BadRequest: "The server could not read that. Check the name.",
-  NoFreeCode: "No free room code right now. Try again.",
-  NotFound: "No room has that code.",
-  RoomFull: "That room is full.",
-  RoomHalted: "That room has stopped.",
-  RoomUnavailable: "The room is not answering yet. Try again in a few seconds.",
-  ServerFault: "The room server hit a fault. Try again.",
-  UpgradeRequired: "The room server wanted a live connection.",
-} satisfies Record<HttpRefusal["refusal"], string>;
 
 const passFrom = (url: string, request: JoinRequest) =>
   HttpClientRequest.post(new URL(url, globalThis.location.href)).pipe(
@@ -66,12 +54,11 @@ const passFrom = (url: string, request: JoinRequest) =>
                 {
                   onNone: () =>
                     new EntryRefused({
-                      reason: `The room server answered ${response.status}.`,
+                      reason:
+                        "The room server sent an answer this page cannot read. Try again.",
                     }),
-                  onSome: ({ refusal }) =>
-                    new EntryRefused({
-                      reason: REFUSAL_TEXT[refusal],
-                    }),
+                  onSome: (refusal) =>
+                    new EntryRefused({ reason: refusalText(refusal) }),
                 }
               )
             )

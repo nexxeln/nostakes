@@ -21,9 +21,13 @@ export {
 
 export {
   HttpRefusalSchema,
+  PlainRefusalSchema,
   RoomPassSchema,
+  TooManyRequestsSchema,
   type HttpRefusal,
+  type PlainRefusal,
   type RoomPass,
+  type TooManyRequests,
 } from "./http.js";
 
 export {

@@ -2,10 +2,14 @@ import * as Cloudflare from "@alchemy.run/cloudflare";
 import * as Test from "@alchemy.run/test/Vitest";
 import { expect } from "@effect/vitest";
 import { Events, SeatIndexSchema } from "@nostakes/engine";
-import { CLOSE_CODES, CommandIdSchema } from "@nostakes/protocol";
+import {
+  CLOSE_CODES,
+  CommandIdSchema,
+  HttpRefusalSchema,
+} from "@nostakes/protocol";
 import type { RoomPass } from "@nostakes/protocol";
 import { ChipAmountSchema, RoomViews, SeenEvents } from "@nostakes/room";
-import { Deferred, Effect, Option } from "effect";
+import { Deferred, Effect, Option, Schema } from "effect";
 import * as FetchHttpClient from "effect/http/FetchHttpClient";
 import * as HttpClient from "effect/http/HttpClient";
 import * as HttpClientRequest from "effect/http/HttpClientRequest";
@@ -207,7 +211,7 @@ const createFrom = (base: string, address: string) =>
   );
 
 test(
-  "the production Worker lets one address open only its share of rooms a minute and answers the next with 429 while another address still gets in",
+  "the production Worker lets one address open only its share of rooms a minute and answers the next with a TooManyRequests refusal that says how long to wait, while another address still gets in",
   Effect.gen(function* rateLimited() {
     const { url } = yield* deployed;
     const base = yield* Effect.fromNullishOr(url).pipe(Effect.orDie);
@@ -224,10 +228,13 @@ test(
       Array.from({ length: limit }, () => 201)
     );
     expect(refused).toEqual({
-      body: { retryAfterSeconds: 60 },
+      body: { refusal: "TooManyRequests", retryAfterSeconds: 60 },
       retryAfter: "60",
       status: 429,
     });
+    expect(Schema.decodeUnknownOption(HttpRefusalSchema)(refused.body)).toEqual(
+      Option.some({ refusal: "TooManyRequests", retryAfterSeconds: 60 })
+    );
     expect(elsewhere.status).toBe(201);
   }).pipe(Effect.provide(FetchHttpClient.layer)),
   { timeout: 60_000 }

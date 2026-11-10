@@ -1,6 +1,7 @@
 import * as Cloudflare from "@alchemy.run/cloudflare";
+import { TooManyRequestsSchema } from "@nostakes/protocol";
 import { Stage } from "alchemy";
-import { Effect, Schema } from "effect";
+import { Effect } from "effect";
 import * as HttpServerRequest from "effect/http/HttpServerRequest";
 import * as HttpServerResponse from "effect/http/HttpServerResponse";
 
@@ -53,14 +54,10 @@ export const addressOf = HttpServerRequest.HttpServerRequest.pipe(
 
 export const RETRY_AFTER_SECONDS = 60;
 
-export const TooManyRequestsSchema = Schema.Struct({
-  retryAfterSeconds: Schema.Int,
-});
-
 export const tooManyRequests = HttpServerResponse.schemaJson(
   TooManyRequestsSchema
 )(
-  { retryAfterSeconds: RETRY_AFTER_SECONDS },
+  { refusal: "TooManyRequests", retryAfterSeconds: RETRY_AFTER_SECONDS },
   { headers: { "retry-after": String(RETRY_AFTER_SECONDS) }, status: 429 }
 ).pipe(Effect.orDie);
 

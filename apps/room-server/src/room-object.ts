@@ -2,7 +2,7 @@ import * as Cloudflare from "@alchemy.run/cloudflare";
 import type * as cf from "@cloudflare/workers-types";
 import {
   HELLO_TIMEOUT_MS,
-  HttpRefusalSchema,
+  PlainRefusalSchema,
   PING_FRAME,
   PONG_FRAME,
   SOCKET_SILENCE_LIMIT_MS,
@@ -12,7 +12,7 @@ import {
   TOKEN_BYTES,
   TokenTextSchema,
 } from "@nostakes/protocol";
-import type { CloseReason, HttpRefusal } from "@nostakes/protocol";
+import type { CloseReason, PlainRefusal } from "@nostakes/protocol";
 import {
   Array as Arr,
   Clock,
@@ -64,7 +64,7 @@ export interface RoomObjectOptions {
   readonly retainFor: number;
 }
 
-const refusalStatus: Record<HttpRefusal["refusal"], number> = {
+const refusalStatus: Record<PlainRefusal["refusal"], number> = {
   BadOrigin: 403,
   BadRequest: 400,
   NoFreeCode: 503,
@@ -76,8 +76,8 @@ const refusalStatus: Record<HttpRefusal["refusal"], number> = {
   UpgradeRequired: 426,
 };
 
-export const refuse = (refusal: HttpRefusal["refusal"]) =>
-  HttpServerResponse.schemaJson(HttpRefusalSchema)(
+export const refuse = (refusal: PlainRefusal["refusal"]) =>
+  HttpServerResponse.schemaJson(PlainRefusalSchema)(
     { refusal },
     { status: refusalStatus[refusal] }
   ).pipe(Effect.orDie);

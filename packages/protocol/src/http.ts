@@ -10,7 +10,7 @@ export const RoomPassSchema = Schema.Struct({
 
 export type RoomPass = typeof RoomPassSchema.Type;
 
-export const HttpRefusalSchema = Schema.Struct({
+export const PlainRefusalSchema = Schema.Struct({
   refusal: Schema.Literals([
     "BadOrigin",
     "BadRequest",
@@ -23,5 +23,19 @@ export const HttpRefusalSchema = Schema.Struct({
     "ServerFault",
   ]),
 });
+
+export type PlainRefusal = typeof PlainRefusalSchema.Type;
+
+export const TooManyRequestsSchema = Schema.Struct({
+  refusal: Schema.Literal("TooManyRequests"),
+  retryAfterSeconds: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
+});
+
+export type TooManyRequests = typeof TooManyRequestsSchema.Type;
+
+export const HttpRefusalSchema = Schema.Union([
+  PlainRefusalSchema,
+  TooManyRequestsSchema,
+]);
 
 export type HttpRefusal = typeof HttpRefusalSchema.Type;
