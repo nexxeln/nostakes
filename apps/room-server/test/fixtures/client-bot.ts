@@ -731,8 +731,15 @@ export const startClientBot = (setup: ClientBotSetup) => {
 
       const lineAtClose = wire.lastLine();
 
+      const clockedAtClose = current.pipe(
+        Option.flatMap(({ view }) => view),
+        Option.filter(RoomViews.$is("Open")),
+        Option.exists((open) => open.settings.turnSeconds > 0)
+      );
+
       if (
         lineAtClose?.raw.readyState === WebSocket.OPEN &&
+        clockedAtClose &&
         random.chance(chaos.deafAtClosePercent)
       ) {
         note(`deafening line ${lineAtClose.number} as the room closes`);
