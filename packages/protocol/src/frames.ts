@@ -1,0 +1,89 @@
+import { Schema } from "effect";
+
+import {
+  CommandIdSchema,
+  PlayerIdSchema,
+  SeqSchema,
+  TokenSchema,
+} from "./primitives.js";
+
+export const CloseReasonSchema = Schema.Literals([
+  "HelloTimeout",
+  "NotAuthorized",
+  "ProtocolViolation",
+  "FrameTooLarge",
+  "TooManyFrames",
+  "RoomHalted",
+]);
+
+export type CloseReason = typeof CloseReasonSchema.Type;
+
+export const UnavailableReasonSchema = Schema.Literals([
+  "RoomHalted",
+  "StorageFailed",
+]);
+
+export type UnavailableReason = typeof UnavailableReasonSchema.Type;
+
+export const replyResult = <Rejection extends Schema.Top>(
+  rejection: Rejection
+) =>
+  Schema.TaggedUnion({
+    Accepted: { seq: SeqSchema },
+    Rejected: { rejection },
+    Unavailable: { reason: UnavailableReasonSchema },
+  });
+
+export const clientMessage = <Command extends Schema.Top>(command: Command) =>
+  Schema.TaggedUnion({
+    Command: { command, id: CommandIdSchema },
+    Hello: { after: Schema.OptionFromNullOr(SeqSchema), token: TokenSchema },
+    Ping: {},
+  });
+
+export const clientFrame = <Command extends Schema.Top>(command: Command) =>
+  Schema.fromJsonString(clientMessage(command));
+
+export interface ServerSchemas<
+  Event extends Schema.Top,
+  View extends Schema.Top,
+  Rejection extends Schema.Top,
+> {
+  readonly event: Event;
+  readonly view: View;
+  readonly rejection: Rejection;
+}
+
+export const serverMessage = <
+  Event extends Schema.Top,
+  View extends Schema.Top,
+  Rejection extends Schema.Top,
+>(
+  schemas: ServerSchemas<Event, View, Rejection>
+) =>
+  Schema.TaggedUnion({
+    Closing: { reason: CloseReasonSchema },
+    Events: {
+      events: Schema.Array(schemas.event),
+      from: SeqSchema,
+      to: SeqSchema,
+      view: schemas.view,
+    },
+    Pong: {},
+    Presence: { connected: Schema.Array(PlayerIdSchema) },
+    Reply: { id: CommandIdSchema, result: replyResult(schemas.rejection) },
+    Welcome: {
+      missed: Schema.Array(schemas.event),
+      seq: SeqSchema,
+      view: schemas.view,
+      you: PlayerIdSchema,
+    },
+  });
+
+export const serverFrame = <
+  Event extends Schema.Top,
+  View extends Schema.Top,
+  Rejection extends Schema.Top,
+>(
+  schemas: ServerSchemas<Event, View, Rejection>
+) => Schema.fromJsonString(serverMessage(schemas));
