@@ -1,4 +1,5 @@
-import { Effect, Layer } from "effect";
+import type * as cf from "@cloudflare/workers-types";
+import { Effect, Layer, Option, Schema } from "effect";
 
 import { Entropy } from "../../src/entropy.js";
 
@@ -50,3 +51,40 @@ export const scriptedEntropy = () => {
     }),
   };
 };
+
+const ENTROPY_CALLS = "test-entropy-calls";
+
+const decodeCalls = Schema.decodeUnknownOption(Schema.Int);
+
+const seedOfName = (name: string) => {
+  let seed = 0;
+
+  for (const letter of name) {
+    seed = (seed * 31 + (letter.codePointAt(0) ?? 0)) % (MODULUS - 1);
+  }
+
+  return seed;
+};
+
+export const persistedSeededEntropy = (
+  seed: number,
+  state: cf.DurableObjectState
+) =>
+  Layer.succeed(Entropy, {
+    bytes: (size: number) =>
+      Effect.sync(() => {
+        const calls =
+          Option.getOrElse(
+            decodeCalls(state.storage.kv.get(ENTROPY_CALLS)),
+            () => 0
+          ) + 1;
+
+        state.storage.kv.put(ENTROPY_CALLS, calls);
+
+        return seededBytes(
+          seed + seedOfName(state.id.name ?? state.id.toString()),
+          calls,
+          size
+        );
+      }),
+  });

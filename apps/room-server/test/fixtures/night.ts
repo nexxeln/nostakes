@@ -1,0 +1,461 @@
+import { Antes, ChipsSchema } from "@nostakes/engine";
+import {
+  ROOM_CODE_ALPHABET,
+  ROOM_CODE_LENGTH,
+  RoomCodeSchema,
+} from "@nostakes/protocol";
+import type { RoomCode, RoomPass } from "@nostakes/protocol";
+import { RoomSettingsSchema, RoomViews } from "@nostakes/room";
+import type { RoomSettings, RoomView } from "@nostakes/room";
+import { Duration, Effect, Option, Schema } from "effect";
+
+import { handsSeen, randomSource, startBot } from "./bot.js";
+import type {
+  BotRecord,
+  NightControl,
+  Random,
+  RuleChange,
+  Temper,
+} from "./bot.js";
+import { checkNight } from "./night-checks.js";
+import type { NightVerdict } from "./night-checks.js";
+import { createPokerRoom, joinPokerRoom } from "./poker-http.js";
+import { wallClock } from "./poker-socket.js";
+import { inspect, queueCodes, restart } from "./stack.js";
+
+type EncodedSettings = typeof RoomSettingsSchema.Encoded;
+
+export interface NightPlan {
+  readonly seed: number;
+  readonly code: RoomCode;
+  readonly settings: RoomSettings;
+  readonly players: number;
+  readonly spectators: number;
+  readonly lateJoiners: number;
+  readonly hands: number;
+  readonly restartHands: readonly number[];
+  readonly voteRestarts: number;
+  readonly ruleChanges: readonly RuleChange[];
+  readonly silences: readonly { readonly bot: number; readonly hand: number }[];
+  readonly temper: Temper;
+  readonly limitMs: number;
+}
+
+export interface NightResult {
+  readonly plan: NightPlan;
+  readonly verdict: NightVerdict;
+  readonly events: readonly string[];
+  readonly durationMs: number;
+}
+
+export class NightFailed extends Schema.TaggedError<
+  NightFailed,
+  { readonly brand: unique symbol }
+>()("NightFailed", {
+  code: Schema.String,
+  problem: Schema.String,
+  seed: Schema.Int,
+}) {
+  override get message() {
+    return `The night in room ${this.code} of seed ${this.seed} failed: ${this.problem}. Rerun with the same seed and read the saved log.`;
+  }
+}
+
+export const WATCHDOG_MARGIN_MS = 6000;
+
+const codeFrom = (random: Random): RoomCode =>
+  RoomCodeSchema.make(
+    Array.from({ length: ROOM_CODE_LENGTH }, () =>
+      ROOM_CODE_ALPHABET.charAt(random.below(ROOM_CODE_ALPHABET.length))
+    ).join("")
+  );
+
+const decodeSettings = Schema.decodeSync(RoomSettingsSchema);
+
+const withTable = (
+  settings: EncodedSettings,
+  table: Partial<EncodedSettings["table"]>
+): EncodedSettings => ({ ...settings, table: { ...settings.table, ...table } });
+
+export const RULES: readonly RuleChange[] = [
+  {
+    atHand: 0,
+    change: (settings) =>
+      withTable(settings, {
+        ante: Antes.EveryPlayer({ amount: ChipsSchema.make(1) }),
+      }),
+    label: "every player antes 1",
+  },
+  {
+    atHand: 0,
+    change: (settings) =>
+      withTable(settings, { straddle: { button: true, underTheGun: 2 } }),
+    label: "straddles on the button and two under the gun",
+  },
+  {
+    atHand: 0,
+    change: (settings) => withTable(settings, { maxRuns: 3, rabbitHunt: true }),
+    label: "up to three runs and rabbit hunts",
+  },
+  {
+    atHand: 0,
+    change: (settings) => ({
+      ...settings,
+      approval: {
+        chips: !settings.approval.chips,
+        seats: !settings.approval.seats,
+      },
+    }),
+    label: "approvals flip",
+  },
+  {
+    atHand: 0,
+    change: (settings) =>
+      withTable(settings, {
+        ante: Antes.BigBlindPays({
+          amount: ChipsSchema.make(settings.table.bigBlind),
+        }),
+      }),
+    label: "the big blind pays the ante",
+  },
+  {
+    atHand: 0,
+    change: (settings) =>
+      withTable(settings, {
+        ante: Antes.NoAnte(),
+        maxRuns: 2,
+        straddle: { button: false, underTheGun: 1 },
+      }),
+    label: "no ante, two runs, one straddle",
+  },
+];
+
+export interface NightRecipe {
+  readonly rotation: number;
+  readonly betweenHandsSeconds: number;
+  readonly players: number;
+  readonly hands: number;
+  readonly turnSeconds: number;
+  readonly restarts: number;
+  readonly silences: number;
+}
+
+export const planNight = (
+  seed: number,
+  recipe: NightRecipe,
+  temper: Temper
+): NightPlan => {
+  const random = randomSource(seed);
+  const small = random.between(1, 3);
+  const big = small * 2;
+
+  const changes = Math.min(
+    RULES.length,
+    Math.max(2, Math.floor(recipe.hands / 5))
+  );
+
+  const settings = decodeSettings({
+    approval: { chips: random.chance(50), seats: random.chance(50) },
+    betweenHandsSeconds: recipe.betweenHandsSeconds,
+    buyIn: { max: big * 50, min: big * 10 },
+    runChoiceSeconds: random.between(1, 2),
+    table: {
+      ante: Antes.NoAnte(),
+      bigBlind: big,
+      maxRuns: random.between(1, 3),
+      rabbitHunt: random.chance(50),
+      smallBlind: small,
+      straddle: { button: random.chance(50), underTheGun: random.below(3) },
+    },
+    timeBankSeconds: recipe.turnSeconds > 0 ? random.between(1, 2) : 0,
+    turnSeconds: recipe.turnSeconds,
+  });
+
+  return {
+    code: codeFrom(random),
+    hands: recipe.hands,
+    lateJoiners: recipe.players > 2 ? 1 : 0,
+    limitMs: recipe.hands * 4000 + 60_000,
+    players: recipe.players - (recipe.players > 2 ? 1 : 0),
+    restartHands: Array.from({ length: recipe.restarts }, (_, index) =>
+      Math.max(
+        2,
+        Math.floor(((index + 1) * recipe.hands) / (recipe.restarts + 1)) +
+          random.below(2)
+      )
+    ),
+    ruleChanges: Array.from({ length: changes }, (_, index) => {
+      const rule = RULES[(recipe.rotation + index) % RULES.length] ?? RULES[0];
+
+      return {
+        atHand: Math.floor(((index + 1) * recipe.hands) / (changes + 1)),
+        change: rule?.change ?? ((same) => same),
+        label: rule?.label ?? "none",
+      };
+    }),
+    seed,
+    settings,
+    silences:
+      recipe.turnSeconds > 0
+        ? Array.from({ length: recipe.silences }, (_, index) => ({
+            bot: index % recipe.players,
+            hand: 2 + index * 3 + random.below(2),
+          }))
+        : [],
+    spectators: random.chance(50) ? 1 : 0,
+    temper,
+    voteRestarts: 1,
+  };
+};
+
+const longestClockMs = (view: RoomView) =>
+  RoomViews.$is("Open")(view)
+    ? Math.max(
+        view.settings.turnSeconds + view.settings.timeBankSeconds,
+        view.settings.runChoiceSeconds,
+        view.settings.betweenHandsSeconds
+      ) * 1000
+    : 0;
+
+const shouldAdvance = (view: RoomView) =>
+  RoomViews.$is("Open")(view) &&
+  view.game === "Running" &&
+  (Option.isSome(view.hand) ||
+    view.seats.filter(({ occupant }) =>
+      occupant.pipe(
+        Option.exists(({ sittingOut, stack }) => !sittingOut && stack > 0)
+      )
+    ).length >= 2);
+
+export interface OpenedNight {
+  readonly plan: NightPlan;
+  readonly passes: readonly RoomPass[];
+}
+
+export const openNight = (base: string, plan: NightPlan) =>
+  Effect.gen(function* openRoomForNight() {
+    yield* queueCodes(base, [plan.code]);
+
+    const host = yield* createPokerRoom(base, {
+      avatar: "bot",
+      name: "bot0",
+      settings: plan.settings,
+    });
+
+    if (host.code !== plan.code) {
+      return yield* new NightFailed({
+        code: plan.code,
+        problem: `the room opened as ${host.code}`,
+        seed: plan.seed,
+      });
+    }
+
+    const passes = [host];
+
+    for (let index = 1; index < plan.players + plan.spectators; index += 1) {
+      passes.push(
+        yield* joinPokerRoom(base, plan.code, {
+          avatar: "bot",
+          name: `bot${index}`,
+        })
+      );
+    }
+
+    return { passes, plan };
+  });
+
+export const runNight = (base: string, opened: OpenedNight) =>
+  Effect.gen(function* playNightOut() {
+    const { plan } = opened;
+    const started = wallClock();
+
+    const control: NightControl = {
+      closing: false,
+      ruleChanges: plan.ruleChanges,
+      rulesApplied: 0,
+      seats: plan.players + plan.lateJoiners,
+      silences: plan.silences,
+      stop: false,
+    };
+
+    const records: BotRecord[] = [];
+    const closers: Effect.Effect<void>[] = [];
+
+    const fail = (problem: string) =>
+      new NightFailed({ code: plan.code, problem, seed: plan.seed });
+
+    const launch = (pass: RoomPass, index: number) => {
+      const bot = startBot({
+        base,
+        control,
+        index,
+        pass,
+        random: randomSource(plan.seed * 31 + index * 7919 + 1),
+        role:
+          index < plan.players || index >= plan.players + plan.spectators
+            ? "Player"
+            : "Spectator",
+        temper: plan.temper,
+      });
+
+      records.push(bot.record);
+      closers.push(bot.closeAll);
+
+      return bot.loop;
+    };
+
+    const freshest = () =>
+      records
+        .filter((record) => Option.isSome(record.latest()))
+        .toSorted((left, right) => right.lastSeq() - left.lastSeq())
+        .at(0)
+        ?.latest() ?? Option.none<RoomView>();
+
+    const handsNow = () =>
+      Option.match(freshest(), { onNone: () => 0, onSome: handsSeen });
+
+    const lateJoiner = (index: number, atHand: number) =>
+      Effect.gen(function* joinLate() {
+        while (handsNow() < atHand && !control.closing && !control.stop) {
+          yield* Effect.sleep(Duration.millis(100));
+        }
+
+        if (control.stop) {
+          return;
+        }
+
+        const pass = yield* joinPokerRoom(base, plan.code, {
+          avatar: "late",
+          name: `bot${index}`,
+        });
+
+        yield* launch(pass, index);
+      });
+
+    let restarts = 0;
+    let voteRestarts = 0;
+
+    const supervise = Effect.gen(function* superviseNight() {
+      let progress = wallClock();
+      let problem = Option.none<string>();
+
+      while (!control.stop && Option.isNone(problem)) {
+        yield* Effect.sleep(Duration.millis(30));
+
+        const now = wallClock();
+        const view = freshest();
+        const hands = handsNow();
+
+        if (
+          records.length > 0 &&
+          records.every((record) =>
+            record.latest().pipe(Option.exists(RoomViews.$is("Closed")))
+          )
+        ) {
+          control.stop = true;
+
+          continue;
+        }
+
+        if (now - started > plan.limitMs) {
+          problem = Option.some(
+            `the night reached ${hands} of ${plan.hands} hands in ${plan.limitMs} ms`
+          );
+
+          continue;
+        }
+
+        if (hands >= plan.hands) {
+          control.closing = true;
+        }
+
+        const open = view.pipe(Option.filter(RoomViews.$is("Open")));
+
+        if (Option.isNone(open)) {
+          continue;
+        }
+
+        const { hand } = open.value;
+
+        const midHand = hand.pipe(
+          Option.exists((current) => Option.isSome(current.toAct))
+        );
+
+        const voting = hand.pipe(
+          Option.exists((current) => Option.isSome(current.choosingRuns))
+        );
+
+        const due = plan.restartHands[restarts];
+        const restartNow = due !== undefined && hands >= due && midHand;
+        const restartVote = voting && voteRestarts < plan.voteRestarts;
+
+        if (!control.closing && (restartNow || restartVote)) {
+          restarts += restartNow ? 1 : 0;
+          voteRestarts += restartNow ? 0 : 1;
+          yield* restart(base, plan.code);
+          progress = wallClock();
+
+          continue;
+        }
+
+        const lastEvent = Math.max(
+          ...records.map((record) => record.lastTableAt())
+        );
+
+        progress = shouldAdvance(open.value)
+          ? Math.max(progress, lastEvent)
+          : now;
+
+        if (now - progress > longestClockMs(open.value) + WATCHDOG_MARGIN_MS) {
+          problem = Option.some(
+            `no table event arrived for ${Math.round(now - progress)} ms with a running game at hand ${hands}`
+          );
+        }
+      }
+
+      return yield* Option.match(problem, {
+        onNone: () => Effect.void,
+        onSome: (text) => Effect.fail(fail(text)),
+      });
+    });
+
+    const loops = opened.passes.map((pass, index) => launch(pass, index));
+
+    const late = Array.from({ length: plan.lateJoiners }, (_, offset) =>
+      lateJoiner(
+        plan.players + plan.spectators + offset,
+        Math.max(1, Math.floor(plan.hands / 3))
+      )
+    );
+
+    yield* Effect.all([supervise, ...loops, ...late], {
+      concurrency: "unbounded",
+    }).pipe(
+      Effect.ensuring(
+        Effect.all(closers, { discard: true }).pipe(Effect.ignore)
+      )
+    );
+
+    const inspection = yield* inspect(base, plan.code);
+
+    const verdict = checkNight({
+      bots: records,
+      code: plan.code,
+      events: inspection.events,
+      halted: inspection.halted,
+      memoryMatchesLog: inspection.memoryMatchesLog,
+      restarts,
+      seed: plan.seed,
+      seqs: inspection.seqs,
+      voteRestarts,
+    });
+
+    const result: NightResult = {
+      durationMs: wallClock() - started,
+      events: inspection.events,
+      plan,
+      verdict,
+    };
+
+    return result;
+  });
