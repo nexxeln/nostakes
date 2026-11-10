@@ -14,10 +14,15 @@ import * as FetchHttpClient from "effect/http/FetchHttpClient";
 
 import type { Temper } from "../test/fixtures/bot.js";
 import type { ClientTemper } from "../test/fixtures/client-bot.js";
+import type { Moment } from "../test/fixtures/client-wire.js";
 import { COUNT_NAMES, emptyCounts } from "../test/fixtures/night-checks.js";
 import type { CountName } from "../test/fixtures/night-checks.js";
 import { openNight, planNight, runNight } from "../test/fixtures/night.js";
-import type { NightPlan, NightResult } from "../test/fixtures/night.js";
+import type {
+  NightPlan,
+  NightResult,
+  OpenedNight,
+} from "../test/fixtures/night.js";
 import { wallClock } from "../test/fixtures/poker-socket.js";
 import { PokerStack } from "../test/fixtures/poker-stack.js";
 import { inspect } from "../test/fixtures/stack.js";
@@ -35,6 +40,7 @@ afterAll(destroy(PokerStack));
 
 const soakConfig = Config.all({
   hands: Config.Int("SOAK_HANDS").pipe(Config.withDefault(1000)),
+  keepLogs: Config.Boolean("SOAK_KEEP_LOGS").pipe(Config.withDefault(false)),
   rooms: Config.Int("SOAK_ROOMS").pipe(Config.withDefault(12)),
   seed: Config.Int("SOAK_SEED").pipe(Config.withDefault(20_261_110)),
 });
@@ -146,8 +152,24 @@ const summarize = (
   return { counts, gaps, lines };
 };
 
-const saveLog = (seed: number, plan: NightPlan, events: readonly string[]) =>
+const timelineText = (night: OpenedNight) => {
+  const stamp = ({ at, what }: Moment) =>
+    `  +${((at - night.openedAt) / 1000).toFixed(3)} ${what}`;
+
+  return [
+    `room ${night.plan.code} seed ${night.plan.seed}, opened at ${night.openedAt.toFixed(0)}`,
+    "night",
+    ...night.journal.moments().map(stamp),
+    ...night.clients.flatMap((client) => [
+      `${client.label} player ${client.pass.player}`,
+      ...client.timeline().map(stamp),
+    ]),
+  ].join("\n");
+};
+
+const saveLog = (seed: number, night: OpenedNight, events: readonly string[]) =>
   Effect.gen(function* writeLog() {
+    const { plan } = night;
     const fs = yield* FileSystem.FileSystem;
     const directory = yield* fs.makeTempDirectory({ prefix: "nostakes-soak-" });
     const path = `${directory}/${seed}-${plan.code}.json`;
@@ -161,6 +183,10 @@ const saveLog = (seed: number, plan: NightPlan, events: readonly string[]) =>
         soakSeed: seed,
       })
     );
+    yield* fs.writeFileString(
+      `${directory}/${seed}-${plan.code}.timeline.txt`,
+      timelineText(night)
+    );
 
     return path;
   });
@@ -170,7 +196,7 @@ test(
   Effect.gen(function* soak() {
     const { url } = yield* deployed;
     const base = yield* Effect.fromNullishOr(url).pipe(Effect.orDie);
-    const { hands, rooms, seed } = yield* soakConfig;
+    const { hands, keepLogs, rooms, seed } = yield* soakConfig;
     const perRoom = Math.ceil(hands / rooms);
 
     const plans = Array.from({ length: rooms }, (_, index) =>
@@ -214,17 +240,20 @@ test(
     const elapsed = (wallClock() - started) / 1000;
     const results: NightResult[] = [];
     const failures: string[] = [];
+    const kept: string[] = [];
 
     for (const [index, outcome] of outcomes.entries()) {
-      const plan = plans[index];
+      const night = opened[index];
 
-      if (plan === undefined) {
+      if (night === undefined) {
         continue;
       }
 
+      const { plan } = night;
+
       if (Result.isFailure(outcome)) {
         const stored = yield* inspect(base, plan.code);
-        const path = yield* saveLog(seed, plan, stored.events);
+        const path = yield* saveLog(seed, night, stored.events);
 
         failures.push(
           `${plan.code} (seed ${plan.seed}): ${outcome.failure.message} The room halted: ${Option.getOrElse(stored.halted, () => "no")}. log ${path}`
@@ -235,11 +264,15 @@ test(
       results.push(outcome.success);
 
       if (outcome.success.verdict.problems.length > 0) {
-        const path = yield* saveLog(seed, plan, outcome.success.events);
+        const path = yield* saveLog(seed, night, outcome.success.events);
 
         failures.push(
           `${plan.code} (seed ${plan.seed}): ${outcome.success.verdict.problems.join(" | ")} log ${path}`
         );
+      } else if (keepLogs) {
+        const path = yield* saveLog(seed, night, outcome.success.events);
+
+        kept.push(`  kept ${plan.code} (seed ${plan.seed}) log ${path}`);
       }
     }
 
@@ -251,7 +284,7 @@ test(
       failures
     );
 
-    yield* Console.log(lines.join("\n"));
+    yield* Console.log([...lines, ...kept].join("\n"));
 
     const failed =
       failures.length > 0 ||

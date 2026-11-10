@@ -26,8 +26,8 @@ import type {
   Role,
   Temper,
 } from "./bot.js";
-import { clientWire, describeFrame } from "./client-wire.js";
-import type { Line } from "./client-wire.js";
+import { clientWire, describeFrame, timeline } from "./client-wire.js";
+import type { Line, Moment } from "./client-wire.js";
 import { pokerCodec, wallClock } from "./poker-socket.js";
 import { socketUrl } from "./room-client.js";
 
@@ -126,6 +126,7 @@ export interface ClientBotRecord {
   readonly latest: () => Option.Option<RoomView>;
   readonly lastSeq: () => number;
   readonly lastTableAt: () => number;
+  readonly timeline: () => readonly Moment[];
 }
 
 export interface ClientBotSetup {
@@ -230,7 +231,9 @@ export const startClientBot = (setup: ClientBotSetup) => {
     temper,
   });
 
-  const wire = clientWire();
+  const journal = timeline();
+  const { note } = journal;
+  const wire = clientWire(journal);
   const activity: Activity<SeenEvent>[] = [];
   const commands: ClientCommand[] = [];
   const handEnds: HandEnd[] = [];
@@ -241,6 +244,7 @@ export const startClientBot = (setup: ClientBotSetup) => {
   let lastTableAt = wallClock();
   let checkedHand = 0;
   let napped = false;
+  let noted = "";
 
   const lastSeq = () =>
     current.pipe(
@@ -292,6 +296,19 @@ export const startClientBot = (setup: ClientBotSetup) => {
     );
 
     const appliedBefore = lastSeq();
+
+    const summary = `${state.connection}${Option.match(state.drop, {
+      onNone: () => "",
+      onSome: (reason) => ` drop ${reason}`,
+    })} failures ${state.failures}${Option.match(state.retryDelayMs, {
+      onNone: () => "",
+      onSome: (delayMs) => ` retry in ${delayMs} ms`,
+    })} pending [${state.pending.join(" ")}]`;
+
+    if (summary !== noted) {
+      noted = summary;
+      note(`phase ${summary} at ${Option.getOrElse(state.seq, () => 0)}`);
+    }
 
     current = Option.some(state);
 
@@ -370,6 +387,7 @@ export const startClientBot = (setup: ClientBotSetup) => {
     problems,
     role: setup.role,
     stats,
+    timeline: journal.moments,
   };
 
   const beforeDrop = (open: OpenView): Option.Option<Intent> =>
@@ -433,6 +451,7 @@ export const startClientBot = (setup: ClientBotSetup) => {
     const wake = client.wake.pipe(
       Effect.tap(() =>
         Effect.sync(() => {
+          note("wake");
           stats.wakes += 1;
         })
       )
@@ -475,8 +494,13 @@ export const startClientBot = (setup: ClientBotSetup) => {
         }
 
         return Option.match(done, {
-          onNone: (): Result.Result<PokerReply, string> =>
-            Result.fail(unanswered(quietMs)),
+          onNone: (): Result.Result<PokerReply, string> => {
+            const why = unanswered(quietMs);
+
+            note(`gave up waiting: ${why}`);
+
+            return Result.fail(why);
+          },
           onSome: (exit) => Result.mapError(exit, (failure) => failure._tag),
         });
       });
@@ -503,6 +527,9 @@ export const startClientBot = (setup: ClientBotSetup) => {
         commands.push(entry);
         stats.commands += 1;
         stats.illegal += planned.illegal ? 1 : 0;
+        note(
+          `issued ${entry.id} ${planned.command._tag}${Option.isSome(disruption) ? " before a disruption" : ""}`
+        );
 
         for (const disrupt of Option.toArray(disruption)) {
           stats.issuedBeforeDrop += 1;
@@ -512,6 +539,12 @@ export const startClientBot = (setup: ClientBotSetup) => {
         const outcome = yield* awaitReply(issued.success.reply);
 
         entry.outcome = Option.some(outcome);
+        note(
+          `outcome ${entry.id} ${Result.match(outcome, {
+            onFailure: (why) => `failed: ${why}`,
+            onSuccess: (reply) => reply._tag,
+          })}`
+        );
         stats.rejected +=
           Result.isSuccess(outcome) &&
           pokerCodec.reply.guards.Rejected(outcome.success)
@@ -527,6 +560,7 @@ export const startClientBot = (setup: ClientBotSetup) => {
 
       napped = true;
       stats.naps += 1;
+      note(`nap from ${from}`);
       wire.goOffline();
 
       while (
@@ -568,13 +602,17 @@ export const startClientBot = (setup: ClientBotSetup) => {
 
       if (random.chance(chaos.blackHolePercent)) {
         const waitOut = clocked && random.chance(chaos.waitOutSilencePercent);
+        const wakeAfter = waitOut ? 0 : random.between(100, 900);
 
         return Option.some(
-          Effect.sync(wire.blackHole).pipe(
-            Effect.andThen(
-              waitOut ? Effect.void : wakeLater(random.between(100, 900))
-            )
-          )
+          Effect.sync(() => {
+            note(
+              waitOut
+                ? "black hole, waiting out the silence limit"
+                : `black hole, waking in ${wakeAfter} ms`
+            );
+            wire.blackHole();
+          }).pipe(Effect.andThen(waitOut ? Effect.void : wakeLater(wakeAfter)))
         );
       }
 
@@ -611,6 +649,7 @@ export const startClientBot = (setup: ClientBotSetup) => {
 
       if (control.closing && !wokeForClose) {
         wokeForClose = true;
+        note("saw the room closing");
 
         if (wire.lastLine()?.mode !== "Clear") {
           wire.closeFromBot();
@@ -659,6 +698,7 @@ export const startClientBot = (setup: ClientBotSetup) => {
       yield* perform(planned.value, disruption);
     }
 
+    note("saw the night stop");
     yield* client.stop;
   }).pipe(Effect.scoped);
 

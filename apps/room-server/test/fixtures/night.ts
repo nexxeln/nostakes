@@ -20,6 +20,8 @@ import type {
 } from "./bot.js";
 import { startClientBot } from "./client-bot.js";
 import type { ClientBotRecord, ClientTemper } from "./client-bot.js";
+import { timeline } from "./client-wire.js";
+import type { Timeline } from "./client-wire.js";
 import { checkNight } from "./night-checks.js";
 import type { NightVerdict } from "./night-checks.js";
 import { createPokerRoom, joinPokerRoom } from "./poker-http.js";
@@ -273,10 +275,15 @@ const shouldAdvance = (view: RoomView) =>
 export interface OpenedNight {
   readonly plan: NightPlan;
   readonly passes: readonly RoomPass[];
+  readonly openedAt: number;
+  readonly journal: Timeline;
+  readonly clients: ClientBotRecord[];
 }
 
 export const openNight = (base: string, plan: NightPlan) =>
   Effect.gen(function* openRoomForNight() {
+    const openedAt = wallClock();
+
     yield* queueCodes(base, [plan.code]);
 
     const host = yield* createPokerRoom(base, {
@@ -304,12 +311,21 @@ export const openNight = (base: string, plan: NightPlan) =>
       );
     }
 
-    return { passes, plan };
+    const opened: OpenedNight = {
+      clients: [],
+      journal: timeline(),
+      openedAt,
+      passes,
+      plan,
+    };
+
+    return opened;
   });
 
 export const runNight = (base: string, opened: OpenedNight) =>
   Effect.gen(function* playNightOut() {
-    const { plan } = opened;
+    const { clients, plan } = opened;
+    const { note } = opened.journal;
     const started = wallClock();
 
     const control: NightControl = {
@@ -325,7 +341,6 @@ export const runNight = (base: string, opened: OpenedNight) =>
     };
 
     const records: BotRecord[] = [];
-    const clients: ClientBotRecord[] = [];
     const watched: Watched[] = [];
     const closers: Effect.Effect<void>[] = [];
 
@@ -404,8 +419,10 @@ export const runNight = (base: string, opened: OpenedNight) =>
         record.latest().pipe(Option.exists(RoomViews.$is("Closed")))
       ).length;
 
-      closedAt =
-        sawClose > 0 && Option.isNone(closedAt) ? Option.some(now) : closedAt;
+      if (sawClose > 0 && Option.isNone(closedAt)) {
+        note(`${sawClose} of ${watched.length} bots saw the room closed`);
+        closedAt = Option.some(now);
+      }
 
       return (
         (watched.length > 0 && sawClose === watched.length) ||
@@ -444,6 +461,7 @@ export const runNight = (base: string, opened: OpenedNight) =>
         );
 
         if (nightOver(now)) {
+          note("the night stops");
           control.stop = true;
 
           continue;
@@ -455,7 +473,8 @@ export const runNight = (base: string, opened: OpenedNight) =>
           continue;
         }
 
-        if (hands >= plan.hands) {
+        if (hands >= plan.hands && !control.closing) {
+          note(`closing after ${hands} hands`);
           control.closing = true;
         }
 
@@ -482,6 +501,7 @@ export const runNight = (base: string, opened: OpenedNight) =>
         if (!control.closing && (restartNow || restartVote)) {
           restarts += restartNow ? 1 : 0;
           voteRestarts += restartNow ? 0 : 1;
+          note(restartNow ? "restart mid-hand" : "restart mid-vote");
           yield* restart(base, plan.code);
           progress = wallClock();
 
@@ -505,7 +525,11 @@ export const runNight = (base: string, opened: OpenedNight) =>
 
       return yield* Option.match(problem, {
         onNone: () => Effect.void,
-        onSome: (text) => Effect.fail(fail(text)),
+        onSome: (text) => {
+          note(`failed: ${text}`);
+
+          return Effect.fail(fail(text));
+        },
       });
     });
 

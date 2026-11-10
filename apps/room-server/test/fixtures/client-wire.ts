@@ -1,12 +1,15 @@
 import { Transport, webSocketTransport } from "@nostakes/client";
-import { Effect, Layer, Option, Result, Stream } from "effect";
+import { PING_FRAME } from "@nostakes/protocol";
+import { Effect, Layer, Option, Result, Schema, Stream } from "effect";
 
-import { decodeServerFrame, pokerCodec } from "./poker-socket.js";
+import { decodeServerFrame, pokerCodec, wallClock } from "./poker-socket.js";
+import type { PokerServerMessage } from "./poker-socket.js";
 import { TEST_ORIGIN } from "./toy-worker.js";
 
 export type LineMode = "Clear" | "BlackHole" | "Deaf";
 
 export interface Line {
+  readonly number: number;
   readonly raw: WebSocket;
   readonly offline: boolean;
   readonly received: string[];
@@ -19,37 +22,75 @@ export interface PastBatch {
   readonly to: number;
 }
 
+export interface Moment {
+  readonly at: number;
+  readonly what: string;
+}
+
+export interface Timeline {
+  readonly note: (what: string) => void;
+  readonly moments: () => readonly Moment[];
+}
+
+export const timeline = (): Timeline => {
+  const moments: Moment[] = [];
+
+  return {
+    moments: () => moments,
+    note: (what) => {
+      moments.push({ at: wallClock(), what });
+    },
+  };
+};
+
 const UNREACHABLE_URL = "ws://127.0.0.1:9/offline";
 
 const SOCKET_OPEN = 1;
 
-const batchEnd = (text: string) =>
-  decodeServerFrame(text).pipe(
-    Result.getSuccess,
-    Option.filter(pokerCodec.server.guards.Events),
-    Option.map(({ to }) => to)
-  );
+const decodeClientFrame = Schema.decodeUnknownResult(
+  Schema.fromJsonString(pokerCodec.client)
+);
+
+const describeMessage = (message: PokerServerMessage) =>
+  pokerCodec.server.match(message, {
+    Closing: ({ reason }) => `Closing ${reason}`,
+    Events: ({ from, to }) => `Events ${from}..${to}`,
+    Pong: () => "Pong",
+    Presence: ({ connected }) => `Presence ${connected.length}`,
+    Reply: ({ id, result }) => `Reply ${id} ${result._tag}`,
+    Welcome: ({ catchUp, seq }) =>
+      `Welcome ${seq} ${pokerCodec.catchUp.match(catchUp, {
+        Missed: ({ events, from }) => `missed ${from}+${events.length}`,
+        Skipped: ({ from, to }) => `skipped ${from}..${to}`,
+        UpToDate: () => "up to date",
+      })}`,
+  });
 
 export const describeFrame = (text: string) =>
   Result.match(decodeServerFrame(text), {
     onFailure: () => "undecodable",
-    onSuccess: (message) =>
-      pokerCodec.server.match(message, {
-        Closing: ({ reason }) => `Closing ${reason}`,
-        Events: ({ from, to }) => `Events ${from}..${to}`,
-        Pong: () => "Pong",
-        Presence: () => "Presence",
-        Reply: ({ id }) => `Reply ${id}`,
-        Welcome: ({ catchUp, seq }) =>
-          `Welcome ${seq} ${pokerCodec.catchUp.match(catchUp, {
-            Missed: ({ events, from }) => `missed ${from}+${events.length}`,
-            Skipped: ({ from, to }) => `skipped ${from}..${to}`,
-            UpToDate: () => "up to date",
-          })}`,
-      }),
+    onSuccess: describeMessage,
   });
 
-export const clientWire = () => {
+const describeSent = (text: string) =>
+  text === PING_FRAME
+    ? "Ping"
+    : Result.match(decodeClientFrame(text), {
+        onFailure: () => "undecodable",
+        onSuccess: (message) =>
+          pokerCodec.client.match(message, {
+            Command: ({ command, id }) => `Command ${id} ${command._tag}`,
+            Hello: ({ after }) =>
+              `Hello after ${Option.match(after, {
+                onNone: () => "none",
+                onSome: String,
+              })}`,
+            Ping: () => "Ping",
+          }),
+      });
+
+export const clientWire = (journal: Timeline) => {
+  const { note } = journal;
   const lines: Line[] = [];
   const frames: string[] = [];
   const batches: PastBatch[] = [];
@@ -62,12 +103,27 @@ export const clientWire = () => {
       ? new WebSocket(UNREACHABLE_URL)
       : new WebSocket(url, { headers: { origin: TEST_ORIGIN } });
 
+    const number = lines.length + 1;
     const received: string[] = [];
 
+    note(`line ${number} dialed${offline ? " while offline" : ""}`);
+    raw.addEventListener("open", () => {
+      note(`line ${number} open`);
+    });
+    raw.addEventListener("close", (event) => {
+      note(`line ${number} closed ${event.code} ${event.reason}`);
+    });
     raw.addEventListener("message", (event) => {
       const text = String(event.data);
+      const decoded = Result.getSuccess(decodeServerFrame(text));
+
+      const described = Option.match(decoded, {
+        onNone: () => "undecodable",
+        onSome: describeMessage,
+      });
 
       received.push(echoing ? `echo ${text}` : text);
+      note(`line ${number} ${echoing ? "echoed" : "got"} ${described}`);
 
       if (echoing) {
         return;
@@ -75,11 +131,20 @@ export const clientWire = () => {
 
       frames.push(text);
 
-      for (const to of Option.toArray(batchEnd(text))) {
+      for (const { to } of Option.toArray(
+        decoded.pipe(Option.filter(pokerCodec.server.guards.Events))
+      )) {
         batches.push({ text, to });
       }
     });
-    lines.push({ closedByBot: false, mode: "Clear", offline, raw, received });
+    lines.push({
+      closedByBot: false,
+      mode: "Clear",
+      number,
+      offline,
+      raw,
+      received,
+    });
 
     return raw;
   });
@@ -98,10 +163,15 @@ export const clientWire = () => {
                   events: socket.events.pipe(
                     Stream.filter(() => line?.mode !== "BlackHole")
                   ),
-                  send: (text: string) =>
-                    line === undefined || line.mode === "Clear"
-                      ? socket.send(text)
-                      : Effect.void,
+                  send: (text: string) => {
+                    const clear = line === undefined || line.mode === "Clear";
+
+                    note(
+                      `line ${line?.number ?? 0} ${clear ? "sent" : `swallowed (${line?.mode ?? "none"})`} ${describeSent(text)}`
+                    );
+
+                    return clear ? socket.send(text) : Effect.void;
+                  },
                 };
               })
             ),
@@ -114,6 +184,7 @@ export const clientWire = () => {
     const line = lines.at(-1);
 
     if (line !== undefined && line.raw.readyState <= SOCKET_OPEN) {
+      note(`line ${line.number} closed by the bot`);
       line.closedByBot = true;
       line.raw.close(1000, "dropped by the bot");
     }
@@ -123,6 +194,7 @@ export const clientWire = () => {
     const line = lines.at(-1);
 
     if (line !== undefined) {
+      note(`line ${line.number} turned ${mode}`);
       line.mode = mode;
     }
   };
@@ -138,10 +210,12 @@ export const clientWire = () => {
     echoes: (): readonly string[] => echoes,
     frames: (): readonly string[] => frames,
     goOffline: () => {
+      note("went offline");
       offline = true;
       closeFromBot();
     },
     goOnline: () => {
+      note("came back online");
       offline = false;
     },
     inject: (text: string) => {
