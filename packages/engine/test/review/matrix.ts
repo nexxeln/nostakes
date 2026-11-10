@@ -48,6 +48,7 @@ const runCounts = (state: TableState) =>
     Bet: () => [1, 2],
     ChooseRuns: ({ maxRuns }) => [1, maxRuns, maxRuns + 1],
     Nothing: () => [1, 2],
+    Show: () => [1, 2],
   })
     .filter((count) => count <= MAX_RUNS)
     .map((count) => runCount(count));
@@ -83,6 +84,7 @@ const configs = (current: TableConfig): readonly TableConfig[] => [
     bigBlind: chipCount(500),
     maxRuns: runCount(4),
     rabbitHunt: true,
+    showdown: current.showdown === "Automatic" ? "Interactive" : "Automatic",
     smallBlind: chipCount(250),
     straddle: { button: true, underTheGun: 6 },
   },
@@ -105,6 +107,8 @@ export const commandMatrix = (state: TableState): readonly Command[] => [
       Commands.ChooseRuns({ runs, seat: index })
     ),
     Commands.RabbitHunt({ seat: index }),
+    Commands.TableHand({ seat: index }),
+    Commands.MuckHand({ seat: index }),
     Commands.StandUp({ seat: index }),
     Commands.AddChips({ amount: chipCount(25), seat: index }),
     Commands.AddChips({ amount: chipCount(0), seat: index }),

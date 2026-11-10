@@ -92,7 +92,7 @@ describe("totality of decide over every command in every resting phase", () => {
   );
 
   it.effect(
-    "the probe reaches every resting phase: between hands, after a hand, betting, and choosing runs",
+    "the probe reaches every resting phase: between hands, after a hand, betting, choosing runs, and showing down",
     () =>
       Effect.gen(function* everyPhase() {
         const sources = yield* Arbitrary.sampleEffect(session, {
@@ -109,6 +109,7 @@ describe("totality of decide over every command in every resting phase", () => {
           "BetweenHands",
           "BetweenHandsAfterAHand",
           "ChoosingRuns",
+          "ShowingDown",
         ]);
       })
   );

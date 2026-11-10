@@ -110,6 +110,7 @@ const randomConfig = (random: Random): TableConfig => {
     bigBlind: chipCount(bigBlind),
     maxRuns: runCount(1 + random.below(4)),
     rabbitHunt: random.chance(50),
+    showdown: "Automatic",
     smallBlind: chipCount(smallBlind),
     straddle: {
       button: random.chance(50),
@@ -231,6 +232,8 @@ const answer = (state: TableState, random: Random): Option.Option<Command> =>
         })
       ),
     Nothing: () => Option.none(),
+    Show: ({ choices }) =>
+      Option.some(Commands.TableHand({ seat: choices.seat })),
   });
 
 const illegalInHand = (state: TableState, random: Random): Command => {

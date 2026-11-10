@@ -23,6 +23,7 @@ import type {
   Command,
   Event,
   LegalActions,
+  ShowdownChoices,
   TableConfig,
   TableState,
 } from "../src/index.js";
@@ -49,6 +50,7 @@ export const SessionSchema = Schema.Struct({
     Schema.isMinLength(300),
     Schema.isMaxLength(600)
   ),
+  interactive: Schema.Boolean,
   maxRuns: between(1, 4),
   rabbitHunt: Schema.Boolean,
   smallBlind: between(1, 10),
@@ -79,6 +81,7 @@ export const configOf = (source: Session): TableConfig =>
     bigBlind: chipCount(source.smallBlind + source.bigBlindExtra),
     maxRuns: runCount(source.maxRuns),
     rabbitHunt: source.rabbitHunt,
+    showdown: source.interactive ? "Interactive" : "Automatic",
     smallBlind: chipCount(source.smallBlind),
     straddle: { button: source.button, underTheGun: source.underTheGun },
   });
@@ -91,6 +94,7 @@ const randomConfig = (random: SeededRandom): TableConfig => {
     bigBlind: chipCount(small + random.below(12)),
     maxRuns: runCount(1 + random.below(4)),
     rabbitHunt: random.chance(1, 2),
+    showdown: random.chance(1, 2) ? "Interactive" : "Automatic",
     smallBlind: chipCount(small),
     straddle: { button: random.chance(1, 2), underTheGun: random.below(4) },
   });
@@ -199,7 +203,28 @@ export const answerPending = (
         })
       ),
     Nothing: () => Option.none(),
+    Show: ({ choices }) =>
+      Option.some(
+        choices.canMuck && random.chance(1, 2)
+          ? Commands.MuckHand({ seat: choices.seat })
+          : Commands.TableHand({ seat: choices.seat })
+      ),
   });
+
+const illegalShowdownChoice = (
+  choices: ShowdownChoices,
+  random: SeededRandom
+): Command => {
+  const other = seat((choices.seat + 1 + random.below(8)) % 9);
+
+  if (!choices.canMuck && random.chance(1, 2)) {
+    return Commands.MuckHand({ seat: choices.seat });
+  }
+
+  return random.chance(1, 2)
+    ? Commands.TableHand({ seat: other })
+    : Commands.MuckHand({ seat: other });
+};
 
 const illegalInHand = (state: TableState, random: SeededRandom): Command => {
   const pending = pendingDecisions(state);
@@ -231,6 +256,10 @@ const illegalInHand = (state: TableState, random: SeededRandom): Command => {
     return style === 2
       ? Commands.Act({ action: Actions.Check(), seat: legal.seat })
       : Commands.StartHand({ deck: shuffledDeck(random), straddles: [] });
+  }
+
+  if (PendingDecisions.$is("Show")(pending) && random.chance(3, 4)) {
+    return illegalShowdownChoice(pending.choices, random);
   }
 
   return PendingDecisions.$is("ChooseRuns")(pending)

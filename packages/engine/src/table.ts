@@ -53,7 +53,15 @@ import {
   sitDown,
   standUp,
 } from "./seating.js";
-import { revealShowdown, showdown } from "./showdown.js";
+import { revealShowdown, showdown, startingWith } from "./showdown.js";
+import {
+  awardShowdown,
+  muckHand,
+  openShowdown,
+  recordMucked,
+  recordTabled,
+  tableHand,
+} from "./showing-down.js";
 import { Phases, initialTable, isInHand, notFolded } from "./state.js";
 import type { InHand, TableState } from "./state.js";
 
@@ -76,6 +84,10 @@ const decideCommand = Commands.$match({
     (command) =>
     (state: TableState): Decision =>
       chooseRuns(state, command),
+  MuckHand:
+    (command) =>
+    (state: TableState): Decision =>
+      muckHand(state, command),
   RabbitHunt:
     (command) =>
     (state: TableState): Decision =>
@@ -100,6 +112,10 @@ const decideCommand = Commands.$match({
     (command) =>
     (state: TableState): Decision =>
       startHand(state, command),
+  TableHand:
+    (command) =>
+    (state: TableState): Decision =>
+      tableHand(state, command),
 });
 
 const evolveEvent = Events.$match({
@@ -135,10 +151,18 @@ const evolveEvent = Events.$match({
     () =>
     (state: TableState): TableState =>
       endHand(state),
+  HandMucked:
+    (event) =>
+    (state: TableState): TableState =>
+      recordMucked(state, event),
   HandStarted:
     (event) =>
     (state: TableState): TableState =>
       beginHand(state, event),
+  HandTabled:
+    (event) =>
+    (state: TableState): TableState =>
+      recordTabled(state, event),
   HandsTabled:
     (event) =>
     (state: TableState): TableState =>
@@ -185,6 +209,10 @@ const evolveEvent = Events.$match({
     (event) =>
     (state: TableState): TableState =>
       revealShowdown(state, event),
+  ShowdownStarted:
+    (event) =>
+    (state: TableState): TableState =>
+      openShowdown(state, event),
   SittingOutChanged:
     (event) =>
     (state: TableState): TableState =>
@@ -225,7 +253,15 @@ const afterStreet = (
   }
 
   if (state.hand.board.length === 5) {
-    return showdown(state, lastAggressor);
+    return state.config.showdown === "Interactive"
+      ? [
+          Events.ShowdownStarted({
+            order: startingWith(state, lastAggressor).map(
+              (player) => player.seat
+            ),
+          }),
+        ]
+      : showdown(state, lastAggressor);
   }
 
   return streetIsOpen(state.hand)
@@ -247,15 +283,17 @@ const automatic = (state: TableState): readonly Event[] => {
     return [];
   }
 
-  const { phase } = state.hand;
-
-  if (Phases.$is("Settling")(phase)) {
-    return settle(state, phase.lastAggressor);
-  }
-
-  return Option.match(agreedRuns(state), {
-    onNone: () => [],
-    onSome: (runs) => runOut(state, runs),
+  return Phases.$match(state.hand.phase, {
+    Betting: () => [],
+    ChoosingRuns: () =>
+      Option.match(agreedRuns(state), {
+        onNone: () => [],
+        onSome: (runs) => runOut(state, runs),
+      }),
+    RunningOut: () => [],
+    Settling: ({ lastAggressor }) => settle(state, lastAggressor),
+    ShowingDown: (showing) =>
+      Option.isNone(showing.toAct) ? awardShowdown(state, showing) : [],
   });
 };
 

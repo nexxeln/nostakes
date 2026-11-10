@@ -135,6 +135,7 @@ const tableConfig = (random: Random): TableConfig => {
     bigBlind: chips(bigBlind),
     maxRuns: RunCountSchema.make(1 + random.below(3)),
     rabbitHunt: random.chance(50),
+    showdown: "Automatic",
     smallBlind: chips(smallBlind),
     straddle: {
       button: random.chance(50),
@@ -631,6 +632,7 @@ const play = (run: Run, open: Open) => {
       );
     },
     Nothing: () => Option.none(),
+    Show: () => Option.none(),
   });
 };
 
@@ -943,6 +945,7 @@ const closeTheNight = (run: Run) => {
       Bet: ({ legal }) => Option.some(legal.seat),
       ChooseRuns: ({ seats }) => Option.fromUndefinedOr(seats[0]),
       Nothing: () => Option.none(),
+      Show: () => Option.none(),
     });
 
     const owner = seat.pipe(

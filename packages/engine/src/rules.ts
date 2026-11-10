@@ -34,11 +34,16 @@ export const StraddleRulesSchema = Schema.Struct({
 
 export type StraddleRules = typeof StraddleRulesSchema.Type;
 
+export const ShowdownRuleSchema = Schema.Literals(["Automatic", "Interactive"]);
+
+export type ShowdownRule = typeof ShowdownRuleSchema.Type;
+
 export const TableConfigSchema = Schema.Struct({
   ante: AnteSchema,
   bigBlind: PositiveChipsSchema,
   maxRuns: RunCountSchema,
   rabbitHunt: Schema.Boolean,
+  showdown: ShowdownRuleSchema,
   smallBlind: PositiveChipsSchema,
   straddle: StraddleRulesSchema,
 })

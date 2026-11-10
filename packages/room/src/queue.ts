@@ -72,4 +72,5 @@ export const actForLeavingSeat = (
         (seat) => actAutomatically(state, seat, at)
       ),
     Nothing: () => Option.none(),
+    Show: () => Option.none(),
   });

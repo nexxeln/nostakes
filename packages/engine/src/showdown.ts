@@ -41,7 +41,7 @@ export const rankOnBoard = (
     rank: evaluate([...player.holeCards, ...board]),
   }));
 
-const startingWith = (
+export const startingWith = (
   state: InHand,
   lastAggressor: Option.Option<SeatIndex>
 ) => {

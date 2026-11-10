@@ -48,6 +48,7 @@ export const EventSchema = Schema.TaggedUnion({
   ChipsAdded: { amount: ChipsSchema, seat: SeatIndexSchema },
   Folded: { seat: SeatIndexSchema },
   HandEnded: { handNumber: Schema.Int },
+  HandMucked: { seat: SeatIndexSchema },
   HandStarted: {
     bigBlindSeat: SeatIndexSchema,
     button: SeatIndexSchema,
@@ -55,6 +56,11 @@ export const EventSchema = Schema.TaggedUnion({
     deck: DeckSchema,
     handNumber: Schema.Int,
     smallBlindSeat: SeatIndexSchema,
+  },
+  HandTabled: {
+    cards: Schema.Array(CardSchema),
+    rank: HandRankSchema,
+    seat: SeatIndexSchema,
   },
   HandsTabled: {
     hands: Schema.Array(
@@ -97,6 +103,7 @@ export const EventSchema = Schema.TaggedUnion({
     order: Schema.Array(ShowdownEntrySchema),
     run: Schema.Int.check(Schema.isGreaterThanOrEqualTo(1)),
   },
+  ShowdownStarted: { order: Schema.Array(SeatIndexSchema) },
   SittingOutChanged: { seat: SeatIndexSchema, sittingOut: Schema.Boolean },
   StraddlePosted: { amount: ChipsSchema, seat: SeatIndexSchema },
   StreetDealt: {

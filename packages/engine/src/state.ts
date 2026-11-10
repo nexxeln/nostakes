@@ -4,6 +4,7 @@ import type { Card } from "./cards.js";
 import type { Chips, PlayerId, SeatIndex } from "./primitives.js";
 import { SEAT_COUNT, chips } from "./primitives.js";
 import type { RunCount, TableConfig } from "./rules.js";
+import type { ShowdownEntry } from "./showdown.js";
 
 export const StreetSchema = Schema.Literals([
   "Preflop",
@@ -68,6 +69,11 @@ export type Phase = Data.TaggedEnum<{
   };
   RunningOut: { readonly runs: readonly (readonly Card[])[] };
   Settling: { readonly lastAggressor: Option.Option<SeatIndex> };
+  ShowingDown: {
+    readonly entries: readonly ShowdownEntry[];
+    readonly order: readonly SeatIndex[];
+    readonly toAct: Option.Option<SeatIndex>;
+  };
 }>;
 
 export const Phases = Data.taggedEnum<Phase>();
@@ -75,6 +81,8 @@ export const Phases = Data.taggedEnum<Phase>();
 export type Betting = Data.TaggedEnum.Value<Phase, "Betting">;
 
 export type ChoosingRuns = Data.TaggedEnum.Value<Phase, "ChoosingRuns">;
+
+export type ShowingDown = Data.TaggedEnum.Value<Phase, "ShowingDown">;
 
 export interface Straddle {
   readonly amount: Chips;

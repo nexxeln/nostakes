@@ -11,6 +11,8 @@ import { SEAT_COUNT, chips } from "./primitives.js";
 import { IllegalAction, NoBettingRound, NotYourTurn } from "./rejection.js";
 import type { RunCount, TableConfig } from "./rules.js";
 import { choosesRuns, runCap } from "./run-outs.js";
+import { showdownTurn } from "./showing-down.js";
+import type { ShowdownChoices } from "./showing-down.js";
 import {
   Phases,
   activePlayers,
@@ -165,6 +167,10 @@ export type PendingDecision = Data.TaggedEnum<{
     readonly seats: readonly SeatIndex[];
   };
   Nothing: { readonly handNumber: number };
+  Show: {
+    readonly beatenInEveryContestedPot: boolean;
+    readonly choices: ShowdownChoices;
+  };
 }>;
 
 export const PendingDecisions = Data.taggedEnum<PendingDecision>();
@@ -187,6 +193,12 @@ export const pendingDecisions = (state: TableState): PendingDecision => {
     RunningOut: () =>
       PendingDecisions.Nothing({ handNumber: state.handNumber }),
     Settling: () => PendingDecisions.Nothing({ handNumber: state.handNumber }),
+    ShowingDown: (showing) =>
+      Option.match(showdownTurn(state.hand, showing), {
+        onNone: () =>
+          PendingDecisions.Nothing({ handNumber: state.handNumber }),
+        onSome: (turn) => PendingDecisions.Show(turn),
+      }),
   });
 };
 

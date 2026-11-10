@@ -16,6 +16,7 @@ export const CommandSchema = Schema.TaggedUnion({
   AddChips: { amount: ChipsSchema, seat: SeatIndexSchema },
   ChangeRules: { config: TableConfigSchema },
   ChooseRuns: { runs: RunCountSchema, seat: SeatIndexSchema },
+  MuckHand: { seat: SeatIndexSchema },
   RabbitHunt: { seat: SeatIndexSchema },
   SetSittingOut: { seat: SeatIndexSchema, sittingOut: Schema.Boolean },
   ShowCards: { cards: ShownCardsSchema, seat: SeatIndexSchema },
@@ -26,6 +27,7 @@ export const CommandSchema = Schema.TaggedUnion({
   },
   StandUp: { seat: SeatIndexSchema },
   StartHand: { deck: DeckSchema, straddles: Schema.Array(SeatIndexSchema) },
+  TableHand: { seat: SeatIndexSchema },
 });
 
 export type Command = typeof CommandSchema.Type;

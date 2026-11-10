@@ -200,6 +200,7 @@ export const planNight = (
       bigBlind: big,
       maxRuns: random.between(1, 3),
       rabbitHunt: random.chance(50),
+      showdown: "Automatic",
       smallBlind: small,
       straddle: { button: random.chance(50), underTheGun: random.below(3) },
     },

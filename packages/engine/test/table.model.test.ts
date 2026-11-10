@@ -11,6 +11,7 @@ import {
   Seats,
   ShowdownEntries,
   TableStates,
+  buildPots,
   decide,
   evaluate,
   evolve,
@@ -37,6 +38,11 @@ import {
   playSession,
   session,
 } from "./sessions.js";
+import {
+  claimsAfterChoices,
+  mustTable,
+  replayShowdown,
+} from "./showdown-oracle.js";
 
 const stacksTotal = (state: TableState) =>
   state.seats.reduce(
@@ -156,6 +162,8 @@ const passive = (state: TableState) =>
         })
       ),
     Nothing: () => Option.none(),
+    Show: ({ choices }) =>
+      Option.some(Commands.TableHand({ seat: choices.seat })),
   });
 
 interface Dealt {
@@ -194,6 +202,27 @@ const dealtIn = (hand: readonly Event[]): Dealt => {
   }
 
   return { boards, holes };
+};
+
+const cardsMadePublic = (event: Event): readonly Card[] => {
+  if (
+    Events.$is("StreetDealt")(event) ||
+    Events.$is("CardsShown")(event) ||
+    Events.$is("HandTabled")(event) ||
+    Events.$is("RabbitHunted")(event)
+  ) {
+    return event.cards;
+  }
+
+  if (Events.$is("HandsTabled")(event)) {
+    return event.hands.flatMap((tabled) => tabled.cards);
+  }
+
+  return Events.$is("ShowdownReached")(event)
+    ? event.order.flatMap((entry) =>
+        ShowdownEntries.$is("Shown")(entry) ? entry.cards : []
+      )
+    : [];
 };
 
 const oddChipDistance = (button: number, seatIndex: number) =>
@@ -276,7 +305,7 @@ describe("generated sessions", () => {
   );
 
   it.prop(
-    "termination: answering every pending decision ends the hand, within 45 commands when every answer is check, call, or run once",
+    "termination: answering every pending decision ends the hand, within 54 commands when every answer is check, call, table, or run once",
     { source: session },
     ({ source }) => {
       const played = playSession(source);
@@ -289,7 +318,7 @@ describe("generated sessions", () => {
       for (const [index, state] of inHand.entries()) {
         const random = seededRandom(index + 1);
 
-        expect(finishHand(state, passive, 45)).toMatchObject({
+        expect(finishHand(state, passive, 54)).toMatchObject({
           finished: true,
         });
         expect(
@@ -448,6 +477,99 @@ describe("generated sessions", () => {
   );
 
   it.prop(
+    "interactive showdown: seats are asked in order only while another seat contests a pot they claim, a muck never throws away a hand that beats or ties the tabled hands of a contested pot, and each pot is awarded once, to its last claimant or the best tabled claimants",
+    { source: session },
+    ({ source }) => {
+      const problems: string[] = [];
+
+      for (const hand of handsIn(playSession(source).events)) {
+        if (hand.some(Events.$is("HandEnded"))) {
+          problems.push(...replayShowdown(hand).problems);
+        }
+      }
+
+      expect(problems).toStrictEqual([]);
+    }
+  );
+
+  it.prop(
+    "showdown legality: the seat asked may always table, may muck exactly when it does not beat or tie the tabled hands of a contested pot, every other seat is refused, and a refused choice changes nothing",
+    { source: session },
+    ({ source }) => {
+      const mismatches: string[] = [];
+
+      for (const step of playSession(source).steps) {
+        const pending = pendingDecisions(step.before);
+
+        const hand = TableStates.$is("InHand")(step.before)
+          ? step.before.hand
+          : undefined;
+
+        if (
+          !PendingDecisions.$is("Show")(pending) ||
+          hand === undefined ||
+          !Phases.$is("ShowingDown")(hand.phase)
+        ) {
+          continue;
+        }
+
+        const { entries } = hand.phase;
+        const asked = pending.choices.seat;
+        const player = hand.players.find((dealt) => dealt.seat === asked);
+        const tabled = new Map<SeatIndex, number>();
+
+        for (const entry of entries) {
+          if (ShowdownEntries.$is("Shown")(entry)) {
+            tabled.set(entry.seat, entry.rank);
+          }
+        }
+
+        const claims = claimsAfterChoices(
+          buildPots(hand).map((pot) => pot.eligible),
+          entries.map((entry) => ({
+            mucked: ShowdownEntries.$is("Mucked")(entry),
+            seat: entry.seat,
+          }))
+        );
+
+        const forced = mustTable(
+          claims,
+          tabled,
+          asked,
+          evaluate([...(player?.holeCards ?? []), ...hand.board])
+        );
+
+        if (!accepts(step.before, Commands.TableHand({ seat: asked }))) {
+          mismatches.push(`seat ${asked} could not table`);
+        }
+
+        if (
+          accepts(step.before, Commands.MuckHand({ seat: asked })) === forced
+        ) {
+          mismatches.push(`seat ${asked} muck accepted is ${!forced}`);
+        }
+
+        if (pending.choices.canMuck === forced || !pending.choices.canTable) {
+          mismatches.push(`seat ${asked} offered the wrong choices`);
+        }
+
+        for (const other of hand.players.filter(
+          (dealt) => dealt.seat !== asked
+        )) {
+          if (
+            accepts(step.before, Commands.TableHand({ seat: other.seat })) ||
+            accepts(step.before, Commands.MuckHand({ seat: other.seat }))
+          ) {
+            mismatches.push(`seat ${other.seat} chose out of turn`);
+          }
+        }
+      }
+
+      expect(mismatches).toStrictEqual([]);
+    }
+  );
+
+  it.prop(
     "secrecy: hole cards become public only through their own seat's tabling, showing, or voluntary show, and every board card follows the deck order",
     { source: session },
     ({ source }) => {
@@ -515,6 +637,29 @@ describe("generated sessions", () => {
           if (Events.$is("CardsShown")(event)) {
             expect(ownCards(event.seat, event.cards)).toBe(true);
           }
+
+          if (Events.$is("HandTabled")(event)) {
+            expect(ownCards(event.seat, event.cards)).toBe(true);
+          }
+        }
+
+        const { hidden } = replayShowdown(hand);
+        const showing = hand.filter(Events.$is("CardsShown"));
+
+        for (const seatIndex of hidden) {
+          const secret = holes.get(seatIndex) ?? [];
+
+          const named = new Set(hand.flatMap(cardsMadePublic));
+
+          const revealed = new Set(
+            showing.flatMap((shown) =>
+              shown.seat === seatIndex ? shown.cards : []
+            )
+          );
+
+          expect(
+            secret.filter((card) => named.has(card) && !revealed.has(card))
+          ).toStrictEqual([]);
         }
       }
     }

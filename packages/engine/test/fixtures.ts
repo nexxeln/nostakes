@@ -53,6 +53,7 @@ export const baseConfig: TableConfig = TableConfigSchema.make({
   bigBlind: chipCount(10),
   maxRuns: runCount(1),
   rabbitHunt: false,
+  showdown: "Automatic",
   smallBlind: chipCount(5),
   straddle: { button: false, underTheGun: 0 },
 });

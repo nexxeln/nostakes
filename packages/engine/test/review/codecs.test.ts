@@ -12,11 +12,14 @@ import {
 import type { Command, Event, Rejection } from "../../src/index.js";
 import {
   baseConfig,
+  calls,
+  checks,
   chipCount,
   deckStartingWith,
   folds,
   occupiedTable,
   play,
+  runAll,
   seat,
   shownCards,
   startHand,
@@ -49,6 +52,46 @@ const foldedOut = play(
     [0, folds],
     [1, folds],
   ]
+).state;
+
+const huntedTwice = runAll(
+  play(
+    startHand(
+      occupiedTable(
+        { ...baseConfig, rabbitHunt: true },
+        { 0: 100, 1: 100, 2: 100 }
+      ),
+      deckStartingWith("As Ks Qs Js Ts 9s")
+    ).state,
+    [
+      [0, folds],
+      [1, folds],
+    ]
+  ).state,
+  [Commands.RabbitHunt({ seat: seat(0) })]
+).state;
+
+const tiedAtShowdown = runAll(
+  play(
+    startHand(
+      occupiedTable(
+        { ...baseConfig, showdown: "Interactive" },
+        { 0: 100, 1: 100 }
+      ),
+      deckStartingWith("2c 3c 4d 5d As Ks Qs Js Ts")
+    ).state,
+    [
+      [0, calls],
+      [1, checks],
+      [1, checks],
+      [0, checks],
+      [1, checks],
+      [0, checks],
+      [1, checks],
+      [0, checks],
+    ]
+  ).state,
+  [Commands.TableHand({ seat: seat(1) })]
 ).state;
 
 const decodeCommand = Schema.decodeResult(Schema.fromJsonString(commandJson));
@@ -126,7 +169,7 @@ const deckWithTwin = JSON.stringify([0, ...fullDeck.slice(1, 51), 0]);
 const deckWith52 = JSON.stringify([...fullDeck.slice(0, 51), 52]);
 
 const rules = (change: string) =>
-  `{"_tag":"ChangeRules","config":{"ante":{"_tag":"NoAnte"},"bigBlind":10,"maxRuns":2,"rabbitHunt":true,"smallBlind":5,"straddle":{"button":true,"underTheGun":2},${change}}}`;
+  `{"_tag":"ChangeRules","config":{"ante":{"_tag":"NoAnte"},"bigBlind":10,"maxRuns":2,"rabbitHunt":true,"showdown":"Interactive","smallBlind":5,"straddle":{"button":true,"underTheGun":2},${change}}}`;
 
 describe("JSON codecs for phase 2 storage and transport", () => {
   it.prop(
@@ -156,12 +199,14 @@ describe("JSON codecs for phase 2 storage and transport", () => {
           "AddChips",
           "ChangeRules",
           "ChooseRuns",
+          "MuckHand",
           "RabbitHunt",
           "SetSittingOut",
           "ShowCards",
           "SitDown",
           "StandUp",
           "StartHand",
+          "TableHand",
         ]);
         expect(tags(samples.flatMap((sample) => sample.events))).toStrictEqual([
           "AntePosted",
@@ -172,7 +217,9 @@ describe("JSON codecs for phase 2 storage and transport", () => {
           "ChipsAdded",
           "Folded",
           "HandEnded",
+          "HandMucked",
           "HandStarted",
+          "HandTabled",
           "HandsTabled",
           "HoleCardsDealt",
           "PlayerSat",
@@ -184,6 +231,7 @@ describe("JSON codecs for phase 2 storage and transport", () => {
           "RunsAgreed",
           "RunsChosen",
           "ShowdownReached",
+          "ShowdownStarted",
           "SittingOutChanged",
           "StraddlePosted",
           "StreetDealt",
@@ -199,6 +247,8 @@ describe("JSON codecs for phase 2 storage and transport", () => {
             foldedOut,
             Commands.ShowCards({ cards: shownCards("2h"), seat: seat(1) })
           ),
+          decide(huntedTwice, Commands.RabbitHunt({ seat: seat(1) })),
+          decide(tiedAtShowdown, Commands.MuckHand({ seat: seat(0) })),
         ].flatMap((decision) =>
           Result.match(decision, {
             onFailure: (rejection) => [rejection],
@@ -222,6 +272,7 @@ describe("JSON codecs for phase 2 storage and transport", () => {
           "IllegalAction",
           "NoBettingRound",
           "NoRunChoiceOwed",
+          "NoShowdownChoiceOwed",
           "NotEnoughPlayers",
           "NotInLastHand",
           "NotYourTurn",
@@ -234,6 +285,7 @@ describe("JSON codecs for phase 2 storage and transport", () => {
           "SeatInHand",
           "SeatTaken",
           "StraddleNotAllowed",
+          "WinningHandMustTable",
         ]);
       })
   );
@@ -290,6 +342,9 @@ describe("JSON codecs for phase 2 storage and transport", () => {
       ["zero ante", rules('"ante":{"_tag":"EveryPlayer","amount":0}')],
       ["unknown ante", rules('"ante":{"_tag":"Straddle","amount":5}')],
       ["seven straddles", rules('"straddle":{"button":true,"underTheGun":7}')],
+      ["unknown showdown", rules('"showdown":"Blind"')],
+      ["table from seat 9", '{"_tag":"TableHand","seat":9}'],
+      ["muck with no seat", '{"_tag":"MuckHand"}'],
       ["not JSON", '{"_tag":"StandUp",'],
     ];
 

@@ -66,6 +66,8 @@ export { buildPots, type Pot } from "./pots.js";
 
 export { ShowdownEntries, type ShowdownEntry } from "./showdown.js";
 
+export { ShowdownChoicesSchema, type ShowdownChoices } from "./showing-down.js";
+
 export {
   CHIP_LIMIT,
   ChipsSchema,
@@ -89,6 +91,7 @@ export {
   IllegalAction,
   NoBettingRound,
   NoRunChoiceOwed,
+  NoShowdownChoiceOwed,
   NotEnoughPlayers,
   NotInLastHand,
   NotYourTurn,
@@ -103,6 +106,7 @@ export {
   StraddleAboveChipLimit,
   StraddleNotAllowed,
   StraddleProblemSchema,
+  WinningHandMustTable,
   type StraddleProblem,
 } from "./rejection.js";
 
@@ -111,10 +115,12 @@ export {
   Antes,
   MAX_RUNS,
   RunCountSchema,
+  ShowdownRuleSchema,
   StraddleRulesSchema,
   TableConfigSchema,
   type Ante,
   type RunCount,
+  type ShowdownRule,
   type StraddleRules,
   type TableConfig,
 } from "./rules.js";
@@ -132,6 +138,7 @@ export {
   type PlayerStatus,
   type Round,
   type Seat,
+  type ShowingDown,
   type Straddle,
   type Street,
   type TableState,

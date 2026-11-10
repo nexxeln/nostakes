@@ -92,6 +92,7 @@ const randomConfig = (random: Random): TableConfig => {
     bigBlind: chipCount(bigBlind),
     maxRuns: runCount(1 + random.below(4)),
     rabbitHunt: random.chance(50),
+    showdown: "Automatic",
     smallBlind: chipCount(smallBlind),
     straddle: {
       button: random.chance(50),
@@ -314,6 +315,7 @@ const decision = (
       });
     },
     Nothing: () => Option.none(),
+    Show: () => Option.none(),
   });
 
 const churn = (state: TableState, random: Random, nextPlayer: () => string) => {
@@ -407,6 +409,7 @@ const pendingRecord = (pending: PendingDecision) =>
       seats,
     }),
     Nothing: () => ({ kind: "Nothing" }),
+    Show: ({ choices }) => ({ ...choices, kind: "Show" }),
   });
 
 const seatsRecord = (state: TableState) =>

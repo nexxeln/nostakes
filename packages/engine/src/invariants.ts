@@ -4,7 +4,10 @@ import { DECK_SIZE } from "./cards.js";
 import type { Card } from "./cards.js";
 import { buildPots, uncalledExcess } from "./pots.js";
 import { CHIP_LIMIT, SEAT_COUNT, chips } from "./primitives.js";
+import type { SeatIndex } from "./primitives.js";
 import { chipsOnTable } from "./seating.js";
+import { ShowdownEntries } from "./showdown.js";
+import { claimsAfter } from "./showing-down.js";
 import {
   Phases,
   activePlayers,
@@ -13,7 +16,7 @@ import {
   notFolded,
   seatAtIndex,
 } from "./state.js";
-import type { Hand, InHand, TableState } from "./state.js";
+import type { Hand, InHand, ShowingDown, TableState } from "./state.js";
 
 export interface Violation {
   readonly invariant: string;
@@ -79,6 +82,101 @@ const withUncalledReturned = (hand: Hand): Hand =>
       }),
   });
 
+const soleClaims = (hand: Hand, returned: Hand) => {
+  const pots = buildPots(returned);
+
+  if (!Phases.$is("ShowingDown")(hand.phase)) {
+    return { claims: pots.map((pot) => pot.eligible), pots };
+  }
+
+  return { claims: claimsAfter(pots, hand.phase.entries), pots };
+};
+
+const muckedWinnings = (hand: Hand, returned: Hand) => {
+  const { claims, pots } = soleClaims(hand, returned);
+
+  const uncontested = (seat: SeatIndex) =>
+    sumOf(
+      pots.map((pot, index) => {
+        const claimants = claims[index] ?? [];
+
+        return claimants.length === 1 && claimants[0] === seat ? pot.amount : 0;
+      })
+    );
+
+  return [
+    ...hand.players.flatMap((player) =>
+      player.mucked && player.won > uncontested(player.seat)
+        ? [
+            violation(
+              "MuckedHandsWinOnlyUncontestedPots",
+              `seat ${player.seat} won ${player.won}`
+            ),
+          ]
+        : []
+    ),
+    ...(Phases.$is("ShowingDown")(hand.phase) &&
+    claims.some((claimants) => claimants.length === 0)
+      ? [violation("EveryPotHasAClaimant", "a pot has no claimant")]
+      : []),
+  ];
+};
+
+const showingDownViolations = (hand: Hand, showing: ShowingDown) => {
+  const contenders = notFolded(hand)
+    .map((player) => player.seat)
+    .toSorted((left, right) => left - right);
+
+  const ordered = showing.order.toSorted((left, right) => left - right);
+
+  const positions = showing.entries.map((entry) =>
+    showing.order.indexOf(entry.seat)
+  );
+
+  const claims = claimsAfter(buildPots(hand), showing.entries);
+
+  const firstWaiting = showing.order.find(
+    (seat) =>
+      !showing.entries.some((entry) => entry.seat === seat) &&
+      claims.some(
+        (claimants) => claimants.length > 1 && claimants.includes(seat)
+      )
+  );
+
+  const matchesPlayer = showing.entries.every((entry) => {
+    const player = hand.players.find(
+      (candidate) => candidate.seat === entry.seat
+    );
+
+    return ShowdownEntries.$match(entry, {
+      Mucked: () => player?.mucked === true,
+      Shown: ({ cards }) =>
+        player !== undefined &&
+        cards.join(",") === player.holeCards.join(",") &&
+        player.publicCards.join(",") === cards.join(","),
+    });
+  });
+
+  return [
+    ...(ordered.join(",") === contenders.join(",") && hand.board.length === 5
+      ? []
+      : [violation("ShowdownOrderIsTheContenders", ordered.join(","))]),
+    ...(positions.every(
+      (position, index) => position > (positions[index - 1] ?? -1)
+    ) && matchesPlayer
+      ? []
+      : [violation("ShowdownEntriesFollowTheOrder", positions.join(","))]),
+    ...(Option.getOrUndefined(showing.toAct) === firstWaiting
+      ? []
+      : [
+          violation(
+            "ShowdownAsksTheFirstContestedSeat",
+            `asks ${Option.getOrUndefined(showing.toAct)}, first contested ${firstWaiting}`
+          ),
+        ]),
+  ];
+};
+
 const potViolations = (hand: Hand) => {
   const committed =
     sumOf(hand.players.map((player) => player.committedTotal)) + hand.deadMoney;
@@ -95,11 +193,7 @@ const potViolations = (hand: Hand) => {
     buildPots(returned).some((pot) => pot.eligible.length === 0)
       ? [violation("EveryPotHasAnEligibleSeat", "a pot has no eligible seat")]
       : []),
-    ...hand.players.flatMap((player) =>
-      player.mucked && player.won > 0
-        ? [violation("MuckedHandsWinNothing", `seat ${player.seat} won`)]
-        : []
-    ),
+    ...muckedWinnings(hand, returned),
   ];
 };
 
@@ -228,6 +322,7 @@ const phaseViolations = (state: InHand) =>
     },
     RunningOut: () => [],
     Settling: () => [],
+    ShowingDown: (showing) => showingDownViolations(state.hand, showing),
   });
 
 const handViolations = (state: InHand) => [

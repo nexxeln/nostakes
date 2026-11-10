@@ -85,6 +85,7 @@ export const automaticFor = (
         ? Option.some(Commands.ChooseRuns({ runs: ONE_RUN, seat }))
         : Option.none(),
     Nothing: () => Option.none(),
+    Show: () => Option.none(),
   });
 
 export const actAutomatically = (
@@ -145,6 +146,7 @@ const chooseOneRunForAll = (state: Open, at: Millis): Decision =>
           );
     },
     Nothing: () => Result.succeed([]),
+    Show: () => Result.succeed([]),
   });
 
 const expire = (state: Open, clock: DecisionClock, at: Millis): Decision =>
@@ -276,6 +278,7 @@ const wantedClock = (
             }),
           ]),
     Nothing: () => stopped(current, at),
+    Show: () => stopped(current, at),
   });
 };
 

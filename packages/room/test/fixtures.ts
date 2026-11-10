@@ -58,6 +58,7 @@ export const settings: RoomSettings = {
     bigBlind: chipCount(10),
     maxRuns: RunCountSchema.make(1),
     rabbitHunt: false,
+    showdown: "Automatic",
     smallBlind: chipCount(5),
     straddle: { button: false, underTheGun: 0 },
   }),

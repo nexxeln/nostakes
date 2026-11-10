@@ -103,6 +103,7 @@ export const tableConfigFrom = (random: SeededRandom): TableConfig => {
     bigBlind: chips(small * (1 + random.below(2))),
     maxRuns: RunCountSchema.make(1 + random.below(3)),
     rabbitHunt: random.chance(1, 2),
+    showdown: "Automatic",
     smallBlind: chips(small),
     straddle: { button: random.chance(1, 2), underTheGun: random.below(3) },
   });
@@ -243,6 +244,7 @@ const answerPending = (
         )
       ),
     Nothing: () => Option.none(),
+    Show: () => Option.none(),
   });
 
 const requestSeat = (
@@ -530,6 +532,7 @@ const hosting = (
           playerAt(state, seat)
         ),
       Nothing: () => Option.none(),
+      Show: () => Option.none(),
     });
 
     return RoomCommands.ActForSeat({

@@ -335,6 +335,7 @@ describe("liveness", () => {
             ),
           ChooseRuns: () => Option.none(),
           Nothing: () => Option.none(),
+          Show: () => Option.none(),
         });
 
         if (Option.isNone(answer)) {

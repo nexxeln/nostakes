@@ -26,7 +26,9 @@ const cardsCarried = (event: Event): readonly Card[] =>
     ChipsAdded: () => [],
     Folded: () => [],
     HandEnded: () => [],
+    HandMucked: () => [],
     HandStarted: ({ deck }) => deck,
+    HandTabled: ({ cards }) => cards,
     HandsTabled: ({ hands }) => hands.flatMap((hand) => hand.cards),
     HoleCardsDealt: ({ cards }) => cards,
     PlayerSat: () => [],
@@ -44,6 +46,7 @@ const cardsCarried = (event: Event): readonly Card[] =>
           Shown: ({ cards }) => cards,
         })
       ),
+    ShowdownStarted: () => [],
     SittingOutChanged: () => [],
     StraddlePosted: () => [],
     StreetDealt: ({ cards }) => cards,
@@ -56,6 +59,7 @@ const muckLeaks = (events: readonly Event[]) => {
   const leaks: string[] = [];
   const holes = new Map<number, readonly Card[]>();
   const mucked = new Map<number, readonly Card[]>();
+  let unshown = new Set<number>();
 
   for (const event of events) {
     if (Events.$is("HandStarted")(event)) {
@@ -87,6 +91,26 @@ const muckLeaks = (events: readonly Event[]) => {
           mucked.set(entry.seat, holes.get(entry.seat) ?? []);
         }
       }
+    }
+
+    if (Events.$is("ShowdownStarted")(event)) {
+      unshown = new Set(event.order);
+    }
+
+    if (Events.$is("HandTabled")(event)) {
+      unshown.delete(event.seat);
+    }
+
+    if (Events.$is("HandMucked")(event)) {
+      mucked.set(event.seat, holes.get(event.seat) ?? []);
+    }
+
+    if (Events.$is("HandEnded")(event)) {
+      for (const owner of unshown) {
+        mucked.set(owner, holes.get(owner) ?? []);
+      }
+
+      unshown = new Set();
     }
   }
 
@@ -122,7 +146,7 @@ const rejectionLeaks = (source: Source) =>
 
 describe("secrecy beyond the existing property (rule 'a mucked hand never appears in any later event')", () => {
   it.prop(
-    "only HandStarted and HoleCardsDealt carry cards that are not public, and a mucked hand never reappears later in that hand unless its owner shows it",
+    "only HandStarted and HoleCardsDealt carry cards that are not public, and a hand that was mucked or won without showing never reappears later unless its owner shows it",
     { source: session },
     ({ source }) => {
       const { events } = playSession(source);
@@ -139,6 +163,7 @@ describe("secrecy beyond the existing property (rule 'a mucked hand never appear
             !PRIVATE_CARRIERS.has(tag) &&
             ![
               "CardsShown",
+              "HandTabled",
               "HandsTabled",
               "RabbitHunted",
               "ShowdownReached",
