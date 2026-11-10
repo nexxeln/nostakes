@@ -28,6 +28,7 @@ export interface FakeSocket {
   readonly sentAfterRelease: SentFrame[];
   readonly released: () => boolean;
   readonly accept: Effect.Effect<void>;
+  readonly stall: Effect.Effect<void>;
   readonly push: (text: string) => Effect.Effect<void>;
   readonly drop: (code: number, reason: string) => Effect.Effect<void>;
 }
@@ -108,6 +109,7 @@ export const fakeTransport = Effect.sync(() => {
         const sentAfterRelease: SentFrame[] = [];
         const openedAt = yield* Clock.currentTimeMillis;
         let released = false;
+        let stalled = false;
 
         yield* Effect.addFinalizer(() =>
           Effect.sync(() => {
@@ -133,21 +135,26 @@ export const fakeTransport = Effect.sync(() => {
           released: () => released,
           sent,
           sentAfterRelease,
+          stall: Effect.sync(() => {
+            stalled = true;
+          }),
           url,
         });
 
         return {
           events: Stream.fromQueue(inbox),
           send: (text: string) =>
-            Clock.currentTimeMillis.pipe(
-              Effect.flatMap((at) =>
-                Effect.sync(() => {
-                  const log = released ? sentAfterRelease : sent;
+            stalled
+              ? Effect.never
+              : Clock.currentTimeMillis.pipe(
+                  Effect.flatMap((at) =>
+                    Effect.sync(() => {
+                      const log = released ? sentAfterRelease : sent;
 
-                  log.push({ at, message: decodeClientFrame(text) });
-                })
-              )
-            ),
+                      log.push({ at, message: decodeClientFrame(text) });
+                    })
+                  )
+                ),
         };
       }),
   });

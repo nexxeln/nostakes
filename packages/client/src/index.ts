@@ -7,6 +7,7 @@ export {
   type ClientInput,
   type DropReason,
   type Link,
+  type Owed,
   type PendingCommand,
 } from "./client-events.js";
 
@@ -28,7 +29,11 @@ export {
 } from "./codec.js";
 
 export {
+  deadlinesOwed,
+  NOTHING_OWED,
   PING_TIMER,
+  pongDeadline,
+  replyDeadline,
   roomClientMachine,
   SILENCE_TIMER,
   TIMERS,
@@ -49,6 +54,7 @@ export {
 export { SocketEvents, type SocketEvent } from "./socket-event.js";
 
 export {
+  ANSWER_LIMIT_MS,
   BACKOFF_CAP_MS,
   BACKOFF_FIRST_MS,
   CLIENT_BURST_REFILL_MS,

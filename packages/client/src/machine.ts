@@ -13,6 +13,7 @@ import type {
   ConnectionPayloads,
   DropReason,
   Link,
+  Owed,
   PendingCommand,
 } from "./client-events.js";
 import { CLOSE_VERDICTS, closeReasonIn } from "./close-reasons.js";
@@ -26,6 +27,7 @@ import { connectionEvents } from "./connection.js";
 import { BatchFits, fitBatch, fitWelcome, WelcomeFits } from "./sequence.js";
 import type { WelcomeSpan } from "./sequence.js";
 import {
+  ANSWER_LIMIT_MS,
   CONNECT_TIMEOUT_MS,
   GREETING_TIMEOUT_MS,
   PING_INTERVAL_MS,
@@ -44,6 +46,19 @@ export const TIMERS = {
 export const PING_TIMER = TIMERS.ping;
 
 export const SILENCE_TIMER = TIMERS.silence;
+
+export const replyDeadline = (id: CommandId) => `reply ${id}`;
+
+export const pongDeadline = (ping: number) => `pong ${ping}`;
+
+export const NOTHING_OWED: Owed = { pingsSent: 0, pongsHeard: 0, replies: [] };
+
+export const deadlinesOwed = ({ pingsSent, pongsHeard, replies }: Owed) => [
+  ...replies.map(replyDeadline),
+  ...Array.from({ length: Math.max(0, pingsSent - pongsHeard) }, (_, index) =>
+    pongDeadline(pongsHeard + index + 1)
+  ),
+];
 
 const ConnectionInput = Schema.Struct({ url: Schema.String });
 
@@ -126,6 +141,7 @@ export const roomClientMachine = <T extends RoomTypes>(
         Cancel: types<{ readonly id: CommandId }>(),
         Closed: types<ConnectionPayloads<T>["Closed"]>(),
         Closing: types<ConnectionPayloads<T>["Closing"]>(),
+        CommandSent: types<{ readonly id: CommandId }>(),
         Drawn: types<{ readonly delayMs: number }>(),
         Garbled: NoPayload,
         Issue: types<{
@@ -133,6 +149,7 @@ export const roomClientMachine = <T extends RoomTypes>(
           readonly command: T["Command"];
         }>(),
         Opened: types<ConnectionPayloads<T>["Opened"]>(),
+        PingSent: NoPayload,
         Pong: NoPayload,
         Presence: types<ConnectionPayloads<T>["Presence"]>(),
         Reply: types<ConnectionPayloads<T>["Reply"]>(),
@@ -148,6 +165,7 @@ export const roomClientMachine = <T extends RoomTypes>(
         PingDue: NoPayload,
         RetryDue: NoPayload,
         Silent: NoPayload,
+        Unanswered: NoPayload,
       },
     },
   }).createMachine({
@@ -156,6 +174,7 @@ export const roomClientMachine = <T extends RoomTypes>(
       drop: Option.none(),
       failures: 0,
       link: Option.none(),
+      owed: NOTHING_OWED,
       pending: [],
       presence: [],
       refusal: Option.none(),
@@ -168,9 +187,19 @@ export const roomClientMachine = <T extends RoomTypes>(
     id: "roomClient",
     initial: "Idle",
     on: {
-      Cancel: ({ context, event }) => ({
-        context: { pending: withoutCommand(context.pending, event.id) },
-      }),
+      Cancel: ({ context, event }, enq) => {
+        enq.cancel(replyDeadline(event.id));
+
+        return {
+          context: {
+            owed: {
+              ...context.owed,
+              replies: context.owed.replies.filter((id) => id !== event.id),
+            },
+            pending: withoutCommand(context.pending, event.id),
+          },
+        };
+      },
       Issue: ({ context, event }) => ({
         context: {
           pending: [
@@ -350,9 +379,15 @@ export const roomClientMachine = <T extends RoomTypes>(
                 { delay: SILENCE_LIMIT_MS, id: TIMERS.silence }
               );
             },
-            exit: (_, enq) => {
+            exit: ({ context }, enq) => {
               enq.cancel(TIMERS.ping);
               enq.cancel(TIMERS.silence);
+
+              for (const deadline of deadlinesOwed(context.owed)) {
+                enq.cancel(deadline);
+              }
+
+              return { context: { owed: NOTHING_OWED } };
             },
             on: {
               Batch: ({ context, event }, enq) => {
@@ -400,6 +435,29 @@ export const roomClientMachine = <T extends RoomTypes>(
                   },
                 });
               },
+              CommandSent: ({ context, event }, enq) => {
+                const owedNow =
+                  context.pending.some((entry) => entry.id === event.id) &&
+                  !context.owed.replies.includes(event.id);
+
+                if (!owedNow) {
+                  return {};
+                }
+
+                enq.raise(
+                  { type: "Unanswered" },
+                  { delay: ANSWER_LIMIT_MS, id: replyDeadline(event.id) }
+                );
+
+                return {
+                  context: {
+                    owed: {
+                      ...context.owed,
+                      replies: [...context.owed.replies, event.id],
+                    },
+                  },
+                };
+              },
               Issue: ({ context, event }, enq) => {
                 enq(
                   transmitFrame,
@@ -423,12 +481,32 @@ export const roomClientMachine = <T extends RoomTypes>(
                   { delay: PING_INTERVAL_MS, id: TIMERS.ping }
                 );
               },
-              Pong: (_, enq) => {
+              PingSent: ({ context }, enq) => {
+                const pingsSent = context.owed.pingsSent + 1;
+
+                enq.raise(
+                  { type: "Unanswered" },
+                  { delay: ANSWER_LIMIT_MS, id: pongDeadline(pingsSent) }
+                );
+
+                return { context: { owed: { ...context.owed, pingsSent } } };
+              },
+              Pong: ({ context }, enq) => {
                 enq.cancel(TIMERS.silence);
                 enq.raise(
                   { type: "Silent" },
                   { delay: SILENCE_LIMIT_MS, id: TIMERS.silence }
                 );
+
+                if (context.owed.pongsHeard >= context.owed.pingsSent) {
+                  return {};
+                }
+
+                const pongsHeard = context.owed.pongsHeard + 1;
+
+                enq.cancel(pongDeadline(pongsHeard));
+
+                return { context: { owed: { ...context.owed, pongsHeard } } };
               },
               Presence: ({ event }, enq) => {
                 enq.cancel(TIMERS.silence);
@@ -450,6 +528,7 @@ export const roomClientMachine = <T extends RoomTypes>(
                   return {};
                 }
 
+                enq.cancel(replyDeadline(event.id));
                 enq.emit({
                   id: event.id,
                   result: event.result,
@@ -458,11 +537,18 @@ export const roomClientMachine = <T extends RoomTypes>(
 
                 return {
                   context: {
+                    owed: {
+                      ...context.owed,
+                      replies: context.owed.replies.filter(
+                        (id) => id !== event.id
+                      ),
+                    },
                     pending: withoutCommand(context.pending, event.id),
                   },
                 };
               },
               Silent: dropped("Silent"),
+              Unanswered: dropped("Unanswered"),
               Wake: ({ context }, enq) => {
                 enq(transmitFrame, context.link, Frames.Ping.make({}));
                 enq.cancel(TIMERS.silence);

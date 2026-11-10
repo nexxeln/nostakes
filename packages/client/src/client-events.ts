@@ -40,11 +40,18 @@ export type DropReason =
   | "ConnectTimeout"
   | "GreetingTimeout"
   | "Silent"
+  | "Unanswered"
   | "Gap"
   | "Malformed"
   | "Garbled"
   | "SocketClosed"
   | CloseReason;
+
+export interface Owed {
+  readonly replies: readonly CommandId[];
+  readonly pingsSent: number;
+  readonly pongsHeard: number;
+}
 
 export interface ClientInput {
   readonly url: string;
@@ -57,6 +64,7 @@ export interface ClientContext<T extends RoomTypes> extends ClientInput {
   readonly you: Option.Option<PlayerId>;
   readonly presence: readonly PlayerId[];
   readonly pending: readonly PendingCommand<T>[];
+  readonly owed: Owed;
   readonly failures: number;
   readonly retryDelayMs: number;
   readonly link: Option.Option<Link<T>>;
@@ -91,4 +99,6 @@ export type ConnectionEvent<T extends RoomTypes> =
       } & ConnectionPayloads<T>[K];
     }[keyof ConnectionPayloads<T>]
   | { readonly type: "Pong" }
-  | { readonly type: "Garbled" };
+  | { readonly type: "Garbled" }
+  | { readonly type: "CommandSent"; readonly id: CommandId }
+  | { readonly type: "PingSent" };

@@ -8,6 +8,7 @@ import {
 import { Result } from "effect";
 
 import {
+  ANSWER_LIMIT_MS,
   CLIENT_BURST_REFILL_MS,
   CLIENT_FRAME_BURST,
   PING_INTERVAL_MS,
@@ -31,5 +32,12 @@ describe("heartbeat", () => {
 
     expect(Result.getOrThrow(ping)).toBe(PING_FRAME);
     expect(PING_INTERVAL_MS * 3).toBeLessThan(SOCKET_SILENCE_LIMIT_MS);
+  });
+
+  it("notices a line that hears the room but is not heard within one ping and its answer limit, long before the server's silence limit would close it", () => {
+    expect(ANSWER_LIMIT_MS).toBeLessThan(PING_INTERVAL_MS);
+    expect(PING_INTERVAL_MS + ANSWER_LIMIT_MS).toBeLessThan(
+      SOCKET_SILENCE_LIMIT_MS / 2
+    );
   });
 });

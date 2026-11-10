@@ -6,18 +6,21 @@ import {
   CommandIdSchema,
 } from "@nostakes/protocol";
 import type { CloseReason } from "@nostakes/protocol";
-import { Clock, Effect, Option, Random, Schema, Stream } from "effect";
+import { Clock, Effect, Option, pipe, Random, Schema, Stream } from "effect";
 import * as TestClock from "effect/testing/TestClock";
 
 import {
   Activities,
+  ANSWER_LIMIT_MS,
   CommandCancelled,
   CommandTooLarge,
   GREETING_TIMEOUT_MS,
+  PING_INTERVAL_MS,
   roomClient,
+  SILENCE_LIMIT_MS,
   WAKE_PROBE_MS,
 } from "../src/index.js";
-import type { Activity, RoomClient } from "../src/index.js";
+import type { Activity, IssuedCommand, RoomClient } from "../src/index.js";
 import {
   fakeTransport,
   seq as seqOf,
@@ -60,7 +63,25 @@ const cut = (open: FakeSocket) =>
   open.drop(1006, "").pipe(Effect.andThen(settle));
 
 const advance = (millis: number) =>
-  TestClock.adjust(`${millis} millis`).pipe(Effect.andThen(settle));
+  settle.pipe(
+    Effect.andThen(TestClock.adjust(`${millis} millis`)),
+    Effect.andThen(settle)
+  );
+
+const busyTable = (open: FakeSocket, firstSeq: number) => {
+  let next = firstSeq;
+
+  return (millis: number) =>
+    Effect.suspend(() => {
+      const seq = next;
+
+      next += 1;
+
+      return open.push(serverText.events(seq, [seq]));
+    }).pipe(Effect.andThen(settle), Effect.andThen(advance(millis)));
+};
+
+const ANSWER_LAG_MS = ANSWER_LIMIT_MS - 500;
 
 const harness = Effect.gen(function* harness() {
   const fake = yield* fakeTransport;
@@ -97,6 +118,17 @@ const harness = Effect.gen(function* harness() {
   const live = (head: number) =>
     client.start.pipe(Effect.andThen(settle), Effect.andThen(greet(0, head)));
 
+  const liveWithStalledSends = (head: number) =>
+    client.start.pipe(
+      Effect.andThen(settle),
+      Effect.andThen(socket(0)),
+      Effect.tap((open) => open.stall),
+      Effect.tap((open) => open.accept),
+      Effect.tap(settle),
+      Effect.tap((open) => open.push(serverText.welcome(head))),
+      Effect.tap(settle)
+    );
+
   const phase = client.state.pipe(Effect.map(({ connection }) => connection));
 
   return {
@@ -105,6 +137,7 @@ const harness = Effect.gen(function* harness() {
     fake,
     greet,
     live,
+    liveWithStalledSends,
     phase,
     seen,
     socket,
@@ -365,7 +398,7 @@ describe("room client against a fake socket", () => {
 
         const second = yield* greet(1, 1);
 
-        yield* advance(20_000);
+        yield* advance(ANSWER_LIMIT_MS - 1);
 
         const ids = [a.id, b.id, c.id, d.id];
 
@@ -450,50 +483,410 @@ describe("room client against a fake socket", () => {
       }).pipe(Effect.scoped, highestJitter)
   );
 
-  it.effect("pings after 15 quiet seconds and drops after 30", () =>
-    Effect.gen(function* pingTimeout() {
+  it.effect(
+    "pings after 15 quiet seconds and drops when the pong is 5 seconds late",
+    () =>
+      Effect.gen(function* pingTimeout() {
+        const { client, live, phase, socket } = yield* harness;
+
+        yield* live(1);
+
+        const open = yield* socket(0);
+
+        yield* advance(PING_INTERVAL_MS);
+        expect(tagsSent(open)).toEqual(["Hello", "Ping"]);
+
+        yield* advance(ANSWER_LIMIT_MS - 1);
+        expect(yield* phase).toBe("Live");
+
+        yield* advance(1);
+
+        const state = yield* client.state;
+
+        expect(state.connection).toBe("Waiting");
+        expect(state.drop).toEqual(Option.some("Unanswered"));
+        expect(open.released()).toBe(true);
+      }).pipe(Effect.scoped, lowestJitter)
+  );
+
+  it.effect(
+    "the silence limit still drops a connection that hears nothing for 30 seconds while its own frames cannot leave",
+    () =>
+      Effect.gen(function* silenceBackstop() {
+        const { client, liveWithStalledSends, phase } = yield* harness;
+
+        const open = yield* liveWithStalledSends(1);
+
+        yield* advance(SILENCE_LIMIT_MS - 1);
+        expect(yield* phase).toBe("Live");
+
+        yield* advance(1);
+
+        const state = yield* client.state;
+
+        expect(state.connection).toBe("Waiting");
+        expect(state.drop).toEqual(Option.some("Silent"));
+        expect(open.sent).toEqual([]);
+      }).pipe(Effect.scoped, lowestJitter)
+  );
+
+  it.effect(
+    "any frame from the server restarts the silence limit while the client's own frames cannot leave",
+    () =>
+      Effect.gen(function* framesKeepAlive() {
+        const { liveWithStalledSends, phase } = yield* harness;
+
+        const open = yield* liveWithStalledSends(1);
+
+        yield* advance(20_000);
+        yield* open.push(serverText.pong());
+        yield* advance(29_000);
+        expect(yield* phase).toBe("Live");
+
+        yield* open.push(serverText.presence([]));
+        yield* advance(29_000);
+        expect(yield* phase).toBe("Live");
+
+        yield* advance(1000);
+        expect(yield* phase).toBe("Waiting");
+      }).pipe(Effect.scoped, lowestJitter)
+  );
+
+  it.effect(
+    "a command nobody hears drops the connection at the answer limit while batches keep arriving, and its resend is answered once",
+    () =>
+      Effect.gen(function* unheardCommand() {
+        const { client, fake, greet, live, phase, socket } = yield* harness;
+
+        yield* live(1);
+
+        const first = yield* socket(0);
+        const busy = busyTable(first, 2);
+        const issued = yield* client.issue(add(1));
+
+        yield* settle;
+
+        for (let second = 1; second < 5; second += 1) {
+          yield* busy(1000);
+        }
+
+        yield* busy(ANSWER_LIMIT_MS - 4001);
+        expect(yield* phase).toBe("Live");
+
+        yield* advance(1);
+
+        const dropped = yield* client.state;
+
+        expect(dropped.connection).toBe("Waiting");
+        expect(dropped.drop).toEqual(Option.some("Unanswered"));
+        expect(dropped.pending).toEqual([issued.id]);
+        expect(dropped.seq).toEqual(Option.some(seqOf(6)));
+        expect(first.released()).toBe(true);
+
+        yield* advance(125);
+
+        const second = yield* greet(1, 6);
+
+        yield* second.push(serverText.reply(issued.id, 7));
+
+        const reply = yield* issued.reply;
+
+        yield* advance(ANSWER_LIMIT_MS * 2);
+
+        expect(reply._tag).toBe("Accepted");
+        expect(commandIds(first)).toEqual([issued.id]);
+        expect(commandIds(second)).toEqual([issued.id]);
+        expect(fake.sockets.length).toBe(2);
+        expect(yield* phase).toBe("Live");
+        expect((yield* client.state).pending).toEqual([]);
+      }).pipe(Effect.scoped, lowestJitter)
+  );
+
+  it.effect(
+    "a command resent after an unanswered drop gets a fresh deadline on the new connection",
+    () =>
+      Effect.gen(function* resendDeadline() {
+        const { client, greet, live, phase, socket } = yield* harness;
+
+        yield* live(1);
+
+        const issued = yield* client.issue(add(1));
+
+        yield* settle;
+        yield* advance(ANSWER_LIMIT_MS);
+        expect((yield* client.state).drop).toEqual(Option.some("Unanswered"));
+
+        yield* advance(125);
+
+        const second = yield* greet(1, 1);
+
+        expect(commandIds(second)).toEqual([issued.id]);
+
+        yield* advance(ANSWER_LIMIT_MS - 1);
+        expect(yield* phase).toBe("Live");
+
+        yield* advance(1);
+
+        const dropped = yield* client.state;
+
+        expect(dropped.connection).toBe("Waiting");
+        expect(dropped.drop).toEqual(Option.some("Unanswered"));
+        expect(second.released()).toBe(true);
+
+        yield* advance(125);
+
+        const third = yield* greet(2, 1);
+
+        yield* third.push(serverText.reply(issued.id, 2));
+
+        expect((yield* issued.reply)._tag).toBe("Accepted");
+        expect(commandIds(yield* socket(0))).toEqual([issued.id]);
+        expect(commandIds(third)).toEqual([issued.id]);
+      }).pipe(Effect.scoped, lowestJitter)
+  );
+
+  it.effect(
+    "a ping that gets no pong drops the connection at the answer limit even while batches keep arriving",
+    () =>
+      Effect.gen(function* unansweredPing() {
+        const { client, live, phase, socket } = yield* harness;
+
+        yield* live(1);
+
+        const open = yield* socket(0);
+        const busy = busyTable(open, 2);
+
+        for (let second = 0; second < PING_INTERVAL_MS / 1000; second += 1) {
+          yield* busy(1000);
+        }
+
+        expect(tagsSent(open)).toEqual(["Hello", "Ping"]);
+        expect(open.sent.at(-1)?.at).toBe(PING_INTERVAL_MS);
+
+        for (let second = 1; second < 5; second += 1) {
+          yield* busy(1000);
+        }
+
+        yield* busy(ANSWER_LIMIT_MS - 4001);
+        expect(yield* phase).toBe("Live");
+
+        yield* advance(1);
+
+        const state = yield* client.state;
+
+        expect(state.connection).toBe("Waiting");
+        expect(state.drop).toEqual(Option.some("Unanswered"));
+      }).pipe(Effect.scoped, lowestJitter)
+  );
+
+  it.effect("a pong never stands in for the reply to a command", () =>
+    Effect.gen(function* pongIsNotAReply() {
       const { client, live, phase, socket } = yield* harness;
 
       yield* live(1);
 
       const open = yield* socket(0);
+      const issued = yield* client.issue(add(1));
 
-      yield* advance(15_000);
-      expect(tagsSent(open)).toEqual(["Hello", "Ping"]);
-
-      yield* advance(14_999);
+      yield* settle;
+      yield* advance(1000);
+      yield* client.wake;
+      yield* settle;
+      yield* advance(500);
+      yield* open.push(serverText.pong());
+      yield* advance(ANSWER_LIMIT_MS - 1501);
+      expect(tagsSent(open)).toEqual(["Hello", "Command", "Ping"]);
       expect(yield* phase).toBe("Live");
 
       yield* advance(1);
 
       const state = yield* client.state;
 
-      expect(state.connection).toBe("Waiting");
-      expect(state.drop).toEqual(Option.some("Silent"));
-      expect(open.released()).toBe(true);
+      expect(state.drop).toEqual(Option.some("Unanswered"));
+      expect(state.pending).toEqual([issued.id]);
     }).pipe(Effect.scoped, lowestJitter)
   );
 
-  it.effect("any frame from the server keeps a quiet connection alive", () =>
-    Effect.gen(function* framesKeepAlive() {
-      const { live, phase, socket } = yield* harness;
+  it.effect(
+    "a reply to the first of two commands does not hide the second, which drops the connection at its own deadline",
+    () =>
+      Effect.gen(function* secondCommandDeadline() {
+        const { client, live, phase, socket } = yield* harness;
 
-      yield* live(1);
+        yield* live(1);
 
-      const open = yield* socket(0);
+        const open = yield* socket(0);
+        const first = yield* client.issue(add(1));
 
-      yield* advance(20_000);
-      yield* open.push(serverText.pong());
-      yield* advance(29_000);
-      expect(yield* phase).toBe("Live");
+        yield* settle;
+        yield* advance(2000);
 
-      yield* open.push(serverText.presence([]));
-      yield* advance(29_000);
-      expect(yield* phase).toBe("Live");
+        const second = yield* client.issue(add(2));
 
-      yield* advance(1000);
-      expect(yield* phase).toBe("Waiting");
-    }).pipe(Effect.scoped, lowestJitter)
+        yield* settle;
+        yield* advance(1000);
+        yield* open.push(serverText.reply(first.id, 2));
+        yield* settle;
+
+        expect((yield* first.reply)._tag).toBe("Accepted");
+
+        yield* advance(ANSWER_LIMIT_MS - 1001);
+        expect(yield* phase).toBe("Live");
+
+        yield* advance(1);
+
+        const state = yield* client.state;
+
+        expect(state.connection).toBe("Waiting");
+        expect(state.drop).toEqual(Option.some("Unanswered"));
+        expect(state.pending).toEqual([second.id]);
+      }).pipe(Effect.scoped, lowestJitter)
+  );
+
+  it.effect(
+    "a healthy line that answers inside the limit is never dropped, even when the throttle holds a burst of commands for longer than the limit",
+    () =>
+      Effect.gen(function* healthyLine() {
+        const { client, fake, live, phase, socket } = yield* harness;
+
+        yield* live(1);
+
+        const open = yield* socket(0);
+
+        const burst = yield* Effect.all(
+          Array.from({ length: 120 }, (_, index) => client.issue(add(index)))
+        );
+
+        const later: IssuedCommand<ToyTypes>[] = [];
+        let answered = 1;
+
+        for (let step = 0; step < 600; step += 1) {
+          if (step % 20 === 0 && step < 500) {
+            later.push(yield* client.issue(add(step)));
+          }
+
+          yield* advance(100);
+
+          const now = yield* Clock.currentTimeMillis;
+          let frame = open.sent[answered];
+
+          while (frame !== undefined && frame.at + ANSWER_LAG_MS <= now) {
+            const { message } = frame;
+
+            if (Sent.Command(message)) {
+              yield* open.push(serverText.reply(message.id, answered));
+            }
+
+            if (Sent.Ping(message)) {
+              yield* open.push(serverText.pong());
+            }
+
+            answered += 1;
+            frame = open.sent[answered];
+          }
+
+          yield* settle;
+          expect(yield* phase).toBe("Live");
+        }
+
+        const replies = yield* pipe(
+          [...burst, ...later],
+          Effect.forEach(({ reply }) => reply)
+        );
+
+        expect(
+          open.sent.filter(({ message }) => Sent.Ping(message)).length
+        ).toBe(4);
+        expect(
+          open.sent.find(
+            ({ message }) =>
+              Sent.Command(message) && message.id === burst.at(-1)?.id
+          )?.at
+        ).toBeGreaterThan(ANSWER_LIMIT_MS);
+        expect(
+          replies.every((reply) => toyCodec.reply.guards.Accepted(reply))
+        ).toBe(true);
+        expect(fake.sockets.length).toBe(1);
+      }).pipe(Effect.scoped, lowestJitter)
+  );
+
+  it.effect(
+    "commands issued while waiting or connecting get their deadline from the resend, not from when they were issued",
+    () =>
+      Effect.gen(function* deadlineFromResend() {
+        const { client, greet, live, phase, socket } = yield* harness;
+
+        yield* live(1);
+        yield* cut(yield* socket(0));
+
+        const whileWaiting = yield* client.issue(add(1));
+
+        expect(yield* phase).toBe("Waiting");
+
+        yield* advance(125);
+        expect(yield* phase).toBe("Connecting");
+
+        const whileConnecting = yield* client.issue(add(2));
+
+        yield* advance(ANSWER_LIMIT_MS - 1000);
+        expect(yield* phase).toBe("Connecting");
+
+        const second = yield* greet(1, 1);
+        const resentAt = yield* Clock.currentTimeMillis;
+
+        expect(commandIds(second)).toEqual([
+          whileWaiting.id,
+          whileConnecting.id,
+        ]);
+        expect(second.sent.at(-1)?.at).toBe(resentAt);
+
+        yield* advance(ANSWER_LIMIT_MS - 1);
+        expect(yield* phase).toBe("Live");
+
+        yield* advance(1);
+
+        const state = yield* client.state;
+
+        expect(state.drop).toEqual(Option.some("Unanswered"));
+        expect(state.pending).toEqual([whileWaiting.id, whileConnecting.id]);
+      }).pipe(Effect.scoped, lowestJitter)
+  );
+
+  it.effect(
+    "wake during live with an unanswered command keeps its 2 second probe, which pongs satisfy, and the command's own deadline",
+    () =>
+      Effect.gen(function* wakeWithCommandOwed() {
+        const { client, live, phase, socket } = yield* harness;
+
+        yield* live(1);
+
+        const open = yield* socket(0);
+
+        yield* client.issue(add(1));
+        yield* settle;
+        yield* advance(1000);
+        yield* client.wake;
+        yield* settle;
+        yield* advance(500);
+        yield* open.push(serverText.pong());
+        yield* advance(1000);
+        yield* client.wake;
+        yield* settle;
+
+        const lastWakeAt = yield* Clock.currentTimeMillis;
+
+        yield* advance(500);
+        yield* open.push(serverText.pong());
+        yield* advance(ANSWER_LIMIT_MS - 3001);
+        expect(tagsSent(open)).toEqual(["Hello", "Command", "Ping", "Ping"]);
+        expect(yield* Clock.currentTimeMillis).toBeGreaterThan(
+          lastWakeAt + WAKE_PROBE_MS
+        );
+        expect(yield* phase).toBe("Live");
+
+        yield* advance(1);
+        expect((yield* client.state).drop).toEqual(Option.some("Unanswered"));
+      }).pipe(Effect.scoped, lowestJitter)
   );
 
   it.effect("greeting gives up after 5 seconds without a welcome", () =>

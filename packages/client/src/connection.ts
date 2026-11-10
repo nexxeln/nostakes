@@ -1,4 +1,5 @@
 import { Effect, Queue, Result, Stream } from "effect";
+import type { Cause } from "effect";
 
 import type { ConnectionEvent, Link } from "./client-events.js";
 import type { ClientCodec, ClientMessage, RoomTypes } from "./codec.js";
@@ -6,6 +7,8 @@ import { SocketEvents } from "./socket-event.js";
 import { CLIENT_BURST_REFILL_MS, CLIENT_FRAME_BURST } from "./timing.js";
 import type { Socket } from "./transport.js";
 import { Transport } from "./transport.js";
+
+type Inlet<T extends RoomTypes> = Queue.Queue<ConnectionEvent<T>, Cause.Done>;
 
 const fromServer = <T extends RoomTypes>(
   codec: ClientCodec<T>,
@@ -46,9 +49,22 @@ const fromServer = <T extends RoomTypes>(
       }),
   });
 
+const answerOwedFor = <T extends RoomTypes>(
+  codec: ClientCodec<T>,
+  message: ClientMessage<T>
+): readonly ConnectionEvent<T>[] =>
+  codec.client.match(message, {
+    Command: ({ id }): readonly ConnectionEvent<T>[] => [
+      { id, type: "CommandSent" },
+    ],
+    Hello: (): readonly ConnectionEvent<T>[] => [],
+    Ping: (): readonly ConnectionEvent<T>[] => [{ type: "PingSent" }],
+  });
+
 const writeFrames = <T extends RoomTypes>(
   codec: ClientCodec<T>,
   outlet: Queue.Queue<ClientMessage<T>>,
+  inlet: Inlet<T>,
   socket: Socket
 ) =>
   Stream.fromQueue(outlet).pipe(
@@ -62,7 +78,10 @@ const writeFrames = <T extends RoomTypes>(
     Stream.runForEach((message) =>
       Result.match(codec.encodeClientFrame(message), {
         onFailure: Effect.die,
-        onSuccess: socket.send,
+        onSuccess: (text) =>
+          Effect.sync(() => {
+            Queue.offerAllUnsafe(inlet, answerOwedFor(codec, message));
+          }).pipe(Effect.andThen(socket.send(text))),
       })
     )
   );
@@ -77,8 +96,10 @@ export const connectionEvents = <T extends RoomTypes>(
       const socket = yield* transport.open(url);
       const outlet = yield* Queue.unbounded<ClientMessage<T>>();
 
-      yield* Effect.addFinalizer(() => Queue.shutdown(outlet));
-      yield* writeFrames(codec, outlet, socket).pipe(Effect.forkScoped);
+      const inlet: Inlet<T> = yield* Queue.unbounded<
+        ConnectionEvent<T>,
+        Cause.Done
+      >();
 
       const link: Link<T> = {
         transmit: (message) => {
@@ -86,7 +107,8 @@ export const connectionEvents = <T extends RoomTypes>(
         },
       };
 
-      return socket.events.pipe(
+      yield* Effect.addFinalizer(() => Queue.shutdown(outlet));
+      yield* socket.events.pipe(
         Stream.map(
           SocketEvents.$match({
             Closed: ({ code, reason }): ConnectionEvent<T> => ({
@@ -97,7 +119,17 @@ export const connectionEvents = <T extends RoomTypes>(
             Opened: (): ConnectionEvent<T> => ({ link, type: "Opened" }),
             Received: ({ text }) => fromServer(codec, text),
           })
-        )
+        ),
+        Stream.runForEach((event) =>
+          Effect.sync(() => {
+            Queue.offerUnsafe(inlet, event);
+          })
+        ),
+        Effect.ensuring(Effect.sync(() => Queue.endUnsafe(inlet))),
+        Effect.forkScoped
       );
+      yield* writeFrames(codec, outlet, inlet, socket).pipe(Effect.forkScoped);
+
+      return Stream.fromQueue(inlet);
     })
   );

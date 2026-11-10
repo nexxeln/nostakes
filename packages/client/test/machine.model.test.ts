@@ -11,7 +11,16 @@ import {
 import type { EventFromLogic, SnapshotFrom } from "xstate";
 import { getShortestPaths } from "xstate/graph";
 
-import { roomClientMachine, TIMERS } from "../src/index.js";
+import {
+  ANSWER_LIMIT_MS,
+  deadlinesOwed,
+  NOTHING_OWED,
+  pongDeadline,
+  replyDeadline,
+  roomClientMachine,
+  TIMERS,
+  WAKE_PROBE_MS,
+} from "../src/index.js";
 import type { ClientMessage, Link } from "../src/index.js";
 import { seq, YOU } from "./fixtures/fake-transport.js";
 import {
@@ -54,6 +63,8 @@ const StepSchema = Schema.Literals([
   "BatchFuture",
   "Reply",
   "StrangerReply",
+  "CommandSent",
+  "PingSent",
   "Pong",
   "Presence",
   "ClosingRetry",
@@ -74,13 +85,13 @@ const histories = Arbitrary.array(
   { maxLength: 80, minLength: 20 }
 );
 
-const TimerIdSchema = Schema.Literals(Object.values(TIMERS));
+const NamedTimerSchema = Schema.Literals(Object.values(TIMERS));
 
-type TimerId = typeof TimerIdSchema.Type;
+type NamedTimer = typeof NamedTimerSchema.Type;
 
 const PersistedSchema = Schema.Struct({
   children: Schema.Record(Schema.String, Schema.Unknown),
-  timers: Schema.Array(Schema.Struct({ id: TimerIdSchema })),
+  timers: Schema.Array(Schema.Struct({ delay: Schema.Int, id: Schema.String })),
 });
 
 const persisted = (snapshot: Snapshot) =>
@@ -91,13 +102,23 @@ const persisted = (snapshot: Snapshot) =>
 const timerIds = (snapshot: Snapshot) =>
   persisted(snapshot).timers.map(({ id }) => id);
 
-const firing: Record<TimerId, MachineEvent> = {
+const timerDelays = (snapshot: Snapshot) =>
+  Object.fromEntries(
+    persisted(snapshot).timers.map(({ delay, id }) => [id, delay])
+  );
+
+const NAMED_FIRING: Record<NamedTimer, MachineEvent> = {
   connect: { type: "ConnectTimedOut" },
   greeting: { type: "GreetingTimedOut" },
   ping: { type: "PingDue" },
   retry: { type: "RetryDue" },
   silence: { type: "Silent" },
 };
+
+const isNamedTimer = Schema.is(NamedTimerSchema);
+
+const firing = (id: string): MachineEvent =>
+  isNamedTimer(id) ? NAMED_FIRING[id] : { type: "Unanswered" };
 
 const added = (total: number) =>
   ToyEventSchema.cases.Added.make({ amount: 1, total });
@@ -144,6 +165,15 @@ const STEP_EVENTS: Record<Step, (step: StepInput) => readonly MachineEvent[]> =
     ],
     ClosingRefuse: () => [{ reason: "NotAuthorized", type: "Closing" }],
     ClosingRetry: () => [{ reason: "HelloTimeout", type: "Closing" }],
+    CommandSent: ({ pick, snapshot }) => [
+      {
+        id:
+          snapshot.context.pending[
+            pick % Math.max(1, snapshot.context.pending.length)
+          ]?.id ?? stranger,
+        type: "CommandSent",
+      },
+    ],
     Drawn: ({ pick }) => [{ delayMs: 125 * (pick + 1), type: "Drawn" }],
     Garbled: () => [{ type: "Garbled" }],
     Issue: ({ issued, pick }) => [
@@ -154,6 +184,7 @@ const STEP_EVENTS: Record<Step, (step: StepInput) => readonly MachineEvent[]> =
       },
     ],
     Opened: () => [{ link, type: "Opened" }],
+    PingSent: () => [{ type: "PingSent" }],
     Pong: () => [{ type: "Pong" }],
     Presence: () => [{ connected: [YOU], type: "Presence" }],
     Reply: ({ snapshot }) => [replyTo(snapshot, firstSent(snapshot))],
@@ -164,7 +195,7 @@ const STEP_EVENTS: Record<Step, (step: StepInput) => readonly MachineEvent[]> =
       const ids = timerIds(snapshot);
       const id = ids[pick % Math.max(1, ids.length)];
 
-      return id === undefined ? [] : [firing[id]];
+      return id === undefined ? [] : [firing(id)];
     },
     Wake: () => [{ type: "Wake" }],
     Welcome: ({ snapshot }) => {
@@ -215,17 +246,36 @@ const isLive = (snapshot: Snapshot) => snapshot.matches({ Online: "Live" });
 const isGreeting = (snapshot: Snapshot) =>
   snapshot.matches({ Online: "Greeting" });
 
-const ARMED: readonly (readonly [object | string, readonly TimerId[]])[] = [
+const ARMED: readonly (readonly [object | string, readonly NamedTimer[]])[] = [
   [{ Online: "Connecting" }, ["connect"]],
   [{ Online: "Greeting" }, ["greeting"]],
   [{ Online: "Live" }, ["ping", "silence"]],
   [{ Waiting: "Sleeping" }, ["retry"]],
 ];
 
-const armedFor = (snapshot: Snapshot) =>
-  ARMED.flatMap(([value, ids]) =>
+const armedFor = (snapshot: Snapshot): readonly string[] => [
+  ...ARMED.flatMap(([value, ids]) =>
     JSON.stringify(snapshot.value) === JSON.stringify(value) ? ids : []
-  );
+  ),
+  ...deadlinesOwed(snapshot.context.owed),
+];
+
+const checkOwed = (snapshot: Snapshot) => {
+  const { owed, pending } = snapshot.context;
+  const pendingIds = new Set(pending.map(({ id }) => id));
+
+  if (!isLive(snapshot)) {
+    expect(owed).toEqual(NOTHING_OWED);
+  }
+
+  expect(new Set(owed.replies).size).toBe(owed.replies.length);
+  expect(owed.replies.every((id) => pendingIds.has(id))).toBe(true);
+  expect(owed.pongsHeard).toBeLessThanOrEqual(owed.pingsSent);
+
+  for (const id of deadlinesOwed(owed)) {
+    expect(timerDelays(snapshot)[id]).toBe(ANSWER_LIMIT_MS);
+  }
+};
 
 const checkCommands = (
   before: Snapshot,
@@ -275,6 +325,7 @@ const checkStep = (
 
   const stored = persisted(after);
 
+  checkOwed(after);
   expect(timerIds(after).toSorted()).toEqual(armedFor(after).toSorted());
   expect(
     Object.keys(stored.children).some((id) =>
@@ -294,10 +345,58 @@ const checkStep = (
   }
 };
 
+interface Answers {
+  readonly replies: Set<CommandId>;
+  pings: number;
+  pongs: number;
+}
+
+const noAnswersOwed = (): Answers => ({
+  pings: 0,
+  pongs: 0,
+  replies: new Set(),
+});
+
+const owe = (answers: Answers, before: Snapshot, event: MachineEvent) => {
+  if (!isLive(before)) {
+    return;
+  }
+
+  const pending = before.context.pending.map(({ id }) => id);
+
+  if (event.type === "CommandSent" && pending.includes(event.id)) {
+    answers.replies.add(event.id);
+  }
+
+  if (event.type === "Reply" || event.type === "Cancel") {
+    answers.replies.delete(event.id);
+  }
+
+  answers.pings += event.type === "PingSent" ? 1 : 0;
+  answers.pongs +=
+    event.type === "Pong" && answers.pongs < answers.pings ? 1 : 0;
+};
+
+const expectDeadlinesFor = (answers: Answers, after: Snapshot) => {
+  const expected = [
+    ...[...answers.replies].map(replyDeadline),
+    ...Array.from({ length: answers.pings - answers.pongs }, (_, index) =>
+      pongDeadline(answers.pongs + index + 1)
+    ),
+  ];
+
+  const deadlines = timerIds(after).filter(
+    (id) => !Object.values<string>(TIMERS).includes(id)
+  );
+
+  expect(deadlines.toSorted()).toEqual(expected.toSorted());
+};
+
 const replay = (history: readonly (readonly [Step, number])[]) => {
   let [snapshot] = initialTransition(machine, input);
   let issued = 0;
   let sentOnThisSocket = new Map<CommandId, number>();
+  let answers = noAnswersOwed();
 
   for (const [step, pick] of history) {
     for (const event of STEP_EVENTS[step]({ issued, pick, snapshot })) {
@@ -307,7 +406,14 @@ const replay = (history: readonly (readonly [Step, number])[]) => {
         sentOnThisSocket = new Map();
       }
 
+      owe(answers, snapshot, event);
+
+      if (!isLive(next)) {
+        answers = noAnswersOwed();
+      }
+
       checkStep(snapshot, next, effects, sentOnThisSocket);
+      expectDeadlinesFor(answers, next);
       snapshot = next;
     }
 
@@ -324,6 +430,8 @@ const abstractState = (snapshot: Snapshot) =>
     snapshot.context.pending.length > 0,
     snapshot.context.pending.some(({ sent }) => sent),
     Option.isSome(snapshot.context.applied),
+    snapshot.context.owed.replies.length > 0,
+    snapshot.context.owed.pingsSent > snapshot.context.owed.pongsHeard,
   ]);
 
 const everyEvent = (snapshot: Snapshot) =>
@@ -356,6 +464,91 @@ const reaches = (from: Snapshot, target: (candidate: Snapshot) => boolean) =>
     serializeState: abstractState,
     toState: target,
   }).some((path) => target(path.state) && path.steps.length > 0);
+
+const run = (events: readonly MachineEvent[]) => {
+  let [snapshot] = initialTransition(machine, input);
+
+  for (const event of events) {
+    [snapshot] = transition(machine, snapshot, event);
+  }
+
+  return snapshot;
+};
+
+const commandC0 = CommandIdSchema.make("c-0");
+
+const LIVE_WITH_C0_OWED: readonly MachineEvent[] = [
+  { type: "Start" },
+  { link, type: "Opened" },
+  ...STEP_EVENTS.Welcome({ issued: 0, pick: 0, snapshot: run([]) }),
+  {
+    command: ToyCommandSchema.cases.Add.make({ amount: 1 }),
+    id: commandC0,
+    type: "Issue",
+  },
+  { id: commandC0, type: "CommandSent" },
+];
+
+describe("answer deadlines", () => {
+  it("wake during live with an unanswered command arms one probe, one deadline per frame owed an answer, and nothing else", () => {
+    const woken = run([
+      ...LIVE_WITH_C0_OWED,
+      { type: "Wake" },
+      { type: "PingSent" },
+    ]);
+
+    expect(timerDelays(woken)).toEqual({
+      [pongDeadline(1)]: ANSWER_LIMIT_MS,
+      [replyDeadline(commandC0)]: ANSWER_LIMIT_MS,
+      ping: 15_000,
+      silence: WAKE_PROBE_MS,
+    });
+
+    const twice = run([
+      ...LIVE_WITH_C0_OWED,
+      { type: "Wake" },
+      { type: "PingSent" },
+      { type: "Wake" },
+      { type: "PingSent" },
+    ]);
+
+    expect(timerIds(twice).toSorted()).toEqual(
+      [
+        "ping",
+        pongDeadline(1),
+        pongDeadline(2),
+        replyDeadline(commandC0),
+        "silence",
+      ].toSorted()
+    );
+
+    const answered = run([
+      ...LIVE_WITH_C0_OWED,
+      { type: "Wake" },
+      { type: "PingSent" },
+      { type: "Wake" },
+      { type: "PingSent" },
+      { type: "Pong" },
+      replyTo(run(LIVE_WITH_C0_OWED), commandC0),
+    ]);
+
+    expect(timerDelays(answered)).toEqual({
+      [pongDeadline(2)]: ANSWER_LIMIT_MS,
+      ping: 15_000,
+      silence: 30_000,
+    });
+  });
+
+  it("a deadline that passes drops the connection as unanswered, and the next connection owes nothing until it sends", () => {
+    const dropped = run([...LIVE_WITH_C0_OWED, { type: "Unanswered" }]);
+
+    expect(dropped.matches("Waiting")).toBe(true);
+    expect(dropped.context.drop).toEqual(Option.some("Unanswered"));
+    expect(dropped.context.owed).toEqual(NOTHING_OWED);
+    expect(dropped.context.pending.map(({ id }) => id)).toEqual([commandC0]);
+    expect(timerIds(dropped)).toEqual([]);
+  });
+});
 
 describe("connection lifecycle model", () => {
   it("reaches every state, and only Refused and Stopped are final", () => {
