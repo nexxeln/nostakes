@@ -1,18 +1,11 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
-import {
-  Config,
-  Console,
-  Effect,
-  Exit,
-  FileSystem,
-  Option,
-  Redacted,
-  Schema,
-} from "effect";
+import { Console, Effect, Exit, FileSystem, Schema } from "effect";
+import type { Redacted } from "effect";
 import * as ChildProcess from "effect/process/ChildProcess";
 
 import { siteOrigin, SiteStageSchema } from "../src/site.ts";
 import type { SiteStage } from "../src/site.ts";
+import { credential as deployCredential } from "./cloudflare-credentials.ts";
 
 const SERVER = new URL("..", import.meta.url).pathname;
 
@@ -63,41 +56,13 @@ const request = Effect.gen(function* readRequest() {
   };
 }).pipe(Effect.mapError(() => refuse(USAGE)));
 
-const credentialsDirectory = Effect.gen(function* credentialsDirectory() {
-  const home = yield* Config.String("HOME").pipe(Config.withDefault("~"));
-
-  return yield* Config.String("NOSTAKES_CREDENTIALS").pipe(
-    Config.withDefault(`${home}/.config/nostakes`)
-  );
-}).pipe(Effect.orDie);
+const DEPLOY_TOKEN_NEEDS =
+  "The token needs Workers Scripts and Secrets Store edit on the account, and Workers Routes and DNS edit on the nostakes.club zone.";
 
 const credential = (name: string, file: string) =>
-  Effect.gen(function* readCredential() {
-    const fromEnvironment = yield* Config.option(Config.Redacted(name)).pipe(
-      Effect.orDie
-    );
-
-    if (Option.isSome(fromEnvironment)) {
-      return fromEnvironment.value;
-    }
-
-    const fs = yield* FileSystem.FileSystem;
-    const path = `${yield* credentialsDirectory}/${file}`;
-
-    return yield* fs.readFileString(path).pipe(
-      Effect.mapError(() =>
-        refuse(
-          `Set ${name}, or write it to ${path}. The token needs Workers Scripts and Secrets Store edit on the account, and Workers Routes and DNS edit on the nostakes.club zone.`
-        )
-      ),
-      Effect.map((text) => text.trim()),
-      Effect.filterOrFail(
-        (text) => text.length > 0,
-        () => refuse(`${path} is empty.`)
-      ),
-      Effect.map((text) => Redacted.make(text))
-    );
-  });
+  deployCredential(name, file, DEPLOY_TOKEN_NEEDS).pipe(
+    Effect.mapError((missing) => refuse(missing.reason))
+  );
 
 const webBuild = Effect.gen(function* readWebBuild() {
   const fs = yield* FileSystem.FileSystem;
