@@ -7,6 +7,8 @@ nostakes bans comments in code (see `AGENTS.md`). Credit for borrowed code lives
 | `package.json`, `pnpm-workspace.yaml`, `turbo.json`, `tsconfig.base.json`, `tsconfig.json`, `oxlint.config.ts`, `oxfmt.config.ts`, `lefthook.yml`, `.claude/settings.json`, `scripts/hooks/`, `scripts/vcs-command-policy.*`, `scripts/oxlint-*.ts`, `.github/workflows/ci.yml`, `tools/fence/test/`, the config files in `packages/*/`, the shape of `AGENTS.md` | [joelhooks/rat-stack](https://github.com/joelhooks/rat-stack) at `54bf778`, MIT, Copyright (c) 2026 Joel Hooks | Copied, then cut to what does not depend on rat-stack's package layout. The changes are listed below. |
 | `scripts/oxlint-plugin-effect-tests.ts` | [t3code](https://github.com/pingdotgg/t3code) `oxlint-plugin-t3code/rules/no-manual-effect-runtime-in-tests.ts`, through rat-stack | Unchanged from rat-stack's adaptation. |
 | `tools/oxlint/anti-slop/` | [dmmulroy/anti-slop](https://github.com/dmmulroy/anti-slop) at `c44ef22`, MIT, through rat-stack | Vendored and owned. See `LICENSE` and `UPSTREAM.md` there. Its files keep upstream's comments. |
+| `packages/avatar/src/draw.ts`, `packages/avatar/src/palette.ts` | Original, drawn for nostakes | No third-party art. DiceBear's Big Smile, Toon Head, and Lorelei were compared on a design sheet and none of their parts is in the repo. |
+| `packages/avatar/src/random.ts` | The Park-Miller minimal standard generator (Park and Miller, "Random number generators: good ones are hard to find", CACM 1988, with the 48271 multiplier from their 1993 note) | A textbook algorithm, written from the paper's constants. |
 
 ## Changes from rat-stack
 
