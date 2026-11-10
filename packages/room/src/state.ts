@@ -63,13 +63,18 @@ export interface Queue {
 }
 
 export type DecisionClock = Data.TaggedEnum<{
-  RunChoice: { readonly deadline: Millis };
-  Showdown: { readonly deadline: Millis; readonly seat: SeatIndex };
+  RunChoice: { readonly deadline: Millis; readonly startedAt: Millis };
+  Showdown: {
+    readonly deadline: Millis;
+    readonly seat: SeatIndex;
+    readonly startedAt: Millis;
+  };
   Turn: {
     readonly bankFrom: Option.Option<Millis>;
     readonly deadline: Millis;
     readonly player: PlayerId;
     readonly seat: SeatIndex;
+    readonly startedAt: Millis;
   };
 }>;
 

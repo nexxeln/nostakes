@@ -1,5 +1,6 @@
 import { describe, expect, it } from "@effect/vitest";
 import { Actions, Events, TableStates } from "@nostakes/engine";
+import type { Action } from "@nostakes/engine";
 import { Option, Result } from "effect";
 
 import {
@@ -30,6 +31,7 @@ import {
   run,
   runAll,
   seat,
+  server,
   settings,
   sit,
 } from "./fixtures.js";
@@ -61,6 +63,12 @@ const holeCardsOf = (index: number) => {
     : [];
 };
 
+const act = (who: typeof ann, action: Action, at: number) =>
+  RoomCommands.Act({ action, at: ms(at), by: as(who) });
+
+const expire = (deadline: number, at = deadline) =>
+  RoomCommands.ExpireClock({ at: ms(at), by: server, deadline: ms(deadline) });
+
 const openView = (view: RoomView) => {
   if (!RoomViews.$is("Open")(view)) {
     throw new Error("expected an open view");
@@ -68,6 +76,9 @@ const openView = (view: RoomView) => {
 
   return view;
 };
+
+const annTurn = (state: typeof dealt.state, at: number) =>
+  openView(viewFor(state, annSees, ms(at))).clocks.turn;
 
 describe("redaction", () => {
   it("removes the deck from the start of a hand for everyone", () => {
@@ -169,7 +180,12 @@ describe("views", () => {
       Option.some(seat(0))
     );
     expect(view.clocks.turn).toStrictEqual(
-      Option.some({ inTimeBank: false, remainingMs: 20_000, seat: seat(0) })
+      Option.some({
+        inTimeBank: false,
+        remainingMs: 20_000,
+        seat: seat(0),
+        totalMs: 30_000,
+      })
     );
     expect(
       view.hand.pipe(
@@ -224,5 +240,47 @@ describe("pots in the middle", () => {
     expect(
       view.hand.pipe(Option.map((hand) => hand.boards[0]?.length))
     ).toStrictEqual(Option.some(3));
+  });
+});
+
+describe("clock lengths", () => {
+  it("gives the turn clock its full length, and a time bank the seconds it held when it started, not the room's setting", () => {
+    expect(annTurn(dealt.state, 11_000)).toStrictEqual(
+      Option.some({
+        inTimeBank: false,
+        remainingMs: 20_000,
+        seat: seat(0),
+        totalMs: 30_000,
+      })
+    );
+
+    const banked = run(dealt.state, expire(31_000, 31_250)).state;
+
+    expect(annTurn(banked, 41_000)).toStrictEqual(
+      Option.some({
+        inTimeBank: true,
+        remainingMs: 10_000,
+        seat: seat(0),
+        totalMs: 20_000,
+      })
+    );
+
+    const onTheFlop = runAll(banked, [
+      act(ann, Actions.Call(), 33_500),
+      act(bob, Actions.Call(), 34_000),
+      act(cat, Actions.Check(), 35_000),
+      act(bob, Actions.Check(), 36_000),
+      act(cat, Actions.Check(), 37_000),
+      expire(67_000),
+    ]);
+
+    expect(annTurn(onTheFlop, 70_000)).toStrictEqual(
+      Option.some({
+        inTimeBank: true,
+        remainingMs: 14_000,
+        seat: seat(0),
+        totalMs: 17_000,
+      })
+    );
   });
 });

@@ -131,6 +131,47 @@ describe("the table snapshot", () => {
   );
 });
 
+const ringOf = ({
+  remainingMs,
+  seat,
+  totalMs,
+}: {
+  readonly remainingMs: number;
+  readonly seat: number;
+  readonly totalMs: number;
+}) => ({ remainingMs, seat, totalMs: Math.max(remainingMs, totalMs) });
+
+describe("the ring around a face", () => {
+  it.prop(
+    "runs for the full length the view gives the clock, never a length guessed from the settings",
+    { view: views },
+    ({ view }) => {
+      const { clock } = tableSnapshot(
+        roomWith(view, true, false),
+        view,
+        [],
+        []
+      );
+
+      const wanted = view.clocks.turn.pipe(
+        Option.map(ringOf),
+        Option.orElse(() => view.clocks.showdown.pipe(Option.map(ringOf)))
+      );
+
+      expect(
+        clock === null
+          ? Option.none()
+          : Option.some({
+              remainingMs: clock.remainingMs,
+              seat: clock.seat,
+              totalMs: clock.totalMs,
+            })
+      ).toEqual(wanted);
+    },
+    { arbitrary: { runs: 200 } }
+  );
+});
+
 describe("raise sizing", () => {
   it.prop(
     "picks every amount from an exact, sorted ladder between the smallest and largest raise",

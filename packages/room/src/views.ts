@@ -18,7 +18,7 @@ import {
 import type { Card, Event, Hand, PlayerId, SeatIndex } from "@nostakes/engine";
 import { balances } from "@nostakes/ledger";
 import { DeckOpeningSchema } from "@nostakes/shuffle";
-import { Data, Option, Schema } from "effect";
+import { Data, Effect, Option, Schema } from "effect";
 
 import { nextDealAt, timeBankLeft } from "./clocks.js";
 import {
@@ -171,7 +171,19 @@ export const redact = (event: RoomEvent, audience: Audience): SeenEvent => {
 
 const cards = Schema.Array(CardSchema);
 
+const absentAs = <S extends Schema.Top & Schema.WithoutConstructorDefault>(
+  schema: S,
+  fallback: S["Type"]
+) => schema.pipe(Schema.withDecodingDefaultTypeKey(Effect.succeed(fallback)));
+
 const remaining = Schema.Struct({ remainingMs: Schema.Int });
+
+const fullLength = absentAs(Schema.Int, 0);
+
+const decision = Schema.Struct({
+  remainingMs: Schema.Int,
+  totalMs: fullLength,
+});
 
 export const AwardSchema = Schema.Struct({
   amount: ChipsSchema,
@@ -249,17 +261,17 @@ export const LastHandViewSchema = Schema.Struct({
 
 export const ClocksViewSchema = Schema.Struct({
   nextDeal: Schema.Option(remaining),
-  runChoice: Schema.Option(remaining),
+  runChoice: Schema.Option(decision),
   showdown: Schema.Option(
-    Schema.Struct({ remainingMs: Schema.Int, seat: SeatIndexSchema })
+    Schema.Struct({ ...decision.fields, seat: SeatIndexSchema })
   ),
   timeBanks: Schema.Array(
     Schema.Struct({ player: PlayerIdSchema, seconds: Schema.Int })
   ),
   turn: Schema.Option(
     Schema.Struct({
+      ...decision.fields,
       inTimeBank: Schema.Boolean,
-      remainingMs: Schema.Int,
       seat: SeatIndexSchema,
     })
   ),
@@ -495,16 +507,21 @@ const remainingAt = (deadline: Millis, at: Millis) => ({
   remainingMs: Math.max(0, deadline - at),
 });
 
+const decisionAt = (startedAt: Millis, deadline: Millis, at: Millis) => ({
+  ...remainingAt(deadline, at),
+  totalMs: Math.max(0, deadline - startedAt),
+});
+
 const clocksView = (state: Open, at: Millis) => ({
   nextDeal: Option.map(nextDealAt(state), (due) => remainingAt(due, at)),
   runChoice: state.clocks.decision.pipe(
     Option.filter(DecisionClocks.$is("RunChoice")),
-    Option.map(({ deadline }) => remainingAt(deadline, at))
+    Option.map(({ deadline, startedAt }) => decisionAt(startedAt, deadline, at))
   ),
   showdown: state.clocks.decision.pipe(
     Option.filter(DecisionClocks.$is("Showdown")),
-    Option.map(({ deadline, seat }) => ({
-      ...remainingAt(deadline, at),
+    Option.map(({ deadline, seat, startedAt }) => ({
+      ...decisionAt(startedAt, deadline, at),
       seat,
     }))
   ),
@@ -518,9 +535,13 @@ const clocksView = (state: Open, at: Millis) => ({
   ),
   turn: state.clocks.decision.pipe(
     Option.filter(DecisionClocks.$is("Turn")),
-    Option.map(({ bankFrom, deadline, seat }) => ({
+    Option.map(({ bankFrom, deadline, seat, startedAt }) => ({
       inTimeBank: Option.isSome(bankFrom),
-      ...remainingAt(deadline, at),
+      ...decisionAt(
+        Option.getOrElse(bankFrom, () => startedAt),
+        deadline,
+        at
+      ),
       seat,
     }))
   ),

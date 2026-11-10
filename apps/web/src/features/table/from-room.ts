@@ -309,36 +309,30 @@ const canTakeASeat = (view: OpenView, room: InRoom) =>
   !view.requests.seats.some(({ player }) => player === room.player) &&
   Option.isNone(room.drafts.seat);
 
-const SECOND = 1000;
-
 const clockOf = (view: OpenView, room: InRoom): ActionClock | null => {
   const key = Option.match(room.shown, {
     onNone: () => 0,
     onSome: ({ receivedAt }) => receivedAt,
   });
 
-  const { settings } = view;
+  const ring = ({
+    remainingMs,
+    seat,
+    totalMs,
+  }: {
+    readonly remainingMs: number;
+    readonly seat: number;
+    readonly totalMs: number;
+  }): ActionClock => ({
+    key,
+    remainingMs,
+    seat,
+    totalMs: Math.max(remainingMs, totalMs),
+  });
 
-  const turn = view.clocks.turn.pipe(
-    Option.map(({ inTimeBank, remainingMs, seat }) => ({
-      key,
-      remainingMs,
-      seat,
-      totalMs: Math.max(
-        remainingMs,
-        (inTimeBank ? settings.timeBankSeconds : settings.turnSeconds) * SECOND
-      ),
-    }))
-  );
+  const turn = view.clocks.turn.pipe(Option.map(ring));
 
-  const showdown = view.clocks.showdown.pipe(
-    Option.map(({ remainingMs, seat }) => ({
-      key,
-      remainingMs,
-      seat,
-      totalMs: Math.max(remainingMs, settings.showdownSeconds * SECOND),
-    }))
-  );
+  const showdown = view.clocks.showdown.pipe(Option.map(ring));
 
   return Option.getOrNull(Option.orElse(turn, () => showdown));
 };

@@ -337,8 +337,11 @@ const evolveOpen = (state: Open, event: RoomEvent): RoomState =>
       ...state,
       queued: { ...state.queued, rules: Option.some(config) },
     }),
-    RunClockStarted: ({ deadline }) =>
-      withDecision(state, Option.some(DecisionClocks.RunChoice({ deadline }))),
+    RunClockStarted: ({ at, deadline }) =>
+      withDecision(
+        state,
+        Option.some(DecisionClocks.RunChoice({ deadline, startedAt: at }))
+      ),
     SealWithdrawn: () => ({ ...state, sealed: Option.none() }),
     SeatApproved: ({ player }) => withoutSeatRequest(state, player),
     SeatDenied: ({ player }) => withoutSeatRequest(state, player),
@@ -350,10 +353,10 @@ const evolveOpen = (state: Open, event: RoomEvent): RoomState =>
       },
     }),
     SettingsChanged: ({ settings }) => ({ ...state, settings }),
-    ShowdownClockStarted: ({ deadline, seat }) =>
+    ShowdownClockStarted: ({ at, deadline, seat }) =>
       withDecision(
         state,
-        Option.some(DecisionClocks.Showdown({ deadline, seat }))
+        Option.some(DecisionClocks.Showdown({ deadline, seat, startedAt: at }))
       ),
     StraddleDeclared: ({ on, player }) => ({
       ...state,
@@ -385,7 +388,7 @@ const evolveOpen = (state: Open, event: RoomEvent): RoomState =>
       },
     }),
     TimeoutStreakEnded: ({ player }) => withoutStreak(state, player),
-    TurnClockStarted: ({ deadline, player, seat }) =>
+    TurnClockStarted: ({ at, deadline, player, seat }) =>
       withDecision(
         state,
         Option.some(
@@ -394,6 +397,7 @@ const evolveOpen = (state: Open, event: RoomEvent): RoomState =>
             deadline,
             player,
             seat,
+            startedAt: at,
           })
         )
       ),
