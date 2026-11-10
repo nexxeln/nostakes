@@ -121,602 +121,613 @@ export const roomObject = <T extends RoomTypes>(
   core: HostedRoom<T>,
   options: RoomObjectOptions
 ) =>
-  Effect.gen(function* makeRoomObject() {
-    const state = yield* Cloudflare.DurableObjectState;
-    const OpenCall = OpenCallSchema(core.schemas.openRequest);
-    const JoinCall = JoinCallSchema(core.schemas.joinRequest);
+  Cloudflare.DurableObjectState.pipe(
+    Effect.map((state) => {
+      const OpenCall = OpenCallSchema(core.schemas.openRequest);
+      const JoinCall = JoinCallSchema(core.schemas.joinRequest);
 
-    // @effect-diagnostics-next-line returnEffectInGen:off -- Alchemy's DurableObject contract returns the per-instance Effect.
-    return Effect.gen(function* makeRoomInstance() {
-      const services = yield* Layer.build(options.entropy);
-      const entropy = Context.get(services, Entropy);
-      const { raw } = state;
+      return Effect.gen(function* makeRoomInstance() {
+        const services = yield* Layer.build(options.entropy);
+        const entropy = Context.get(services, Entropy);
+        const { raw } = state;
 
-      const storage = sqliteStorage(raw.storage, (pending) => {
-        raw.waitUntil(pending);
-      });
-
-      const instance = Hex.encode(yield* liveBytes(8));
-      const alarmRuns: { at: number; outcome: string }[] = [];
-      const buckets = new WeakMap<cf.WebSocket, FrameBucket>();
-
-      let host: Option.Option<RoomHost<T>> = loadRoom(core, storage).pipe(
-        Option.map((loaded) => hostRoom(core, storage, loaded))
-      );
-
-      const codecOf = (room: RoomHost<T>) => room.codec;
-
-      const sockets = () => raw.getWebSockets();
-
-      const closeSocket = (
-        socket: cf.WebSocket,
-        room: RoomHost<T>,
-        reason: CloseReason
-      ) => {
-        send(
-          socket,
-          codecOf(room).encodeFrame(
-            codecOf(room).server.cases.Closing.make({ reason })
-          )
-        );
-        Result.try(() => {
-          socket.close(CLOSE_CODES[reason], reason);
-        });
-      };
-
-      const liveSockets = (except: Option.Option<cf.WebSocket>) =>
-        sockets().flatMap((socket) =>
-          Option.contains(except, socket)
-            ? []
-            : attachmentOf(socket).pipe(
-                Option.filter(AttachmentSchema.guards.Live),
-                Option.map(({ player }) => ({ player, socket })),
-                Option.toArray
-              )
-        );
-
-      const pendingSince = (except: Option.Option<cf.WebSocket>) =>
-        sockets().flatMap((socket) =>
-          Option.contains(except, socket)
-            ? []
-            : attachmentOf(socket).pipe(
-                Option.filter(AttachmentSchema.guards.Pending),
-                Option.map(({ acceptedAt }) => ({ acceptedAt, socket })),
-                Option.toArray
-              )
-        );
-
-      const connectionsOf = (
-        room: RoomHost<T>,
-        except: Option.Option<cf.WebSocket>
-      ): Connections => ({
-        closeAll: (frame) => {
-          for (const socket of sockets()) {
-            send(socket, frame);
-            Result.try(() => {
-              socket.close(CLOSE_CODES.RoomHalted, "RoomHalted");
-            });
-          }
-        },
-        helloDeadline: Arr.head(
-          Arr.sort(
-            pendingSince(except).map(
-              ({ acceptedAt }) => acceptedAt + HELLO_TIMEOUT_MS
-            ),
-            byNumber
-          )
-        ),
-        viewers: liveSockets(except).map(({ player, socket }) => ({
-          player,
-          send: (frame) => {
-            send(socket, frame);
-          },
-        })),
-      });
-
-      const connectedPlayers = (except: Option.Option<cf.WebSocket>) =>
-        Arr.dedupe(liveSockets(except).map(({ player }) => player));
-
-      const announcePresence = (
-        room: RoomHost<T>,
-        except: Option.Option<cf.WebSocket>
-      ) => {
-        const frame = codecOf(room).encodeFrame(
-          codecOf(room).server.cases.Presence.make({
-            connected: connectedPlayers(except),
-          })
-        );
-
-        for (const { socket } of liveSockets(except)) {
-          send(socket, frame);
-        }
-      };
-
-      const logCommit = (result: CommitResult<T>, command: T["Command"]) =>
-        CommitNotes.$match(result.note, {
-          Committed: () => Effect.void,
-          Halted: ({ events, violations }) =>
-            Effect.logError("room halted on an unsound commit", {
-              command,
-              events,
-              violations,
-            }),
-          Rejected: () => Effect.void,
-          Replayed: () => Effect.void,
-          RoomHalted: () => Effect.void,
-          StorageFailed: ({ cause }) =>
-            Effect.logWarning("room commit could not be stored", {
-              cause,
-              command,
-            }),
+        const storage = sqliteStorage(raw.storage, (pending) => {
+          raw.waitUntil(pending);
         });
 
-      const armAlarm = (room: RoomHost<T>) => {
-        room.armAlarm(connectionsOf(room, Option.none()).helloDeadline);
-      };
+        const instance = Hex.encode(yield* liveBytes(8));
+        const alarmRuns: { at: number; outcome: string }[] = [];
+        const buckets = new WeakMap<cf.WebSocket, FrameBucket>();
 
-      for (const room of Option.toArray(host)) {
-        armAlarm(room);
-      }
-
-      const welcomeSocket = (
-        room: RoomHost<T>,
-        socket: cf.WebSocket,
-        hash: Uint8Array,
-        after: Option.Option<number>,
-        at: number
-      ) => {
-        if (Option.isSome(room.snapshot().halted)) {
-          closeSocket(socket, room, "RoomHalted");
-
-          return;
-        }
-
-        const player = room.authenticate(hash);
-
-        if (Option.isNone(player)) {
-          closeSocket(socket, room, "NotAuthorized");
-
-          return;
-        }
-
-        const wasConnected = connectedPlayers(Option.none()).includes(
-          player.value
+        let host: Option.Option<RoomHost<T>> = loadRoom(core, storage).pipe(
+          Option.map((loaded) => hostRoom(core, storage, loaded))
         );
 
-        attach(
-          socket,
-          AttachmentSchema.cases.Live.make({ player: player.value })
-        );
+        const codecOf = (room: RoomHost<T>) => room.codec;
 
-        const welcome = room.welcome(
-          player.value,
-          after,
-          at,
-          connectionsOf(room, Option.none())
-        );
+        const sockets = () => raw.getWebSockets();
 
-        if (Result.isFailure(welcome)) {
-          return;
-        }
-
-        send(socket, welcome.success);
-
-        if (wasConnected) {
+        const closeSocket = (
+          socket: cf.WebSocket,
+          room: RoomHost<T>,
+          reason: CloseReason
+        ) => {
           send(
             socket,
             codecOf(room).encodeFrame(
-              codecOf(room).server.cases.Presence.make({
-                connected: connectedPlayers(Option.none()),
-              })
+              codecOf(room).server.cases.Closing.make({ reason })
             )
           );
-        } else {
-          announcePresence(room, Option.none());
-        }
-
-        armAlarm(room);
-      };
-
-      const admit = (
-        socket: cf.WebSocket,
-        frame: string | ArrayBuffer,
-        at: number
-      ): Option.Option<CloseReason> => {
-        const tooLarge = oversized(frame);
-
-        if (Option.isSome(tooLarge)) {
-          return tooLarge;
-        }
-
-        const spent = spendFrame(buckets.get(socket) ?? fullBucket(at), at);
-
-        if (Option.isNone(spent)) {
-          return Option.some("TooManyFrames");
-        }
-
-        buckets.set(socket, spent.value);
-
-        return frame instanceof ArrayBuffer
-          ? Option.some("ProtocolViolation")
-          : Option.none();
-      };
-
-      const receive = (socket: cf.WebSocket, frame: string | ArrayBuffer) =>
-        Effect.gen(function* receiveFrame() {
-          const at = yield* Clock.currentTimeMillis;
-
-          if (Option.isNone(host)) {
-            Result.try(() => {
-              socket.close(1011, "NotOpen");
-            });
-
-            return;
-          }
-
-          const room = host.value;
-          const codec = codecOf(room);
-          const refusal = admit(socket, frame, at);
-
-          if (Option.isSome(refusal)) {
-            closeSocket(socket, room, refusal.value);
-
-            return;
-          }
-
-          const decoded = codec.decodeClientFrame(frame);
-
-          if (Result.isFailure(decoded)) {
-            closeSocket(socket, room, "ProtocolViolation");
-
-            return;
-          }
-
-          const attachment = attachmentOf(socket);
-
-          yield* codec.client.match(decoded.success, {
-            Command: ({ command, id }) =>
-              Effect.gen(function* runCommand() {
-                const live = attachment.pipe(
-                  Option.filter(AttachmentSchema.guards.Live)
-                );
-
-                if (Option.isNone(live)) {
-                  closeSocket(socket, room, "ProtocolViolation");
-
-                  return;
-                }
-
-                const stamped = core.stamp(live.value.player, at, command);
-
-                const result = room.commit(
-                  {
-                    at,
-                    command: stamped,
-                    grant: Option.none(),
-                    origin: Origins.Member({ id, player: live.value.player }),
-                  },
-                  connectionsOf(room, Option.none())
-                );
-
-                send(
-                  socket,
-                  codec.encodeFrame(
-                    codec.server.cases.Reply.make({ id, result: result.reply })
-                  )
-                );
-
-                yield* logCommit(result, stamped);
-              }),
-            Hello: ({ after, token }) =>
-              Effect.gen(function* greet() {
-                if (
-                  !attachment.pipe(
-                    Option.exists(AttachmentSchema.guards.Pending)
-                  )
-                ) {
-                  closeSocket(socket, room, "ProtocolViolation");
-
-                  return;
-                }
-
-                const bytes = Base64Url.decode(Redacted.value(token)).pipe(
-                  Result.getOrElse(() => new Uint8Array())
-                );
-
-                const hash = yield* sha256(bytes);
-                const now = yield* Clock.currentTimeMillis;
-
-                welcomeSocket(room, socket, hash, after, now);
-              }),
-            Ping: () =>
-              Effect.sync(() => {
-                send(
-                  socket,
-                  codec.encodeFrame(codec.server.cases.Pong.make({}))
-                );
-              }),
+          Result.try(() => {
+            socket.close(CLOSE_CODES[reason], reason);
           });
-        });
+        };
 
-      const release = (socket: cf.WebSocket) =>
-        Effect.sync(() => {
-          const wasLive = attachmentOf(socket).pipe(
-            Option.filter(AttachmentSchema.guards.Live)
+        const liveSockets = (except: Option.Option<cf.WebSocket>) =>
+          sockets().flatMap((socket) =>
+            Option.contains(except, socket)
+              ? []
+              : attachmentOf(socket).pipe(
+                  Option.filter(AttachmentSchema.guards.Live),
+                  Option.map(({ player }) => ({ player, socket })),
+                  Option.toArray
+                )
           );
 
-          Result.try(() => {
-            socket.close(1000, "closed");
+        const pendingSince = (except: Option.Option<cf.WebSocket>) =>
+          sockets().flatMap((socket) =>
+            Option.contains(except, socket)
+              ? []
+              : attachmentOf(socket).pipe(
+                  Option.filter(AttachmentSchema.guards.Pending),
+                  Option.map(({ acceptedAt }) => ({ acceptedAt, socket })),
+                  Option.toArray
+                )
+          );
+
+        const connectionsOf = (
+          room: RoomHost<T>,
+          except: Option.Option<cf.WebSocket>
+        ): Connections => ({
+          closeAll: (frame) => {
+            for (const socket of sockets()) {
+              send(socket, frame);
+              Result.try(() => {
+                socket.close(CLOSE_CODES.RoomHalted, "RoomHalted");
+              });
+            }
+          },
+          helloDeadline: Arr.head(
+            Arr.sort(
+              pendingSince(except).map(
+                ({ acceptedAt }) => acceptedAt + HELLO_TIMEOUT_MS
+              ),
+              byNumber
+            )
+          ),
+          viewers: liveSockets(except).map(({ player, socket }) => ({
+            player,
+            send: (frame) => {
+              send(socket, frame);
+            },
+          })),
+        });
+
+        const connectedPlayers = (except: Option.Option<cf.WebSocket>) =>
+          Arr.dedupe(liveSockets(except).map(({ player }) => player));
+
+        const announcePresence = (
+          room: RoomHost<T>,
+          except: Option.Option<cf.WebSocket>
+        ) => {
+          const frame = codecOf(room).encodeFrame(
+            codecOf(room).server.cases.Presence.make({
+              connected: connectedPlayers(except),
+            })
+          );
+
+          for (const { socket } of liveSockets(except)) {
+            send(socket, frame);
+          }
+        };
+
+        const logCommit = (result: CommitResult<T>, command: T["Command"]) =>
+          CommitNotes.$match(result.note, {
+            Committed: () => Effect.void,
+            Halted: ({ events, violations }) =>
+              Effect.logError("room halted on an unsound commit", {
+                command,
+                events,
+                violations,
+              }),
+            Rejected: () => Effect.void,
+            Replayed: () => Effect.void,
+            RoomHalted: () => Effect.void,
+            StorageFailed: ({ cause }) =>
+              Effect.logWarning("room commit could not be stored", {
+                cause,
+                command,
+              }),
           });
 
-          for (const room of Option.toArray(host)) {
-            const stillThere = connectedPlayers(Option.some(socket));
+        const armAlarm = (room: RoomHost<T>) => {
+          room.armAlarm(connectionsOf(room, Option.none()).helloDeadline);
+        };
 
-            if (
-              wasLive.pipe(
-                Option.exists(({ player }) => !stillThere.includes(player))
+        for (const room of Option.toArray(host)) {
+          armAlarm(room);
+        }
+
+        const welcomeSocket = (
+          room: RoomHost<T>,
+          socket: cf.WebSocket,
+          hash: Uint8Array,
+          after: Option.Option<number>,
+          at: number
+        ) => {
+          if (Option.isSome(room.snapshot().halted)) {
+            closeSocket(socket, room, "RoomHalted");
+
+            return;
+          }
+
+          const player = room.authenticate(hash);
+
+          if (Option.isNone(player)) {
+            closeSocket(socket, room, "NotAuthorized");
+
+            return;
+          }
+
+          const wasConnected = connectedPlayers(Option.none()).includes(
+            player.value
+          );
+
+          attach(
+            socket,
+            AttachmentSchema.cases.Live.make({ player: player.value })
+          );
+
+          const welcome = room.welcome(
+            player.value,
+            after,
+            at,
+            connectionsOf(room, Option.none())
+          );
+
+          if (Result.isFailure(welcome)) {
+            return;
+          }
+
+          send(socket, welcome.success);
+
+          if (wasConnected) {
+            send(
+              socket,
+              codecOf(room).encodeFrame(
+                codecOf(room).server.cases.Presence.make({
+                  connected: connectedPlayers(Option.none()),
+                })
               )
-            ) {
-              announcePresence(room, Option.some(socket));
+            );
+          } else {
+            announcePresence(room, Option.none());
+          }
+
+          armAlarm(room);
+        };
+
+        const admit = (
+          socket: cf.WebSocket,
+          frame: string | ArrayBuffer,
+          at: number
+        ): Option.Option<CloseReason> => {
+          const tooLarge = oversized(frame);
+
+          if (Option.isSome(tooLarge)) {
+            return tooLarge;
+          }
+
+          const spent = spendFrame(buckets.get(socket) ?? fullBucket(at), at);
+
+          if (Option.isNone(spent)) {
+            return Option.some("TooManyFrames");
+          }
+
+          buckets.set(socket, spent.value);
+
+          return frame instanceof ArrayBuffer
+            ? Option.some("ProtocolViolation")
+            : Option.none();
+        };
+
+        const receive = (socket: cf.WebSocket, frame: string | ArrayBuffer) =>
+          Effect.gen(function* receiveFrame() {
+            const at = yield* Clock.currentTimeMillis;
+
+            if (Option.isNone(host)) {
+              Result.try(() => {
+                socket.close(1011, "NotOpen");
+              });
+
+              return;
             }
 
-            room.armAlarm(
-              connectionsOf(room, Option.some(socket)).helloDeadline
-            );
-          }
-        });
+            const room = host.value;
+            const codec = codecOf(room);
+            const refusal = admit(socket, frame, at);
 
-      const expireHellos = (room: RoomHost<T>, at: number) => {
-        for (const { acceptedAt, socket } of pendingSince(Option.none())) {
-          if (acceptedAt + HELLO_TIMEOUT_MS <= at) {
-            closeSocket(socket, room, "HelloTimeout");
-          }
-        }
-      };
+            if (Option.isSome(refusal)) {
+              closeSocket(socket, room, refusal.value);
 
-      const runAlarm = Effect.gen(function* runAlarm() {
-        const at = yield* Clock.currentTimeMillis;
+              return;
+            }
 
-        if (Option.isNone(host)) {
-          return;
-        }
+            const decoded = codec.decodeClientFrame(frame);
 
-        const room = host.value;
+            if (Result.isFailure(decoded)) {
+              closeSocket(socket, room, "ProtocolViolation");
 
-        expireHellos(room, at);
+              return;
+            }
 
-        const due = room
-          .nextDeadline()
-          .pipe(Option.filter((deadline) => deadline.at <= at));
+            const attachment = attachmentOf(socket);
 
-        if (Option.isNone(due)) {
-          alarmRuns.push({ at, outcome: "NothingDue" });
-          armAlarm(room);
+            yield* codec.client.match(decoded.success, {
+              Command: ({ command, id }) =>
+                Effect.gen(function* runCommand() {
+                  const live = attachment.pipe(
+                    Option.filter(AttachmentSchema.guards.Live)
+                  );
 
-          return;
-        }
+                  if (Option.isNone(live)) {
+                    closeSocket(socket, room, "ProtocolViolation");
 
-        const bytes = yield* entropy.bytes(core.entropyFor(due.value.due));
-        const command = core.serverCommand(due.value.due, at, bytes);
+                    return;
+                  }
 
-        const result = room.commit(
-          {
-            at,
-            command,
-            grant: Option.none(),
-            origin: Origins.Server({ trigger: "Alarm" }),
-          },
-          connectionsOf(room, Option.none())
-        );
+                  const stamped = core.stamp(live.value.player, at, command);
 
-        alarmRuns.push({ at, outcome: result.note._tag });
-        armAlarm(room);
+                  const result = room.commit(
+                    {
+                      at,
+                      command: stamped,
+                      grant: Option.none(),
+                      origin: Origins.Member({ id, player: live.value.player }),
+                    },
+                    connectionsOf(room, Option.none())
+                  );
 
-        yield* logCommit(result, command);
-      });
+                  send(
+                    socket,
+                    codec.encodeFrame(
+                      codec.server.cases.Reply.make({
+                        id,
+                        result: result.reply,
+                      })
+                    )
+                  );
 
-      const open = (input: typeof OpenCall.Encoded) =>
-        Effect.gen(function* openRoom() {
-          const decoded = yield* Schema.decodeEffect(OpenCall)(input).pipe(
-            Effect.option
-          );
+                  yield* logCommit(result, stamped);
+                }),
+              Hello: ({ after, token }) =>
+                Effect.gen(function* greet() {
+                  if (
+                    !attachment.pipe(
+                      Option.exists(AttachmentSchema.guards.Pending)
+                    )
+                  ) {
+                    closeSocket(socket, room, "ProtocolViolation");
 
-          if (Option.isNone(decoded)) {
-            return OpenOutcomeSchema.cases.Invalid.make({});
-          }
+                    return;
+                  }
 
-          const call = decoded.value;
+                  const bytes = Base64Url.decode(Redacted.value(token)).pipe(
+                    Result.getOrElse(() => new Uint8Array())
+                  );
 
-          if (Option.isSome(host)) {
-            return OpenOutcomeSchema.cases.AlreadyOpen.make({
-              code: call.code,
+                  const hash = yield* sha256(bytes);
+                  const now = yield* Clock.currentTimeMillis;
+
+                  welcomeSocket(room, socket, hash, after, now);
+                }),
+              Ping: () =>
+                Effect.sync(() => {
+                  send(
+                    socket,
+                    codec.encodeFrame(codec.server.cases.Pong.make({}))
+                  );
+                }),
             });
-          }
-
-          const minted = yield* mintCredential;
-          const at = yield* Clock.currentTimeMillis;
-
-          if (Option.isSome(host)) {
-            return OpenOutcomeSchema.cases.AlreadyOpen.make({
-              code: call.code,
-            });
-          }
-
-          openStorage(
-            core,
-            storage,
-            { at, code: call.code, host: minted.player, request: call.request },
-            { hash: minted.hash, player: minted.player }
-          );
-
-          host = loadRoom(core, storage).pipe(
-            Option.map((loaded) => hostRoom(core, storage, loaded))
-          );
-
-          for (const room of Option.toArray(host)) {
-            armAlarm(room);
-          }
-
-          return OpenOutcomeSchema.cases.Opened.make({
-            player: minted.player,
-            token: minted.token,
           });
-        }).pipe(
-          Effect.flatMap(Schema.encodeEffect(OpenOutcomeSchema)),
-          Effect.orDie
-        );
 
-      const join = (input: typeof JoinCall.Encoded) =>
-        Effect.gen(function* joinRoom() {
-          const decoded = yield* Schema.decodeEffect(JoinCall)(input).pipe(
-            Effect.option
-          );
+        const release = (socket: cf.WebSocket) =>
+          Effect.sync(() => {
+            const wasLive = attachmentOf(socket).pipe(
+              Option.filter(AttachmentSchema.guards.Live)
+            );
 
-          if (Option.isNone(decoded)) {
-            return JoinOutcomeSchema.cases.Invalid.make({});
+            Result.try(() => {
+              socket.close(1000, "closed");
+            });
+
+            for (const room of Option.toArray(host)) {
+              const stillThere = connectedPlayers(Option.some(socket));
+
+              if (
+                wasLive.pipe(
+                  Option.exists(({ player }) => !stillThere.includes(player))
+                )
+              ) {
+                announcePresence(room, Option.some(socket));
+              }
+
+              room.armAlarm(
+                connectionsOf(room, Option.some(socket)).helloDeadline
+              );
+            }
+          });
+
+        const expireHellos = (room: RoomHost<T>, at: number) => {
+          for (const { acceptedAt, socket } of pendingSince(Option.none())) {
+            if (acceptedAt + HELLO_TIMEOUT_MS <= at) {
+              closeSocket(socket, room, "HelloTimeout");
+            }
           }
+        };
 
-          const call = decoded.value;
-          const minted = yield* mintCredential;
+        const runAlarm = Effect.gen(function* runAlarm() {
           const at = yield* Clock.currentTimeMillis;
 
           if (Option.isNone(host)) {
-            return JoinOutcomeSchema.cases.NotFound.make({});
+            return;
           }
 
           const room = host.value;
-          const members = room.snapshot().credentials.length;
 
-          if (Option.isSome(room.snapshot().halted)) {
-            return JoinOutcomeSchema.cases.RoomHalted.make({});
+          expireHellos(room, at);
+
+          const due = room
+            .nextDeadline()
+            .pipe(Option.filter((deadline) => deadline.at <= at));
+
+          if (Option.isNone(due)) {
+            alarmRuns.push({ at, outcome: "NothingDue" });
+            armAlarm(room);
+
+            return;
           }
 
-          if (members >= MAX_MEMBERS) {
-            return JoinOutcomeSchema.cases.RoomFull.make({ members });
-          }
-
-          const command = core.stamp(
-            minted.player,
-            at,
-            core.joinCommand(call.request)
-          );
+          const bytes = yield* entropy.bytes(core.entropyFor(due.value.due));
+          const command = core.serverCommand(due.value.due, at, bytes);
 
           const result = room.commit(
             {
               at,
               command,
-              grant: Option.some({ hash: minted.hash, player: minted.player }),
-              origin: Origins.Server({ trigger: "Join" }),
+              grant: Option.none(),
+              origin: Origins.Server({ trigger: "Alarm" }),
             },
             connectionsOf(room, Option.none())
           );
 
+          alarmRuns.push({ at, outcome: result.note._tag });
+          armAlarm(room);
+
           yield* logCommit(result, command);
+        });
 
-          return codecOf(room).reply.match(result.reply, {
-            Accepted: () =>
-              JoinOutcomeSchema.cases.Joined.make({
-                player: minted.player,
-                token: minted.token,
-              }),
-            Rejected: () => JoinOutcomeSchema.cases.Refused.make({}),
-            Unavailable: () => JoinOutcomeSchema.cases.RoomHalted.make({}),
-          });
-        }).pipe(
-          Effect.flatMap(Schema.encodeEffect(JoinOutcomeSchema)),
-          Effect.orDie
-        );
+        const open = (input: typeof OpenCall.Encoded) =>
+          Effect.gen(function* openRoom() {
+            const decoded = yield* Schema.decodeEffect(OpenCall)(input).pipe(
+              Effect.option
+            );
 
-      const inspect = () =>
-        Effect.sync((): Inspection => {
-          const snapshot = host.pipe(Option.map((room) => room.snapshot()));
-          const rows = Option.isSome(host) ? storage.eventsAfter(0) : [];
+            if (Option.isNone(decoded)) {
+              return OpenOutcomeSchema.cases.Invalid.make({});
+            }
 
-          return {
-            alarmRuns,
-            code: snapshot.pipe(Option.map(({ code }) => code)),
-            events: rows.map(({ event }) => event),
-            halted: snapshot.pipe(Option.flatMap(({ halted }) => halted)),
-            headSeq: snapshot.pipe(
-              Option.match({
-                onNone: () => 0,
-                onSome: ({ headSeq }) => headSeq,
-              })
-            ),
-            instance,
-            members: snapshot.pipe(
-              Option.match({
-                onNone: () => 0,
-                onSome: ({ credentials }) => credentials.length,
-              })
-            ),
-            memoryMatchesLog: snapshot.pipe(
-              Option.exists(({ state: inMemory }) =>
-                Equal.equals(
-                  inMemory,
-                  core.replay(
-                    rows.map((row) =>
-                      Option.getOrThrow(host).codec.decodeEvent(row.event)
+            const call = decoded.value;
+
+            if (Option.isSome(host)) {
+              return OpenOutcomeSchema.cases.AlreadyOpen.make({
+                code: call.code,
+              });
+            }
+
+            const minted = yield* mintCredential;
+            const at = yield* Clock.currentTimeMillis;
+
+            if (Option.isSome(host)) {
+              return OpenOutcomeSchema.cases.AlreadyOpen.make({
+                code: call.code,
+              });
+            }
+
+            openStorage(
+              core,
+              storage,
+              {
+                at,
+                code: call.code,
+                host: minted.player,
+                request: call.request,
+              },
+              { hash: minted.hash, player: minted.player }
+            );
+
+            host = loadRoom(core, storage).pipe(
+              Option.map((loaded) => hostRoom(core, storage, loaded))
+            );
+
+            for (const room of Option.toArray(host)) {
+              armAlarm(room);
+            }
+
+            return OpenOutcomeSchema.cases.Opened.make({
+              player: minted.player,
+              token: minted.token,
+            });
+          }).pipe(
+            Effect.flatMap(Schema.encodeEffect(OpenOutcomeSchema)),
+            Effect.orDie
+          );
+
+        const join = (input: typeof JoinCall.Encoded) =>
+          Effect.gen(function* joinRoom() {
+            const decoded = yield* Schema.decodeEffect(JoinCall)(input).pipe(
+              Effect.option
+            );
+
+            if (Option.isNone(decoded)) {
+              return JoinOutcomeSchema.cases.Invalid.make({});
+            }
+
+            const call = decoded.value;
+            const minted = yield* mintCredential;
+            const at = yield* Clock.currentTimeMillis;
+
+            if (Option.isNone(host)) {
+              return JoinOutcomeSchema.cases.NotFound.make({});
+            }
+
+            const room = host.value;
+            const members = room.snapshot().credentials.length;
+
+            if (Option.isSome(room.snapshot().halted)) {
+              return JoinOutcomeSchema.cases.RoomHalted.make({});
+            }
+
+            if (members >= MAX_MEMBERS) {
+              return JoinOutcomeSchema.cases.RoomFull.make({ members });
+            }
+
+            const command = core.stamp(
+              minted.player,
+              at,
+              core.joinCommand(call.request)
+            );
+
+            const result = room.commit(
+              {
+                at,
+                command,
+                grant: Option.some({
+                  hash: minted.hash,
+                  player: minted.player,
+                }),
+                origin: Origins.Server({ trigger: "Join" }),
+              },
+              connectionsOf(room, Option.none())
+            );
+
+            yield* logCommit(result, command);
+
+            return codecOf(room).reply.match(result.reply, {
+              Accepted: () =>
+                JoinOutcomeSchema.cases.Joined.make({
+                  player: minted.player,
+                  token: minted.token,
+                }),
+              Rejected: () => JoinOutcomeSchema.cases.Refused.make({}),
+              Unavailable: () => JoinOutcomeSchema.cases.RoomHalted.make({}),
+            });
+          }).pipe(
+            Effect.flatMap(Schema.encodeEffect(JoinOutcomeSchema)),
+            Effect.orDie
+          );
+
+        const inspect = () =>
+          Effect.sync((): Inspection => {
+            const snapshot = host.pipe(Option.map((room) => room.snapshot()));
+            const rows = Option.isSome(host) ? storage.eventsAfter(0) : [];
+
+            return {
+              alarmRuns,
+              code: snapshot.pipe(Option.map(({ code }) => code)),
+              events: rows.map(({ event }) => event),
+              halted: snapshot.pipe(Option.flatMap(({ halted }) => halted)),
+              headSeq: snapshot.pipe(
+                Option.match({
+                  onNone: () => 0,
+                  onSome: ({ headSeq }) => headSeq,
+                })
+              ),
+              instance,
+              members: snapshot.pipe(
+                Option.match({
+                  onNone: () => 0,
+                  onSome: ({ credentials }) => credentials.length,
+                })
+              ),
+              memoryMatchesLog: snapshot.pipe(
+                Option.exists(({ state: inMemory }) =>
+                  Equal.equals(
+                    inMemory,
+                    core.replay(
+                      rows.map((row) =>
+                        Option.getOrThrow(host).codec.decodeEvent(row.event)
+                      )
                     )
                   )
                 )
-              )
-            ),
-            replies: Option.isSome(host) ? storage.countReplies() : 0,
-            seqs: rows.map(({ seq }) => seq),
-            sockets: {
-              live: liveSockets(Option.none()).length,
-              pending: pendingSince(Option.none()).length,
-            },
-          };
-        }).pipe(
-          Effect.flatMap(Schema.encodeEffect(InspectionSchema)),
-          Effect.orDie
-        );
+              ),
+              replies: Option.isSome(host) ? storage.countReplies() : 0,
+              seqs: rows.map(({ seq }) => seq),
+              sockets: {
+                live: liveSockets(Option.none()).length,
+                pending: pendingSince(Option.none()).length,
+              },
+            };
+          }).pipe(
+            Effect.flatMap(Schema.encodeEffect(InspectionSchema)),
+            Effect.orDie
+          );
 
-      const upgrade = Effect.gen(function* upgradeSocket() {
-        const request = yield* HttpServerRequest.HttpServerRequest;
+        const upgrade = Effect.gen(function* upgradeSocket() {
+          const request = yield* HttpServerRequest.HttpServerRequest;
 
-        if (Option.isNone(host)) {
-          return yield* refuse("NotFound");
-        }
+          if (Option.isNone(host)) {
+            return yield* refuse("NotFound");
+          }
 
-        if (Option.isSome(host.value.snapshot().halted)) {
-          return yield* refuse("RoomHalted");
-        }
+          if (Option.isSome(host.value.snapshot().halted)) {
+            return yield* refuse("RoomHalted");
+          }
 
-        if (request.headers.upgrade?.toLowerCase() !== "websocket") {
-          return yield* refuse("UpgradeRequired");
-        }
+          if (request.headers.upgrade?.toLowerCase() !== "websocket") {
+            return yield* refuse("UpgradeRequired");
+          }
 
-        if (sockets().length >= MAX_SOCKETS) {
-          return yield* refuse("TooManySockets");
-        }
+          if (sockets().length >= MAX_SOCKETS) {
+            return yield* refuse("TooManySockets");
+          }
 
-        const at = yield* Clock.currentTimeMillis;
-        const [response, socket] = yield* Cloudflare.upgrade();
+          const at = yield* Clock.currentTimeMillis;
+          const [response, socket] = yield* Cloudflare.upgrade();
 
-        attach(
-          socket.ws,
-          AttachmentSchema.cases.Pending.make({ acceptedAt: at })
-        );
-        armAlarm(host.value);
+          attach(
+            socket.ws,
+            AttachmentSchema.cases.Pending.make({ acceptedAt: at })
+          );
+          armAlarm(host.value);
 
-        return response;
+          return response;
+        });
+
+        return {
+          alarm: () => runAlarm,
+          fetch: upgrade,
+          inspect,
+          join,
+          open,
+          webSocketClose: (socket: Cloudflare.WebSocket) => release(socket.ws),
+          webSocketError: (socket: Cloudflare.WebSocket) => release(socket.ws),
+          webSocketMessage: (
+            socket: Cloudflare.WebSocket,
+            message: string | ArrayBuffer
+          ) => receive(socket.ws, message),
+        };
       });
-
-      return {
-        alarm: () => runAlarm,
-        fetch: upgrade,
-        inspect,
-        join,
-        open,
-        webSocketClose: (socket: Cloudflare.WebSocket) => release(socket.ws),
-        webSocketError: (socket: Cloudflare.WebSocket) => release(socket.ws),
-        webSocketMessage: (
-          socket: Cloudflare.WebSocket,
-          message: string | ArrayBuffer
-        ) => receive(socket.ws, message),
-      };
-    });
-  });
+    })
+  );
