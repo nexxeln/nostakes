@@ -70,6 +70,7 @@ export const DEFAULT_SETTINGS: RoomSettings = Schema.decodeSync(
     bigBlind: 2,
     maxRuns: 1,
     rabbitHunt: false,
+    runCount: "Vote",
     showdown: "Interactive",
     smallBlind: 1,
     straddle: { button: false, underTheGun: 0 },

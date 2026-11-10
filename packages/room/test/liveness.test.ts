@@ -346,6 +346,7 @@ describe("liveness", () => {
         table: {
           ...base.table,
           maxRuns: RunCountSchema.make(2 + random.below(2)),
+          runCount: "Vote",
         },
         turnSeconds: 0,
       };

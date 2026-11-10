@@ -46,6 +46,7 @@ export const SessionSchema = Schema.Struct({
   anteKind: between(0, 2),
   bigBlindExtra: between(0, 12),
   button: Schema.Boolean,
+  fixedRuns: Schema.Boolean,
   hiddenAllIns: Schema.Boolean,
   intents: Schema.Array(IntentSchema).check(
     Schema.isMinLength(300),
@@ -83,6 +84,7 @@ export const configOf = (source: Session): TableConfig =>
     bigBlind: chipCount(source.smallBlind + source.bigBlindExtra),
     maxRuns: runCount(source.maxRuns),
     rabbitHunt: source.rabbitHunt,
+    runCount: source.fixedRuns ? "Fixed" : "Vote",
     showdown: source.interactive ? "Interactive" : "Automatic",
     smallBlind: chipCount(source.smallBlind),
     straddle: { button: source.button, underTheGun: source.underTheGun },
@@ -97,6 +99,7 @@ const randomConfig = (random: SeededRandom): TableConfig => {
     bigBlind: chipCount(small + random.below(12)),
     maxRuns: runCount(1 + random.below(4)),
     rabbitHunt: random.chance(1, 2),
+    runCount: random.chance(1, 4) ? "Fixed" : "Vote",
     showdown: random.chance(1, 2) ? "Interactive" : "Automatic",
     smallBlind: chipCount(small),
     straddle: { button: random.chance(1, 2), underTheGun: random.below(4) },

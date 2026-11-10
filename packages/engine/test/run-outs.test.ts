@@ -353,3 +353,33 @@ describe("hands kept hidden when all in", () => {
     ]);
   });
 });
+
+describe("a fixed number of runs", () => {
+  it("runs the board the most times allowed with no vote when the room fixes the count", () => {
+    const fixed = play(
+      startHand(
+        occupiedTable(
+          { ...runsConfig(2), runCount: "Fixed" },
+          { 0: 100, 1: 100 }
+        ),
+        deckStartingWith(`Ah Kh Ad Kd ${ACES_WIN} ${KINGS_WIN}`)
+      ).state,
+      [
+        [0, raisesTo(100)],
+        [1, calls],
+      ]
+    );
+
+    expect(fixed.events.some(Events.$is("RunsChosen"))).toBe(false);
+    expect(fixed.events.find(Events.$is("RunsAgreed"))).toStrictEqual(
+      Events.RunsAgreed({ runs: runCount(2) })
+    );
+    expect(fixed.events.filter(Events.$is("PotAwarded"))).toStrictEqual([
+      awarded(1, 100, 1),
+      awarded(2, 100, 0),
+    ]);
+    expect(rejection(fixed.state, choose(0, 1))).toStrictEqual(
+      new NoRunChoiceOwed({ seat: seat(0) })
+    );
+  });
+});

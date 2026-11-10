@@ -106,6 +106,7 @@ export const tableConfigFrom = (random: SeededRandom): TableConfig => {
     bigBlind: chips(small * (1 + random.below(2))),
     maxRuns: RunCountSchema.make(1 + random.below(3)),
     rabbitHunt: random.chance(1, 2),
+    runCount: random.chance(1, 4) ? "Fixed" : "Vote",
     showdown: random.chance(1, 2) ? "Interactive" : "Automatic",
     smallBlind: chips(small),
     straddle: { button: random.chance(1, 2), underTheGun: random.below(3) },

@@ -146,6 +146,7 @@ const tableConfig = (random: Random): TableConfig => {
     bigBlind: chips(bigBlind),
     maxRuns: RunCountSchema.make(1 + random.below(3)),
     rabbitHunt: random.chance(50),
+    runCount: random.chance(25) ? "Fixed" : "Vote",
     showdown: random.chance(60) ? "Interactive" : "Automatic",
     smallBlind: chips(smallBlind),
     straddle: {
@@ -204,6 +205,7 @@ const newCounts = () => ({
   dealsWaitingForHost: 0,
   denials: 0,
   earlyExpiriesRefused: 0,
+  fixedRunOuts: 0,
   hostChanges: 0,
   hostDeals: 0,
   midHandLeaves: 0,
@@ -624,7 +626,20 @@ const COUNTED: readonly (readonly [
 const seatCount = (state: RoomState) =>
   RoomStates.$is("Open")(state) ? state.settings.seats : 0;
 
+const fixedRuns = (state: RoomState) =>
+  RoomStates.$is("Open")(state) && state.table.config.runCount === "Fixed";
+
 const observe = (run: Run, before: RoomState, event: RoomEvent) => {
+  run.counts.fixedRunOuts +=
+    fixedRuns(before) &&
+    tableEventIs(
+      event,
+      (tableEvent) =>
+        Events.$is("RunsAgreed")(tableEvent) && tableEvent.runs > 1
+    )
+      ? 1
+      : 0;
+
   run.counts.tablesShrunk +=
     RoomEvents.$is("SettingsChanged")(event) &&
     event.settings.seats < seatCount(before)

@@ -235,6 +235,10 @@ export const agreedRuns = (state: InHand): Option.Option<RunCount> => {
     return Option.none();
   }
 
+  if (state.config.runCount === "Fixed") {
+    return Option.some(phase.maxRuns);
+  }
+
   const fewest = fewestChosen(phase);
 
   return phase.pending.length === 0 || fewest === ONE_RUN

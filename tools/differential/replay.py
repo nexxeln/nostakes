@@ -66,6 +66,11 @@ CONFIGURATIONS = {
         "without waiting for the rest. PokerKit waits for every selector, so the replay "
         "answers the seats the engine never asked with one run."
     ),
+    "fixed-runs": (
+        "With runCount Fixed the engine runs the board the most times the cap allows "
+        "without asking anyone. The replay answers PokerKit's run question with that "
+        "count, after checking it against the cap from the remaining deck."
+    ),
     "one-run-no-choice": (
         "With maxRuns 1 the brief skips the run choice. PokerKit cash games still ask, "
         "so the replay answers no preference, which is one run."
@@ -183,6 +188,8 @@ class Hand:
         engine_events = list(self.events())
         started_showdowns = [e for e in engine_events if e["_tag"] == "ShowdownStarted"]
         self.interactive = started_showdowns[0]["order"] if started_showdowns else None
+        agreed_runs = [e["runs"] for e in engine_events if e["_tag"] == "RunsAgreed"]
+        self.fixed_runs = agreed_runs[0] if self.config.get("runCount") == "Fixed" and agreed_runs else None
         self.hidden_run_out = self.config.get("allInHands") == "Hidden" and any(
             e["_tag"] == "RunsAgreed" for e in engine_events
         )
@@ -486,6 +493,11 @@ class Hand:
                     state.select_runout_count(None)
                     self.configured.add("one-run-no-choice")
                     continue
+                if self.fixed_runs is not None:
+                    self.check_fixed_cap()
+                    state.select_runout_count(self.fixed_runs)
+                    self.configured.add("fixed-runs")
+                    continue
                 if self.agreed is None:
                     return
                 state.select_runout_count(self.agreed)
@@ -690,6 +702,16 @@ class Hand:
         elif tag == "RaiseTo" and state.can_complete_bet_or_raise_to(command["action"]["to"]):
             if raise_excluded != "pokerkit-short-all-in-reopens":
                 self.differ("rejected-legal", f"engine refused a raise to {command['action']['to']} by seat {actor_seat}, pokerkit allows it")
+
+    def check_fixed_cap(self):
+        self.replay_checked.add("run-cap")
+        missing = 5 - sum(len(cards) for cards in self.board_deals)
+        remaining = 52 - self.pointer
+        cap = 1
+        while cap < self.max_runs and (cap + 1) * missing <= remaining:
+            cap += 1
+        if self.fixed_runs != cap:
+            self.differ("run-cap", f"engine ran a fixed {self.fixed_runs} runs, replay cap {cap}")
 
     def choose(self, step):
         state = self.state

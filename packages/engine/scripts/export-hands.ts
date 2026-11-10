@@ -94,6 +94,7 @@ const randomConfig = (random: Random): TableConfig => {
     bigBlind: chipCount(bigBlind),
     maxRuns: runCount(1 + random.below(4)),
     rabbitHunt: random.chance(50),
+    runCount: random.chance(25) ? "Fixed" : "Vote",
     showdown: random.chance(50) ? "Interactive" : "Automatic",
     smallBlind: chipCount(smallBlind),
     straddle: {

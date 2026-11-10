@@ -112,6 +112,7 @@ const randomConfig = (random: Random): TableConfig => {
     bigBlind: chipCount(bigBlind),
     maxRuns: runCount(1 + random.below(4)),
     rabbitHunt: random.chance(50),
+    runCount: random.chance(25) ? "Fixed" : "Vote",
     showdown: random.chance(50) ? "Interactive" : "Automatic",
     smallBlind: chipCount(smallBlind),
     straddle: {
@@ -527,6 +528,7 @@ const newCounts = () => ({
   deepPots: 0,
   doubleStraddles: 0,
   everyPlayerAntes: 0,
+  fixedRunOuts: 0,
   hiddenRunOuts: 0,
   hiddenShowdownWinners: 0,
   illegalRejected: 0,
@@ -614,11 +616,23 @@ const countInteractive = (counts: Counts, hand: readonly Event[]) => {
     : 0;
 };
 
+const countRunOuts = (counts: Counts, hand: readonly Event[]) => {
+  const runs = hand.find(Events.$is("RunsAgreed"))?.runs ?? 0;
+
+  counts.runOuts += runs > 0 ? 1 : 0;
+  counts.fixedRunOuts +=
+    runs > 1 && !hand.some(Events.$is("RunsChosen")) ? 1 : 0;
+  counts.hiddenRunOuts +=
+    runs > 0 && !hand.some(Events.$is("HandsTabled")) ? 1 : 0;
+  counts.boardsRunTwo += runs === 2 ? 1 : 0;
+  counts.boardsRunThree += runs === 3 ? 1 : 0;
+  counts.boardsRunFour += runs === 4 ? 1 : 0;
+};
+
 const countHand = (counts: Counts, hand: readonly Event[], seen: Seen) => {
   const started = hand.find(Events.$is("HandStarted"));
   const straddles = hand.filter(Events.$is("StraddlePosted"));
   const awards = hand.filter(Events.$is("PotAwarded"));
-  const runs = hand.find(Events.$is("RunsAgreed"))?.runs ?? 0;
 
   countFixedCases(counts, hand, seen);
 
@@ -645,12 +659,7 @@ const countHand = (counts: Counts, hand: readonly Event[], seen: Seen) => {
   )
     ? 1
     : 0;
-  counts.runOuts += runs > 0 ? 1 : 0;
-  counts.hiddenRunOuts +=
-    runs > 0 && !hand.some(Events.$is("HandsTabled")) ? 1 : 0;
-  counts.boardsRunTwo += runs === 2 ? 1 : 0;
-  counts.boardsRunThree += runs === 3 ? 1 : 0;
-  counts.boardsRunFour += runs === 4 ? 1 : 0;
+  countRunOuts(counts, hand);
   counts.walks +=
     !acted &&
     !hand.some(Events.$is("StreetDealt")) &&

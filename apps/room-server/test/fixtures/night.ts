@@ -235,6 +235,7 @@ export const planNight = (
       bigBlind: big,
       maxRuns: random.between(1, 3),
       rabbitHunt: random.chance(50),
+      runCount: random.chance(25) ? "Fixed" : "Vote",
       showdown: random.chance(80) ? "Interactive" : "Automatic",
       smallBlind: small,
       straddle: { button: random.chance(50), underTheGun: random.below(3) },

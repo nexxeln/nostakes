@@ -47,6 +47,10 @@ export const ShowdownRuleSchema = Schema.Literals(["Automatic", "Interactive"]);
 
 export type ShowdownRule = typeof ShowdownRuleSchema.Type;
 
+export const RunCountRuleSchema = Schema.Literals(["Vote", "Fixed"]);
+
+export type RunCountRule = typeof RunCountRuleSchema.Type;
+
 export const AllInHandsSchema = Schema.Literals(["FaceUp", "Hidden"]);
 
 export type AllInHands = typeof AllInHandsSchema.Type;
@@ -75,6 +79,11 @@ export const TableConfigSchema = Schema.Struct({
     description:
       "After a hand ends early, a player dealt in may reveal the board cards that were never dealt.",
     title: "Rabbit hunt",
+  }),
+  runCount: setting(RunCountRuleSchema, "Vote", {
+    description:
+      "How many times the board runs when players are all in. Vote: every seat still in picks up to the most runs and the fewest picked wins. Fixed: no vote, the board always runs the most runs the deck allows.",
+    title: "Runs when all in",
   }),
   showdown: setting(ShowdownRuleSchema, "Automatic", {
     description:
