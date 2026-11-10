@@ -127,7 +127,8 @@ export const openToyHost = (
               Uint8Array.from(
                 { length: core.entropyFor(due) },
                 (_, index) => (index * 7 + at) % 256
-              )
+              ),
+              Option.none()
             ),
             grant: Option.none(),
             origin: Origins.Server({ trigger: "Alarm" }),

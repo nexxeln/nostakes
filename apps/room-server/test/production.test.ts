@@ -92,7 +92,7 @@ const isDeal = (
   dealtCards(message).length > 0;
 
 test(
-  "the production Worker opens a room at the default settings, refuses a foreign origin, and deals a live shuffle to two seats over sockets",
+  "the production Worker opens a room at the default settings with a checked shuffle, refuses a foreign origin, and, switched to a plain shuffle so no beacon is fetched, deals a live shuffle to two seats over sockets",
   Effect.gen(function* production() {
     const { url } = yield* deployed;
     const base = yield* Effect.fromNullishOr(url).pipe(Effect.orDie);
@@ -136,6 +136,17 @@ test(
         seat: SeatIndexSchema.make(4),
       })
     );
+
+    for (const chosen of Option.toArray(settings)) {
+      yield* ask(
+        ana.socket,
+        "plain",
+        Commands.ChangeSettings.make({
+          settings: { ...chosen, shuffle: "Plain" },
+        })
+      );
+    }
+
     yield* ask(ana.socket, "start", Commands.StartGame.make({}));
 
     const anaDeal = yield* awaitArrival(ana.socket, "the deal", isDeal);
@@ -151,6 +162,9 @@ test(
         ])
       )
     ).toEqual(Option.some([30, 60, 5]));
+    expect(settings.pipe(Option.map(({ shuffle }) => shuffle))).toEqual(
+      Option.some("Checked")
+    );
     expect(dealtCards(anaDeal)).toEqual([
       { cards: 2, seat: 0 },
       { cards: 0, seat: 4 },

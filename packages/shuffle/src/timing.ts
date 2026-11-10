@@ -21,7 +21,7 @@ export const SEALING_MARGIN_MS =
   SERVER_CLOCK_BUDGET_MS +
   SEAL_DELIVERY_BUDGET_MS;
 
-export const BEACON_WAIT_LIMIT_MS = 10_000;
+export const BEACON_WAIT_LIMIT_MS = 15_000;
 
 export const roundToSeal = (
   chain: DrandChain,

@@ -6,22 +6,25 @@ import * as HttpRouter from "effect/http/HttpRouter";
 import * as HttpServerRequest from "effect/http/HttpServerRequest";
 import * as HttpServerResponse from "effect/http/HttpServerResponse";
 
+import type { Beacon } from "../../src/beacon.js";
 import type { Entropy } from "../../src/entropy.js";
 import type { HostedRoom, RoomTypes } from "../../src/hosted-room.js";
 import { bytesForCode } from "../../src/room-code.js";
 import { roomObject } from "../../src/room-object.js";
 import { InspectionSchema } from "../../src/room-rpc.js";
+import { testBeacon } from "./test-beacon.js";
 import type { scriptedEntropy } from "./test-entropy.js";
 
 const AlarmAt = Schema.Int;
 
 export const roomObjectWithTestHooks = <T extends RoomTypes>(
   core: HostedRoom<T>,
-  entropyFor: (state: cf.DurableObjectState) => Layer.Layer<Entropy>
+  entropyFor: (state: cf.DurableObjectState) => Layer.Layer<Entropy>,
+  beacon: Layer.Layer<Beacon> = testBeacon
 ) =>
   Cloudflare.DurableObjectState.pipe(
     Effect.flatMap((state) =>
-      roomObject(core, { entropy: entropyFor(state.raw) }).pipe(
+      roomObject(core, { beacon, entropy: entropyFor(state.raw) }).pipe(
         Effect.map((instance) =>
           instance.pipe(
             Effect.map((room) => ({

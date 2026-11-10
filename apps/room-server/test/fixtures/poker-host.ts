@@ -99,7 +99,8 @@ export const openPokerHost = (request: OpenRequest) => {
             command: pokerRoom.serverCommand(
               due,
               at,
-              shuffleBytesFor(at, pokerRoom.entropyFor(due))
+              shuffleBytesFor(at, pokerRoom.entropyFor(due)),
+              Option.none()
             ),
             grant: Option.none(),
             origin: Origins.Server({ trigger: "Alarm" }),

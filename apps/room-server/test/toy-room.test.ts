@@ -72,7 +72,7 @@ describe("toy room", () => {
     const dealt = Result.getOrThrow(
       toyRoom.decide(
         requested,
-        toyRoom.serverCommand(deadline.due, 1002, entropy)
+        toyRoom.serverCommand(deadline.due, 1002, entropy, Option.none())
       )
     );
 
@@ -93,7 +93,7 @@ describe("toy room", () => {
       Result.isFailure(
         toyRoom.decide(
           evolveAll(requested, dealt),
-          toyRoom.serverCommand(deadline.due, 1003, entropy)
+          toyRoom.serverCommand(deadline.due, 1003, entropy, Option.none())
         )
       )
     ).toBe(true);
@@ -143,12 +143,18 @@ describe("toy room", () => {
 
     expect(
       Result.isFailure(
-        toyRoom.decide(started, toyRoom.serverCommand(due, 2299, entropy))
+        toyRoom.decide(
+          started,
+          toyRoom.serverCommand(due, 2299, entropy, Option.none())
+        )
       )
     ).toBe(true);
     expect(
       Result.isSuccess(
-        toyRoom.decide(started, toyRoom.serverCommand(due, 2300, entropy))
+        toyRoom.decide(
+          started,
+          toyRoom.serverCommand(due, 2300, entropy, Option.none())
+        )
       )
     ).toBe(true);
 
@@ -159,7 +165,10 @@ describe("toy room", () => {
     expect(toyRoom.nextDeadline(acted)).toEqual(Option.none());
     expect(
       Result.isFailure(
-        toyRoom.decide(acted, toyRoom.serverCommand(due, 2400, entropy))
+        toyRoom.decide(
+          acted,
+          toyRoom.serverCommand(due, 2400, entropy, Option.none())
+        )
       )
     ).toBe(true);
   });

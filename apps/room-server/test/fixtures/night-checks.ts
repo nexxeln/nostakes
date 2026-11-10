@@ -328,14 +328,18 @@ const pushTo = <A>(index: Map<number, A[]>, seq: number, item: A) => {
 const CARD_KEYS = new Set([
   "board",
   "boards",
+  "card",
   "cards",
   "deck",
+  "decks",
   "holeCards",
   "rabbit",
   "shown",
   "undealt",
   "yourCards",
 ]);
+
+const SPARE_DECK_KEY = "spare";
 
 const isJsonArray = (value: Schema.Json): value is Schema.JsonArray =>
   Array.isArray(value);
@@ -360,7 +364,7 @@ const cardsIn = (value: Schema.Json, holding: boolean): readonly number[] => {
 
   return isJsonObject(value)
     ? Object.entries(value).flatMap(([key, item]) =>
-        cardsIn(item, CARD_KEYS.has(key))
+        key === SPARE_DECK_KEY ? [] : cardsIn(item, CARD_KEYS.has(key))
       )
     : [];
 };

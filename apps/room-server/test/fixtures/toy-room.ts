@@ -454,6 +454,7 @@ const invariants = (state: ToyState): readonly string[] => [
 
 export const toyRoom: HostedRoom<ToyTypes> = {
   audienceOf,
+  beaconRoundFor: () => Option.none(),
   decide,
   entropyFor: (due) =>
     ToyDueSchema.match(due, {

@@ -39,6 +39,7 @@ import type {
   RoomView,
   SeenEvent,
 } from "@nostakes/room";
+import type { DrandChain } from "@nostakes/shuffle";
 import {
   DIGEST_BYTES,
   EpochMillisSchema,
@@ -71,7 +72,7 @@ export const DEFAULT_SETTINGS: RoomSettings = Schema.decodeSync(
   runChoiceSeconds: 15,
   seats: 9,
   showdownSeconds: 15,
-  shuffle: "Plain",
+  shuffle: "Checked",
   sitOutAfterTimeouts: 1,
   table: {
     allInHands: "FaceUp",
@@ -127,8 +128,12 @@ const replayLog = (events: Iterable<RoomEvent>): RoomState => {
   return replay([first, ...rest]);
 };
 
-export const pokerRoom: HostedRoom<PokerTypes> = {
+export const pokerRoomOn = (chain: DrandChain): HostedRoom<PokerTypes> => ({
   audienceOf,
+  beaconRoundFor: (due) =>
+    Deadlines.$is("SealedDealDue")(due)
+      ? Option.some(due.round)
+      : Option.none(),
   decide,
   entropyFor: (due) =>
     Deadlines.$match(due, {
@@ -149,6 +154,7 @@ export const pokerRoom: HostedRoom<PokerTypes> = {
     openRoom({
       at: millis(at),
       avatar: request.avatar,
+      chain,
       code,
       host,
       name: request.name,
@@ -165,7 +171,7 @@ export const pokerRoom: HostedRoom<PokerTypes> = {
     rejection: Schema.toCodecJson(RoomRejectionSchema),
     view: Schema.toCodecJson(RoomViewSchema),
   },
-  serverCommand: (due, at, entropy) =>
+  serverCommand: (due, at, entropy, signature) =>
     Deadlines.$match(due, {
       DealDue: () =>
         RoomCommands.Deal({
@@ -187,15 +193,18 @@ export const pokerRoom: HostedRoom<PokerTypes> = {
             entropy.slice(0, DEAL_SHUFFLE_BYTES),
             entropy.slice(DEAL_SHUFFLE_BYTES, 2 * DEAL_SHUFFLE_BYTES),
           ],
-          round: roundToSeal(QUICKNET, EpochMillisSchema.make(at)),
+          round: roundToSeal(chain, EpochMillisSchema.make(at)),
           secret: entropy.slice(2 * DEAL_SHUFFLE_BYTES, SEAL_BYTES),
         }),
-      SealedDealDue: () =>
+      SealedDealDue: ({ round }) =>
         RoomCommands.DealSealed({
           at: millis(at),
           by: Actors.Server(),
-          source: SealedDealSources.BeaconUnavailable({
-            shuffleBytes: entropy,
+          source: Option.match(signature, {
+            onNone: () =>
+              SealedDealSources.BeaconUnavailable({ shuffleBytes: entropy }),
+            onSome: (signed) =>
+              SealedDealSources.FromBeacon({ round, signature: signed }),
           }),
         }),
       ShowdownClock: (clock) =>
@@ -217,4 +226,6 @@ export const pokerRoom: HostedRoom<PokerTypes> = {
     by: Actors.Member({ player }),
   }),
   viewFor: (state, audience, at) => viewFor(state, audience, millis(at)),
-};
+});
+
+export const pokerRoom = pokerRoomOn(QUICKNET);

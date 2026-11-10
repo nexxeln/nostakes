@@ -31,6 +31,7 @@ import * as Hex from "effect/encoding/Hex";
 import * as HttpServerRequest from "effect/http/HttpServerRequest";
 import * as HttpServerResponse from "effect/http/HttpServerResponse";
 
+import { Beacon } from "./beacon.js";
 import { Entropy, liveEntropy } from "./entropy.js";
 import { fullBucket, oversized, spendFrame } from "./frame-limits.js";
 import type { FrameBucket } from "./frame-limits.js";
@@ -59,6 +60,7 @@ import { workerdGlobals } from "./workerd.js";
 
 export interface RoomObjectOptions {
   readonly entropy: Layer.Layer<Entropy>;
+  readonly beacon: Layer.Layer<Beacon>;
 }
 
 const refusalStatus: Record<HttpRefusal["refusal"], number> = {
@@ -123,8 +125,12 @@ export const roomObject = <T extends RoomTypes>(
       const JoinCall = JoinCallSchema(core.schemas.joinRequest);
 
       return Effect.gen(function* makeRoomInstance() {
-        const services = yield* Layer.build(options.entropy);
+        const services = yield* Layer.build(
+          Layer.merge(options.entropy, options.beacon)
+        );
+
         const entropy = Context.get(services, Entropy);
+        const beacon = Context.get(services, Beacon);
         const { raw } = state;
 
         const runtime = yield* workerdGlobals(
@@ -548,11 +554,27 @@ export const roomObject = <T extends RoomTypes>(
           }
 
           const bytes = yield* entropy.bytes(core.entropyFor(due.value.due));
-          const command = core.serverCommand(due.value.due, at, bytes);
+
+          const signature = yield* Option.match(
+            core.beaconRoundFor(due.value.due),
+            {
+              onNone: () => Effect.succeed(Option.none<Uint8Array>()),
+              onSome: (round) => beacon.signature(round),
+            }
+          );
+
+          const sentAt = yield* Clock.currentTimeMillis;
+
+          const command = core.serverCommand(
+            due.value.due,
+            sentAt,
+            bytes,
+            signature
+          );
 
           const result = room.commit(
             {
-              at,
+              at: sentAt,
               command,
               grant: Option.none(),
               origin: Origins.Server({ trigger: "Alarm" }),

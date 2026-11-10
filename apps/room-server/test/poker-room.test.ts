@@ -5,6 +5,7 @@ import {
   ChipAmountSchema,
   Deadlines,
   RoomCommands,
+  SealedDealSources,
   RoomSettingsSchema,
   RoomViews,
   SeenEvents,
@@ -72,13 +73,19 @@ const seatTwoPlayers = (room: ReturnType<typeof openPokerHost>) => {
   );
 };
 
+const plainRoom = {
+  avatar: "fox",
+  name: "Ana",
+  settings: { ...DEFAULT_SETTINGS, shuffle: "Plain" as const },
+};
+
 describe("the poker room adapter", () => {
   it("opens a room without settings at the agreed defaults, as members see them on the wire", () => {
     const room = openPokerHost({ avatar: "fox", name: "Ana" });
     const view = openView(welcomeView(room, ana, 1000));
 
     expect(encodeSettings(view.settings)).toBe(
-      '{"approval":{"chips":false,"seats":false},"betweenHandsSeconds":5,"buyIn":{"max":400,"min":40},"dealing":"Automatic","runChoiceSeconds":15,"seats":9,"showdownSeconds":15,"shuffle":"Plain","sitOutAfterTimeouts":1,"table":{"allInHands":"FaceUp","ante":{"_tag":"NoAnte"},"bigBlind":2,"maxRuns":1,"rabbitHunt":false,"rabbitHunters":"DealtIn","runCount":"Vote","showdown":"Interactive","showdownOrder":"RiverAggressor","smallBlind":1,"straddle":{"button":false,"underTheGun":0},"straddleSize":"Doubling","voluntaryShows":"EitherCard"},"timeBankRefill":{"_tag":"NoRefill"},"timeBankSeconds":60,"topUps":"UpToMax","turnSeconds":30}'
+      '{"approval":{"chips":false,"seats":false},"betweenHandsSeconds":5,"buyIn":{"max":400,"min":40},"dealing":"Automatic","runChoiceSeconds":15,"seats":9,"showdownSeconds":15,"shuffle":"Checked","sitOutAfterTimeouts":1,"table":{"allInHands":"FaceUp","ante":{"_tag":"NoAnte"},"bigBlind":2,"maxRuns":1,"rabbitHunt":false,"rabbitHunters":"DealtIn","runCount":"Vote","showdown":"Interactive","showdownOrder":"RiverAggressor","smallBlind":1,"straddle":{"button":false,"underTheGun":0},"straddleSize":"Doubling","voluntaryShows":"EitherCard"},"timeBankRefill":{"_tag":"NoRefill"},"timeBankSeconds":60,"topUps":"UpToMax","turnSeconds":30}'
     );
   });
 
@@ -124,6 +131,33 @@ describe("the poker room adapter", () => {
     ).toBe(true);
   });
 
+  it("deals a sealed hand from the beacon round it fetched, and from fresh bytes when it fetched none", () => {
+    const due = Deadlines.SealedDealDue({ at: millis(9000), round: 42 });
+    const signature = Uint8Array.of(1, 2, 3);
+    const bytes = Uint8Array.of(4, 5, 6);
+
+    expect(pokerRoom.beaconRoundFor(due)).toEqual(Option.some(42));
+    expect(
+      pokerRoom.beaconRoundFor(Deadlines.DealDue({ at: millis(9000) }))
+    ).toEqual(Option.none());
+    expect(
+      pokerRoom.serverCommand(due, 9001, bytes, Option.some(signature))
+    ).toEqual(
+      RoomCommands.DealSealed({
+        at: millis(9001),
+        by: Actors.Server(),
+        source: SealedDealSources.FromBeacon({ round: 42, signature }),
+      })
+    );
+    expect(pokerRoom.serverCommand(due, 9001, bytes, Option.none())).toEqual(
+      RoomCommands.DealSealed({
+        at: millis(9001),
+        by: Actors.Server(),
+        source: SealedDealSources.BeaconUnavailable({ shuffleBytes: bytes }),
+      })
+    );
+  });
+
   it("asks for 128 shuffle bytes for a due deal and none for a clock, and expires a clock at the deadline it names", () => {
     expect(DEAL_SHUFFLE_BYTES).toBe(128);
     expect(pokerRoom.entropyFor(Deadlines.DealDue({ at: millis(5) }))).toBe(
@@ -144,7 +178,8 @@ describe("the poker room adapter", () => {
         seat: SeatIndexSchema.make(2),
       }),
       31_007,
-      new Uint8Array()
+      new Uint8Array(),
+      Option.none()
     );
 
     expect(expiry).toEqual(
@@ -157,7 +192,7 @@ describe("the poker room adapter", () => {
   });
 
   it("deals a running game from the bytes it is given when the deal is due", () => {
-    const room = openPokerHost({ avatar: "fox", name: "Ana" });
+    const room = openPokerHost(plainRoom);
 
     seatTwoPlayers(room);
     room.send(ana, "start", 1004, Commands.StartGame.make({}));
@@ -178,7 +213,7 @@ describe("the poker room adapter", () => {
   });
 
   it("serves the settlement to a member of a closed room and refuses every command after it", () => {
-    const room = openPokerHost({ avatar: "fox", name: "Ana" });
+    const room = openPokerHost(plainRoom);
 
     seatTwoPlayers(room);
     room.send(ana, "start", 1004, Commands.StartGame.make({}));
@@ -257,7 +292,7 @@ const holeCardsIn = (room: ReturnType<typeof openPokerHost>, frame: string) => {
 
 describe("catching up after a reconnect", () => {
   it("redacts each missed event for the audience the player had when it happened, not the seat the player holds now", () => {
-    const room = openPokerHost({ avatar: "fox", name: "Ana" });
+    const room = openPokerHost(plainRoom);
 
     room.join(cy, 1000, "Cy");
     seatTwoPlayers(room);
