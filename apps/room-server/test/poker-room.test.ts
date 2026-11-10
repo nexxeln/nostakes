@@ -1,5 +1,5 @@
 import { describe, expect, it } from "@effect/vitest";
-import { Actions, SeatIndexSchema } from "@nostakes/engine";
+import { Actions, Events, SeatIndexSchema } from "@nostakes/engine";
 import {
   Actors,
   ChipAmountSchema,
@@ -7,6 +7,7 @@ import {
   RoomCommands,
   RoomSettingsSchema,
   RoomViews,
+  SeenEvents,
   millis,
 } from "@nostakes/room";
 import type { RoomView } from "@nostakes/room";
@@ -18,7 +19,8 @@ import {
   MemberCommandSchema,
   pokerRoom,
 } from "../src/poker-room.js";
-import { ana, ben, openPokerHost } from "./fixtures/poker-host.js";
+import { hostRoom, loadRoom } from "../src/room-host.js";
+import { ana, ben, cy, openPokerHost } from "./fixtures/poker-host.js";
 
 const Commands = MemberCommandSchema.cases;
 
@@ -236,5 +238,89 @@ describe("the poker room adapter", () => {
     expect(() => pokerRoom.replay(stored.slice(1))).toThrow(
       "must start with RoomOpened, and this one starts with MemberJoined"
     );
+  });
+});
+
+const holeCardsIn = (room: ReturnType<typeof openPokerHost>, frame: string) => {
+  const message = room.decodeFrame(frame);
+
+  return room.host.codec.server.guards.Welcome(message)
+    ? message.missed.flatMap((event) =>
+        SeenEvents.$is("Table")(event) &&
+        Events.$is("HoleCardsDealt")(event.event)
+          ? [{ cards: event.event.cards, seat: event.event.seat }]
+          : []
+      )
+    : [];
+};
+
+describe("catching up after a reconnect", () => {
+  it("redacts each missed event for the audience the player had when it happened, not the seat the player holds now", () => {
+    const room = openPokerHost({ avatar: "fox", name: "Ana" });
+
+    room.join(cy, 1000, "Cy");
+    seatTwoPlayers(room);
+
+    const before = room.host.snapshot().headSeq;
+
+    room.send(ana, "start", 1004, Commands.StartGame.make({}));
+    room.runDue(1004);
+
+    const dealt = openView(welcomeView(room, ana, 1005));
+
+    const toAct = Option.getOrThrow(
+      dealt.hand.pipe(Option.flatMap((hand) => hand.toAct))
+    );
+
+    room.send(
+      toAct === 0 ? ana : ben,
+      "fold",
+      1006,
+      Commands.Act.make({ action: Actions.Fold() })
+    );
+
+    const bensCards = openView(welcomeView(room, ben, 1007)).lastHand.pipe(
+      Option.map((last) => last.yourCards)
+    );
+
+    room.send(ben, "stand", 1008, Commands.LeaveSeat.make({}));
+    room.send(
+      cy,
+      "sit",
+      1009,
+      Commands.RequestSeat.make({
+        buyIn: DEFAULT_SETTINGS.buyIn.min,
+        seat: SeatIndexSchema.make(1),
+      })
+    );
+
+    const cyStale = holeCardsIn(
+      room,
+      room.welcome(cy, Option.some(before), 1010)
+    );
+
+    const benStale = holeCardsIn(
+      room,
+      room.welcome(ben, Option.some(before), 1010)
+    );
+
+    expect(cyStale.map(({ cards }) => cards)).toEqual([[], []]);
+    expect(Option.some(benStale.flatMap(({ cards }) => cards))).toEqual(
+      bensCards
+    );
+
+    const restarted = hostRoom(
+      pokerRoom,
+      room.memory.storage,
+      Option.getOrThrow(loadRoom(pokerRoom, room.memory.storage))
+    );
+
+    const again = (player: typeof ana) =>
+      Result.getOrThrow(
+        restarted.welcome(player, Option.some(before), 1010, room.connections())
+      );
+
+    expect(again(cy)).toBe(room.welcome(cy, Option.some(before), 1010));
+    expect(again(ben)).toBe(room.welcome(ben, Option.some(before), 1010));
   });
 });

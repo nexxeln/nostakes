@@ -50,13 +50,31 @@ export interface CommitResult<T extends RoomTypes> {
   readonly note: CommitNote;
 }
 
+export interface RecentStates<State> {
+  readonly from: number;
+  readonly states: readonly State[];
+}
+
 export interface HostState<T extends RoomTypes> {
   readonly code: RoomCode;
   readonly state: T["State"];
   readonly headSeq: number;
   readonly halted: Option.Option<string>;
   readonly credentials: readonly HashedCredential[];
+  readonly recent: RecentStates<T["State"]>;
 }
+
+export const STATES_KEPT = MAX_MISSED_EVENTS + 1;
+
+const keepRecent = <State>(
+  recent: RecentStates<State>,
+  added: readonly State[]
+): RecentStates<State> => {
+  const states = [...recent.states, ...added];
+  const dropped = Math.max(0, states.length - STATES_KEPT);
+
+  return { from: recent.from + dropped, states: states.slice(dropped) };
+};
 
 const gapsIn = (rows: readonly StoredEvent[]) =>
   rows.flatMap((row, index) =>
@@ -74,7 +92,16 @@ export const loadRoom = <T extends RoomTypes>(
       const { decodeEvent } = roomCodec(core);
       const rows = storage.eventsAfter(0);
       const gaps = gapsIn(rows);
-      const state = core.replay(rows.map((row) => decodeEvent(row.event)));
+      const events = rows.map((row) => decodeEvent(row.event));
+      const split = Math.max(1, events.length - MAX_MISSED_EVENTS);
+      let state = core.replay(events.slice(0, split));
+      const states = [state];
+
+      for (const event of events.slice(split)) {
+        state = core.evolve(state, event);
+        states.push(state);
+      }
+
       const violations = [...gaps, ...core.invariants(state)];
 
       return {
@@ -84,6 +111,7 @@ export const loadRoom = <T extends RoomTypes>(
           ? Option.some(violations.join("; "))
           : meta.halted,
         headSeq: rows.at(-1)?.seq ?? 0,
+        recent: { from: rows[split - 1]?.seq ?? 0, states },
         state,
       };
     })
@@ -155,12 +183,16 @@ export const hostRoom = <T extends RoomTypes>(
   };
 
   const redactAll = (
-    events: readonly T["Event"][],
-    audience: T["Audience"],
+    seen: readonly {
+      readonly event: T["Event"];
+      readonly audience: T["Audience"];
+    }[],
     from: number,
     player: PlayerId
   ): Checked<readonly T["Redacted"][]> => {
-    const redacted = events.map((event) => core.redact(event, audience));
+    const redacted = seen.map(({ audience, event }) =>
+      core.redact(event, audience)
+    );
 
     const dropped = redacted.flatMap((form, index) =>
       Option.isNone(form)
@@ -190,7 +222,9 @@ export const hostRoom = <T extends RoomTypes>(
 
       const audience = core.audienceOf(next, player);
 
-      Result.match(redactAll(events, audience, from, player), {
+      const seen = events.map((event) => ({ audience, event }));
+
+      Result.match(redactAll(seen, from, player), {
         onFailure: (dropped) => {
           problems.push(...dropped);
         },
@@ -270,9 +304,11 @@ export const hostRoom = <T extends RoomTypes>(
     const from = current.headSeq + 1;
     const to = current.headSeq + events.length;
     let next = current.state;
+    const states: T["State"][] = [];
 
     for (const event of events) {
       next = core.evolve(next, event);
+      states.push(next);
     }
 
     const prepared = guarded("could not prepare delivery", () =>
@@ -336,6 +372,7 @@ export const hostRoom = <T extends RoomTypes>(
         ...Option.toArray(input.grant).map(hashedCredential),
       ],
       headSeq: to,
+      recent: keepRecent(current.recent, states),
       state: next,
     };
 
@@ -383,24 +420,41 @@ export const hostRoom = <T extends RoomTypes>(
     });
   };
 
+  const audienceAfter = (seq: number, player: PlayerId) =>
+    Option.fromUndefinedOr(
+      current.recent.states[seq - current.recent.from]
+    ).pipe(Option.map((state) => core.audienceOf(state, player)));
+
   const missedSince = (
     after: Option.Option<number>,
-    audience: T["Audience"],
     player: PlayerId
   ): Checked<readonly T["Redacted"][]> =>
     Option.match(after, {
       onNone: () => Result.succeed([]),
-      onSome: (seq) =>
-        seq >= current.headSeq || current.headSeq - seq > MAX_MISSED_EVENTS
-          ? Result.succeed([])
-          : redactAll(
-              storage
-                .eventsAfter(seq)
-                .map((row) => codec.decodeEvent(row.event)),
-              audience,
-              seq + 1,
-              player
-            ),
+      onSome: (seq) => {
+        if (
+          seq >= current.headSeq ||
+          current.headSeq - seq > MAX_MISSED_EVENTS
+        ) {
+          return Result.succeed([]);
+        }
+
+        const seen = Option.all(
+          storage.eventsAfter(seq).map((row) =>
+            audienceAfter(row.seq, player).pipe(
+              Option.map((audience) => ({
+                audience,
+                event: codec.decodeEvent(row.event),
+              }))
+            )
+          )
+        );
+
+        return Option.match(seen, {
+          onNone: () => Result.succeed([]),
+          onSome: (forms) => redactAll(forms, seq + 1, player),
+        });
+      },
     });
 
   const welcome = (
@@ -412,7 +466,7 @@ export const hostRoom = <T extends RoomTypes>(
     const audience = core.audienceOf(current.state, player);
 
     const frame = guarded("could not prepare welcome", () =>
-      missedSince(after, audience, player).pipe(
+      missedSince(after, player).pipe(
         Result.map((missed) =>
           codec.encodeFrame(
             codec.server.cases.Welcome.make({
