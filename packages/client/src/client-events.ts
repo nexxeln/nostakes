@@ -39,8 +39,7 @@ export type DropReason =
   | "Malformed"
   | "Garbled"
   | "SocketClosed"
-  | "HelloTimeout"
-  | "TooManyFrames";
+  | CloseReason;
 
 export interface ClientInput {
   readonly url: string;

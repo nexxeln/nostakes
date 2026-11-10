@@ -622,14 +622,21 @@ describe("room client against a fake socket", () => {
         yield* live(1);
         yield* (yield* socket(0)).push(serverText.closing(reason));
         yield* settle;
-        outcomes[reason] = (yield* client.state).connection;
+        const state = yield* client.state;
+
+        const why = Option.getOrElse(
+          Option.orElse(state.drop, () => state.refusal),
+          () => "none"
+        );
+
+        outcomes[reason] = `${state.connection} ${why}`;
       }
 
       expect(outcomes).toEqual({
-        HelloTimeout: "Waiting",
-        ProtocolViolation: "Refused",
-        RoomHalted: "Refused",
-        TooManyFrames: "Waiting",
+        HelloTimeout: "Waiting HelloTimeout",
+        ProtocolViolation: "Refused ProtocolViolation",
+        RoomHalted: "Refused RoomHalted",
+        TooManyFrames: "Waiting TooManyFrames",
       });
     }).pipe(Effect.scoped, lowestJitter)
   );

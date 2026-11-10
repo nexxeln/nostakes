@@ -65,9 +65,6 @@ const refusalFor = (reason: string): Option.Option<CloseReason> =>
     Option.filter((known) => CLOSE_VERDICTS[known] === "Refuse")
   );
 
-const dropFor = (reason: CloseReason): DropReason =>
-  reason === "TooManyFrames" ? "TooManyFrames" : "HelloTimeout";
-
 const dropped = (reason: DropReason) => ({
   context: { drop: Option.some(reason) },
   target: "#roomClient.Waiting",
@@ -205,7 +202,7 @@ export const roomClientMachine = <T extends RoomTypes>(
                   context: { refusal: Option.some(event.reason) },
                   target: "#roomClient.Refused",
                 }
-              : dropped(dropFor(event.reason)),
+              : dropped(event.reason),
           Garbled: dropped("Garbled"),
         },
         states: {
