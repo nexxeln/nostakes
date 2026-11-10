@@ -2,7 +2,12 @@ import { describe, expect, it } from "@effect/vitest";
 import { ChipsSchema } from "@nostakes/engine";
 import { PlayerIdSchema, RoomCodeSchema } from "@nostakes/protocol";
 import type { PlayerId } from "@nostakes/protocol";
-import { REACTIONS, RoomSignalSchema, RoomViewSchema } from "@nostakes/room";
+import {
+  HandViewSchema,
+  REACTIONS,
+  RoomSignalSchema,
+  RoomViewSchema,
+} from "@nostakes/room";
 import type { RoomSignal } from "@nostakes/room";
 import { Option, Schema } from "effect";
 import * as Arbitrary from "effect/Arbitrary";
@@ -35,13 +40,7 @@ const wireId = (seat: number) =>
 
 const views = Arbitrary.schema(RoomViewSchema.cases.Open);
 
-const viewsInAHand = Arbitrary.schema(
-  RoomViewSchema.cases.Open.check(
-    Schema.makeFilter((view) =>
-      Option.isSome(view.hand) ? undefined : "a hand in progress"
-    )
-  )
-);
+const hands = Arbitrary.schema(HandViewSchema);
 
 const STATUSES = ["Active", "AllIn", "Folded"] as const;
 
@@ -143,8 +142,10 @@ const peekingSeats = (model: Model, view: OpenView) =>
 describe("a peek heard from the table", () => {
   it.prop(
     "turns a face down exactly while the room shows peeks, the seat still holds cards, and the latest peek from its player is under the lease old, so a lost stop expires and a refresh keeps it",
-    { view: viewsInAHand },
-    ({ view: generated }) => {
+    { hand: hands, view: views },
+    ({ hand, view: table }) => {
+      const generated = { ...table, hand: Option.some(hand) };
+
       for (const shownToAll of [true, false]) {
         const dealt = dealtIn(withWireIds(generated));
 
