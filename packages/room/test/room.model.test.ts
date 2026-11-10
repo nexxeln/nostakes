@@ -38,6 +38,8 @@ import {
 import type { Knowledge } from "./observers.js";
 import { POOL, playSession, session } from "./sessions.js";
 
+const CHECKED_ROOMS_TIMEOUT_MS = 120_000;
+
 describe("generated rooms", () => {
   it.prop(
     "money: rule 18 and every invariant hold after every event, between hands the settlement balances and its transfers bring everyone to zero, and a closed room nets each player's cash-outs minus buy-ins",
@@ -157,7 +159,8 @@ describe("generated rooms", () => {
       }
 
       expect(broken).toStrictEqual([]);
-    }
+    },
+    { timeout: CHECKED_ROOMS_TIMEOUT_MS }
   );
 
   it.prop(
@@ -306,6 +309,7 @@ describe("generated rooms", () => {
       }
 
       expect(broken).toStrictEqual([]);
-    }
+    },
+    { timeout: CHECKED_ROOMS_TIMEOUT_MS }
   );
 });

@@ -203,10 +203,23 @@ const openerCache = () => {
   };
 };
 
+const mayOpen = (before: RoomState, events: readonly RoomEvent[]) =>
+  isOpen(before) &&
+  (Option.isSome(before.proof) ||
+    events.some(
+      (event) =>
+        RoomEvents.$is("DealtFromBeacon")(event) ||
+        RoomEvents.$is("DealtWithoutBeacon")(event)
+    ));
+
 export const withOpenings = (
   before: RoomState,
   events: readonly RoomEvent[]
 ): readonly RoomEvent[] => {
+  if (!mayOpen(before, events)) {
+    return events;
+  }
+
   const out: RoomEvent[] = [];
   const openerFor = openerCache();
   let state = before;

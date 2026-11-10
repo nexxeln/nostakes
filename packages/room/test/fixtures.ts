@@ -80,9 +80,17 @@ export const roomCode = RoomCodeSchema.make("night");
 
 const signer = selfSignedChain("room tests");
 
+const signatures = new Map<number, Uint8Array>();
+
 export const drand = {
-  ...signer,
   chain: { ...signer.chain, genesisSeconds: 0 },
+  sign: (round: number) => {
+    const known = signatures.get(round) ?? signer.sign(round);
+
+    signatures.set(round, known);
+
+    return known;
+  },
 };
 
 export const openedBy = (host: PlayerId, chosen: RoomSettings = settings) =>

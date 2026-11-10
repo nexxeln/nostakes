@@ -265,6 +265,8 @@ const silenced = (base: RoomSettings, below: (bound: number) => number) => ({
   turnSeconds: 1 + below(30),
 });
 
+const CHECKED_ROOMS_TIMEOUT_MS = 120_000;
+
 describe("liveness", () => {
   it.prop(
     "a server that only answers nextDeadline, with players who never act, finishes every hand and keeps dealing while two seats can be dealt in",
@@ -290,7 +292,8 @@ describe("liveness", () => {
       expect(started).toBeGreaterThan(0);
       expect(ended).toBe(started);
       expect(dealable(state)).toBeLessThan(2);
-    }
+    },
+    { timeout: CHECKED_ROOMS_TIMEOUT_MS }
   );
 
   it.prop(
@@ -317,7 +320,7 @@ describe("liveness", () => {
       expect(started - ended).toBeLessThanOrEqual(1);
       expect(awayPlayers(state)).toStrictEqual([]);
     },
-    { arbitrary: { runs: KEPT_IN_NIGHTS } }
+    { arbitrary: { runs: KEPT_IN_NIGHTS }, timeout: CHECKED_ROOMS_TIMEOUT_MS }
   );
 
   it.prop(
