@@ -429,6 +429,39 @@ describe("room client against a fake socket", () => {
   );
 
   it.effect(
+    "a page that starts listening after the room greeted it still gets the view it was greeted with, once, and every view after",
+    () =>
+      Effect.gen(function* lateListener() {
+        const { client, greet } = yield* harness;
+        const late: RoomUpdate<ToyTypes>[] = [];
+
+        yield* client.start;
+        yield* settle;
+
+        const open = yield* greet(0, 7, [6, 7]);
+
+        yield* client.updates.pipe(
+          Stream.runForEach((update) => Effect.sync(() => late.push(update))),
+          Effect.forkScoped
+        );
+        yield* settle;
+        yield* open.push(serverText.events(8, [8]));
+        yield* settle;
+
+        expect(late).toEqual([
+          { activity: [], seq: seqOf(7), view: { total: 7 } },
+          {
+            activity: [
+              Activities.Applied({ event: addedTotal(8), seq: seqOf(8) }),
+            ],
+            seq: seqOf(8),
+            view: { total: 8 },
+          },
+        ]);
+      }).pipe(Effect.scoped, lowestJitter)
+  );
+
+  it.effect(
     "missed events on resume are applied in order, and a stretch the server cannot replay is reported as skipped",
     () =>
       Effect.gen(function* resumeActivity() {

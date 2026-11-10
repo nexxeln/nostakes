@@ -117,6 +117,15 @@ export interface RoomClient<T extends RoomTypes> {
   readonly updates: Stream.Stream<RoomUpdate<T>>;
 }
 
+interface NumberedUpdate<T extends RoomTypes> {
+  readonly number: number;
+  readonly update: RoomUpdate<T>;
+}
+
+interface LatestUpdate<T extends RoomTypes> {
+  update: Option.Option<NumberedUpdate<T>>;
+}
+
 export interface RoomClientOptions {
   readonly url: string;
   readonly token: Token;
@@ -159,7 +168,12 @@ export const roomClient = <T extends RoomTypes>(
     const prefix = yield* clientPrefix;
     const issued = yield* Ref.make(0);
     const activity = yield* PubSub.unbounded<Activity<T["Event"]>>();
-    const updates = yield* PubSub.unbounded<RoomUpdate<T>>();
+    const updates = yield* PubSub.unbounded<NumberedUpdate<T>>();
+
+    const latest: LatestUpdate<T> = {
+      update: Option.none(),
+    };
+
     const signals = yield* PubSub.unbounded<ReceivedSignal<T>>();
 
     const signalBucket = yield* Ref.make(
@@ -239,7 +253,16 @@ export const roomClient = <T extends RoomTypes>(
 
     const listeners = [
       actor.on("Applied", ({ activity: items, seq, view }) => {
-        PubSub.publishUnsafe(updates, { activity: items, seq, view });
+        const numbered = {
+          number: Option.match(latest.update, {
+            onNone: () => 0,
+            onSome: ({ number }) => number + 1,
+          }),
+          update: { activity: items, seq, view },
+        };
+
+        latest.update = Option.some(numbered);
+        PubSub.publishUnsafe(updates, numbered);
 
         for (const item of items) {
           PubSub.publishUnsafe(activity, item);
@@ -392,7 +415,34 @@ export const roomClient = <T extends RoomTypes>(
           )
         )
       ),
-      updates: Stream.fromPubSub(updates),
+      updates: Stream.unwrap(
+        PubSub.subscribe(updates).pipe(
+          Effect.map((subscription) => {
+            const caughtUp = latest.update;
+
+            const after = Option.match(caughtUp, {
+              onNone: () => -1,
+              onSome: ({ number }) => number,
+            });
+
+            return Stream.concat(
+              Stream.fromIterable(
+                Option.toArray(caughtUp).map(
+                  ({ update: { seq, view } }): RoomUpdate<T> => ({
+                    activity: [],
+                    seq,
+                    view,
+                  })
+                )
+              ),
+              Stream.fromSubscription(subscription).pipe(
+                Stream.filter(({ number }) => number > after),
+                Stream.map(({ update }) => update)
+              )
+            );
+          })
+        )
+      ),
       wake: Effect.sync(() => {
         actor.send({ type: "Wake" });
       }),
