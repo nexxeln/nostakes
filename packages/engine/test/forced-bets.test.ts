@@ -303,6 +303,24 @@ describe("straddles", () => {
     });
   });
 
+  it("posts every straddle at two big blinds when the room fixes the size", () => {
+    const started = startHand(
+      fiveHanded({ ...straddleRules(2, false), straddleSize: "TwoBigBlinds" }),
+      deck,
+      [3, 4]
+    );
+
+    expect(started.events.filter(Events.$is("StraddlePosted"))).toStrictEqual([
+      Events.StraddlePosted({ amount: chipCount(20), seat: seat(3) }),
+      Events.StraddlePosted({ amount: chipCount(20), seat: seat(4) }),
+    ]);
+    expect(bettingOf(handOf(started.state))).toMatchObject({
+      currentBet: 20,
+      lastFullRaise: 20,
+      toAct: seat(0),
+    });
+  });
+
   it("starts action with the small blind after a button straddle", () => {
     const started = startHand(fiveHanded(straddleRules(0, true)), deck, [0]);
 
@@ -393,6 +411,7 @@ const StraddleCaseSchema = Schema.Struct({
   stacks: Schema.Array(
     Schema.Int.check(Schema.isBetween({ maximum: 90, minimum: 0 }))
   ).check(Schema.isMinLength(9), Schema.isMaxLength(9)),
+  twoBigBlinds: Schema.Boolean,
   underTheGun: Schema.Int.check(Schema.isBetween({ maximum: 3, minimum: 0 })),
 });
 
@@ -406,6 +425,7 @@ const configOf = (example: StraddleCase): TableConfig => ({
     NoAnte: Antes.NoAnte(),
   }[example.anteKind],
   straddle: { button: example.button, underTheGun: example.underTheGun },
+  straddleSize: example.twoBigBlinds ? "TwoBigBlinds" : "Doubling",
 });
 
 const ruleEight = (example: StraddleCase, straddles: readonly number[]) => {
@@ -439,7 +459,7 @@ const ruleEight = (example: StraddleCase, straddles: readonly number[]) => {
     (index, position) =>
       (example.stacks[index] ?? 0) -
         Math.min(ante, example.stacks[index] ?? 0) >
-      10 * 2 ** (position + 1)
+      10 * 2 ** (example.twoBigBlinds ? 1 : position + 1)
   );
 
   return {
@@ -493,7 +513,9 @@ it.prop(
       posted.map((event: Event & { readonly seat: number }) => event.seat)
     ).toStrictEqual(Result.isSuccess(decision) ? straddles : []);
     expect(posted.map((event) => event.amount)).toStrictEqual(
-      posted.map((_, position) => 10 * 2 ** (position + 1))
+      posted.map(
+        (_, position) => 10 * 2 ** (example.twoBigBlinds ? 1 : position + 1)
+      )
     );
   }
 );

@@ -74,6 +74,7 @@ export const DEFAULT_SETTINGS: RoomSettings = Schema.decodeSync(
     showdown: "Interactive",
     smallBlind: 1,
     straddle: { button: false, underTheGun: 0 },
+    straddleSize: "Doubling",
   },
   timeBankRefill: TimeBankRefills.NoRefill(),
   timeBankSeconds: 60,

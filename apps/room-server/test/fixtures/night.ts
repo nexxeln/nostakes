@@ -239,6 +239,7 @@ export const planNight = (
       showdown: random.chance(80) ? "Interactive" : "Automatic",
       smallBlind: small,
       straddle: { button: random.chance(50), underTheGun: random.below(3) },
+      straddleSize: random.chance(30) ? "TwoBigBlinds" : "Doubling",
     },
     timeBankRefill:
       recipe.turnSeconds > 0 && random.chance(50)

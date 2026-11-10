@@ -379,7 +379,7 @@ class Hand:
         blinds[1] = self.big_blind
         opening = self.big_blind
         for position, seat in enumerate(self.straddles):
-            opening = self.big_blind * 2 ** (position + 1)
+            opening = straddle_amount(self.config, position)
             blinds[self.index[seat]] = opening
         if self.straddles:
             self.configured.add("straddle-sizes-preflop-raise")
@@ -1042,6 +1042,11 @@ def next_after(seats, seat):
     return next((s for s in seats if s > seat), seats[0])
 
 
+def straddle_amount(config, position):
+    doublings = 1 if config.get("straddleSize") == "TwoBigBlinds" else position + 1
+    return config["bigBlind"] * 2**doublings
+
+
 def straddle_problem(config, seats, dealt, button, straddles):
     if not straddles:
         return None
@@ -1060,7 +1065,7 @@ def straddle_problem(config, seats, dealt, button, straddles):
     for position, seat in enumerate(straddles):
         stack = seats[seat]["stack"]
         posted = min(ante["amount"], stack) if ante["_tag"] == "EveryPlayer" else 0
-        if stack - posted <= config["bigBlind"] * 2 ** (position + 1):
+        if stack - posted <= straddle_amount(config, position):
             return "cannot cover"
     return None
 

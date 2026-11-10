@@ -47,6 +47,10 @@ export const ShowdownRuleSchema = Schema.Literals(["Automatic", "Interactive"]);
 
 export type ShowdownRule = typeof ShowdownRuleSchema.Type;
 
+export const StraddleSizeSchema = Schema.Literals(["Doubling", "TwoBigBlinds"]);
+
+export type StraddleSize = typeof StraddleSizeSchema.Type;
+
 export const RunCountRuleSchema = Schema.Literals(["Vote", "Fixed"]);
 
 export type RunCountRule = typeof RunCountRuleSchema.Type;
@@ -99,6 +103,11 @@ export const TableConfigSchema = Schema.Struct({
     description: "Which voluntary straddles players may post.",
     title: "Straddles",
   }),
+  straddleSize: setting(StraddleSizeSchema, "Doubling", {
+    description:
+      "Doubling: each straddle is twice the one before, so two, four, then eight big blinds. TwoBigBlinds: every straddle is two big blinds.",
+    title: "Straddle size",
+  }),
 })
   .check(
     Schema.makeFilter((config) =>
@@ -116,8 +125,9 @@ export const straddleAmount = (
   position: number
 ): Option.Option<Chips> => {
   let amount: number = config.bigBlind;
+  const doublings = config.straddleSize === "Doubling" ? position : 0;
 
-  for (let doubling = 0; doubling <= position; doubling += 1) {
+  for (let doubling = 0; doubling <= doublings; doubling += 1) {
     if (amount > CHIP_LIMIT - amount) {
       return Option.none();
     }

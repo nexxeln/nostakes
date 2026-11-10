@@ -153,6 +153,7 @@ const tableConfig = (random: Random): TableConfig => {
       button: random.chance(50),
       underTheGun: random.chance(60) ? 2 : random.below(2),
     },
+    straddleSize: random.chance(30) ? "TwoBigBlinds" : "Doubling",
   });
 };
 

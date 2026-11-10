@@ -110,6 +110,7 @@ export const tableConfigFrom = (random: SeededRandom): TableConfig => {
     showdown: random.chance(1, 2) ? "Interactive" : "Automatic",
     smallBlind: chips(small),
     straddle: { button: random.chance(1, 2), underTheGun: random.below(3) },
+    straddleSize: random.chance(1, 3) ? "TwoBigBlinds" : "Doubling",
   });
 };
 

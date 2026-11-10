@@ -119,6 +119,7 @@ export {
   RunCountSchema,
   ShowdownRuleSchema,
   StraddleRulesSchema,
+  StraddleSizeSchema,
   TableConfigSchema,
   type AllInHands,
   type Ante,
@@ -126,6 +127,7 @@ export {
   type RunCountRule,
   type ShowdownRule,
   type StraddleRules,
+  type StraddleSize,
   type TableConfig,
 } from "./rules.js";
 

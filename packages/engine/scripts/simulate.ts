@@ -119,6 +119,7 @@ const randomConfig = (random: Random): TableConfig => {
       button: random.chance(50),
       underTheGun: random.chance(60) ? 2 : random.below(2),
     },
+    straddleSize: random.chance(30) ? "TwoBigBlinds" : "Doubling",
   });
 };
 
@@ -527,6 +528,7 @@ const newCounts = () => ({
   deadDecisionsSkipped: 0,
   deepPots: 0,
   doubleStraddles: 0,
+  equalStraddles: 0,
   everyPlayerAntes: 0,
   fixedRunOuts: 0,
   hiddenRunOuts: 0,
@@ -642,6 +644,11 @@ const countHand = (counts: Counts, hand: readonly Event[], seen: Seen) => {
 
   counts.singleStraddles += straddles.length === 1 ? 1 : 0;
   counts.doubleStraddles += straddles.length >= 2 ? 1 : 0;
+  counts.equalStraddles +=
+    straddles.length >= 2 &&
+    straddles.every((straddle) => straddle.amount === straddles[0]?.amount)
+      ? 1
+      : 0;
   counts.buttonStraddles += straddles.some(
     (straddle) => straddle.seat === started?.button
   )
