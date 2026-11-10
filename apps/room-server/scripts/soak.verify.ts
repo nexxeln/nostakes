@@ -47,6 +47,7 @@ const TEMPER: Temper = {
   secondDevicePercent: 0.8,
   silencePercent: 0.4,
   thinkMs: 30,
+  voteSilencePercent: 8,
 };
 
 const CHAOS: ClientTemper = {
@@ -129,7 +130,7 @@ const summarize = (
     `  silences ${counts.silences}, time banks started ${counts.bankStarts}, timeouts ${counts.timeouts}, welcome clock checks ${counts.welcomeClockChecks}`,
     `  duplicates sent ${counts.duplicates}, duplicates with matching replies ${counts.duplicatesConfirmed}, reply timeouts ${counts.replyTimeouts}`,
     `  hands by ante: none ${counts.noAnteHands}, every player ${counts.everyPlayerAnteHands}, big blind ${counts.bigBlindAnteHands}; antes posted ${counts.antePosts}`,
-    `  straddles ${counts.straddles}, multi-run hands ${counts.multiRunHands}, run choices ${counts.runChoices}, rabbit hunts ${counts.rabbitHunts}, shows ${counts.shows}`,
+    `  straddles ${counts.straddles}, multi-run hands ${counts.multiRunHands}, run choices ${counts.runChoices}, run votes past their deadline without a turn clock ${counts.unclockedVotesTimedOut}, rabbit hunts ${counts.rabbitHunts}, shows ${counts.shows}`,
     `  hands with approval ${counts.handsWithApproval} and without ${counts.handsWithoutApproval}, approvals ${counts.approvals}, denials ${counts.denials}`,
     `  settings changed ${counts.settingsChanged}, rules queued ${counts.rulesQueued}, closes queued in a hand ${counts.closeQueued}`,
     `  frames checked ${counts.framesChecked}, views checked ${counts.viewsChecked}, viewFor ${views > 0 ? ((viewMs * 1000) / views).toFixed(1) : "n/a"} µs each over ${views}`,

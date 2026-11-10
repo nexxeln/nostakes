@@ -30,6 +30,7 @@ const TEMPER: Temper = {
   secondDevicePercent: 1.5,
   silencePercent: 0,
   thinkMs: 30,
+  voteSilencePercent: 0,
 };
 
 const CHAOS: ClientTemper = {

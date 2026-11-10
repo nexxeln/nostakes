@@ -113,6 +113,7 @@ export const COUNT_NAMES = [
   "straddles",
   "timeouts",
   "transfers",
+  "unclockedVotesTimedOut",
   "viewsChecked",
   "voteRestarts",
   "welcomeClockChecks",
@@ -179,6 +180,7 @@ export const emptyCounts = (): NightCounts => ({
   straddles: 0,
   timeouts: 0,
   transfers: 0,
+  unclockedVotesTimedOut: 0,
   viewsChecked: 0,
   voteRestarts: 0,
   welcomeClockChecks: 0,
@@ -262,6 +264,7 @@ interface Ledger {
   bought: number;
   cashed: number;
   deadline: number;
+  runDeadline: Option.Option<number>;
   viewMs: number;
   views: number;
   known: Knowledge;
@@ -946,6 +949,34 @@ const observeMoney = (ledger: Ledger, event: RoomEvent) => {
   }
 };
 
+const observeRunVote = (
+  checker: Checker,
+  ledger: Ledger,
+  state: RoomState,
+  event: RoomEvent
+) => {
+  if (RoomEvents.$is("RunClockStarted")(event)) {
+    ledger.runDeadline = Option.some(event.deadline);
+  }
+
+  if (
+    !RoomEvents.$is("Table")(event) ||
+    !Events.$is("RunsAgreed")(event.event)
+  ) {
+    return;
+  }
+
+  const late = ledger.runDeadline.pipe(
+    Option.exists((deadline) => event.at >= deadline)
+  );
+
+  checker.counts.unclockedVotesTimedOut +=
+    late && RoomStates.$is("Open")(state) && state.settings.turnSeconds === 0
+      ? 1
+      : 0;
+  ledger.runDeadline = Option.none();
+};
+
 const observeClocks = (checker: Checker, ledger: Ledger, event: RoomEvent) => {
   if (RoomEvents.$is("TurnClockStarted")(event)) {
     ledger.deadline = event.deadline;
@@ -1364,6 +1395,7 @@ export const checkNight = (evidence: NightEvidence): NightVerdict => {
     decks: new Set(),
     known: { holes: new Map(), shown: new Set() },
     net: new Map(),
+    runDeadline: Option.none(),
     viewMs: 0,
     views: 0,
   };
@@ -1389,6 +1421,7 @@ export const checkNight = (evidence: NightEvidence): NightVerdict => {
 
     observeMoney(ledger, event);
     observeClocks(checker, ledger, event);
+    observeRunVote(checker, ledger, state, event);
     countRoomEvent(checker, event);
     checkReceivedEvents(
       checker,

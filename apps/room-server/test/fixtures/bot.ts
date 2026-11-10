@@ -69,6 +69,7 @@ export const randomSource = (seed: number): Random => {
 
 export interface Temper {
   readonly silencePercent: number;
+  readonly voteSilencePercent: number;
   readonly illegalPercent: number;
   readonly duplicatePercent: number;
   readonly dropPercent: number;
@@ -361,10 +362,7 @@ export const plannerFor = (setup: PlannerSetup) => {
     if (decided !== key) {
       decided = key;
 
-      if (
-        open.settings.turnSeconds > 0 &&
-        random.chance(temper.silencePercent * 4)
-      ) {
+      if (random.chance(temper.voteSilencePercent)) {
         stats.silences += 1;
         silent = Option.some({ bank: false, key });
       }
