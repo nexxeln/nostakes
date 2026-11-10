@@ -14,6 +14,7 @@ import { handsSeen, randomSource, startBot } from "./bot.js";
 import type {
   BotRecord,
   NightControl,
+  OpenView,
   Random,
   Role,
   RuleChange,
@@ -313,8 +314,11 @@ export const planNight = (
     restartHands: Array.from({ length: recipe.restarts }, (_, index) =>
       Math.max(
         2,
-        Math.floor(((index + 1) * recipe.hands) / (recipe.restarts + 1)) +
-          random.below(2)
+        Math.min(
+          recipe.hands - 2,
+          Math.floor(((index + 1) * recipe.hands) / (recipe.restarts + 1)) +
+            random.below(2)
+        )
       )
     ),
     ruleChanges: Array.from({ length: changes }, (_, index) => {
@@ -383,6 +387,29 @@ const waitsForTheHost = (view: RoomView) =>
   view.settings.dealing === "Host" &&
   Option.isNone(view.hand) &&
   Option.isNone(view.clocks.nextDeal);
+
+type RestartMoment = "between hands" | "mid-hand" | "mid-vote";
+
+const restartMoment = (
+  view: OpenView,
+  hands: number,
+  due: number | undefined,
+  voteRestartsLeft: boolean
+): Option.Option<RestartMoment> => {
+  const voting = view.hand.pipe(
+    Option.exists((current) => Option.isSome(current.choosingRuns))
+  );
+
+  if (voting) {
+    return voteRestartsLeft ? Option.some("mid-vote") : Option.none();
+  }
+
+  const midHand = Option.isSome(view.hand);
+
+  return due !== undefined && hands >= due && (midHand || hands > due)
+    ? Option.some(midHand ? "mid-hand" : "between hands")
+    : Option.none();
+};
 
 const shouldAdvance = (view: RoomView) =>
   RoomViews.$is("Open")(view) &&
@@ -647,24 +674,19 @@ export const playNight = (base: string, opened: OpenedNight) =>
           continue;
         }
 
-        const { hand } = open.value;
+        const moment = control.closing
+          ? Option.none<RestartMoment>()
+          : restartMoment(
+              open.value,
+              hands,
+              plan.restartHands[restarts],
+              voteRestarts < plan.voteRestarts
+            );
 
-        const midHand = hand.pipe(
-          Option.exists((current) => Option.isSome(current.toAct))
-        );
-
-        const voting = hand.pipe(
-          Option.exists((current) => Option.isSome(current.choosingRuns))
-        );
-
-        const due = plan.restartHands[restarts];
-        const restartNow = due !== undefined && hands >= due && midHand;
-        const restartVote = voting && voteRestarts < plan.voteRestarts;
-
-        if (!control.closing && (restartNow || restartVote)) {
-          restarts += restartNow ? 1 : 0;
-          voteRestarts += restartNow ? 0 : 1;
-          note(restartNow ? "restart mid-hand" : "restart mid-vote");
+        if (Option.isSome(moment)) {
+          restarts += moment.value === "mid-vote" ? 0 : 1;
+          voteRestarts += moment.value === "mid-vote" ? 1 : 0;
+          note(`restart ${moment.value}`);
           yield* restart(base, plan.code);
           progress = wallClock();
 
