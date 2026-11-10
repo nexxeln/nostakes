@@ -5,7 +5,7 @@ import { Option } from "effect";
 import { CLOSE_VERDICTS, closeReasonIn } from "../src/index.js";
 
 describe("close reasons", () => {
-  it("refuses a bad token, a halted room, and anything the client sent wrong", () => {
+  it("refuses a bad token, a halted or missing room, and anything the client sent wrong", () => {
     const refusals = CloseReasonSchema.literals.filter(
       (reason) => CLOSE_VERDICTS[reason] === "Refuse"
     );
@@ -15,6 +15,7 @@ describe("close reasons", () => {
       "ProtocolViolation",
       "FrameTooLarge",
       "RoomHalted",
+      "NotFound",
     ]);
   });
 

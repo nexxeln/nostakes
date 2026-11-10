@@ -18,9 +18,31 @@ export const CloseReasonSchema = Schema.Literals([
   "FrameTooLarge",
   "TooManyFrames",
   "RoomHalted",
+  "NotFound",
+  "TooManySockets",
 ]);
 
 export type CloseReason = typeof CloseReasonSchema.Type;
+
+export const CLOSE_CODES: Readonly<Record<CloseReason, number>> = {
+  FrameTooLarge: 1009,
+  HelloTimeout: 4001,
+  NotAuthorized: 4003,
+  NotFound: 4004,
+  ProtocolViolation: 4002,
+  RoomHalted: 4010,
+  TooManyFrames: 4008,
+  TooManySockets: 4029,
+};
+
+export const ClosingSchema = Schema.TaggedStruct("Closing", {
+  reason: CloseReasonSchema,
+});
+
+const encodeClosing = Schema.encodeSync(Schema.fromJsonString(ClosingSchema));
+
+export const closingFrame = (reason: CloseReason) =>
+  encodeClosing(ClosingSchema.make({ reason }));
 
 export const UnavailableReasonSchema = Schema.Literals([
   "RoomHalted",

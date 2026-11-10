@@ -340,7 +340,7 @@ const refusalOf = (response: HttpClientResponse.HttpClientResponse) =>
   );
 
 test(
-  "10. create and join: a code and a host, a collision retries, a wrong code is a plain 404, a full room refuses",
+  "10. create and join: a code and a host, a collision retries, a wrong code is a plain 404 or a NotFound closing frame, a full room refuses",
   Effect.gen(function* createAndJoin() {
     const base = yield* baseUrl;
     const hostPass = yield* createRoom(base, { avatar: "fox", name: "Ana" });
@@ -375,11 +375,21 @@ test(
     expect(malformed.status).toBe(404);
     expect(yield* refusalOf(unknown)).toEqual(yield* refusalOf(malformed));
 
-    const missing = yield* connect(base, randomCode(), "missing").pipe(
-      Effect.flip
-    );
+    const missingCode = randomCode();
+    const missing = yield* connect(base, missingCode, "missing");
+    const garbled = yield* connect(base, "not-a-code", "garbled code");
+    const missingClosed = yield* missing.waitClosed;
 
-    expect(missing._tag).toBe("ClientFailed");
+    expect(missingClosed).toEqual({ code: 4004, reason: "NotFound" });
+    expect(yield* garbled.waitClosed).toEqual(missingClosed);
+    expect(missing.frames).toEqual(['{"_tag":"Closing","reason":"NotFound"}']);
+    expect(garbled.frames).toEqual(missing.frames);
+    expect(yield* inspect(base, missingCode)).toMatchObject({
+      code: Option.none(),
+      events: [],
+      headSeq: 0,
+      sockets: { live: 0, pending: 0 },
+    });
 
     for (let member = 1; member < MAX_MEMBERS; member += 1) {
       yield* joinRoom(base, second.code, {
@@ -446,11 +456,15 @@ test(
       Effect.forEach((index) => connect(base, anaPass.code, `socket ${index}`))
     );
 
-    const extra = yield* connect(base, anaPass.code, "one too many").pipe(
-      Effect.flip
-    );
+    const extra = yield* connect(base, anaPass.code, "one too many");
 
-    expect(extra._tag).toBe("ClientFailed");
+    expect(yield* extra.waitClosed).toEqual({
+      code: 4029,
+      reason: "TooManySockets",
+    });
+    expect(extra.messages).toEqual([
+      codec.server.cases.Closing.make({ reason: "TooManySockets" }),
+    ]);
     expect((yield* inspect(base, anaPass.code)).sockets.pending).toBe(
       MAX_SOCKETS
     );

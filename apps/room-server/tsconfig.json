@@ -10,6 +10,7 @@
           "effect/Arbitrary",
           "effect/FileSystem",
           "effect/http/FetchHttpClient",
+          "effect/http/HttpBody",
           "effect/http/HttpClient",
           "effect/http/HttpClientRequest",
           "effect/http/HttpClientResponse",

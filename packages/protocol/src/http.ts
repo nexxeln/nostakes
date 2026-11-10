@@ -16,7 +16,6 @@ export const HttpRefusalSchema = Schema.Struct({
     "BadRequest",
     "NotFound",
     "RoomFull",
-    "TooManySockets",
     "RoomHalted",
     "NoFreeCode",
     "UpgradeRequired",

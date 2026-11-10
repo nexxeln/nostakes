@@ -1,6 +1,7 @@
 import * as Cloudflare from "@alchemy.run/cloudflare";
 import type * as cf from "@cloudflare/workers-types";
 import {
+  CLOSE_CODES,
   HELLO_TIMEOUT_MS,
   HttpRefusalSchema,
   PLAYER_ID_BYTES,
@@ -32,6 +33,7 @@ import { Entropy, liveEntropy } from "./entropy.js";
 import { fullBucket, oversized, spendFrame } from "./frame-limits.js";
 import type { FrameBucket } from "./frame-limits.js";
 import type { HostedRoom, RoomTypes } from "./hosted-room.js";
+import { refuseSocket } from "./refused-socket.js";
 import {
   CommitNotes,
   hostRoom,
@@ -55,15 +57,6 @@ export interface RoomObjectOptions {
   readonly entropy: Layer.Layer<Entropy>;
 }
 
-const CLOSE_CODES: Record<CloseReason, number> = {
-  FrameTooLarge: 1009,
-  HelloTimeout: 4001,
-  NotAuthorized: 4003,
-  ProtocolViolation: 4002,
-  RoomHalted: 4010,
-  TooManyFrames: 4008,
-};
-
 const refusalStatus: Record<HttpRefusal["refusal"], number> = {
   BadOrigin: 403,
   BadRequest: 400,
@@ -71,7 +64,6 @@ const refusalStatus: Record<HttpRefusal["refusal"], number> = {
   NotFound: 404,
   RoomFull: 409,
   RoomHalted: 410,
-  TooManySockets: 429,
   UpgradeRequired: 426,
 };
 
@@ -687,20 +679,20 @@ export const roomObject = <T extends RoomTypes>(
         const upgrade = Effect.gen(function* upgradeSocket() {
           const request = yield* HttpServerRequest.HttpServerRequest;
 
-          if (Option.isNone(host)) {
-            return yield* refuse("NotFound");
-          }
-
-          if (Option.isSome(host.value.snapshot().halted)) {
-            return yield* refuse("RoomHalted");
-          }
-
           if (request.headers.upgrade?.toLowerCase() !== "websocket") {
             return yield* refuse("UpgradeRequired");
           }
 
+          if (Option.isNone(host)) {
+            return yield* refuseSocket("NotFound");
+          }
+
+          if (Option.isSome(host.value.snapshot().halted)) {
+            return yield* refuseSocket("RoomHalted");
+          }
+
           if (sockets().length >= MAX_SOCKETS) {
-            return yield* refuse("TooManySockets");
+            return yield* refuseSocket("TooManySockets");
           }
 
           const at = yield* Clock.currentTimeMillis;

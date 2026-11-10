@@ -9,9 +9,11 @@ export const CLOSE_VERDICTS: Readonly<Record<CloseReason, CloseVerdict>> = {
   FrameTooLarge: "Refuse",
   HelloTimeout: "Retry",
   NotAuthorized: "Refuse",
+  NotFound: "Refuse",
   ProtocolViolation: "Refuse",
   RoomHalted: "Refuse",
   TooManyFrames: "Retry",
+  TooManySockets: "Retry",
 };
 
 const decodeCloseReason = Schema.decodeUnknownOption(CloseReasonSchema);

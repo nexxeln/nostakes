@@ -8,6 +8,7 @@ import * as FetchHttpClient from "effect/http/FetchHttpClient";
 import {
   codec,
   command,
+  connect,
   isClosing,
   isEvents,
   joinAs,
@@ -254,6 +255,16 @@ test(
     });
 
     expect(join.status).toBe(410);
+
+    const late = yield* connect(base, anaPass.code, "late socket");
+
+    expect(yield* late.waitClosed).toEqual({
+      code: 4010,
+      reason: "RoomHalted",
+    });
+    expect(late.messages).toEqual([
+      codec.server.cases.Closing.make({ reason: "RoomHalted" }),
+    ]);
 
     yield* restart(base, anaPass.code);
 

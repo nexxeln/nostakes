@@ -7,6 +7,7 @@ import * as HttpServerRequest from "effect/http/HttpServerRequest";
 import * as HttpServerResponse from "effect/http/HttpServerResponse";
 
 import { Entropy } from "./entropy.js";
+import { refuseSocket } from "./refused-socket.js";
 import {
   CODE_DRAW_BYTES,
   codeFromBytes,
@@ -149,12 +150,12 @@ export const roomRoutes = (rooms: RoomNamespace, options: RoomRoutesOptions) =>
       const code = yield* roomCodeOf.pipe(Effect.orDie);
       const request = yield* HttpServerRequest.HttpServerRequest;
 
-      if (Option.isNone(code)) {
-        return yield* refuse("NotFound");
-      }
-
       if (request.headers.upgrade?.toLowerCase() !== "websocket") {
         return yield* refuse("UpgradeRequired");
+      }
+
+      if (Option.isNone(code)) {
+        return yield* refuseSocket("NotFound");
       }
 
       return yield* rooms

@@ -1,6 +1,9 @@
 export {
+  CLOSE_CODES,
   CloseReasonSchema,
+  ClosingSchema,
   clientFrame,
+  closingFrame,
   clientMessage,
   replyResult,
   serverFrame,

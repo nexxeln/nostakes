@@ -3,8 +3,11 @@ import { Inspectable, Option, Redacted, Result, Schema } from "effect";
 import * as Arbitrary from "effect/Arbitrary";
 
 import {
+  CLOSE_CODES,
+  CloseReasonSchema,
   clientFrame,
   clientMessage,
+  closingFrame,
   ROOM_CODE_ALPHABET,
   RoomCodeSchema,
   serverFrame,
@@ -127,6 +130,34 @@ describe("frames", () => {
         true
       );
     }
+  });
+});
+
+describe("closing frames", () => {
+  it("encode every close reason exactly as the server message union does, whatever the room's schemas", () => {
+    const encodeServer = Schema.encodeSync(ServerFrames);
+
+    expect(
+      CloseReasonSchema.literals.map((reason) => closingFrame(reason))
+    ).toEqual(
+      CloseReasonSchema.literals.map((reason) =>
+        encodeServer(ServerMessages.cases.Closing.make({ reason }))
+      )
+    );
+    expect(closingFrame("NotFound")).toBe(
+      '{"_tag":"Closing","reason":"NotFound"}'
+    );
+  });
+
+  it("give each reason its own close code, all in the ranges a server may send", () => {
+    const codes = CloseReasonSchema.literals.map(
+      (reason) => CLOSE_CODES[reason]
+    );
+
+    expect(new Set(codes).size).toBe(codes.length);
+    expect(
+      codes.every((code) => code === 1009 || (code >= 4000 && code <= 4999))
+    ).toBe(true);
   });
 });
 

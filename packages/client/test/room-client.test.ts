@@ -614,6 +614,8 @@ describe("room client against a fake socket", () => {
         "TooManyFrames",
         "RoomHalted",
         "ProtocolViolation",
+        "NotFound",
+        "TooManySockets",
       ];
 
       for (const reason of reasons) {
@@ -634,9 +636,11 @@ describe("room client against a fake socket", () => {
 
       expect(outcomes).toEqual({
         HelloTimeout: "Waiting HelloTimeout",
+        NotFound: "Refused NotFound",
         ProtocolViolation: "Refused ProtocolViolation",
         RoomHalted: "Refused RoomHalted",
         TooManyFrames: "Waiting TooManyFrames",
+        TooManySockets: "Waiting TooManySockets",
       });
     }).pipe(Effect.scoped, lowestJitter)
   );

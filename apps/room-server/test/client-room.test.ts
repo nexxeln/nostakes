@@ -3,6 +3,7 @@ import * as Test from "@alchemy.run/test/Vitest";
 import { expect } from "@effect/vitest";
 import { Activities, SILENCE_LIMIT_MS, WAKE_PROBE_MS } from "@nostakes/client";
 import type { ReplyResult } from "@nostakes/client";
+import { RoomCodeSchema } from "@nostakes/protocol";
 import type { RoomCode } from "@nostakes/protocol";
 import { Clock, Effect, Fiber, Option, Redacted, Schema, pipe } from "effect";
 import * as FetchHttpClient from "effect/http/FetchHttpClient";
@@ -297,8 +298,8 @@ test(
 );
 
 test(
-  "5. a wrong token ends in Refused after one connection attempt, with no retry loop",
-  Effect.gen(function* wrongTokenRefused() {
+  "5. a wrong token or a wrong room code ends in Refused after one connection attempt, with no retry loop",
+  Effect.gen(function* refusedForGood() {
     const base = yield* baseUrl;
     const [anaPass] = yield* openRoomWith(base, ["Ana"]);
 
@@ -312,10 +313,22 @@ test(
       "impostor"
     );
 
+    const lost = yield* playerFor(
+      base,
+      { ...anaPass, code: RoomCodeSchema.make("ZZZZZZ") },
+      "lost"
+    );
+
     yield* impostor.client.start;
+    yield* lost.client.start;
 
     const refused = yield* until(
       impostor,
+      ({ connection }) => connection === "Refused"
+    );
+
+    const notFound = yield* until(
+      lost,
       ({ connection }) => connection === "Refused"
     );
 
@@ -328,7 +341,11 @@ test(
     expect(refused.pipe(Option.flatMap(({ refusal }) => refusal))).toEqual(
       Option.some("NotAuthorized")
     );
+    expect(notFound.pipe(Option.flatMap(({ refusal }) => refusal))).toEqual(
+      Option.some("NotFound")
+    );
     expect(impostor.wire.opened()).toBe(1);
+    expect(lost.wire.opened()).toBe(1);
     expect(late._tag).toBe("ClientRefused");
   }).pipe(Effect.scoped, Effect.provide(FetchHttpClient.layer))
 );
