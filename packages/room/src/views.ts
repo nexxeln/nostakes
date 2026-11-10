@@ -253,6 +253,16 @@ export const HandViewSchema = Schema.Struct({
 export const LastHandViewSchema = Schema.Struct({
   awards: Schema.Array(AwardSchema),
   boards: Schema.Array(cards),
+  dealtIn: absentAs(
+    Schema.Array(
+      Schema.Struct({
+        folded: Schema.Boolean,
+        player: PlayerIdSchema,
+        seat: SeatIndexSchema,
+      })
+    ),
+    []
+  ),
   handNumber: Schema.Int,
   mucked: Schema.Array(SeatIndexSchema),
   rabbit: cards,
@@ -490,6 +500,11 @@ const lastHandView = (
         Option.map((record) => ({
           awards: record.awards,
           boards: record.boards,
+          dealtIn: lastHand.players.map(({ folded, player, seat }) => ({
+            folded,
+            player,
+            seat,
+          })),
           handNumber: record.handNumber,
           mucked: record.mucked,
           rabbit: record.rabbit,

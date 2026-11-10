@@ -1,5 +1,5 @@
 import { describe, expect, it } from "@effect/vitest";
-import { SeatIndexSchema } from "@nostakes/engine";
+import { ChipsSchema, SeatIndexSchema } from "@nostakes/engine";
 import { PlayerIdSchema, RoomCodeSchema } from "@nostakes/protocol";
 import { MillisSchema, RoomViewSchema } from "@nostakes/room";
 import { Option, Schema } from "effect";
@@ -204,6 +204,77 @@ describe("the ring around a face", () => {
       expect(again?.remainingMs).toBe(21_000);
       expect(again?.key).toBe(first?.key);
       expect(first?.totalMs).toBe(30_000);
+    },
+    { arbitrary: { runs: 20 } }
+  );
+});
+
+describe("after a hand, on a fresh page", () => {
+  it.prop(
+    "a player who folded the last hand shows as folded and may not hunt the rabbit where only players still in may, with no events remembered",
+    { view: views },
+    ({ view }) => {
+      const hero = SeatIndexSchema.make(0);
+      const other = SeatIndexSchema.make(1);
+      const stillIn = PlayerIdSchema.make("player-0000000cd");
+
+      const folded = {
+        ...view,
+        hand: Option.none(),
+        lastHand: Option.some({
+          awards: [],
+          boards: [[]],
+          dealtIn: [
+            { folded: true, player: PLAYER, seat: hero },
+            { folded: false, player: stillIn, seat: other },
+          ],
+          handNumber: 4,
+          mucked: [],
+          rabbit: [],
+          shown: [],
+          yourCards: [],
+        }),
+        seats: Array.from({ length: 9 }, (_, index) => ({
+          seat: SeatIndexSchema.make(index),
+        })).map((entry) => ({
+          ...entry,
+          occupant:
+            entry.seat === hero || entry.seat === other
+              ? Option.some({
+                  away: false,
+                  leaving: false,
+                  owes: { big: false, entry: false, small: false },
+                  player: entry.seat === hero ? PLAYER : stillIn,
+                  posts: false,
+                  sittingOut: false,
+                  stack: ChipsSchema.make(100),
+                  straddling: false,
+                })
+              : Option.none(),
+        })),
+        settings: {
+          ...view.settings,
+          seats: 9,
+          table: {
+            ...view.settings.table,
+            rabbitHunt: true,
+            rabbitHunters: "StillIn" as const,
+          },
+        },
+      };
+
+      const snapshot = tableSnapshot(
+        { ...roomWith(folded, true, false), events: [] },
+        folded,
+        [PLAYER, stillIn],
+        []
+      );
+
+      expect(snapshot.seats.map(({ seat, status }) => [seat, status])).toEqual([
+        [0, "Folded"],
+        [1, "In"],
+      ]);
+      expect(snapshot.afterHand.rabbit).toBe(false);
     },
     { arbitrary: { runs: 20 } }
   );

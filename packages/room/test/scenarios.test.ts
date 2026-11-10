@@ -160,7 +160,7 @@ describe("a night of three hands", () => {
 });
 
 describe("a spectator at a showdown", () => {
-  it("sees the winner's shown cards and the board, and nothing of the hand that mucked", () => {
+  it("sees the winner's shown cards, the board, who was dealt in and who folded, and nothing of the hand that mucked", () => {
     const view = viewFor(secondHand, Audiences.Spectator(), ms(40));
 
     if (!RoomViews.$is("Open")(view)) {
@@ -180,6 +180,11 @@ describe("a spectator at a showdown", () => {
           },
         ],
         boards: [cards("2c 7h 9d Jc 4s")],
+        dealtIn: [
+          { folded: false, player: ann, seat: seat(0) },
+          { folded: true, player: bob, seat: seat(1) },
+          { folded: false, player: cat, seat: seat(2) },
+        ],
         handNumber: 2,
         mucked: [seat(0)],
         rabbit: [],

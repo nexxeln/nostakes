@@ -8,7 +8,7 @@ import { Match, Option } from "effect";
 import type { InRoom } from "../model.js";
 import { isActing, isLive } from "../room.js";
 import type { OpenView } from "../room.js";
-import { HappeningSchema, Happenings } from "./snapshot.js";
+import { Happenings } from "./snapshot.js";
 import type {
   ActionClock,
   AfterHand,
@@ -143,18 +143,13 @@ export const happeningsOf = (
       }))
     : [];
 
-const lastStart = (events: readonly TableEvent[]) =>
-  events.findLastIndex(({ happening }) =>
-    HappeningSchema.guards.Start(happening)
-  );
-
-const foldedSinceStart = (events: readonly TableEvent[]) =>
-  new Set(
-    events
-      .slice(Math.max(0, lastStart(events)))
-      .flatMap(({ happening }) =>
-        HappeningSchema.guards.Fold(happening) ? [happening.seat] : []
+const lastHandOf = (view: OpenView, player: PlayerId, seat: number) =>
+  view.lastHand.pipe(
+    Option.flatMap(({ dealtIn }) =>
+      Option.fromNullishOr(
+        dealtIn.find((entry) => entry.player === player && entry.seat === seat)
       )
+    )
   );
 
 const PLAYER_STATUS = {
@@ -171,7 +166,6 @@ interface SeatContext {
   readonly view: OpenView;
   readonly room: InRoom;
   readonly presence: readonly PlayerId[];
-  readonly folded: ReadonlySet<number>;
 }
 
 const noteOf = (occupant: Occupant, here: boolean) => {
@@ -187,15 +181,20 @@ const noteOf = (occupant: Occupant, here: boolean) => {
 };
 
 const statusBetweenHands = (
+  view: OpenView,
   occupant: Occupant,
-  seat: number,
-  folded: ReadonlySet<number>
+  seat: number
 ): SeatStatus => {
   if (occupant.sittingOut) {
     return "Out";
   }
 
-  return folded.has(seat) ? "Folded" : "In";
+  return Option.exists(
+    lastHandOf(view, occupant.player, seat),
+    ({ folded }) => folded
+  )
+    ? "Folded"
+    : "In";
 };
 
 const heldCards = (held: {
@@ -217,7 +216,7 @@ const occupiedSeat = (
   seat: number,
   occupant: Occupant
 ): SeatSnapshot => {
-  const { folded, presence, room, view } = context;
+  const { presence, room, view } = context;
   const mine = occupant.player === room.player;
   const here = presence.includes(occupant.player);
   const member = view.members.find(({ player }) => player === occupant.player);
@@ -240,7 +239,7 @@ const occupiedSeat = (
     onNone: () =>
       Option.isSome(view.hand)
         ? "Out"
-        : statusBetweenHands(occupant, seat, folded),
+        : statusBetweenHands(view, occupant, seat),
     onSome: (player) => PLAYER_STATUS[player.status],
   });
 
@@ -406,8 +405,8 @@ const waitingLine = (room: InRoom, view: OpenView) => {
 
 const afterHandOf = (
   view: OpenView,
-  heroSeat: Option.Option<number>,
-  folded: ReadonlySet<number>
+  room: InRoom,
+  heroSeat: Option.Option<number>
 ): AfterHand => {
   const none: AfterHand = { bothOnly: false, rabbit: false, showable: [] };
 
@@ -425,11 +424,13 @@ const afterHandOf = (
       );
 
       const { table } = view.settings;
-      const stillIn = Option.exists(heroSeat, (seat) => !folded.has(seat));
 
-      const mayHunt =
-        Option.isSome(heroSeat) &&
-        (table.rabbitHunters === "DealtIn" || stillIn);
+      const mayHunt = heroSeat.pipe(
+        Option.flatMap((seat) => lastHandOf(view, room.player, seat)),
+        Option.exists(
+          ({ folded }) => table.rabbitHunters === "DealtIn" || !folded
+        )
+      );
 
       return {
         bothOnly: table.voluntaryShows === "BothCards",
@@ -488,8 +489,7 @@ export const tableSnapshot = (
 ): TableSnapshot => {
   const heroSeat = heroSeatOf(view, room);
   const offerSeats = canTakeASeat(view, room);
-  const folded = foldedSinceStart(room.events);
-  const context: SeatContext = { folded, presence, room, view };
+  const context: SeatContext = { presence, room, view };
 
   const seats = view.seats
     .filter(({ seat }) => seat < view.settings.seats)
@@ -504,7 +504,7 @@ export const tableSnapshot = (
 
   return {
     ...handFields(view),
-    afterHand: afterHandOf(view, heroSeat, folded),
+    afterHand: afterHandOf(view, room, heroSeat),
     bigBlind: view.settings.table.bigBlind,
     clock: clockOf(view, room),
     events: room.events,
