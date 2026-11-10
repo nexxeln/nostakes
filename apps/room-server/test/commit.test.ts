@@ -176,6 +176,53 @@ describe("commit", () => {
     expect(Option.isSome(restarted.halted)).toBe(true);
   });
 
+  it("halts at once when a committed event never reaches storage: the batch is not sent and every socket is told", () => {
+    const room = openToyHost(toyRoom, (storage) => ({
+      ...storage,
+      appendEvent: (row) => {
+        if (row.seq !== 6) {
+          storage.appendEvent(row);
+        }
+      },
+    }));
+
+    room.join(ben, 1001, "Ben");
+
+    const viewer = room.watch(ben);
+
+    room.send(ben, "b1", 1002, Commands.Increment.make({ times: 1 }));
+
+    const lost = room.send(
+      ben,
+      "b2",
+      1003,
+      Commands.Increment.make({ times: 2 })
+    );
+
+    const later = room.send(
+      ben,
+      "b3",
+      1004,
+      Commands.Increment.make({ times: 1 })
+    );
+
+    expect(lost.reply).toEqual(
+      room.host.codec.reply.cases.Unavailable.make({ reason: "RoomHalted" })
+    );
+    expect(CommitNotes.$is("Halted")(lost.note)).toBe(true);
+    expect(seqsOf(room, viewer)).toEqual([4]);
+    expect(room.closings.map((frame) => room.decodeFrame(frame))).toEqual([
+      room.host.codec.server.cases.Closing.make({ reason: "RoomHalted" }),
+    ]);
+    expect(room.host.snapshot().headSeq).toBe(4);
+    expect(CommitNotes.$is("RoomHalted")(later.note)).toBe(true);
+    expect(
+      Option.isSome(
+        Option.getOrThrow(loadRoom(toyRoom, room.memory.storage)).halted
+      )
+    ).toBe(true);
+  });
+
   it("halts when the core drops an event for an audience", () => {
     const room = openToyHost({
       ...toyRoom,

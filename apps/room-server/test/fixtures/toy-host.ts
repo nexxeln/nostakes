@@ -14,6 +14,7 @@ import {
   Origins,
 } from "../../src/room-host.js";
 import type { Connections, Viewer } from "../../src/room-host.js";
+import type { RoomStorage } from "../../src/room-storage.js";
 import { memoryStorage } from "./memory-storage.js";
 import { toyRoom } from "./toy-room.js";
 import type { ToyMemberCommand, ToyTypes } from "./toy-room.js";
@@ -40,12 +41,16 @@ export const recordingViewer = (player: PlayerId): RecordingViewer => {
   };
 };
 
-export const openToyHost = (core: HostedRoom<ToyTypes> = toyRoom) => {
+export const openToyHost = (
+  core: HostedRoom<ToyTypes> = toyRoom,
+  wrap: (storage: RoomStorage) => RoomStorage = (storage) => storage
+) => {
   const memory = memoryStorage();
+  const storage = wrap(memory.storage);
 
   openStorage(
     core,
-    memory.storage,
+    storage,
     {
       at: 1000,
       code: RoomCodeSchema.make("K7P2XZ"),
@@ -57,8 +62,8 @@ export const openToyHost = (core: HostedRoom<ToyTypes> = toyRoom) => {
 
   const host = hostRoom(
     core,
-    memory.storage,
-    Option.getOrThrow(loadRoom(core, memory.storage))
+    storage,
+    Option.getOrThrow(loadRoom(core, storage))
   );
 
   const closings: string[] = [];

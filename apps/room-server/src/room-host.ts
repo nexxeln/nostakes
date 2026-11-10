@@ -249,6 +249,19 @@ export const hostRoom = <T extends RoomTypes>(
       : Result.succeed(frames);
   };
 
+  const batchPersisted = (
+    after: number,
+    committed: number
+  ): Checked<number> => {
+    const rows = storage.countEventsAfter(after);
+
+    return rows === committed
+      ? Result.succeed(rows)
+      : Result.fail([
+          `storage holds ${rows} events after ${after}, but the commit wrote ${committed}`,
+        ]);
+  };
+
   const unavailable = (reason: "RoomHalted" | "StorageFailed") =>
     codec.reply.cases.Unavailable.make({ reason });
 
@@ -362,6 +375,22 @@ export const hostRoom = <T extends RoomTypes>(
       return {
         note: CommitNotes.StorageFailed({ cause: stored.failure }),
         reply: unavailable("StorageFailed"),
+      };
+    }
+
+    const persisted = guarded("could not read the batch back", () =>
+      batchPersisted(current.headSeq, events.length)
+    );
+
+    if (Result.isFailure(persisted)) {
+      halt(persisted.failure.join("; "), connections);
+
+      return {
+        note: CommitNotes.Halted({
+          events: Inspectable.toStringUnknown(events, 0),
+          violations: persisted.failure,
+        }),
+        reply: unavailable("RoomHalted"),
       };
     }
 
