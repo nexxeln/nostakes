@@ -621,3 +621,81 @@ describe("a sealed deal after a heads-up hand at a casino table", () => {
     expect(dealtSeats(dealt)).toStrictEqual([seat(0), seat(1), seat(3)]);
   });
 });
+
+describe("a rules change after the seal", () => {
+  it("deals the sealed hand under the rules it was sealed with and applies the change when that hand ends", () => {
+    const casino = {
+      ...checked,
+      table: { ...checked.table, blindPosting: "Casino" as const },
+    };
+
+    const homeGame = {
+      ...casino,
+      table: { ...casino.table, blindPosting: "HomeGame" as const },
+    };
+
+    let state = runAll(openedBy(ann, casino), [
+      join(bob),
+      join(cat),
+      sit(ann, 0),
+      sit(bob, 1),
+      sit(cat, 2),
+      RoomCommands.StartGame({ at: ms(START), by: as(ann) }),
+    ]);
+
+    let step = 0;
+
+    for (; step < 200 && handsPlayed(state) < 1; step += 1) {
+      state = foldOrAnswer(state, step);
+    }
+
+    for (; step < 200 && isInHand(state); step += 1) {
+      state = foldOrAnswer(state, step);
+    }
+
+    state = runAll(state, [
+      RoomCommands.SitOut({ at: openOf(state).now, by: as(ann) }),
+    ]);
+
+    const sealed = Option.match(nextDeadline(state), {
+      onNone: () => run(state, sealAt(openOf(state).now, 400)),
+      onSome: (deadline) => run(state, serverAnswer(deadline, 400)),
+    });
+
+    expect(sealedEvent(sealed.events).seats).toStrictEqual([seat(1), seat(2)]);
+
+    const changedAt = ms(openOf(sealed.state).now);
+
+    const changed = run(
+      sealed.state,
+      RoomCommands.ChangeSettings({
+        at: changedAt,
+        by: as(ann),
+        settings: homeGame,
+      })
+    );
+
+    expect(changed.events).toStrictEqual([
+      RoomEvents.SettingsChanged({
+        at: changedAt,
+        settings: { ...homeGame, table: casino.table },
+      }),
+      RoomEvents.RulesQueued({ at: changedAt, config: homeGame.table }),
+    ]);
+
+    state = Option.match(nextDeadline(changed.state), {
+      onNone: () => changed.state,
+      onSome: (deadline) =>
+        run(changed.state, serverAnswer(deadline, 401)).state,
+    });
+
+    expect(dealtSeats(state)).toStrictEqual([seat(1), seat(2)]);
+    expect(openOf(state).table.config.blindPosting).toBe("Casino");
+
+    for (step = 402; step < 600 && isInHand(state); step += 1) {
+      state = foldOrAnswer(state, step);
+    }
+
+    expect(openOf(state).table.config.blindPosting).toBe("HomeGame");
+  });
+});

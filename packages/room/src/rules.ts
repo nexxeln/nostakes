@@ -31,7 +31,7 @@ export const changeSettings = (
   const current = state.table.config;
   const unchanged = sameTableRules(wanted, current);
 
-  if (handInProgress(state)) {
+  if (handInProgress(state) || Option.isSome(state.sealed)) {
     return Result.succeed([
       RoomEvents.SettingsChanged({
         at: command.at,
