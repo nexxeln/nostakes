@@ -1,0 +1,151 @@
+{
+  "config": {
+    "ante": {
+      "amount": 9,
+      "_tag": "EveryPlayer"
+    },
+    "bigBlind": 10,
+    "maxRuns": 2,
+    "rabbitHunt": false,
+    "smallBlind": 5,
+    "straddle": {
+      "button": true,
+      "underTheGun": 0
+    }
+  },
+  "previousButton": 2,
+  "seats": [
+    null,
+    {
+      "sittingOut": false,
+      "stack": 525
+    },
+    {
+      "sittingOut": false,
+      "stack": 14
+    },
+    null,
+    null,
+    null,
+    null,
+    null,
+    null
+  ],
+  "after": [],
+  "deck": [
+    12, 23, 47, 25, 31, 17, 2, 35, 10, 11, 28, 21, 51, 18, 1, 14, 45, 34, 19,
+    38, 3, 16, 20, 43, 22, 0, 9, 13, 26, 24, 4, 27, 15, 44, 40, 49, 6, 37, 7,
+    36, 41, 46, 29, 50, 42, 32, 30, 33, 8, 39, 5, 48
+  ],
+  "final": [
+    null,
+    {
+      "sittingOut": false,
+      "stack": 511
+    },
+    {
+      "sittingOut": false,
+      "stack": 28
+    },
+    null,
+    null,
+    null,
+    null,
+    null,
+    null
+  ],
+  "hand": 4324,
+  "rejectedStarts": [],
+  "start": [
+    {
+      "bigBlindSeat": 2,
+      "button": 1,
+      "dealtIn": [1, 2],
+      "deck": [],
+      "handNumber": 6,
+      "smallBlindSeat": 1,
+      "_tag": "HandStarted"
+    },
+    {
+      "allIn": false,
+      "amount": 9,
+      "seat": 2,
+      "_tag": "AntePosted"
+    },
+    {
+      "allIn": false,
+      "amount": 9,
+      "seat": 1,
+      "_tag": "AntePosted"
+    },
+    {
+      "allIn": false,
+      "amount": 5,
+      "blind": "Small",
+      "seat": 1,
+      "_tag": "BlindPosted"
+    },
+    {
+      "allIn": true,
+      "amount": 5,
+      "blind": "Big",
+      "seat": 2,
+      "_tag": "BlindPosted"
+    },
+    {
+      "cards": [12, 47],
+      "seat": 2,
+      "_tag": "HoleCardsDealt"
+    },
+    {
+      "cards": [23, 25],
+      "seat": 1,
+      "_tag": "HoleCardsDealt"
+    }
+  ],
+  "steps": [
+    {
+      "accepted": true,
+      "command": {
+        "action": {
+          "_tag": "Fold"
+        },
+        "seat": 1,
+        "_tag": "Act"
+      },
+      "events": [
+        {
+          "seat": 1,
+          "_tag": "Folded"
+        },
+        {
+          "amount": 28,
+          "eligible": [2],
+          "pot": 1,
+          "run": 1,
+          "winners": [
+            {
+              "amount": 28,
+              "seat": 2
+            }
+          ],
+          "_tag": "PotAwarded"
+        },
+        {
+          "handNumber": 6,
+          "_tag": "HandEnded"
+        }
+      ],
+      "pending": {
+        "call": 5,
+        "canCheck": false,
+        "kind": "Bet",
+        "raise": null,
+        "seat": 1
+      },
+      "probe": false,
+      "rejection": null
+    }
+  ],
+  "straddles": []
+}

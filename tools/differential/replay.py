@@ -93,9 +93,9 @@ EXCLUSIONS = {
     ),
     "pokerkit-short-all-in-reopens": (
         "PokerKit lets a seat that already acted raise after all-in wagers that add up to "
-        "less than a full bet or raise. It counts the first short wager of a street as full "
-        "and forgets short all-ins once they add up. TDA Rule 49-A says that seat may not "
-        "raise. Only raise availability is skipped at these decisions."
+        "less than a full bet or raise, because it counts the first short wager of a street "
+        "as a full one. TDA Rule 49-A says that seat may not raise. Only raise availability "
+        "is skipped at these decisions."
     ),
     "pokerkit-forgets-added-short-all-ins": (
         "PokerKit adds up short all-ins only until they reach a full raise, then starts the "
