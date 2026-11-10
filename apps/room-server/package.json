@@ -24,6 +24,7 @@
     "@cloudflare/workers-types": "5.20261108.1",
     "@effect/platform-node": "4.1.2",
     "@effect/vitest": "4.1.2",
+    "@nostakes/client": "workspace:*",
     "@types/node": "24.19.2",
     "typescript": "7.0.2",
     "vitest": "5.1.0"
