@@ -675,6 +675,50 @@ describe("room client against a fake socket", () => {
   );
 
   it.effect(
+    "a reply held past the grace costs one reconnect: the command is resent once with the same id and the caller gets exactly one reply",
+    () =>
+      Effect.gen(function* answerHeldTooLong() {
+        const { client, fake, greet, live, phase, socket } = yield* harness;
+
+        yield* live(1);
+
+        const first = yield* socket(0);
+        const issued = yield* client.issue(add(1));
+
+        yield* advance(ANSWER_LIMIT_MS - 1);
+        yield* first.hold;
+        yield* first.push(serverText.reply(issued.id, 2));
+        yield* advance(OVERDUE_GRACE_MS + 1);
+
+        const dropped = yield* client.state;
+
+        expect(dropped.drop).toEqual(Option.some("Unanswered"));
+        expect(dropped.pending).toEqual([issued.id]);
+
+        yield* first.handOver;
+        yield* advance(125);
+
+        const second = yield* greet(1, 2, [2]);
+
+        expect(commandIds(second)).toEqual([issued.id]);
+
+        yield* second.push(serverText.reply(issued.id, 2));
+
+        const reply = yield* issued.reply;
+
+        yield* advance(OVERDUE_GRACE_MS * 3);
+
+        expect(reply).toEqual(
+          toyCodec.reply.cases.Accepted.make({ seq: seqOf(2) })
+        );
+        expect(commandIds(first)).toEqual([issued.id]);
+        expect(fake.sockets.length).toBe(2);
+        expect(yield* phase).toBe("Live");
+        expect((yield* client.state).pending).toEqual([]);
+      }).pipe(Effect.scoped, lowestJitter)
+  );
+
+  it.effect(
     "a ping that gets no pong drops the connection at the answer limit even while batches keep arriving",
     () =>
       Effect.gen(function* unansweredPing() {
