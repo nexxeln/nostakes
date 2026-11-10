@@ -39,11 +39,11 @@ export const tableCss = `
 }
 .tile.active { z-index: 5; }
 .frame {
-  position: absolute; inset: 0; border-radius: var(--radius-face); overflow: hidden; background: var(--color-face);
+  position: absolute; inset: 0; border-radius: var(--radius-face); background: var(--color-face);
   box-shadow: var(--shadow-face); transition: box-shadow var(--duration-2) var(--ease);
 }
 .pic {
-  position: absolute; left: 0; top: 0; width: 100%; height: 100%; display: grid; place-items: center; color: var(--color-face-ink);
+  position: absolute; left: 0; top: -5%; width: 100%; height: 100%; display: grid; place-items: center; color: var(--color-face-ink);
   font-size: calc(var(--t) * 0.34); font-weight: var(--weight-body); letter-spacing: 0.01em;
   transition: color var(--duration-3) var(--ease), transform var(--duration-3) var(--ease);
 }
@@ -96,6 +96,7 @@ export const tableCss = `
   opacity: 0; scale: 0.6; pointer-events: none; transition: opacity var(--duration-2) var(--ease), scale var(--duration-3) var(--ease-back);
 }
 .won .tab { opacity: 1; scale: 1; }
+.has-button .tab { left: 38%; }
 
 .shown { position: absolute; left: 50%; top: calc(var(--t) * 0.5); z-index: 3; display: flex; gap: 3px; transform: translateX(-50%); }
 
@@ -197,7 +198,7 @@ export const tableCss = `
   position: absolute; inset: 0; border-radius: 50%; background: var(--color-accent); box-shadow: var(--shadow-action);
   transition: background-color var(--duration-2) var(--ease), box-shadow var(--duration-2) var(--ease), opacity var(--duration-2) var(--ease), translate var(--duration-1) var(--ease);
 }
-.chipctl.idle .disc { background: var(--color-raised); box-shadow: var(--shadow-sheet-1); }
+.chipctl.idle .disc { background: transparent; box-shadow: none; border: 1.5px dashed var(--color-line-strong); }
 .chipctl.live .disc { box-shadow: var(--shadow-action), 0 0 0 calc(var(--c) * 0.095) var(--color-action-halo); }
 .chipctl.live:active .disc { translate: var(--press-2); box-shadow: var(--shadow-sheet-0), 0 0 0 calc(var(--c) * 0.095) var(--color-action-halo); }
 .chipctl .lbl { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; color: var(--color-on-accent); line-height: 1.15; pointer-events: none; }

@@ -1,5 +1,5 @@
 import { avatarFor, render } from "@nostakes/avatar";
-import type { Expression } from "@nostakes/avatar";
+import type { Expression, Theme } from "@nostakes/avatar";
 import { REACTIONS } from "@nostakes/room";
 import type { Reaction } from "@nostakes/room";
 import { Option, Schema } from "effect";
@@ -708,18 +708,34 @@ const expressionFor = (mood: {
   return mood.thinking ? "Thinking" : "Resting";
 };
 
+const pageTheme = (): Theme => {
+  const chosen = document.documentElement.dataset.theme;
+
+  if (chosen === "dark" || chosen === "light") {
+    return chosen === "dark" ? "Dark" : "Light";
+  }
+
+  return globalThis.matchMedia("(prefers-color-scheme: dark)").matches
+    ? "Dark"
+    : "Light";
+};
+
 const paintFace = (
   pic: HTMLElement,
   avatar: string,
   expression: Expression,
-  size: number
+  look: { readonly size: number; readonly theme: Theme }
 ) => {
-  const pixels = Math.max(24, Math.round(size));
-  const key = `${avatar}|${expression}|${pixels}`;
+  const pixels = Math.max(24, Math.round(look.size));
+  const key = `${avatar}|${expression}|${pixels}|${look.theme}`;
 
   if (pic.dataset.face !== key) {
     pic.dataset.face = key;
-    pic.innerHTML = render(avatarFor(avatar), { expression, size: pixels });
+    pic.innerHTML = render(avatarFor(avatar), {
+      expression,
+      size: pixels,
+      theme: look.theme,
+    });
   }
 };
 
@@ -737,6 +753,7 @@ export class NostakesTable extends HTMLElement {
   readonly #room: HTMLDivElement;
   readonly #sound = new TableSound();
   #geo: Geo | null = null;
+  #theme: Theme = "Light";
   #tiles = new Map<number, Tile>();
   #order = "";
   #piles = new Map<number, Pile>();
@@ -1386,6 +1403,7 @@ export class NostakesTable extends HTMLElement {
     const geo = computeGeo(w, h, count);
 
     this.#geo = geo;
+    this.#theme = pageTheme();
     this.#room.style.setProperty("--t", `${geo.tile}px`);
     this.#room.style.setProperty("--cw", `${geo.cardW}px`);
     toggle(this.#room, "in-strip", geo.boardInStrip);
@@ -1950,6 +1968,11 @@ export class NostakesTable extends HTMLElement {
     const button = snapshot.buttonSeat;
 
     toggle(this.#dealer, "gone", button === null);
+    toggle(this.#self, "has-button", button === snapshot.heroSeat);
+
+    for (const tile of this.#tiles.values()) {
+      toggle(tile.root, "has-button", tile.seat === button);
+    }
 
     if (button === null) {
       return;
@@ -3812,7 +3835,7 @@ export class NostakesTable extends HTMLElement {
             lookingDown: info.peeking,
             thinking: active,
           }),
-          geo.tile
+          { size: geo.tile, theme: this.#theme }
         );
       }
 
@@ -3923,7 +3946,7 @@ export class NostakesTable extends HTMLElement {
           lookingDown: this.#peekOn || me.peeking,
           thinking: false,
         }),
-        this.#geo?.self.size ?? 0
+        { size: this.#geo?.self.size ?? 0, theme: this.#theme }
       );
     }
 

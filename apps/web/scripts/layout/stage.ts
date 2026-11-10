@@ -1,4 +1,4 @@
-import { codeFor, randomAvatar } from "@nostakes/avatar";
+import { codeFor, randomAvatar, render } from "@nostakes/avatar";
 
 import "../../src/client/tokens.css";
 import "../../src/client/app.css";
@@ -161,7 +161,19 @@ const mount = () => {
 
   table.className = "table-host";
   table.sound = false;
-  header.append(element("span", "brand small", "nostakes"));
+  const end = element("span", "bar-end");
+  const face = element("span", "bar-button face-button");
+
+  face.innerHTML = render(randomAvatar(17), {
+    expression: "Resting",
+    size: 32,
+  });
+  end.append(face, element("span", "bar-button", "Menu"));
+  header.append(
+    element("span", "brand small", "nostakes"),
+    element("span", "bar-button", "Invite"),
+    end
+  );
   stage.append(table);
   body.append(stage);
   page.append(header, body);
