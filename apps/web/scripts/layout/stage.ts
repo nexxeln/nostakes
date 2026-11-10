@@ -107,8 +107,12 @@ const element = (tag: string, className: string, text = "") => {
   return node;
 };
 
+const definedLate = params.get("late") === "1";
+
 const mount = () => {
-  defineTable();
+  if (!definedLate) {
+    defineTable();
+  }
 
   const root = document.querySelector("#stage");
   const page = element("main", "page room");
@@ -129,6 +133,11 @@ const mount = () => {
   page.append(header, body);
   root.append(page);
   table.snapshot = snapshot;
+
+  if (definedLate) {
+    defineTable();
+  }
+
   document.documentElement.dataset.staged = "true";
 };
 

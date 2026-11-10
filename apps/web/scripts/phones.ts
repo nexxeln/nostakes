@@ -535,6 +535,23 @@ const checkEngine = (engine: BrowserType, app: string) =>
       listed.join(",")
     );
 
+    yield* attempt("open a table defined after its snapshot", () =>
+      guest.goto(`${app}/scripts/layout/stage.html?players=3&boards=1&late=1`)
+    );
+    yield* attempt("wait for the late table", () =>
+      guest.locator("html[data-staged]").waitFor({ state: "attached" })
+    );
+
+    const lateNames = yield* attempt("read the late table's names", () =>
+      guest.locator(`${TABLE} .label .name`).allTextContents()
+    );
+
+    yield* note(
+      "a table defined after its first snapshot still draws it",
+      lateNames.length === 3,
+      lateNames.join(",")
+    );
+
     return findings;
   }).pipe(Effect.scoped);
 

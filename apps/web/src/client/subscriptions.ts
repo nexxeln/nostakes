@@ -1,5 +1,4 @@
-import { Activities } from "@nostakes/client";
-import type { ClientState, RoomUpdate } from "@nostakes/client";
+import type { ClientState } from "@nostakes/client";
 import { Clock, Effect, Option, Predicate, Ref, Schema, Stream } from "effect";
 import { Subscription } from "foldkit";
 import type { ManagedResource } from "foldkit";
@@ -40,16 +39,15 @@ const roomLinks = RoomConnection.get.pipe(
   Stream.unwrap
 );
 
-const appliedEvents = (activity: RoomUpdate<PokerClientTypes>["activity"]) =>
-  activity.flatMap(
-    Activities.$match({
-      Applied: ({ event, seq }) => [{ event, seq }],
-      Skipped: () => [],
-    })
-  );
+const loadRoomLink = Effect.promise(() => import("./room-link.js"));
 
 const roomUpdates = RoomConnection.get.pipe(
-  Effect.map((client) =>
+  Effect.flatMap((client) =>
+    loadRoomLink.pipe(
+      Effect.map(({ appliedEvents }) => ({ appliedEvents, client }))
+    )
+  ),
+  Effect.map(({ appliedEvents, client }) =>
     client.updates.pipe(
       Stream.mapEffect(({ activity, seq, view }) =>
         Clock.currentTimeMillis.pipe(

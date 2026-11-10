@@ -2,6 +2,7 @@ import { avatarFor, render } from "@nostakes/avatar";
 import type { Expression } from "@nostakes/avatar";
 import { REACTIONS } from "@nostakes/room";
 import type { Reaction } from "@nostakes/room";
+import { Option, Schema } from "effect";
 
 import { PEEK_REFRESH_MS } from "../../features/signals.js";
 import { raiseDetents, raiseLadder } from "../../features/table/sizing.js";
@@ -10,6 +11,7 @@ import {
   HappeningSchema,
   TABLE_TAG,
   TableIntents,
+  TableSnapshotSchema,
 } from "../../features/table/snapshot.js";
 import type {
   Happening,
@@ -767,6 +769,30 @@ export class NostakesTable extends HTMLElement {
         this.#closePicker();
       }
     });
+    this.#adoptEarlyProperties();
+  }
+
+  #adoptEarlyProperties() {
+    const early = {
+      snapshot: Object.getOwnPropertyDescriptor(this, "snapshot"),
+      sound: Object.getOwnPropertyDescriptor(this, "sound"),
+    };
+
+    Reflect.deleteProperty(this, "snapshot");
+    Reflect.deleteProperty(this, "sound");
+
+    if (early.sound !== undefined) {
+      this.sound = Option.getOrElse(
+        Schema.decodeUnknownOption(Schema.Boolean)(early.sound.value),
+        () => this.sound
+      );
+    }
+
+    if (early.snapshot !== undefined) {
+      this.snapshot = Option.getOrNull(
+        Schema.decodeUnknownOption(TableSnapshotSchema)(early.snapshot.value)
+      );
+    }
   }
 
   get #reduced(): boolean {

@@ -1,4 +1,3 @@
-import { roomClient, webSocketTransport } from "@nostakes/client";
 import type { RoomClient } from "@nostakes/client";
 import { BuildIdSchema } from "@nostakes/protocol";
 import { Effect, Option, Schema } from "effect";
@@ -9,7 +8,7 @@ import type { Message } from "../features/message.js";
 import { SavedPassSchema } from "../features/model.js";
 import type { Model } from "../features/model.js";
 import { connectionTarget } from "../features/room.js";
-import { pokerClientSchemas, socketPath } from "../features/wire.js";
+import { socketPath } from "../features/wire.js";
 import type { PokerClientTypes } from "../features/wire.js";
 import { storedPass } from "./storage.js";
 
@@ -38,16 +37,13 @@ export const managedResources = ManagedResource.make<Model, Message>()(
         Effect.gen(function* openRoomClient() {
           const pass = yield* storedPass(code);
 
-          const client = yield* roomClient(pokerClientSchemas, {
-            token: pass.token,
-            url: socketUrl(code),
-            ...Option.match(pageBuild(), {
-              onNone: () => ({}),
-              onSome: (build) => ({ build }),
-            }),
-          }).pipe(Effect.provide(webSocketTransport()));
+          const link = yield* Effect.promise(() => import("./room-link.js"));
 
-          yield* client.start;
+          const client = yield* link.startedClient(
+            socketUrl(code),
+            pass.token,
+            pageBuild()
+          );
 
           return client;
         }),

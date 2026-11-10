@@ -106,7 +106,15 @@ const buildStamp = (): Plugin => ({
   name: "nostakes-build-stamp",
 });
 
+const PURE_MODULES = [
+  { sideEffects: false, test: /[\\/]packages[\\/][a-z-]+[\\/]dist[\\/]/u },
+  { sideEffects: false, test: /[\\/]node_modules[\\/].*@noble[\\/]/u },
+];
+
 export default defineConfig({
+  build: {
+    rolldownOptions: { treeshake: { moduleSideEffects: PURE_MODULES } },
+  },
   plugins: [foldkit({ devToolsMcpPort: false }), buildStamp(), linkPreviews()],
   server: {
     port: 5173,
