@@ -1,4 +1,4 @@
-import { Activities } from "@nostakes/client";
+import { Activities, ANSWER_LIMIT_MS, BACKOFF_CAP_MS } from "@nostakes/client";
 import { Antes, Events, Seats, ShowdownEntries } from "@nostakes/engine";
 import type { Card, Event, PlayerId, SeatIndex } from "@nostakes/engine";
 import { MAX_MISSED_EVENTS } from "@nostakes/protocol";
@@ -56,6 +56,11 @@ const { guards } = pokerCodec.server;
 
 export const CLOCK_TOLERANCE_MS = 50;
 
+export const DEAF_REPLY_MARGIN_MS = 5000;
+
+export const DEAF_REPLY_BOUND_MS =
+  ANSWER_LIMIT_MS + BACKOFF_CAP_MS + DEAF_REPLY_MARGIN_MS;
+
 export const COUNT_NAMES = [
   "antePosts",
   "approvals",
@@ -70,8 +75,10 @@ export const COUNT_NAMES = [
   "clientDropsBlackHole",
   "clientDropsBotClose",
   "clientDropsDeafSilence",
+  "clientDropsDeafUnanswered",
   "clientDropsRestart",
   "clientDropsSilenceLimit",
+  "clientDropsUnansweredOnClearLine",
   "clientDropsUnexplained",
   "clientEchoes",
   "clientEventsChecked",
@@ -143,8 +150,10 @@ export const emptyCounts = (): NightCounts => ({
   clientDropsBlackHole: 0,
   clientDropsBotClose: 0,
   clientDropsDeafSilence: 0,
+  clientDropsDeafUnanswered: 0,
   clientDropsRestart: 0,
   clientDropsSilenceLimit: 0,
+  clientDropsUnansweredOnClearLine: 0,
   clientDropsUnexplained: 0,
   clientEchoes: 0,
   clientEventsChecked: 0,
@@ -698,6 +707,8 @@ const addClientStats = (checker: Checker, client: ClientBotRecord) => {
   counts.clientDropsSilenceLimit += stats.dropsSilenceLimit;
   counts.clientDropsBlackHole += stats.dropsBlackHole;
   counts.clientDropsDeafSilence += stats.dropsDeafSilence;
+  counts.clientDropsDeafUnanswered += stats.dropsDeafUnanswered;
+  counts.clientDropsUnansweredOnClearLine += stats.dropsUnansweredOnClearLine;
   counts.clientDropsUnexplained += stats.dropsUnexplained;
   counts.clientFailedAttempts += stats.failedAttempts;
   counts.clientWakes += stats.wakes;
@@ -786,6 +797,17 @@ const indexClientReplies = (
 
   for (const entry of client.commands) {
     const where = `${client.label} ${entry.command._tag} ${entry.id}`;
+
+    for (const answeredAt of Option.toArray(entry.answeredAt)) {
+      const waitedMs = Math.round(answeredAt - entry.issuedAt);
+
+      if (entry.issuedOnDeafLine && waitedMs > DEAF_REPLY_BOUND_MS) {
+        report(
+          checker,
+          `${where} went out on a deaf line and waited ${waitedMs} ms for its reply, past the ${DEAF_REPLY_BOUND_MS} ms bound`
+        );
+      }
+    }
 
     Option.match(entry.outcome, {
       onNone: () => {

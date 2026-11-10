@@ -15,7 +15,11 @@ import * as FetchHttpClient from "effect/http/FetchHttpClient";
 import type { Temper } from "../test/fixtures/bot.js";
 import type { ClientTemper } from "../test/fixtures/client-bot.js";
 import type { Moment } from "../test/fixtures/client-wire.js";
-import { COUNT_NAMES, emptyCounts } from "../test/fixtures/night-checks.js";
+import {
+  COUNT_NAMES,
+  DEAF_REPLY_BOUND_MS,
+  emptyCounts,
+} from "../test/fixtures/night-checks.js";
 import type { CountName } from "../test/fixtures/night-checks.js";
 import { openNight, planNight, runNight } from "../test/fixtures/night.js";
 import type {
@@ -59,7 +63,7 @@ const TEMPER: Temper = {
 
 const CHAOS: ClientTemper = {
   blackHolePercent: 0.3,
-  deafPercent: 0.03,
+  deafPercent: 0.1,
   dropPercent: 0.6,
   echoPercent: 0.5,
   issueBeforeDropPercent: 60,
@@ -72,8 +76,9 @@ const HAND_BUDGET_MS = 12_000;
 
 const INFORMATIONAL: ReadonlySet<CountName> = new Set([
   "catchUpsSkipped",
-  "clientDeafCommands",
   "clientDropsDeafSilence",
+  "clientDropsSilenceLimit",
+  "clientDropsUnansweredOnClearLine",
   "clientDropsUnexplained",
   "clientFailedAttempts",
   "clientUnexpectedRefusals",
@@ -150,8 +155,8 @@ const summarize = (
     `  settings changed ${counts.settingsChanged}, rules queued ${counts.rulesQueued}, closes queued in a hand ${counts.closeQueued}`,
     `  frames checked ${counts.framesChecked}, views checked ${counts.viewsChecked}, viewFor ${views > 0 ? ((viewMs * 1000) / views).toFixed(1) : "n/a"} µs each over ${views}`,
     `  client bots ${counts.clientBots}: commands ${counts.clientCommands}, traced to the log ${counts.clientCommandsTraced}, issued right before a drop ${counts.clientIssuedBeforeDrop}, resent after a drop ${counts.clientResent}`,
-    `  client drops: bot close ${counts.clientDropsBotClose}, server restart ${counts.clientDropsRestart}, silence limit ${counts.clientDropsSilenceLimit}, black hole ${counts.clientDropsBlackHole}; deaf and silent ${counts.clientDropsDeafSilence}, unexplained ${counts.clientDropsUnexplained}, failed reconnects ${counts.clientFailedAttempts}`,
-    `  commands issued on a deaf line ${counts.clientDeafCommands}, answered ${deafReplies.length}, slowest reply ${slowestDeafReply.toFixed(0)} ms`,
+    `  client drops: bot close ${counts.clientDropsBotClose}, server restart ${counts.clientDropsRestart}, unanswered on a deaf line ${counts.clientDropsDeafUnanswered}, black hole ${counts.clientDropsBlackHole}; server silence limit ${counts.clientDropsSilenceLimit}, deaf and silent ${counts.clientDropsDeafSilence}, unanswered on a clear line ${counts.clientDropsUnansweredOnClearLine}, unexplained ${counts.clientDropsUnexplained}, failed reconnects ${counts.clientFailedAttempts}`,
+    `  commands issued on a deaf line ${counts.clientDeafCommands}, answered ${deafReplies.length}, slowest reply ${slowestDeafReply.toFixed(0)} ms (bound ${DEAF_REPLY_BOUND_MS} ms)`,
     `  client wakes ${counts.clientWakes}, naps ${counts.clientNaps}, skipped ranges ${counts.clientSkippedRanges}, past batches echoed ${counts.clientEchoes}, events checked ${counts.clientEventsChecked}, views checked ${counts.clientViewsChecked}, unexpected refusals ${counts.clientUnexpectedRefusals}`,
     `  replay of the longest night (${longest?.plan.code ?? "none"}, ${longest?.verdict.counts.hands ?? 0} hands, ${longest?.verdict.counts.events ?? 0} events): ${(longest?.verdict.replayMs ?? 0).toFixed(1)} ms`,
     `  settlement transfers per room: ${results.map((result) => result.verdict.transfers.join(",")).join(" ")} (total ${counts.transfers})`,

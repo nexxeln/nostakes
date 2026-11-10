@@ -1,4 +1,9 @@
-import { Activities, roomClient } from "@nostakes/client";
+import {
+  Activities,
+  ANSWER_LIMIT_MS,
+  PING_INTERVAL_MS,
+  roomClient,
+} from "@nostakes/client";
 import type {
   Activity,
   ClientSchemas,
@@ -27,7 +32,7 @@ import type {
   Temper,
 } from "./bot.js";
 import { clientWire, describeFrame, timeline } from "./client-wire.js";
-import type { Line, Moment } from "./client-wire.js";
+import type { Line, LineMode, Moment } from "./client-wire.js";
 import { pokerCodec, wallClock } from "./poker-socket.js";
 import { socketUrl } from "./room-client.js";
 
@@ -65,7 +70,9 @@ export type DropCause =
   | "Restart"
   | "SilenceLimit"
   | "BlackHole"
+  | "DeafUnanswered"
   | "DeafSilence"
+  | "UnansweredOnClearLine"
   | "Unexplained";
 
 export interface ClientDrop {
@@ -101,7 +108,9 @@ export interface ClientBotStats {
   dropsRestart: number;
   dropsSilenceLimit: number;
   dropsBlackHole: number;
+  dropsDeafUnanswered: number;
   dropsDeafSilence: number;
+  dropsUnansweredOnClearLine: number;
   dropsUnexplained: number;
   failedAttempts: number;
   wakes: number;
@@ -169,9 +178,19 @@ const MEND_POLL_MS = 100;
 
 const MEND_WAKE_GAP_MS = 1000;
 
+const UNANSWERED_ON: Readonly<Record<LineMode, DropCause>> = {
+  BlackHole: "BlackHole",
+  Clear: "UnansweredOnClearLine",
+  Deaf: "DeafUnanswered",
+};
+
 const causeOf = (reason: DropReason, line: Line | undefined): DropCause => {
   if (reason === "SocketClosed") {
     return line?.closedByBot === true ? "BotClose" : "Restart";
+  }
+
+  if (reason === "Unanswered") {
+    return UNANSWERED_ON[line?.mode ?? "Clear"];
   }
 
   if (reason === "Unresponsive") {
@@ -192,7 +211,9 @@ const countDrop = (stats: ClientBotStats, cause: DropCause) => {
   stats.dropsRestart += cause === "Restart" ? 1 : 0;
   stats.dropsSilenceLimit += cause === "SilenceLimit" ? 1 : 0;
   stats.dropsBlackHole += cause === "BlackHole" ? 1 : 0;
+  stats.dropsDeafUnanswered += cause === "DeafUnanswered" ? 1 : 0;
   stats.dropsDeafSilence += cause === "DeafSilence" ? 1 : 0;
+  stats.dropsUnansweredOnClearLine += cause === "UnansweredOnClearLine" ? 1 : 0;
   stats.dropsUnexplained += cause === "Unexplained" ? 1 : 0;
 };
 
@@ -213,8 +234,10 @@ export const startClientBot = (setup: ClientBotSetup) => {
     dropsBlackHole: 0,
     dropsBotClose: 0,
     dropsDeafSilence: 0,
+    dropsDeafUnanswered: 0,
     dropsRestart: 0,
     dropsSilenceLimit: 0,
+    dropsUnansweredOnClearLine: 0,
     dropsUnexplained: 0,
     echoes: 0,
     failedAttempts: 0,
@@ -341,6 +364,12 @@ export const startClientBot = (setup: ClientBotSetup) => {
 
         drops.push({ cause, from: was, reason });
         countDrop(stats, cause);
+
+        if (cause === "SilenceLimit") {
+          problems.push(
+            `${label}: the server's silence limit closed a deaf line, which the client should have dropped as Unanswered within ${PING_INTERVAL_MS + ANSWER_LIMIT_MS} ms`
+          );
+        }
 
         for (const id of state.pending) {
           for (const issued of commands.filter((entry) => entry.id === id)) {
