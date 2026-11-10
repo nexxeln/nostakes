@@ -37,6 +37,7 @@ export const RoomSettingsSchema = Schema.Struct({
   betweenHandsSeconds: wholeSeconds(0, MAX_CLOCK_SECONDS),
   buyIn: BuyInRangeSchema,
   runChoiceSeconds: wholeSeconds(1, MAX_CLOCK_SECONDS),
+  showdownSeconds: wholeSeconds(1, MAX_CLOCK_SECONDS),
   table: TableConfigSchema,
   timeBankSeconds: wholeSeconds(0, MAX_TIME_BANK_SECONDS),
   turnSeconds: wholeSeconds(0, MAX_CLOCK_SECONDS),

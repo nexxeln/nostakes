@@ -103,7 +103,7 @@ export const tableConfigFrom = (random: SeededRandom): TableConfig => {
     bigBlind: chips(small * (1 + random.below(2))),
     maxRuns: RunCountSchema.make(1 + random.below(3)),
     rabbitHunt: random.chance(1, 2),
-    showdown: "Automatic",
+    showdown: random.chance(1, 2) ? "Interactive" : "Automatic",
     smallBlind: chips(small),
     straddle: { button: random.chance(1, 2), underTheGun: random.below(3) },
   });
@@ -121,6 +121,7 @@ export const settingsFrom = (random: SeededRandom): RoomSettings => ({
     min: chips(20 + random.below(60)),
   },
   runChoiceSeconds: 1 + random.below(10),
+  showdownSeconds: 1 + random.below(20),
   table: tableConfigFrom(random),
   timeBankSeconds: BANK_SECONDS[random.below(3)] ?? 0,
   turnSeconds: CLOCK_SECONDS[random.below(3)] ?? 0,
@@ -244,7 +245,28 @@ const answerPending = (
         )
       ),
     Nothing: () => Option.none(),
-    Show: () => Option.none(),
+    Show: ({ choices }) =>
+      random.chance(1, 5)
+        ? Option.none()
+        : Option.map(playerAt(state, choices.seat), (owner) => {
+            const roll = random.below(100);
+            const when = millis(at);
+
+            if (roll < 8) {
+              return RoomCommands.MuckHand({
+                at: when,
+                by: member(someMember(state, random)),
+              });
+            }
+
+            if (roll < 16 && !choices.canMuck) {
+              return RoomCommands.MuckHand({ at: when, by: member(owner) });
+            }
+
+            return choices.canMuck && roll < 60
+              ? RoomCommands.MuckHand({ at: when, by: member(owner) })
+              : RoomCommands.TableHand({ at: when, by: member(owner) });
+          }),
   });
 
 const requestSeat = (
@@ -532,7 +554,7 @@ const hosting = (
           playerAt(state, seat)
         ),
       Nothing: () => Option.none(),
-      Show: () => Option.none(),
+      Show: ({ choices }) => playerAt(state, choices.seat),
     });
 
     return RoomCommands.ActForSeat({
@@ -584,6 +606,8 @@ const junk = (state: Open, random: SeededRandom, at: number): RoomCommand => {
   const choices: readonly RoomCommand[] = [
     RoomCommands.Act({ action: Actions.Fold(), at: when, by }),
     RoomCommands.ChooseRuns({ at: when, by, runs: RunCountSchema.make(1) }),
+    RoomCommands.TableHand({ at: when, by }),
+    RoomCommands.MuckHand({ at: when, by }),
     RoomCommands.ApproveSeat({ at: when, by, player }),
     RoomCommands.ApproveChips({ at: when, by, player }),
     RoomCommands.ActForSeat({ at: when, by, player }),

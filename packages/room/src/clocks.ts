@@ -32,6 +32,7 @@ import type { Millis } from "./time.js";
 export const DeadlineSchema = Schema.TaggedUnion({
   DealDue: { at: MillisSchema },
   RunChoiceClock: { at: MillisSchema },
+  ShowdownClock: { at: MillisSchema, seat: SeatIndexSchema },
   TurnClock: { at: MillisSchema, seat: SeatIndexSchema },
 });
 
@@ -51,6 +52,8 @@ export const nextDeadline = (state: RoomState): Option.Option<Deadline> =>
             DecisionClocks.$match(clock, {
               RunChoice: ({ deadline }) =>
                 Deadlines.RunChoiceClock({ at: deadline }),
+              Showdown: ({ deadline, seat }) =>
+                Deadlines.ShowdownClock({ at: deadline, seat }),
               Turn: ({ deadline, seat }) =>
                 Deadlines.TurnClock({ at: deadline, seat }),
             })
@@ -85,7 +88,14 @@ export const automaticFor = (
         ? Option.some(Commands.ChooseRuns({ runs: ONE_RUN, seat }))
         : Option.none(),
     Nothing: () => Option.none(),
-    Show: () => Option.none(),
+    Show: ({ beatenInEveryPot, choices }) =>
+      choices.seat === seat
+        ? Option.some(
+            beatenInEveryPot
+              ? Commands.MuckHand({ seat })
+              : Commands.TableHand({ seat })
+          )
+        : Option.none(),
   });
 
 export const actAutomatically = (
@@ -152,6 +162,10 @@ const chooseOneRunForAll = (state: Open, at: Millis): Decision =>
 const expire = (state: Open, clock: DecisionClock, at: Millis): Decision =>
   DecisionClocks.$match(clock, {
     RunChoice: () => chooseOneRunForAll(state, at),
+    Showdown: ({ seat }) =>
+      Option.getOrElse(actAutomatically(state, seat, at), () =>
+        Result.succeed([])
+      ),
     Turn: ({ bankFrom, deadline, player, seat }) => {
       const left = timeBankLeft(state, player);
 
@@ -210,6 +224,7 @@ const bankSpent = (
     onSome: (clock) =>
       DecisionClocks.$match(clock, {
         RunChoice: () => [],
+        Showdown: () => [],
         Turn: ({ bankFrom, deadline, player }) =>
           Option.match(bankFrom, {
             onNone: () => [],
@@ -278,7 +293,18 @@ const wantedClock = (
             }),
           ]),
     Nothing: () => stopped(current, at),
-    Show: () => stopped(current, at),
+    Show: ({ choices }) =>
+      current !== undefined &&
+      DecisionClocks.$is("Showdown")(current) &&
+      current.seat === choices.seat
+        ? Option.none()
+        : Option.some([
+            RoomEvents.ShowdownClockStarted({
+              at,
+              deadline: secondsAfter(at, after.settings.showdownSeconds),
+              seat: choices.seat,
+            }),
+          ]),
   });
 };
 

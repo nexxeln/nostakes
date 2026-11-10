@@ -29,6 +29,10 @@ const updated = (record: HandRecord, event: Event): HandRecord =>
           .map((entry) => entry.seat),
       ],
     })),
+    Match.tag("HandMucked", ({ seat }) => ({
+      ...record,
+      mucked: [...record.mucked, seat],
+    })),
     Match.tag("RabbitHunted", ({ cards }) => ({ ...record, rabbit: cards })),
     Match.orElse(() => record)
   );

@@ -68,6 +68,7 @@ export const roomEventFields = {
     seat: SeatIndexSchema,
   },
   SettingsChanged: { at, settings: RoomSettingsSchema },
+  ShowdownClockStarted: { at, deadline: MillisSchema, seat: SeatIndexSchema },
   StraddleDeclared: { at, on: Schema.Boolean, player: PlayerIdSchema },
   TimeBankSpent: {
     at,

@@ -66,6 +66,8 @@ const serverAnswer = (deadline: Deadline, seed: number): RoomCommand =>
       }),
     RunChoiceClock: ({ at }) =>
       RoomCommands.ExpireClock({ at, by: Actors.Server(), deadline: at }),
+    ShowdownClock: ({ at }) =>
+      RoomCommands.ExpireClock({ at, by: Actors.Server(), deadline: at }),
     TurnClock: ({ at }) =>
       RoomCommands.ExpireClock({ at, by: Actors.Server(), deadline: at }),
   });
@@ -357,6 +359,101 @@ describe("liveness", () => {
       expect(ended).toBe(started);
       expect(votesExpired).toBeGreaterThan(0);
       expect(dealable(state)).toBeLessThan(2);
+    }
+  );
+});
+
+describe("liveness at an interactive showdown", () => {
+  it.prop(
+    "with no turn clock, players who only check or call and never table or muck still finish every hand, each showdown ending on its clock without marking anyone away",
+    { night },
+    ({ night: { players, setup } }) => {
+      const random = seededRandom(setup);
+      const base = settingsFrom(random);
+
+      const settings: RoomSettings = {
+        ...base,
+        approval: { chips: false, seats: false },
+        table: { ...base.table, showdown: "Interactive" },
+        turnSeconds: 0,
+      };
+
+      let state = startedRoom(settings, players, random.below);
+
+      const run = (command: RoomCommand) => {
+        const decision = decide(state, command);
+
+        if (Result.isSuccess(decision)) {
+          state = evolveAll(state, decision.success);
+        }
+
+        return decision;
+      };
+
+      const stalled: string[] = [];
+      let started = 0;
+      let ended = 0;
+      let clockChoices = 0;
+      let steps = 0;
+
+      for (; steps < STEP_LIMIT && ended < 25; steps += 1) {
+        const deadline = nextDeadline(state);
+
+        if (Option.isSome(deadline)) {
+          const decision = run(serverAnswer(deadline.value, steps));
+
+          started += tableEvents(decision, Events.$is("HandStarted"));
+          ended += tableEvents(decision, Events.$is("HandEnded"));
+          clockChoices += Deadlines.$is("ShowdownClock")(deadline.value)
+            ? tableEvents(
+                decision,
+                (event) =>
+                  Events.$is("HandTabled")(event) ||
+                  Events.$is("HandMucked")(event)
+              )
+            : 0;
+          continue;
+        }
+
+        if (
+          !RoomStates.$is("Open")(state) ||
+          !TableStates.$is("InHand")(state.table)
+        ) {
+          break;
+        }
+
+        const open = state;
+        const pending = pendingDecisions(open.table);
+
+        const answer = PendingDecisions.$is("Bet")(pending)
+          ? Option.map(ownerOf(open, pending.legal.seat), (player) =>
+              RoomCommands.Act({
+                action: pending.legal.canCheck
+                  ? Actions.Check()
+                  : Actions.Call(),
+                at: open.now,
+                by: Actors.Member({ player }),
+              })
+            )
+          : Option.none();
+
+        if (Option.isNone(answer)) {
+          stalled.push(`${pending._tag} waits with no deadline`);
+          break;
+        }
+
+        const decision = run(answer.value);
+
+        started += tableEvents(decision, Events.$is("HandStarted"));
+        ended += tableEvents(decision, Events.$is("HandEnded"));
+      }
+
+      expect(stalled).toStrictEqual([]);
+      expect(steps).toBeLessThan(STEP_LIMIT);
+      expect(started - ended).toBeLessThanOrEqual(1);
+      expect(ended).toBeGreaterThan(0);
+      expect(clockChoices).toBeGreaterThan(0);
+      expect(awayPlayers(state)).toStrictEqual([]);
     }
   );
 });

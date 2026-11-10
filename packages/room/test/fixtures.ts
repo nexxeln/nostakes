@@ -53,6 +53,7 @@ export const settings: RoomSettings = {
   betweenHandsSeconds: 0,
   buyIn: { max: chipCount(1000), min: chipCount(100) },
   runChoiceSeconds: 10,
+  showdownSeconds: 15,
   table: TableConfigSchema.make({
     ante: Antes.NoAnte(),
     bigBlind: chipCount(10),

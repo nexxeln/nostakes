@@ -108,6 +108,7 @@ export const publicCards = (event: Event): readonly Card[] => {
   if (
     Events.$is("StreetDealt")(event) ||
     Events.$is("CardsShown")(event) ||
+    Events.$is("HandTabled")(event) ||
     Events.$is("RabbitHunted")(event)
   ) {
     return event.cards;
@@ -505,7 +506,9 @@ const actsOnTheClock = (event: RoomEvent) =>
   (RoomEvents.$is("Table")(event) &&
     (Events.$is("Checked")(event.event) ||
       Events.$is("Folded")(event.event) ||
-      Events.$is("RunsChosen")(event.event)));
+      Events.$is("RunsChosen")(event.event) ||
+      Events.$is("HandTabled")(event.event) ||
+      Events.$is("HandMucked")(event.event)));
 
 const expiryProblems = (step: Step, before: Open): readonly string[] => {
   const { after, command, decision } = step;
@@ -588,7 +591,8 @@ const bankProblems = (
 const unclocked = (step: Step): readonly string[] =>
   isOpen(step.after) &&
   (step.after.settings.turnSeconds > 0 ||
-    PendingDecisions.$is("ChooseRuns")(pendingDecisions(step.after.table))) &&
+    PendingDecisions.$is("ChooseRuns")(pendingDecisions(step.after.table)) ||
+    PendingDecisions.$is("Show")(pendingDecisions(step.after.table))) &&
   inHand(step.after) &&
   Option.isNone(nextDeadline(step.after))
     ? [

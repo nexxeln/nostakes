@@ -54,13 +54,22 @@ import type {
   Opening,
   RoomCommand,
   RoomEvent,
+  RoomRejection,
   RoomSettings,
   RoomState,
   RoomView,
   SeenEvent,
   SeenTableEvent,
 } from "@nostakes/room";
-import { Console, Effect, Match, Option, Result, Schema } from "effect";
+import {
+  Console,
+  Effect,
+  Match,
+  Option,
+  Predicate,
+  Result,
+  Schema,
+} from "effect";
 
 const DEFAULT_SEED = 20_261_110;
 
@@ -135,7 +144,7 @@ const tableConfig = (random: Random): TableConfig => {
     bigBlind: chips(bigBlind),
     maxRuns: RunCountSchema.make(1 + random.below(3)),
     rabbitHunt: random.chance(50),
-    showdown: "Automatic",
+    showdown: random.chance(60) ? "Interactive" : "Automatic",
     smallBlind: chips(smallBlind),
     straddle: {
       button: random.chance(50),
@@ -152,6 +161,7 @@ const roomSettings = (random: Random): RoomSettings => {
     betweenHandsSeconds: random.below(4),
     buyIn: { max: chips(min * (3 + random.below(5))), min: chips(min) },
     runChoiceSeconds: 2 + random.below(10),
+    showdownSeconds: 2 + random.below(15),
     table: tableConfig(random),
     timeBankSeconds: random.pick([0, 5, 30]) ?? 0,
     turnSeconds: random.pick([0, 10, 20, 30]) ?? 0,
@@ -182,11 +192,17 @@ const newCounts = () => ({
   rulesQueued: 0,
   runVotesExpiredWithoutTurnClock: 0,
   settlements: 0,
+  showdownConcessions: 0,
+  showdownExpiries: 0,
+  showdownMucks: 0,
+  showdownMucksRefused: 0,
+  showdownTables: 0,
   staleExpiriesRefused: 0,
   straddlesApplied: 0,
   straddlesIgnored: 0,
   timeouts: 0,
   transfers: 0,
+  unshownWinners: 0,
 });
 
 type Counts = ReturnType<typeof newCounts>;
@@ -203,6 +219,7 @@ const publicCards = (event: Event): readonly Card[] => {
   if (
     Events.$is("StreetDealt")(event) ||
     Events.$is("CardsShown")(event) ||
+    Events.$is("HandTabled")(event) ||
     Events.$is("RabbitHunted")(event)
   ) {
     return event.cards;
@@ -333,6 +350,7 @@ interface NightLog {
 interface Run {
   broken: string[];
   readonly counts: Counts;
+  hand: Event[];
   handsPlayed: number;
   known: Knowledge;
   readonly log: NightLog;
@@ -488,6 +506,47 @@ const countClose = (run: Run, event: RoomEvent) => {
   }
 };
 
+const countShowdown = (run: Run, event: Event) => {
+  run.hand = Events.$is("HandStarted")(event) ? [event] : [...run.hand, event];
+
+  if (
+    !Events.$is("HandEnded")(event) ||
+    !run.hand.some(Events.$is("ShowdownStarted"))
+  ) {
+    return;
+  }
+
+  const first = run.hand.find(
+    (choice) =>
+      Events.$is("HandTabled")(choice) || Events.$is("HandMucked")(choice)
+  );
+
+  const tabled = new Set(
+    run.hand.flatMap((choice) =>
+      Events.$is("HandTabled")(choice) ? [choice.seat] : []
+    )
+  );
+
+  run.counts.showdownConcessions +=
+    first !== undefined && Events.$is("HandMucked")(first) ? 1 : 0;
+  run.counts.unshownWinners += run.hand.some(
+    (award) =>
+      Events.$is("PotAwarded")(award) &&
+      award.winners.some((winner) => !tabled.has(winner.seat))
+  )
+    ? 1
+    : 0;
+};
+
+const refusedWinningMuck = (rejection: RoomRejection) =>
+  Predicate.isTagged(rejection, "TableRejected") &&
+  Predicate.isTagged(rejection.rejection, "WinningHandMustTable");
+
+const tableEventIs = (
+  event: RoomEvent,
+  matches: (tableEvent: Event) => boolean
+) => RoomEvents.$is("Table")(event) && matches(event.event);
+
 const COUNTED: readonly (readonly [
   keyof Counts,
   (event: RoomEvent) => boolean,
@@ -511,12 +570,15 @@ const COUNTED: readonly (readonly [
   ["hostChanges", RoomEvents.$is("HostChanged")],
   ["rulesQueued", RoomEvents.$is("RulesQueued")],
   ["closedDuringHand", RoomEvents.$is("CloseQueued")],
+  ["showdownTables", (event) => tableEventIs(event, Events.$is("HandTabled"))],
+  ["showdownMucks", (event) => tableEventIs(event, Events.$is("HandMucked"))],
 ];
 
 const observe = (run: Run, before: RoomState, event: RoomEvent) => {
   if (RoomEvents.$is("Table")(event)) {
     learn(run, event.event);
     countStraddles(run, before, event.event);
+    countShowdown(run, event.event);
     run.handsPlayed += Events.$is("HandStarted")(event.event) ? 1 : 0;
   }
 
@@ -559,7 +621,8 @@ const checkViews = (run: Run, command: RoomCommand) => {
 
   if (
     (state.settings.turnSeconds > 0 ||
-      PendingDecisions.$is("ChooseRuns")(waitingOn)) &&
+      PendingDecisions.$is("ChooseRuns")(waitingOn) ||
+      PendingDecisions.$is("Show")(waitingOn)) &&
     TableStates.$is("InHand")(state.table) &&
     Option.isNone(nextDeadline(state))
   ) {
@@ -574,6 +637,10 @@ const send = (run: Run, command: RoomCommand) => {
   const decision = decide(run.state, command);
 
   if (Result.isFailure(decision)) {
+    run.counts.showdownMucksRefused += refusedWinningMuck(decision.failure)
+      ? 1
+      : 0;
+
     return decision;
   }
 
@@ -632,7 +699,21 @@ const play = (run: Run, open: Open) => {
       );
     },
     Nothing: () => Option.none(),
-    Show: () => Option.none(),
+    Show: ({ choices }) => {
+      run.now += run.random.below(3000);
+      actFor(run, open, choices.seat, (owner) => {
+        const roll = run.random.below(100);
+        const by = member(owner);
+
+        if (roll < 10 && !choices.canMuck) {
+          return RoomCommands.MuckHand({ at: at(run), by });
+        }
+
+        return choices.canMuck && roll < 55
+          ? RoomCommands.MuckHand({ at: at(run), by })
+          : RoomCommands.TableHand({ at: at(run), by });
+      });
+    },
   });
 };
 
@@ -648,6 +729,10 @@ const expire = (run: Run, open: Open, deadline: Deadline, sent: number) => {
     })
   );
 
+  run.counts.showdownExpiries +=
+    Result.isSuccess(decision) && Deadlines.$is("ShowdownClock")(deadline)
+      ? 1
+      : 0;
   run.counts.runVotesExpiredWithoutTurnClock +=
     Result.isSuccess(decision) &&
     Deadlines.$is("RunChoiceClock")(deadline) &&
@@ -910,7 +995,8 @@ const step = (run: Run, open: Open) => {
 
   const clocked =
     open.settings.turnSeconds > 0 ||
-    PendingDecisions.$is("ChooseRuns")(waitingOn);
+    PendingDecisions.$is("ChooseRuns")(waitingOn) ||
+    PendingDecisions.$is("Show")(waitingOn);
 
   if (roll < 55 && pending && !(clocked && run.random.chance(30))) {
     play(run, open);
@@ -945,7 +1031,7 @@ const closeTheNight = (run: Run) => {
       Bet: ({ legal }) => Option.some(legal.seat),
       ChooseRuns: ({ seats }) => Option.fromUndefinedOr(seats[0]),
       Nothing: () => Option.none(),
-      Show: () => Option.none(),
+      Show: ({ choices }) => Option.some(choices.seat),
     });
 
     const owner = seat.pipe(
@@ -1041,6 +1127,7 @@ const playNights = (
     const run: Run = {
       broken: [],
       counts,
+      hand: [],
       handsPlayed: 0,
       known: { holes: new Map(), shown: new Set() },
       log: { commands: [], opening },

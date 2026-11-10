@@ -126,6 +126,7 @@ const bankStarted = (state: Open, deadline: Millis): Open =>
       Option.map((clock) =>
         DecisionClocks.$match(clock, {
           RunChoice: () => clock,
+          Showdown: () => clock,
           Turn: (turn) =>
             DecisionClocks.Turn({
               ...turn,
@@ -238,6 +239,11 @@ const evolveOpen = (state: Open, event: RoomEvent): RoomState =>
       },
     }),
     SettingsChanged: ({ settings }) => ({ ...state, settings }),
+    ShowdownClockStarted: ({ deadline, seat }) =>
+      withDecision(
+        state,
+        Option.some(DecisionClocks.Showdown({ deadline, seat }))
+      ),
     StraddleDeclared: ({ on, player }) => ({
       ...state,
       straddlers: on

@@ -156,6 +156,13 @@ const clockViolations = (state: Open) => [
       ),
       ...DecisionClocks.$match(clock, {
         RunChoice: () => [],
+        Showdown: ({ seat }) =>
+          check(
+            TableStates.$is("InHand")(state.table) &&
+              state.table.hand.players.some((player) => player.seat === seat),
+            "ShowdownClockOnADealtSeat",
+            () => `the showdown clock runs on seat ${seat}, which holds no hand`
+          ),
         Turn: ({ player, seat }) =>
           check(
             Option.exists(

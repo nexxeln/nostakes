@@ -47,6 +47,7 @@ export const DEFAULT_SETTINGS: RoomSettings = Schema.decodeSync(
   betweenHandsSeconds: 5,
   buyIn: { max: 400, min: 40 },
   runChoiceSeconds: 15,
+  showdownSeconds: 15,
   table: {
     ante: Antes.NoAnte(),
     bigBlind: 2,
@@ -184,6 +185,12 @@ export const pokerRoom: HostedRoom<PokerTypes> = {
           shuffleBytes: entropy,
         }),
       RunChoiceClock: (clock) =>
+        RoomCommands.ExpireClock({
+          at: millis(at),
+          by: Actors.Server(),
+          deadline: clock.at,
+        }),
+      ShowdownClock: (clock) =>
         RoomCommands.ExpireClock({
           at: millis(at),
           by: Actors.Server(),

@@ -31,6 +31,7 @@ export const RoomCommandSchema = Schema.TaggedUnion({
   Join: { ...envelope, avatar: AvatarSchema, name: NameSchema },
   LeaveRoom: envelope,
   LeaveSeat: envelope,
+  MuckHand: envelope,
   PauseGame: envelope,
   RabbitHunt: envelope,
   RemoveFromSeat: naming,
@@ -41,6 +42,7 @@ export const RoomCommandSchema = Schema.TaggedUnion({
   SitIn: envelope,
   SitOut: envelope,
   StartGame: envelope,
+  TableHand: envelope,
   TransferHost: { ...envelope, to: PlayerIdSchema },
 });
 

@@ -105,6 +105,8 @@ const decideOpen = (state: Open, command: RoomCommand): Decision =>
       byMember(state, leave, (player) => leaveRoom(state, player, leave.at)),
     LeaveSeat: (leave) =>
       byMember(state, leave, (player) => leaveSeat(state, player, leave.at)),
+    MuckHand: (muck) =>
+      byMember(state, muck, (player) => play(state, player, muck)),
     PauseGame: (pause) =>
       byHost(state, pause, () => pauseGame(state, pause.at)),
     RabbitHunt: (hunt) =>
@@ -129,6 +131,8 @@ const decideOpen = (state: Open, command: RoomCommand): Decision =>
       byMember(state, out, (player) => sitOut(state, player, true, out.at)),
     StartGame: (start) =>
       byHost(state, start, () => startGame(state, start.at)),
+    TableHand: (table) =>
+      byMember(state, table, (player) => play(state, player, table)),
     TransferHost: (transfer) =>
       byHost(state, transfer, () => transferHost(state, transfer)),
   });

@@ -10,15 +10,25 @@ import { onTable } from "./table.js";
 
 export type PlayCommand = Extract<
   RoomCommand,
-  { readonly _tag: "Act" | "ChooseRuns" | "RabbitHunt" | "ShowCards" }
+  {
+    readonly _tag:
+      | "Act"
+      | "ChooseRuns"
+      | "MuckHand"
+      | "RabbitHunt"
+      | "ShowCards"
+      | "TableHand";
+  }
 >;
 
 const forSeat = (command: PlayCommand, seat: SeatIndex): Command =>
   Match.valueTags(command, {
     Act: ({ action }) => Commands.Act({ action, seat }),
     ChooseRuns: ({ runs }) => Commands.ChooseRuns({ runs, seat }),
+    MuckHand: () => Commands.MuckHand({ seat }),
     RabbitHunt: () => Commands.RabbitHunt({ seat }),
     ShowCards: ({ cards }) => Commands.ShowCards({ cards, seat }),
+    TableHand: () => Commands.TableHand({ seat }),
   });
 
 export const play = (

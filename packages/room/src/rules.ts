@@ -22,6 +22,7 @@ export const sameTableRules = (left: TableConfig, right: TableConfig) =>
   left.smallBlind === right.smallBlind &&
   left.maxRuns === right.maxRuns &&
   left.rabbitHunt === right.rabbitHunt &&
+  left.showdown === right.showdown &&
   left.straddle.button === right.straddle.button &&
   left.straddle.underTheGun === right.straddle.underTheGun;
 

@@ -8,6 +8,7 @@ import {
   PlayerIdSchema,
   PotShareSchema,
   SeatIndexSchema,
+  ShowdownChoicesSchema,
   StreetSchema,
   TableConfigSchema,
   TableStates,
@@ -193,6 +194,7 @@ export const HandViewSchema = Schema.Struct({
   smallBlindSeat: SeatIndexSchema,
   street: StreetSchema,
   toAct: Schema.Option(SeatIndexSchema),
+  toShow: Schema.Option(SeatIndexSchema),
 });
 
 export const LastHandViewSchema = Schema.Struct({
@@ -210,6 +212,9 @@ export const LastHandViewSchema = Schema.Struct({
 export const ClocksViewSchema = Schema.Struct({
   nextDeal: Schema.Option(remaining),
   runChoice: Schema.Option(remaining),
+  showdown: Schema.Option(
+    Schema.Struct({ remainingMs: Schema.Int, seat: SeatIndexSchema })
+  ),
   timeBanks: Schema.Array(
     Schema.Struct({ player: PlayerIdSchema, seconds: Schema.Int })
   ),
@@ -267,6 +272,7 @@ export const RoomViewSchema = Schema.TaggedUnion({
     }),
     seats: Schema.Array(SeatViewSchema),
     settings: RoomSettingsSchema,
+    showdown: Schema.Option(ShowdownChoicesSchema),
     you: Schema.Option(PlayerIdSchema),
   },
 });
@@ -359,6 +365,9 @@ const handView = (state: Open): Option.Option<HandView> => {
     toAct: PendingDecisions.$is("Bet")(pending)
       ? Option.some(pending.legal.seat)
       : Option.none(),
+    toShow: PendingDecisions.$is("Show")(pending)
+      ? Option.some(pending.choices.seat)
+      : Option.none(),
   });
 };
 
@@ -422,6 +431,13 @@ const clocksView = (state: Open, at: Millis) => ({
     Option.filter(DecisionClocks.$is("RunChoice")),
     Option.map(({ deadline }) => remainingAt(deadline, at))
   ),
+  showdown: state.clocks.decision.pipe(
+    Option.filter(DecisionClocks.$is("Showdown")),
+    Option.map(({ deadline, seat }) => ({
+      ...remainingAt(deadline, at),
+      seat,
+    }))
+  ),
   timeBanks: SEATS.flatMap((seat) =>
     Option.match(occupantAt(state.table, seat), {
       onNone: () => [],
@@ -455,6 +471,18 @@ const legalFor = (state: Open, viewer: Option.Option<Audience>) => {
     : Option.none();
 };
 
+const showdownFor = (state: Open, viewer: Option.Option<Audience>) => {
+  const pending = pendingDecisions(state.table);
+
+  return PendingDecisions.$is("Show")(pending) &&
+    Option.exists(
+      viewer.pipe(Option.filter(Audiences.$is("Seated"))),
+      ({ seat }) => seat === pending.choices.seat
+    )
+    ? Option.some(pending.choices)
+    : Option.none();
+};
+
 const openView = (state: Open, audience: Audience, at: Millis): RoomView => {
   const viewer = viewerSeat(state, audience);
   const { table } = state;
@@ -476,6 +504,7 @@ const openView = (state: Open, audience: Audience, at: Millis): RoomView => {
     requests: state.requests,
     seats: seatsView(state),
     settings: state.settings,
+    showdown: showdownFor(state, viewer),
     you: viewer.pipe(
       Option.filter(Audiences.$is("Seated")),
       Option.map(({ player }) => player)
