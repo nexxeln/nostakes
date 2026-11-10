@@ -1,5 +1,9 @@
 import { describe, expect, it } from "@effect/vitest";
-import { CommandIdSchema, SeqSchema } from "@nostakes/protocol";
+import {
+  CommandIdSchema,
+  MAX_MISSED_EVENTS,
+  SeqSchema,
+} from "@nostakes/protocol";
 import { Equal, Option, Result, Schema } from "effect";
 import * as Arbitrary from "effect/Arbitrary";
 
@@ -208,6 +212,43 @@ describe("commit", () => {
     room.host.armAlarm(Option.some(9000));
 
     expect(room.memory.alarm()).toEqual(Option.some(9000));
+  });
+
+  it("sends missed events only when at most 200 are behind, and otherwise just the view", () => {
+    const room = withMembers();
+    const batches = Math.ceil(MAX_MISSED_EVENTS / 8) + 1;
+
+    for (let index = 0; index < batches; index += 1) {
+      room.send(
+        ben,
+        `b${index}`,
+        2000 + index,
+        Commands.Increment.make({ times: 8 })
+      );
+    }
+
+    const head = room.host.snapshot().headSeq;
+
+    const missedAfter = (after: number) => {
+      const frame = room.host.welcome(
+        cy,
+        Option.some(after),
+        3000,
+        room.connections()
+      );
+
+      const message = room.decodeFrame(
+        Option.getOrThrow(Result.getSuccess(frame))
+      );
+
+      return room.host.codec.server.guards.Welcome(message)
+        ? message.missed.length
+        : -1;
+    };
+
+    expect(missedAfter(head - MAX_MISSED_EVENTS)).toBe(MAX_MISSED_EVENTS);
+    expect(missedAfter(head - MAX_MISSED_EVENTS - 1)).toBe(0);
+    expect(missedAfter(head)).toBe(0);
   });
 
   it("welcomes a returning viewer with its own redacted view of what it missed", () => {
