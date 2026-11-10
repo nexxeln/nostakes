@@ -76,7 +76,7 @@ export const WATERS: Readonly<Record<Backdrop, Water>> = {
   Lilac: { base: "#c4b2f4", dark: false, glow: "#e6ddff" },
   Neon: { base: "#ff5fa0", dark: false, glow: "#ff9cc4" },
   Reef: { base: "#1f9e9a", dark: true, glow: "#4cc4bf" },
-  Sand: { base: "#f0dcb2", dark: false, glow: "#fbf0d6" },
+  Sand: { base: "#ecce96", dark: false, glow: "#f7e4bd" },
   Sunset: { base: "#ffc254", dark: false, glow: "#ffe39e" },
   Velvet: { base: "#a3304b", dark: true, glow: "#c95470" },
 };

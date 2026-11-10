@@ -13,7 +13,16 @@ import {
   INK,
   PAPER,
 } from "./palette.js";
-import { at, line, mirror, num, outlined, pair, stroked } from "./pen.js";
+import {
+  at,
+  featureInk,
+  line,
+  mirror,
+  num,
+  outlined,
+  pair,
+  stroked,
+} from "./pen.js";
 import type { Pen, Point } from "./pen.js";
 
 const SPADE =
@@ -235,9 +244,9 @@ const specs = (frame: Frame) => {
   const { eye, scale, pen } = frame;
   const w = 15.6 * scale;
   const h = 12 * scale;
-  const lens = `<rect x="${num(eye.x - w / 2)}" y="${num(eye.y - h / 2)}" width="${num(w)}" height="${num(h)}" rx="${num(3.6 * scale)}" fill="${PAPER}" fill-opacity="0.22" ${stroked(pen, INK, 2.4)}/><path d="M${num(eye.x - w / 2 + 2.6 * scale)} ${num(eye.y + h / 2 - 2.4 * scale)}L${num(eye.x - w / 2 + 6 * scale)} ${num(eye.y - h / 2 + 2.6 * scale)}" ${line(pen, PAPER, 1.3)} stroke-opacity="0.8"/>`;
+  const lens = `<rect x="${num(eye.x - w / 2)}" y="${num(eye.y - h / 2)}" width="${num(w)}" height="${num(h)}" rx="${num(3.6 * scale)}" fill="${PAPER}" fill-opacity="0.22" ${stroked(pen, featureInk(pen), 2.4)}/><path d="M${num(eye.x - w / 2 + 2.6 * scale)} ${num(eye.y + h / 2 - 2.4 * scale)}L${num(eye.x - w / 2 + 6 * scale)} ${num(eye.y - h / 2 + 2.6 * scale)}" ${line(pen, PAPER, 1.3)} stroke-opacity="0.8"/>`;
 
-  return `${temples(frame, 7.8, INK)}${bridge(frame, 7.8, 1.6, INK, 2.4)}${lens}${mirror(lens)}`;
+  return `${temples(frame, 7.8, featureInk(pen))}${bridge(frame, 7.8, 1.6, featureInk(pen), 2.4)}${lens}${mirror(lens)}`;
 };
 
 const eyepatch = (frame: Frame) => {
@@ -246,7 +255,7 @@ const eyepatch = (frame: Frame) => {
   const x = (dx: number) => num(centre.x + dx * scale);
   const y = (dy: number) => num(centre.y + dy * scale);
 
-  return `<path d="M${x(-6.6)} ${y(-5)}L${num(eye.x - 8)} ${num(eye.y - 15 * scale)}M${x(6.8)} ${y(-3.6)}L${num(Math.min(centre.x + 13 * scale, 100 - frame.side.x))} ${y(-7)}" ${line(pen, INK, 2.4)}/><path d="M${x(-7)} ${y(-5.4)}Q${x(0)} ${y(-7.8)} ${x(7)} ${y(-5.4)}Q${x(8.4)} ${y(4)} ${x(0)} ${y(7.8)}Q${x(-8.4)} ${y(4)} ${x(-7)} ${y(-5.4)}Z" fill="#15131f" ${outlined(pen, 2.2)}/>${spadeAt({ x: centre.x, y: centre.y + 0.6 * scale }, 6 * scale, PAPER)}`;
+  return `<path d="M${x(-6.6)} ${y(-5)}L${num(eye.x - 8)} ${num(eye.y - 15 * scale)}M${x(6.8)} ${y(-3.6)}L${num(Math.min(centre.x + 13 * scale, 100 - frame.side.x))} ${y(-7)}" ${line(pen, featureInk(pen), 2.4)}/><path d="M${x(-7)} ${y(-5.4)}Q${x(0)} ${y(-7.8)} ${x(7)} ${y(-5.4)}Q${x(8.4)} ${y(4)} ${x(0)} ${y(7.8)}Q${x(-8.4)} ${y(4)} ${x(-7)} ${y(-5.4)}Z" fill="#15131f" ${outlined(pen, 2.2)}/>${spadeAt({ x: centre.x, y: centre.y + 0.6 * scale }, 6 * scale, PAPER)}`;
 };
 
 export type Coverage = "Opaque" | "Clear" | "Patch" | "Bare";
