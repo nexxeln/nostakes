@@ -99,7 +99,7 @@ export const AfterHandSchema = Schema.Struct({
 
 export type AfterHand = typeof AfterHandSchema.Type;
 
-export const HintSchema = Schema.Literals(["Peek", "Fold", "Raise"]);
+export const HintSchema = Schema.Literals(["Peek", "Fold", "Raise", "Keys"]);
 
 export type Hint = typeof HintSchema.Type;
 

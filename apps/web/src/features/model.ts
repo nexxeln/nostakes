@@ -86,6 +86,7 @@ export const InRoomSchema = Schema.Struct({
   drafts: DraftsSchema,
   events: Schema.Array(TableEventSchema),
   link: Schema.Option(LinkSchema),
+  menu: Schema.Boolean,
   notice: Schema.Option(Schema.String),
   pending: Schema.Array(PendingSchema),
   picked: Schema.Option(Schema.Int),

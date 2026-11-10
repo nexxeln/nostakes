@@ -1,5 +1,5 @@
+import { avatarFor } from "@nostakes/avatar";
 import { Antes } from "@nostakes/engine";
-import type { SeatIndex } from "@nostakes/engine";
 import type { PlayerId } from "@nostakes/protocol";
 import { MemberCommandSchema, RoomViews } from "@nostakes/room";
 import type { MemberCommand } from "@nostakes/room";
@@ -7,30 +7,26 @@ import { Option } from "effect";
 import type { Html, HtmlBuilder } from "foldkit/html";
 
 import { faceButton, soundSwitch, themeSwitch } from "./chrome.js";
+import { face } from "./face-builder.js";
 import { Messages } from "./message.js";
 import type { Message } from "./message.js";
 import type { InRoom, Model } from "./model.js";
-import { isLive, settlementText, viewOf } from "./room.js";
+import { isLive, viewOf } from "./room.js";
 import type { ClosedView, OpenView } from "./room.js";
 import { settingsPanel } from "./settings-view.js";
-import { tableSnapshot } from "./table/from-room.js";
+import { heroSeatOf, tableSnapshot } from "./table/from-room.js";
 import { tableElement } from "./table/snapshot.js";
 
 type H = HtmlBuilder<Message>;
 
+type Occupant = Option.Option.Value<OpenView["seats"][number]["occupant"]>;
+
 const Commands = MemberCommandSchema.cases;
 
-interface Seen {
-  readonly name: (player: PlayerId) => string;
-  readonly avatar: (player: PlayerId) => string;
-}
+const LIST_FACE_PX = 28;
 
-const seenFrom = (members: OpenView["members"]): Seen => ({
-  avatar: (player) =>
-    members.find((member) => member.player === player)?.avatar ?? "🙂",
-  name: (player) =>
-    members.find((member) => member.player === player)?.name ?? "Someone",
-});
+const nameIn = (members: OpenView["members"], player: PlayerId) =>
+  members.find((member) => member.player === player)?.name ?? "Someone";
 
 const commandButton = (
   h: H,
@@ -50,22 +46,12 @@ const commandButton = (
     [label]
   );
 
-const mySeatOf = (view: OpenView, room: InRoom): Option.Option<SeatIndex> =>
-  Option.fromNullishOr(
-    view.seats.find(({ occupant }) =>
-      Option.exists(occupant, ({ player }) => player === room.player)
-    )?.seat
-  );
-
 const connectionLine = (room: InRoom, h: H): Html =>
   Option.match(room.link, {
-    onNone: () => h.span([h.Class("connection is-waiting")], ["Connecting…"]),
+    onNone: () => h.span([h.Class("connection")], ["Connecting…"]),
     onSome: ({ phase, refusal }) => {
       if (phase === "Live") {
-        return h.span(
-          [h.Class("connection is-live"), h.AriaLabel("Connected")],
-          [""]
-        );
+        return h.empty;
       }
 
       if (phase === "Refused") {
@@ -76,7 +62,7 @@ const connectionLine = (room: InRoom, h: H): Html =>
       }
 
       return h.span(
-        [h.Class("connection is-waiting"), h.Role("status")],
+        [h.Class("connection"), h.Role("status")],
         ["Reconnecting…"]
       );
     },
@@ -107,16 +93,11 @@ const header = (
       h.button(
         [
           h.Type("button"),
-          h.Class("room-code"),
-          h.AriaLabel("Copy the room link"),
+          h.Class("bar-button"),
           h.OnClick(Messages.ClickedCopyLink()),
         ],
-        [room.copied === "Link" ? "Link copied" : room.code]
+        [room.copied === "Link" ? "Link copied" : "Invite"]
       ),
-      Option.match(view, {
-        onNone: () => h.empty,
-        onSome: (open) => h.span([h.Class("rules-line")], [rulesText(open)]),
-      }),
       h.span(
         [h.Class("bar-end")],
         [
@@ -130,22 +111,16 @@ const header = (
                 h
               ),
           }),
-          soundSwitch(model.sound, h),
-          themeSwitch(h),
-          Option.match(view, {
-            onNone: () => h.empty,
-            onSome: (open) =>
-              open.host === room.player
-                ? h.button(
-                    [
-                      h.Type("button"),
-                      h.Class("bar-button"),
-                      h.OnClick(Messages.ClickedOpenSettings()),
-                    ],
-                    ["Settings"]
-                  )
-                : h.empty,
-          }),
+          Option.isSome(view)
+            ? h.button(
+                [
+                  h.Type("button"),
+                  h.Class("bar-button"),
+                  h.OnClick(Messages.ClickedMenu()),
+                ],
+                ["Menu"]
+              )
+            : h.empty,
         ]
       ),
     ]
@@ -155,129 +130,12 @@ const noticeLine = (room: InRoom, h: H): Html =>
   h.div(
     [h.Class("status-line"), h.AriaLive("polite")],
     [
-      ...room.pending.map((pending) =>
-        h.span(
-          [h.Key(`pending-${pending.key}`), h.Class("pending")],
-          [`${pending.label}…`]
-        )
-      ),
       Option.match(room.notice, {
         onNone: () => h.empty,
         onSome: (text) => h.span([h.Class("problem")], [text]),
       }),
     ]
   );
-
-const sitPanel = (room: InRoom, view: OpenView, h: H): Html =>
-  Option.match(room.drafts.seat, {
-    onNone: () => h.empty,
-    onSome: (seat) =>
-      h.form(
-        [
-          h.Class("sit-panel card-panel"),
-          h.OnSubmit(Messages.ClickedSit({ seat })),
-        ],
-        [
-          h.label(
-            [h.Class("field")],
-            [
-              h.span(
-                [h.Class("field-label")],
-                [
-                  `Seat ${seat + 1}: buy in between ${view.settings.buyIn.min} and ${view.settings.buyIn.max}`,
-                ]
-              ),
-              h.input([
-                h.Type("number"),
-                h.Class("text-input"),
-                h.InputMode("numeric"),
-                h.Min(String(view.settings.buyIn.min)),
-                h.Max(String(view.settings.buyIn.max)),
-                h.Value(room.drafts.buyIn),
-                h.OnInput((value) =>
-                  Messages.ChangedDraft({ field: "buyIn", value })
-                ),
-              ]),
-            ]
-          ),
-          h.div(
-            [h.Class("choice-row")],
-            [
-              h.button(
-                [
-                  h.Type("submit"),
-                  h.Class("button primary"),
-                  h.Disabled(!isLive(room)),
-                ],
-                ["Sit down"]
-              ),
-              h.button(
-                [
-                  h.Type("button"),
-                  h.Class("button quiet"),
-                  h.OnClick(Messages.ClickedCancelSeat()),
-                ],
-                ["Cancel"]
-              ),
-            ]
-          ),
-        ]
-      ),
-  });
-
-const balanceOf = (view: OpenView, player: PlayerId) =>
-  view.balances.find((balance) => balance.player === player);
-
-const holdsUpTheGame = (view: OpenView, player: PlayerId) =>
-  view.hand.pipe(
-    Option.flatMap(({ toAct, toShow }) => Option.orElse(toAct, () => toShow)),
-    Option.flatMap((seat) => Option.fromNullishOr(view.seats[seat])),
-    Option.flatMap(({ occupant }) => occupant),
-    Option.exists((occupant) => occupant.player === player)
-  );
-
-const hostTools = (
-  room: InRoom,
-  view: OpenView,
-  player: PlayerId,
-  seated: boolean,
-  h: H
-): readonly Html[] => {
-  if (view.host !== room.player || player === room.player) {
-    return [];
-  }
-
-  return [
-    holdsUpTheGame(view, player)
-      ? commandButton(
-          h,
-          room,
-          Commands.ActForSeat.make({ player }),
-          "Act for them",
-          "Acting for them",
-          "button chip"
-        )
-      : h.empty,
-    seated
-      ? commandButton(
-          h,
-          room,
-          Commands.RemoveFromSeat.make({ player }),
-          "Remove from seat",
-          "Removing from seat",
-          "button chip"
-        )
-      : h.empty,
-    commandButton(
-      h,
-      room,
-      Commands.TransferHost.make({ to: player }),
-      "Make host",
-      "Handing over the host",
-      "button chip"
-    ),
-  ];
-};
 
 const sheet = (h: H, title: string, body: readonly Html[]): Html =>
   h.div(
@@ -287,7 +145,7 @@ const sheet = (h: H, title: string, body: readonly Html[]): Html =>
         [
           h.Type("button"),
           h.Class("sheet-scrim"),
-          h.AriaLabel("Close"),
+          h.AriaLabel("Dismiss"),
           h.OnClick(Messages.ClosedSheet()),
         ],
         []
@@ -310,7 +168,86 @@ const sheet = (h: H, title: string, body: readonly Html[]): Html =>
     ]
   );
 
-const playerSheet = (room: InRoom, view: OpenView, seen: Seen, h: H): Html =>
+const sitSheet = (room: InRoom, view: OpenView, seat: number, h: H): Html =>
+  sheet(h, `Sit in seat ${seat + 1}`, [
+    h.form(
+      [h.Class("sheet-form"), h.OnSubmit(Messages.ClickedSit({ seat }))],
+      [
+        h.label(
+          [h.Class("field")],
+          [
+            h.span(
+              [h.Class("field-label")],
+              [
+                `Chips to bring, ${view.settings.buyIn.min} to ${view.settings.buyIn.max}`,
+              ]
+            ),
+            h.input([
+              h.Type("number"),
+              h.Class("text-input"),
+              h.InputMode("numeric"),
+              h.Min(String(view.settings.buyIn.min)),
+              h.Max(String(view.settings.buyIn.max)),
+              h.Value(room.drafts.buyIn),
+              h.OnInput((value) =>
+                Messages.ChangedDraft({ field: "buyIn", value })
+              ),
+            ]),
+          ]
+        ),
+        h.button(
+          [
+            h.Type("submit"),
+            h.Class("button primary"),
+            h.Disabled(!isLive(room)),
+          ],
+          ["Sit down"]
+        ),
+      ]
+    ),
+  ]);
+
+const holdsUpTheGame = (view: OpenView, player: PlayerId) =>
+  view.hand.pipe(
+    Option.flatMap(({ toAct, toShow }) => Option.orElse(toAct, () => toShow)),
+    Option.flatMap((seat) => Option.fromNullishOr(view.seats[seat])),
+    Option.flatMap(({ occupant }) => occupant),
+    Option.exists((occupant) => occupant.player === player)
+  );
+
+const hostTools = (
+  room: InRoom,
+  view: OpenView,
+  player: PlayerId,
+  h: H
+): readonly Html[] => [
+  holdsUpTheGame(view, player)
+    ? commandButton(
+        h,
+        room,
+        Commands.ActForSeat.make({ player }),
+        "Act for them",
+        "Acting for them",
+        "button primary"
+      )
+    : h.empty,
+  commandButton(
+    h,
+    room,
+    Commands.RemoveFromSeat.make({ player }),
+    "Remove from seat",
+    "Removing from seat"
+  ),
+  commandButton(
+    h,
+    room,
+    Commands.TransferHost.make({ to: player }),
+    "Make host",
+    "Handing over the host"
+  ),
+];
+
+const playerSheet = (room: InRoom, view: OpenView, h: H): Html =>
   Option.match(
     room.picked.pipe(
       Option.flatMap((seat) => Option.fromNullishOr(view.seats[seat])),
@@ -322,305 +259,323 @@ const playerSheet = (room: InRoom, view: OpenView, seen: Seen, h: H): Html =>
     {
       onNone: () => h.empty,
       onSome: ({ player }) =>
-        sheet(h, seen.name(player), hostTools(room, view, player, true, h)),
+        sheet(
+          h,
+          nameIn(view.members, player),
+          hostTools(room, view, player, h)
+        ),
     }
   );
 
-const membersPanel = (
-  room: InRoom,
-  view: OpenView,
-  seen: Seen,
-  presence: readonly PlayerId[],
-  h: H
-): Html =>
-  h.section(
-    [h.Class("card-panel members")],
-    [
-      h.h2([h.Class("panel-title")], [`In the room (${view.members.length})`]),
-      h.ul(
-        [h.Class("member-list")],
-        view.members.map((member) => {
-          const seat = view.seats.find(({ occupant }) =>
-            Option.exists(occupant, ({ player }) => player === member.player)
-          );
-
-          const net = balanceOf(view, member.player)?.net ?? 0;
-
-          return h.li(
-            [h.Key(`member-${member.player}`), h.Class("member")],
-            [
-              h.span(
-                [
-                  h.Class(
-                    presence.includes(member.player)
-                      ? "presence is-here"
-                      : "presence"
-                  ),
-                ],
-                [""]
-              ),
-              h.span([h.Class("member-avatar")], [member.avatar]),
-              h.span(
-                [h.Class("member-name")],
-                [
-                  member.player === room.player
-                    ? `${member.name} (you)`
-                    : member.name,
-                ]
-              ),
-              member.player === view.host
-                ? h.span([h.Class("tag")], ["host"])
-                : h.empty,
-              h.span(
-                [h.Class("muted")],
-                [
-                  seat === undefined ? "watching" : `seat ${seat.seat + 1}`,
-                  net === 0 ? "" : ` · ${net > 0 ? "+" : ""}${net}`,
-                ]
-              ),
-              ...hostTools(room, view, member.player, seat !== undefined, h),
-            ]
-          );
-        })
-      ),
-    ]
-  );
-
-const hostPanel = (room: InRoom, view: OpenView, seen: Seen, h: H): Html => {
-  if (view.host !== room.player) {
-    return h.empty;
-  }
-
-  return h.section(
-    [h.Class("card-panel")],
-    [
-      h.h2([h.Class("panel-title")], ["Host"]),
-      h.div(
-        [h.Class("choice-row")],
-        [
-          view.game === "Waiting"
-            ? commandButton(
-                h,
-                room,
-                Commands.StartGame.make({}),
-                "Start the game",
-                "Starting",
-                "button primary"
-              )
-            : commandButton(
-                h,
-                room,
-                Commands.PauseGame.make({}),
-                "Pause after this hand",
-                "Pausing"
-              ),
-          view.queued.close
-            ? h.span([h.Class("muted")], ["Closing after this hand."])
-            : commandButton(
-                h,
-                room,
-                Commands.CloseRoom.make({}),
-                "Close the room and settle up",
-                "Closing the room"
-              ),
-        ]
-      ),
-      ...view.requests.seats.map((request) =>
-        h.div(
-          [h.Key(`seat-request-${request.player}`), h.Class("choice-row")],
-          [
-            h.span(
-              [],
-              [
-                `${seen.name(request.player)} asks for seat ${request.seat + 1} with ${request.buyIn}`,
-              ]
-            ),
-            commandButton(
-              h,
-              room,
-              Commands.ApproveSeat.make({ player: request.player }),
-              "Approve",
-              "Approving"
-            ),
-            commandButton(
-              h,
-              room,
-              Commands.DenySeat.make({ player: request.player }),
-              "Deny",
-              "Denying",
-              "button quiet"
-            ),
-          ]
-        )
-      ),
-      ...view.requests.chips.map((request) =>
-        h.div(
-          [h.Key(`chip-request-${request.player}`), h.Class("choice-row")],
-          [
-            h.span(
-              [],
-              [
-                `${seen.name(request.player)} asks for ${request.amount} more chips`,
-              ]
-            ),
-            commandButton(
-              h,
-              room,
-              Commands.ApproveChips.make({ player: request.player }),
-              "Approve",
-              "Approving"
-            ),
-            commandButton(
-              h,
-              room,
-              Commands.DenyChips.make({ player: request.player }),
-              "Deny",
-              "Denying",
-              "button quiet"
-            ),
-          ]
-        )
-      ),
-    ]
-  );
-};
-
-const youPanel = (
-  room: InRoom,
-  view: OpenView,
-  mySeat: Option.Option<SeatIndex>,
-  h: H
-): Html => {
-  const occupant = mySeat.pipe(
-    Option.flatMap((seat) => Option.fromNullishOr(view.seats[seat])),
-    Option.flatMap(({ occupant: who }) => who)
-  );
-
-  const waitingSeat = view.requests.seats.find(
-    (request) => request.player === room.player
-  );
-
-  const waitingChips = [...view.requests.chips, ...view.queued.chips].find(
-    (request) => request.player === room.player
-  );
-
+const seatedTools = (room: InRoom, view: OpenView, seated: Occupant, h: H) => {
   const straddles =
     view.settings.table.straddle.underTheGun > 0 ||
     view.settings.table.straddle.button;
 
-  return h.section(
-    [h.Class("card-panel")],
-    [
-      h.h2([h.Class("panel-title")], ["You"]),
-      waitingSeat === undefined
-        ? h.empty
-        : h.p(
-            [h.Class("muted")],
-            [`Waiting for the host to approve seat ${waitingSeat.seat + 1}.`]
+  return [
+    seated.sittingOut
+      ? commandButton(
+          h,
+          room,
+          Commands.SitIn.make({}),
+          "Sit back in",
+          "Sitting in",
+          "button primary"
+        )
+      : commandButton(
+          h,
+          room,
+          Commands.SitOut.make({}),
+          "Sit out",
+          "Sitting out"
+        ),
+    straddles
+      ? commandButton(
+          h,
+          room,
+          Commands.DeclareStraddle.make({ on: !seated.straddling }),
+          seated.straddling ? "Stop straddling" : "Straddle",
+          seated.straddling ? "Stopping the straddle" : "Declaring a straddle"
+        )
+      : h.empty,
+    h.form(
+      [h.Class("inline-form"), h.OnSubmit(Messages.ClickedRequestChips())],
+      [
+        h.input([
+          h.Type("number"),
+          h.Class("text-input"),
+          h.InputMode("numeric"),
+          h.Placeholder("Chips"),
+          h.Value(room.drafts.chips),
+          h.AriaLabel("Chips to add"),
+          h.OnInput((value) =>
+            Messages.ChangedDraft({ field: "chips", value })
           ),
-      waitingChips === undefined
-        ? h.empty
-        : h.p(
-            [h.Class("muted")],
-            [`${waitingChips.amount} more chips are on the way.`]
+        ]),
+        h.button(
+          [h.Type("submit"), h.Class("button"), h.Disabled(!isLive(room))],
+          ["Add chips"]
+        ),
+      ]
+    ),
+    seated.leaving
+      ? h.p([h.Class("muted")], ["Standing up after this hand."])
+      : commandButton(
+          h,
+          room,
+          Commands.LeaveSeat.make({}),
+          "Stand up",
+          "Standing up"
+        ),
+  ];
+};
+
+const youSection = (room: InRoom, view: OpenView, h: H): readonly Html[] => {
+  const seated = heroSeatOf(view, room).pipe(
+    Option.flatMap((seat) => Option.fromNullishOr(view.seats[seat])),
+    Option.flatMap(({ occupant }) => occupant)
+  );
+
+  const waitingSeat = view.requests.seats.find(
+    ({ player }) => player === room.player
+  );
+
+  const waitingChips = [...view.requests.chips, ...view.queued.chips].find(
+    ({ player }) => player === room.player
+  );
+
+  return [
+    waitingSeat === undefined
+      ? h.empty
+      : h.p(
+          [h.Class("muted")],
+          [`Waiting for the host to let you into seat ${waitingSeat.seat + 1}.`]
+        ),
+    waitingChips === undefined
+      ? h.empty
+      : h.p(
+          [h.Class("muted")],
+          [`${waitingChips.amount} more chips are on the way.`]
+        ),
+    ...Option.match(seated, {
+      onNone: () => [],
+      onSome: (occupant) => seatedTools(room, view, occupant, h),
+    }),
+  ];
+};
+
+const hostSection = (room: InRoom, view: OpenView, h: H): readonly Html[] =>
+  view.host === room.player
+    ? [
+        h.h3([h.Class("sheet-heading")], ["Host"]),
+        view.game === "Waiting"
+          ? h.empty
+          : commandButton(
+              h,
+              room,
+              Commands.PauseGame.make({}),
+              "Pause after this hand",
+              "Pausing"
+            ),
+        h.button(
+          [
+            h.Type("button"),
+            h.Class("button"),
+            h.OnClick(Messages.ClickedOpenSettings()),
+          ],
+          ["Room settings"]
+        ),
+        view.queued.close
+          ? h.p([h.Class("muted")], ["Closing after this hand."])
+          : commandButton(
+              h,
+              room,
+              Commands.CloseRoom.make({}),
+              "Close the room and settle up",
+              "Closing the room"
+            ),
+      ]
+    : [];
+
+const peopleSection = (
+  room: InRoom,
+  view: OpenView,
+  presence: readonly PlayerId[],
+  h: H
+): readonly Html[] => [
+  h.h3([h.Class("sheet-heading")], ["At the table"]),
+  h.ul(
+    [h.Class("member-list")],
+    view.members.map((member) =>
+      h.li(
+        [h.Key(`member-${member.player}`), h.Class("member")],
+        [
+          face(
+            avatarFor(member.avatar),
+            "Resting",
+            LIST_FACE_PX,
+            presence.includes(member.player)
+              ? "face-frame member-face"
+              : "face-frame member-face is-away",
+            h
           ),
-      Option.match(occupant, {
-        onNone: () =>
-          h.p(
-            [h.Class("muted")],
-            [waitingSeat === undefined ? "Pick an empty seat to sit down." : ""]
+          h.span(
+            [h.Class("member-name")],
+            [member.player === room.player ? "You" : member.name]
           ),
-        onSome: (seated) =>
-          h.div(
-            [h.Class("stack-tools")],
-            [
-              h.div(
-                [h.Class("choice-row")],
-                [
-                  seated.sittingOut
-                    ? commandButton(
-                        h,
-                        room,
-                        Commands.SitIn.make({}),
-                        "Sit back in",
-                        "Sitting in",
-                        "button primary"
-                      )
-                    : commandButton(
-                        h,
-                        room,
-                        Commands.SitOut.make({}),
-                        "Sit out",
-                        "Sitting out"
-                      ),
-                  straddles
-                    ? commandButton(
-                        h,
-                        room,
-                        Commands.DeclareStraddle.make({
-                          on: !seated.straddling,
-                        }),
-                        seated.straddling ? "Stop straddling" : "Straddle",
-                        seated.straddling
-                          ? "Stopping the straddle"
-                          : "Declaring a straddle"
-                      )
-                    : h.empty,
-                  seated.leaving
-                    ? h.span(
-                        [h.Class("muted")],
-                        ["Standing up after this hand."]
-                      )
-                    : commandButton(
-                        h,
-                        room,
-                        Commands.LeaveSeat.make({}),
-                        "Stand up",
-                        "Standing up",
-                        "button quiet"
-                      ),
-                ]
-              ),
-              h.form(
-                [
-                  h.Class("choice-row"),
-                  h.OnSubmit(Messages.ClickedRequestChips()),
-                ],
-                [
-                  h.input([
-                    h.Type("number"),
-                    h.Class("text-input chips-input"),
-                    h.InputMode("numeric"),
-                    h.Placeholder("Chips"),
-                    h.Value(room.drafts.chips),
-                    h.AriaLabel("Chips to add"),
-                    h.OnInput((value) =>
-                      Messages.ChangedDraft({ field: "chips", value })
-                    ),
-                  ]),
-                  h.button(
-                    [
-                      h.Type("submit"),
-                      h.Class("button"),
-                      h.Disabled(!isLive(room)),
-                    ],
-                    ["Add chips"]
-                  ),
-                ]
-              ),
-            ]
-          ),
-      }),
-      commandButton(
+          member.player === view.host
+            ? h.span([h.Class("tag")], ["host"])
+            : h.empty,
+        ]
+      )
+    )
+  ),
+];
+
+const menuSheet = (
+  model: Model,
+  room: InRoom,
+  view: OpenView,
+  presence: readonly PlayerId[],
+  h: H
+): Html =>
+  sheet(h, `Room ${room.code}`, [
+    h.p([h.Class("muted")], [rulesText(view)]),
+    ...youSection(room, view, h),
+    ...hostSection(room, view, h),
+    ...peopleSection(room, view, presence, h),
+    h.div(
+      [h.Class("sheet-row")],
+      [soundSwitch(model.sound, h), themeSwitch(h)]
+    ),
+    commandButton(
+      h,
+      room,
+      Commands.LeaveRoom.make({}),
+      "Leave the room",
+      "Leaving",
+      "button quiet"
+    ),
+  ]);
+
+const activeSheet = (
+  model: Model,
+  room: InRoom,
+  view: OpenView,
+  presence: readonly PlayerId[],
+  h: H
+): Html => {
+  if (Option.isSome(room.settings)) {
+    return settingsPanel(room, view, room.settings.value, h);
+  }
+
+  if (Option.isSome(room.drafts.seat)) {
+    return sitSheet(room, view, room.drafts.seat.value, h);
+  }
+
+  if (Option.isSome(room.picked)) {
+    return playerSheet(room, view, h);
+  }
+
+  return room.menu ? menuSheet(model, room, view, presence, h) : h.empty;
+};
+
+const requestPill = (
+  key: string,
+  text: string,
+  buttons: readonly Html[],
+  h: H
+): Html =>
+  h.div(
+    [h.Key(key), h.Class("request")],
+    [h.span([h.Class("request-text")], [text]), ...buttons]
+  );
+
+const hostRequests = (room: InRoom, view: OpenView, h: H): Html => {
+  if (view.host !== room.player) {
+    return h.empty;
+  }
+
+  const seats = view.requests.seats.map((request) =>
+    requestPill(
+      `seat-${request.player}`,
+      `${nameIn(view.members, request.player)} wants to sit with ${request.buyIn}`,
+      [
+        commandButton(
+          h,
+          room,
+          Commands.ApproveSeat.make({ player: request.player }),
+          "Let in",
+          "Letting them sit",
+          "button primary small"
+        ),
+        commandButton(
+          h,
+          room,
+          Commands.DenySeat.make({ player: request.player }),
+          "No",
+          "Saying no",
+          "button quiet small"
+        ),
+      ],
+      h
+    )
+  );
+
+  const chips = view.requests.chips.map((request) =>
+    requestPill(
+      `chips-${request.player}`,
+      `${nameIn(view.members, request.player)} wants ${request.amount} more chips`,
+      [
+        commandButton(
+          h,
+          room,
+          Commands.ApproveChips.make({ player: request.player }),
+          "Give",
+          "Giving chips",
+          "button primary small"
+        ),
+        commandButton(
+          h,
+          room,
+          Commands.DenyChips.make({ player: request.player }),
+          "No",
+          "Saying no",
+          "button quiet small"
+        ),
+      ],
+      h
+    )
+  );
+
+  return seats.length + chips.length === 0
+    ? h.empty
+    : h.div([h.Class("requests")], [...seats, ...chips]);
+};
+
+const waitingCall = (room: InRoom, view: OpenView, h: H): Html => {
+  if (Option.isNone(heroSeatOf(view, room))) {
+    return h.p([h.Class("muted")], ["Tap a seat to sit."]);
+  }
+
+  return view.host === room.player
+    ? commandButton(
         h,
         room,
-        Commands.LeaveRoom.make({}),
-        "Leave the room",
-        "Leaving",
-        "button quiet"
-      ),
-    ]
-  );
+        Commands.StartGame.make({}),
+        "Start the game",
+        "Starting",
+        "button primary"
+      )
+    : h.p([h.Class("muted")], ["Waiting for the host to start."]);
+};
+
+const tableCall = (room: InRoom, view: OpenView, h: H): Html => {
+  if (view.game !== "Waiting") {
+    return h.empty;
+  }
+
+  return h.div([h.Class("table-call")], [waitingCall(room, view, h)]);
 };
 
 const tableView = (
@@ -632,15 +587,21 @@ const tableView = (
 ): Html => {
   const table = tableElement.withMessage(h);
 
-  return table(
+  return h.div(
+    [h.Class("table-stage")],
     [
-      h.Class("table-host"),
-      h.AriaLabel("Table"),
-      table.Snapshot(tableSnapshot(room, view, presence, model.learned)),
-      table.Sound(model.sound),
-      table.OnIntent((intent) => Messages.GotTableIntent({ intent })),
-    ],
-    []
+      table(
+        [
+          h.Class("table-host"),
+          h.AriaLabel("Table"),
+          table.Snapshot(tableSnapshot(room, view, presence, model.learned)),
+          table.Sound(model.sound),
+          table.OnIntent((intent) => Messages.GotTableIntent({ intent })),
+        ],
+        []
+      ),
+      tableCall(room, view, h),
+    ]
   );
 };
 
@@ -650,43 +611,26 @@ const openRoomView = (
   view: OpenView,
   presence: readonly PlayerId[],
   h: H
-): Html => {
-  const seen = seenFrom(view.members);
-  const mySeat = mySeatOf(view, room);
-
-  return h.div(
+): Html =>
+  h.div(
     [h.Class("room-body")],
     [
-      Option.match(room.settings, {
-        onNone: () => h.empty,
-        onSome: (draft) => settingsPanel(room, view, draft, h),
-      }),
       tableView(model, room, view, presence, h),
-      sitPanel(room, view, h),
-      playerSheet(room, view, seen, h),
-      h.div(
-        [h.Class("panels")],
-        [
-          youPanel(room, view, mySeat, h),
-          hostPanel(room, view, seen, h),
-          membersPanel(room, view, seen, presence, h),
-        ]
-      ),
+      hostRequests(room, view, h),
+      activeSheet(model, room, view, presence, h),
     ]
   );
-};
 
 const closedRoomView = (room: InRoom, view: ClosedView, h: H): Html => {
-  const name = (player: PlayerId) =>
-    view.members.find((member) => member.player === player)?.name ?? "Someone";
+  const name = (player: PlayerId) => nameIn(view.members, player);
 
   return h.section(
     [h.Class("card-panel settlement")],
     [
-      h.h2([h.Class("panel-title")], ["The night is over"]),
+      h.h2([h.Class("sheet-title")], ["The night is over"]),
       h.ul(
         [h.Class("member-list")],
-        [...view.settlement.balances]
+        view.settlement.balances
           .toSorted((left, right) => right.net - left.net)
           .map((balance) =>
             h.li(
@@ -697,18 +641,22 @@ const closedRoomView = (room: InRoom, view: ClosedView, h: H): Html => {
                   [h.Class(balance.net >= 0 ? "net is-up" : "net is-down")],
                   [`${balance.net > 0 ? "+" : ""}${balance.net}`]
                 ),
-                h.span(
-                  [h.Class("muted")],
-                  [
-                    `bought in ${balance.boughtIn}, left with ${balance.cashedOut}`,
-                  ]
-                ),
               ]
             )
           )
       ),
-      h.h3([h.Class("panel-title")], ["Settle up"]),
-      h.pre([h.Class("transfers")], [settlementText(view)]),
+      h.h3([h.Class("sheet-heading")], ["Settle up"]),
+      h.ul(
+        [h.Class("transfers")],
+        view.settlement.transfers.length === 0
+          ? [h.li([], ["Everyone is square."])]
+          : view.settlement.transfers.map(({ amount, from, to }) =>
+              h.li(
+                [h.Key(`pay-${from}-${to}`)],
+                [`${name(from)} pays ${name(to)} ${amount}`]
+              )
+            )
+      ),
       h.button(
         [
           h.Type("button"),
@@ -725,30 +673,35 @@ const closedRoomView = (room: InRoom, view: ClosedView, h: H): Html => {
         ],
         ["Back home"]
       ),
-      h.span([h.Class("muted")], [room.code]),
     ]
   );
 };
 
+const homeButton = (label: string, h: H): Html =>
+  h.button(
+    [h.Type("button"), h.Class("button"), h.OnClick(Messages.ClickedHome())],
+    [label]
+  );
+
 const leftRoomView = (h: H): Html =>
   h.section(
-    [h.Class("card-panel")],
+    [h.Class("card-panel settlement")],
     [
-      h.h2([h.Class("panel-title")], ["You left this room"]),
+      h.h2([h.Class("sheet-title")], ["You left this room"]),
       h.p(
         [h.Class("muted")],
-        [
-          "Go back home. To play again, open the room link and join as a new player.",
-        ]
+        ["To play again, open the room link and join as a new player."]
       ),
-      h.button(
-        [
-          h.Type("button"),
-          h.Class("button"),
-          h.OnClick(Messages.ClickedHome()),
-        ],
-        ["Back home"]
-      ),
+      homeButton("Back home", h),
+    ]
+  );
+
+const refusedView = (h: H): Html =>
+  h.section(
+    [h.Class("card-panel settlement")],
+    [
+      h.p([], ["This room is no longer open to you."]),
+      homeButton("Back home", h),
     ]
   );
 
@@ -771,21 +724,8 @@ export const roomView = (model: Model, room: InRoom, h: H): Html => {
       Option.match(view, {
         onNone: () =>
           refused
-            ? h.div(
-                [h.Class("card-panel")],
-                [
-                  h.p([], ["This room is no longer open to you."]),
-                  h.button(
-                    [
-                      h.Type("button"),
-                      h.Class("button"),
-                      h.OnClick(Messages.ClickedHome()),
-                    ],
-                    ["Back home"]
-                  ),
-                ]
-              )
-            : h.p([h.Class("muted")], ["Opening the room…"]),
+            ? refusedView(h)
+            : h.p([h.Class("muted opening")], ["Opening the room…"]),
         onSome: (current) =>
           RoomViews.$match(current, {
             Closed: (closed) => closedRoomView(room, closed, h),

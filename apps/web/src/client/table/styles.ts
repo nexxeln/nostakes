@@ -39,6 +39,7 @@ export const tableCss = `
 .tile.empty, .tile.pickable { cursor: pointer; }
 .tile.empty .frame { background: transparent; box-shadow: inset 0 0 0 1.5px var(--color-line-strong); }
 .tile.empty .pic { color: var(--color-ink-muted); font-size: var(--text-3); font-weight: 600; }
+.tile.empty .label { display: none; }
 
 .label {
   position: absolute; left: 50%; top: calc(100% + var(--space-2)); transform: translateX(-50%);

@@ -2652,6 +2652,10 @@ export class NostakesTable extends HTMLElement {
       return;
     }
 
+    if (this.#canAct() && /^[fckr0-9]$/u.test(event.key.toLowerCase())) {
+      this.#learn("Keys");
+    }
+
     const legal = this.#snap?.legal;
 
     if (legal === undefined || legal === null || !this.#canAct()) {
@@ -2884,6 +2888,7 @@ export class NostakesTable extends HTMLElement {
       "on",
       holding &&
         !sizing &&
+        !this.#learned("Peek") &&
         !this.#hand.classList.contains("open") &&
         legal?.show !== true
     );
@@ -2899,7 +2904,11 @@ export class NostakesTable extends HTMLElement {
       this.#keysEl.replaceChildren(...parts);
     }
 
-    toggle(this.#keysEl, "on", parts.length > 0 && !sizing);
+    toggle(
+      this.#keysEl,
+      "on",
+      parts.length > 0 && !sizing && !this.#learned("Keys")
+    );
   }
 
   readonly #onChipDown = (event: PointerEvent) => {

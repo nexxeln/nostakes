@@ -123,41 +123,57 @@ export const settingsPanel = (
   draft: SettingsDraft,
   h: H
 ): Html =>
-  h.form(
+  h.div(
+    [h.Class("sheet-layer")],
     [
-      h.Class("card-panel settings"),
-      h.OnSubmit(Messages.ClickedSaveSettings()),
-    ],
-    [
-      h.h2([h.Class("panel-title")], ["Room settings"]),
-      Option.isSome(view.hand)
-        ? h.p(
-            [h.Class("muted")],
-            ["A hand is running. Table rules change from the next hand."]
-          )
-        : h.empty,
-      h.div(
-        [h.Class("settings-grid")],
-        SETTINGS_FORM.map((field) => fieldView(field, draft, h))
-      ),
-      h.div(
-        [h.Class("choice-row")],
+      h.button(
         [
-          h.button(
-            [
-              h.Type("submit"),
-              h.Class("button primary"),
-              h.Disabled(!isLive(room)),
-            ],
-            ["Save settings"]
+          h.Type("button"),
+          h.Class("sheet-scrim"),
+          h.AriaLabel("Dismiss"),
+          h.OnClick(Messages.ClickedCloseSettings()),
+        ],
+        []
+      ),
+      h.form(
+        [
+          h.Class("sheet settings"),
+          h.Role("dialog"),
+          h.AriaLabel("Room settings"),
+          h.OnSubmit(Messages.ClickedSaveSettings()),
+        ],
+        [
+          h.h2([h.Class("sheet-title")], ["Room settings"]),
+          Option.isSome(view.hand)
+            ? h.p(
+                [h.Class("muted")],
+                ["A hand is running. Table rules change from the next hand."]
+              )
+            : h.empty,
+          h.div(
+            [h.Class("settings-grid")],
+            SETTINGS_FORM.map((field) => fieldView(field, draft, h))
           ),
-          h.button(
+          h.div(
+            [h.Class("sheet-actions")],
             [
-              h.Type("button"),
-              h.Class("button quiet"),
-              h.OnClick(Messages.ClickedCloseSettings()),
-            ],
-            ["Close"]
+              h.button(
+                [
+                  h.Type("submit"),
+                  h.Class("button primary"),
+                  h.Disabled(!isLive(room)),
+                ],
+                ["Save settings"]
+              ),
+              h.button(
+                [
+                  h.Type("button"),
+                  h.Class("button quiet"),
+                  h.OnClick(Messages.ClickedCloseSettings()),
+                ],
+                ["Close"]
+              ),
+            ]
           ),
         ]
       ),

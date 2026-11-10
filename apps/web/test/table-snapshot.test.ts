@@ -34,6 +34,7 @@ const roomWith = (
     retryDelayMs: Option.none(),
     view: Option.some(view),
   }),
+  menu: false,
   notice: Option.none(),
   pending: acting ? [{ acting: true, key: 1, label: "Calling" }] : [],
   picked: Option.none(),

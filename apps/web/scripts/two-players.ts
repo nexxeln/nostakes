@@ -155,7 +155,9 @@ const sitDown = (page: Page, who: string) =>
     );
     yield* click(page, `${who} sits down`, "Sit down");
     yield* attempt(`${who} is seated`, () =>
-      page.getByText("Stand up").waitFor({ timeout: 15_000 })
+      page
+        .locator(`${TABLE} .self:not(.gone)`)
+        .waitFor({ state: "attached", timeout: 15_000 })
     );
   });
 

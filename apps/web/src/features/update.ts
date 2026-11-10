@@ -69,6 +69,7 @@ const freshRoom = (code: InRoom["code"], player: InRoom["player"]): InRoom => ({
   drafts: { buyIn: "", chips: "", seat: Option.none() },
   events: [],
   link: Option.none(),
+  menu: false,
   notice: Option.none(),
   pending: [],
   picked: Option.none(),
@@ -428,11 +429,6 @@ export const update = (model: Model, message: Message): Return =>
     ClickedCancelFace: () => ({
       model: { ...model, faceDraft: Option.none() },
     }),
-    ClickedCancelSeat: () =>
-      editRoom(model, (room) => ({
-        ...room,
-        drafts: { ...room.drafts, seat: Option.none() },
-      })),
     ClickedCloseSettings: () =>
       editRoom(model, (room) => ({ ...room, settings: Option.none() })),
     ClickedCopyLink: () =>
@@ -476,9 +472,11 @@ export const update = (model: Model, message: Message): Return =>
           screen: Screens.Home({ busy: false, problem: Option.none() }),
         },
       })),
+    ClickedMenu: () => editRoom(model, (room) => ({ ...room, menu: true })),
     ClickedOpenSettings: () =>
       editRoom(model, (room) => ({
         ...room,
+        menu: false,
         settings: openViewOf(room).pipe(
           Option.map(({ settings }) => draftOf(settings))
         ),
@@ -514,7 +512,13 @@ export const update = (model: Model, message: Message): Return =>
     ClickedShuffleFace: () => ({ commands: [ShuffleFace()], model }),
     ClickedSit: ({ seat }) => sit(model, seat),
     ClosedSheet: () =>
-      editRoom(model, (room) => ({ ...room, picked: Option.none() })),
+      editRoom(model, (room) => ({
+        ...room,
+        drafts: { ...room.drafts, seat: Option.none() },
+        menu: false,
+        picked: Option.none(),
+        settings: Option.none(),
+      })),
     CompletedCopy: ({ copied }) =>
       editRoom(model, (room) => ({ ...room, copied })),
     CompletedForget: () => ({ model }),
