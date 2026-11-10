@@ -2,12 +2,7 @@ import { Array as Arr, Option, Result } from "effect";
 
 import { sameBytes, uint32, utf8 } from "./bytes.js";
 import { DOMAIN, framed } from "./hashing.js";
-import {
-  inclusionPath,
-  leafHash,
-  rootFromInclusion,
-  treeHead,
-} from "./merkle.js";
+import { leafHash, provenTree, rootFromInclusion } from "./merkle.js";
 import { OpeningMismatch } from "./rejection.js";
 import {
   DECK_SIZE,
@@ -32,7 +27,7 @@ import { hmacSha256 } from "./sha256.js";
 export interface SealedCard {
   readonly card: Card;
   readonly salt: Salt;
-  readonly leaf: Uint8Array;
+  readonly path: readonly Digest[];
 }
 
 export interface SealedDeck {
@@ -77,16 +72,22 @@ export const sealCards = (
   cards: readonly Card[],
   salts: readonly Salt[]
 ): SealedDeck => {
-  const sealed = Arr.zip(cards, salts).map(([card, salt], position) => ({
-    card,
-    leaf: cardLeaf(context, slot, PositionSchema.make(position), card, salt),
-    salt,
-  }));
+  const entries = Arr.zip(cards, salts);
+
+  const tree = provenTree(
+    entries.map(([card, salt], position) =>
+      cardLeaf(context, slot, PositionSchema.make(position), card, salt)
+    )
+  );
 
   return {
-    cards: sealed,
+    cards: entries.map(([card, salt], position) => ({
+      card,
+      path: (tree.paths[position] ?? []).map((node) => DigestSchema.make(node)),
+      salt,
+    })),
     context,
-    root: DigestSchema.make(treeHead(sealed.map(({ leaf }) => leaf))),
+    root: DigestSchema.make(tree.head),
     slot,
   };
 };
@@ -111,15 +112,7 @@ export const openCard = (
   position: Position
 ): Option.Option<Opening> =>
   Arr.get(sealed.cards, position).pipe(
-    Option.map(({ card, salt }) => ({
-      card,
-      path: inclusionPath(
-        position,
-        sealed.cards.map(({ leaf }) => leaf)
-      ).map((node) => DigestSchema.make(node)),
-      position,
-      salt,
-    }))
+    Option.map(({ card, path, salt }) => ({ card, path, position, salt }))
   );
 
 export const openDeck = (sealed: SealedDeck): DeckOpening => ({

@@ -103,3 +103,28 @@ export const rootFromInclusion = (
 
   return last === 0 ? Option.some(root) : Option.none();
 };
+
+export interface ProvenTree {
+  readonly head: Uint8Array;
+  readonly paths: readonly (readonly Uint8Array[])[];
+}
+
+export const provenTree = (leaves: readonly Uint8Array[]): ProvenTree => {
+  const [only] = leaves;
+
+  if (leaves.length <= 1 || only === undefined) {
+    return { head: treeHead(leaves), paths: leaves.map(() => []) };
+  }
+
+  const split = largestPowerOfTwoBelow(leaves.length);
+  const left = provenTree(leaves.slice(0, split));
+  const right = provenTree(leaves.slice(split));
+
+  return {
+    head: nodeHash(left.head, right.head),
+    paths: [
+      ...left.paths.map((path) => [...path, right.head]),
+      ...right.paths.map((path) => [...path, left.head]),
+    ],
+  };
+};

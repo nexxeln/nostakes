@@ -136,10 +136,9 @@ const expandSchedule = (
 };
 
 const compress = (hash: Uint32Array, schedule: Uint32Array) => {
-  const working = Uint32Array.from(hash);
+  let [a = 0, b = 0, c = 0, d = 0, e = 0, f = 0, g = 0, h = 0] = hash;
 
   for (let round = 0; round < SCHEDULE_WORDS; round += 1) {
-    const [a = 0, b = 0, c = 0, d = 0, e = 0, f = 0, g = 0, h = 0] = working;
     const sum1 = rotateRight(e, 6) ^ rotateRight(e, 11) ^ rotateRight(e, 25);
     const choice = (e & f) ^ (~e & g);
 
@@ -149,20 +148,18 @@ const compress = (hash: Uint32Array, schedule: Uint32Array) => {
     const sum0 = rotateRight(a, 2) ^ rotateRight(a, 13) ^ rotateRight(a, 22);
     const majority = (a & b) ^ (a & c) ^ (b & c);
 
-    working.set([
-      (first + sum0 + majority) >>> 0,
-      a,
-      b,
-      c,
-      (d + first) >>> 0,
-      e,
-      f,
-      g,
-    ]);
+    h = g;
+    g = f;
+    f = e;
+    e = (d + first) >>> 0;
+    d = c;
+    c = b;
+    b = a;
+    a = (first + sum0 + majority) >>> 0;
   }
 
-  for (let index = 0; index < DIGEST_WORDS; index += 1) {
-    hash[index] = (word(hash, index) + word(working, index)) >>> 0;
+  for (const [index, value] of [a, b, c, d, e, f, g, h].entries()) {
+    hash[index] = (word(hash, index) + value) >>> 0;
   }
 };
 

@@ -5,6 +5,7 @@ import * as Hex from "effect/encoding/Hex";
 import {
   inclusionPath,
   leafHash,
+  provenTree,
   rootFromInclusion,
   treeHead,
 } from "../src/index.js";
@@ -110,6 +111,23 @@ describe("merkle tree (RFC 6962 hashing, RFC 9162 proof checks)", () => {
           )
         ).toBe(true);
       }
+    }
+  });
+
+  it("precomputes the same root and paths as the RFC 6962 definition for every tree from one to sixty-four leaves", () => {
+    for (let size = 1; size <= 64; size += 1) {
+      const leaves = leavesOf(size);
+      const tree = provenTree(leaves);
+
+      expect(Hex.encode(tree.head)).toBe(Hex.encode(treeHead(leaves)));
+
+      expect(
+        tree.paths.map((path) => path.map((node) => Hex.encode(node)))
+      ).toEqual(
+        leaves.map((_, index) =>
+          inclusionPath(index, leaves).map((node) => Hex.encode(node))
+        )
+      );
     }
   });
 

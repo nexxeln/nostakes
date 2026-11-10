@@ -11,12 +11,15 @@ export {
 
 export type { SealedCard, SealedDeck } from "./commitment.js";
 
+export type { ProvenTree } from "./merkle.js";
+
 export { framed, taggedHash } from "./hashing.js";
 
 export {
   inclusionPath,
   leafHash,
   nodeHash,
+  provenTree,
   rootFromInclusion,
   treeHead,
 } from "./merkle.js";
