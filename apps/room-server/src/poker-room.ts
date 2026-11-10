@@ -147,6 +147,7 @@ export const pokerRoomOn = (chain: DrandChain): HostedRoom<PokerTypes> => ({
     Deadlines.$is("SealedDealDue")(due)
       ? Option.some(due.round)
       : Option.none(),
+  commandKind: (command) => command._tag,
   decide,
   dueKind: (due) => due._tag,
   entropyFor: (due) =>

@@ -4,6 +4,7 @@ import {
   RoomCodeSchema,
   RoomPassSchema,
 } from "@nostakes/protocol";
+import type { UnavailableReason } from "@nostakes/protocol";
 import {
   JoinRequestSchema,
   MemberCommandSchema,
@@ -122,9 +123,10 @@ const LOST_TEXT = {
 } as const;
 
 const UNAVAILABLE_TEXT = {
+  RoomFault: "the room hit a fault and did not take it",
   RoomHalted: "the room has stopped",
   StorageFailed: "the room could not save it",
-} as const;
+} as const satisfies Record<UnavailableReason, string>;
 
 export const SendToRoom = Command.define("SendToRoom", {
   args: { command: MemberCommandSchema, key: Schema.Int },

@@ -46,6 +46,7 @@ export const ToyMemberCommandSchema = Schema.TaggedUnion({
   StartTurn: {
     ms: Schema.Int.check(Schema.isBetween({ maximum: 600_000, minimum: 1 })),
   },
+  Throw: { note: Schema.String },
 });
 
 export type ToyMemberCommand = typeof ToyMemberCommandSchema.Type;
@@ -217,6 +218,14 @@ type Decision = Result.Result<readonly ToyEvent[], ToyRefusal>;
 const incremented = (by: PlayerId, count: number) =>
   ToyEventSchema.cases.Incremented.make({ by, count });
 
+export class ToyCoreBrokeError extends Error {
+  override readonly name = "ToyCoreBrokeError";
+}
+
+const thrownOn = (note: string): Decision => {
+  throw new ToyCoreBrokeError(`the toy core broke on ${note}`);
+};
+
 const decideMember = (
   state: ToyState,
   by: PlayerId,
@@ -274,6 +283,7 @@ const decideMember = (
                   player: by,
                 }),
               ]),
+        Throw: ({ note }) => thrownOn(note),
       })
     : refuse("NotMember");
 
@@ -543,6 +553,11 @@ export const toyRoom: HostedRoom<ToyTypes> = {
   attendance: () => Option.none(),
   audienceOf,
   beaconRoundFor: () => Option.none(),
+  commandKind: (command) =>
+    ToyCommandSchema.match(command, {
+      Member: ({ command: member }) => member._tag,
+      Server: ({ command: server }) => server._tag,
+    }),
   decide,
   dueKind: (due) => due._tag,
   entropyFor: (due) =>

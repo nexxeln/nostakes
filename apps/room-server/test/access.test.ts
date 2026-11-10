@@ -587,3 +587,83 @@ test(
     expect(settled.alarmRuns.at(-1)?.outcome).toBe("Committed");
   }).pipe(Effect.provide(FetchHttpClient.layer))
 );
+
+test(
+  "13. a member command the room core throws on: the member gets an unavailable reply, nothing is stored, the room and the other players carry on, the fault is logged once without the command's contents, and faults in a row mark the room stalled",
+  Effect.gen(function* thrownCommand() {
+    const base = yield* baseUrl;
+    const [anaPass, benPass] = yield* openRoomWith(base, ["Ana", "Ben"]);
+
+    if (anaPass === undefined || benPass === undefined) {
+      return;
+    }
+
+    const { code } = anaPass;
+    const ana = yield* joinAs(base, anaPass, "ana");
+    const ben = yield* joinAs(base, benPass, "ben");
+    const before = yield* inspect(base, code);
+    const throwing = Commands.Throw.make({ note: "a private note" });
+
+    yield* ana.client.send(command("boom", throwing));
+
+    const boom = yield* ana.client.next("reply boom", replyTo("boom"));
+    const afterBoom = yield* inspect(base, code);
+
+    yield* ana.client.send(
+      command("count", Commands.Increment.make({ times: 1 }))
+    );
+
+    const counted = yield* ana.client.next("reply count", replyTo("count"));
+
+    const seen = yield* ben.client.next(
+      "the count",
+      eventsWith(isEvent.Incremented)
+    );
+
+    expect(boom.result).toStrictEqual(
+      codec.reply.cases.Unavailable.make({ reason: "RoomFault" })
+    );
+    expect({
+      events: afterBoom.events,
+      replies: afterBoom.replies,
+      seqs: afterBoom.seqs,
+    }).toStrictEqual({
+      events: before.events,
+      replies: before.replies,
+      seqs: before.seqs,
+    });
+    expect(afterBoom.faults).toStrictEqual([
+      `Room ${code} threw ToyCoreBrokeError while deciding a member's Throw command, 1 in a row. Nothing was stored, and the member was told the room could not take it. This is a bug in the room core.`,
+    ]);
+    expect(codec.reply.guards.Accepted(counted.result)).toBe(true);
+    expect(seen.events.map(({ _tag }) => _tag)).toStrictEqual(["Incremented"]);
+    expect(yield* ana.client.closed).toStrictEqual(Option.none());
+    expect(yield* ben.client.closed).toStrictEqual(Option.none());
+
+    yield* ana.client.send(
+      command("turn", Commands.StartTurn.make({ ms: 600_000 }))
+    );
+    yield* ana.client.next("reply turn", replyTo("turn"));
+
+    for (const id of ["boom 1", "boom 2", "boom 3"]) {
+      yield* ana.client.send(command(id, throwing));
+      yield* ana.client.next(`reply ${id}`, replyTo(id));
+    }
+
+    const marked = yield* ben.client.next(
+      "the stall",
+      eventsWith(isEvent.Stalled)
+    );
+
+    const stalled = yield* inspect(base, code);
+
+    expect(Option.isSome(marked.view.stalled)).toBe(true);
+    expect(stalled.faults.slice(1)).toStrictEqual(
+      [1, 2, 3].map(
+        (count) =>
+          `Room ${code} threw ToyCoreBrokeError while deciding a member's Throw command, ${count} in a row. Nothing was stored, and the member was told the room could not take it.${count === TOY_RETRIES.stallAfter ? " The room is marked stalled, so its players see that the table is stuck and can end the night." : ""} This is a bug in the room core.`
+      )
+    );
+    expect(stalled.faults.join(" ")).not.toContain("a private note");
+  }).pipe(Effect.provide(FetchHttpClient.layer))
+);

@@ -22,9 +22,11 @@ interface Tables {
   readonly replies: readonly StoredReply[];
   readonly credentials: readonly Credential[];
   readonly refusals: Option.Option<Refusals>;
+  readonly commandFaults: number;
 }
 
 const emptyTables: Tables = {
+  commandFaults: 0,
   credentials: [],
   events: [],
   meta: Option.none(),
@@ -49,6 +51,7 @@ export const memoryStorage = () => {
 
       write((current) => ({ ...current, events: [...current.events, row] }));
     },
+    commandFaults: () => tables.commandFaults,
     countEventsAfter: (after) =>
       tables.events.filter(({ seq }) => seq > after).length,
     countReplies: () => tables.replies.length,
@@ -88,6 +91,9 @@ export const memoryStorage = () => {
       }));
     },
     meta: () => tables.meta,
+    noteCommandFaults: (commandFaults) => {
+      write((current) => ({ ...current, commandFaults }));
+    },
     noteRefusals: (refusals) => {
       write((current) => ({ ...current, refusals }));
     },

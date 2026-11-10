@@ -39,6 +39,15 @@ const refusalsTable = `create table if not exists refusals (
    retry_at integer not null
  )`;
 
+const commandFaultsTable = `create table if not exists command_faults (
+   id integer primary key check (id = 1),
+   faults integer not null
+ )`;
+
+const CommandFaultRows = Schema.Array(Schema.Struct({ faults: Schema.Int }));
+
+const decodeCommandFaults = Schema.decodeUnknownSync(CommandFaultRows);
+
 const RefusalRows = Schema.Array(
   Schema.Struct({
     count: Schema.Int,
@@ -105,6 +114,15 @@ export const sqliteStorage = (
         seq,
         at,
         event
+      );
+    },
+    commandFaults: () => {
+      sql.exec(commandFaultsTable);
+
+      return (
+        decodeCommandFaults(
+          sql.exec("select faults from command_faults").toArray()
+        )[0]?.faults ?? 0
       );
     },
     countEventsAfter: (after) =>
@@ -175,6 +193,13 @@ export const sqliteStorage = (
             )[0]
           ).pipe(Option.map(({ code, halted }) => ({ code, halted })))
         : Option.none(),
+    noteCommandFaults: (faults) => {
+      sql.exec(commandFaultsTable);
+      sql.exec(
+        "insert or replace into command_faults (id, faults) values (1, ?)",
+        faults
+      );
+    },
     noteRefusals: (refusals) => {
       sql.exec(refusalsTable);
       sql.exec("delete from refusals");

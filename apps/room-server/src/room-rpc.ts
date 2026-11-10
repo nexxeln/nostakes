@@ -18,6 +18,7 @@ export const OpenOutcomeSchema = Schema.TaggedUnion({
 export type OpenOutcome = typeof OpenOutcomeSchema.Type;
 
 export const JoinOutcomeSchema = Schema.TaggedUnion({
+  Faulted: {},
   Invalid: {},
   Joined: { player: PlayerIdSchema, token: TokenTextSchema },
   NotFound: {},

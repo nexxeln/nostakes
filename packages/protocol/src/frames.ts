@@ -58,6 +58,7 @@ export const closingFrame = (reason: CloseReason) =>
 export const UnavailableReasonSchema = Schema.Literals([
   "RoomHalted",
   "StorageFailed",
+  "RoomFault",
 ]);
 
 export type UnavailableReason = typeof UnavailableReasonSchema.Type;

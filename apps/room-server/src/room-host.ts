@@ -5,6 +5,7 @@ import type {
   CommandId,
   PlayerId,
   RoomCode,
+  UnavailableReason,
 } from "@nostakes/protocol";
 import {
   Array as Arr,
@@ -14,9 +15,11 @@ import {
   Option,
   Order,
   Result,
+  Schema,
 } from "effect";
-import { constVoid } from "effect/Function";
+import { constVoid, flow } from "effect/Function";
 
+import { CommandFault } from "./command-fault.js";
 import { hashedCredential, matchCredential } from "./credentials.js";
 import type { HashedCredential } from "./credentials.js";
 import type {
@@ -70,7 +73,7 @@ export type CommitNote = Data.TaggedEnum<{
   Rejected: { readonly stored: boolean };
   Committed: { readonly from: number; readonly to: number };
   StorageFailed: { readonly cause: string };
-  Crashed: { readonly cause: string };
+  Crashed: { readonly cause: string; readonly fault: string };
   Halted: { readonly violations: readonly string[]; readonly events: string };
   RoomHalted: { readonly reason: string };
 }>;
@@ -86,6 +89,15 @@ export interface CommitResult<T extends RoomTypes> {
 export interface DeadlineAnswer<T extends RoomTypes> {
   readonly result: CommitResult<T>;
   readonly refused: Option.Option<RefusedDeadline>;
+  readonly stall: Option.Option<{
+    readonly command: T["Command"];
+    readonly result: CommitResult<T>;
+  }>;
+}
+
+export interface MemberAnswer<T extends RoomTypes> {
+  readonly result: CommitResult<T>;
+  readonly fault: Option.Option<CommandFault>;
   readonly stall: Option.Option<{
     readonly command: T["Command"];
     readonly result: CommitResult<T>;
@@ -108,6 +120,7 @@ export interface HostState<T extends RoomTypes> {
   readonly credentials: readonly HashedCredential[];
   readonly recent: RecentStates<T["State"]>;
   readonly refusals: Option.Option<Refusals>;
+  readonly commandFaults: number;
 }
 
 export const STATES_KEPT = MAX_MISSED_EVENTS + 1;
@@ -155,6 +168,7 @@ export const loadRoom = <T extends RoomTypes>(
 
       return {
         code: meta.code,
+        commandFaults: storage.commandFaults(),
         credentials: storage.credentials().map(hashedCredential),
         halted: Arr.isArrayNonEmpty(violations)
           ? Option.some(violations.join("; "))
@@ -192,6 +206,19 @@ export const openStorage = <T extends RoomTypes>(
 
   return opened;
 };
+
+const faultNameOf = flow(
+  Schema.decodeUnknownOption(Schema.Struct({ name: Schema.String })),
+  Option.match({
+    onNone: () => "a value that is not an error",
+    onSome: ({ name }) => name,
+  })
+);
+
+interface Crash {
+  readonly cause: string;
+  readonly fault: string;
+}
 
 const earliest = (times: readonly Option.Option<number>[]) =>
   Arr.head(Arr.sort(Arr.getSomes(times), Order.Number));
@@ -341,8 +368,14 @@ export const hostRoom = <T extends RoomTypes>(
         ]);
   };
 
-  const unavailable = (reason: "RoomHalted" | "StorageFailed") =>
+  const unavailable = (reason: UnavailableReason) =>
     codec.reply.cases.Unavailable.make({ reason });
+
+  const crashed = (crash: Crash): CommitResult<T> => ({
+    events: [],
+    note: CommitNotes.Crashed(crash),
+    reply: unavailable("RoomFault"),
+  });
 
   const storedReply = (origin: Origin) =>
     Origins.$match(origin, {
@@ -397,20 +430,37 @@ export const hostRoom = <T extends RoomTypes>(
   ): CommitResult<T> => {
     const from = current.headSeq + 1;
     const to = current.headSeq + events.length;
-    let next = current.state;
-    const states: T["State"][] = [];
 
-    for (const event of events) {
-      next = core.evolve(next, event);
-      states.push(next);
+    const evolved = Result.try({
+      catch: (thrown): Crash => ({
+        cause: Inspectable.toStringUnknown(thrown, 0),
+        fault: faultNameOf(thrown),
+      }),
+      try: () => {
+        let next = current.state;
+        const states: T["State"][] = [];
+
+        for (const event of events) {
+          next = core.evolve(next, event);
+          states.push(next);
+        }
+
+        return { broken: core.invariants(next), next, states };
+      },
+    });
+
+    if (Result.isFailure(evolved)) {
+      return crashed(evolved.failure);
     }
+
+    const { broken, next, states } = evolved.success;
 
     const prepared = guarded("could not prepare delivery", () =>
       deliveries(next, events, from, input.at, connections.viewers)
     );
 
     const violations = [
-      ...core.invariants(next),
+      ...broken,
       ...Result.match(prepared, {
         onFailure: (problems) => problems,
         onSuccess: () => [],
@@ -530,7 +580,19 @@ export const hostRoom = <T extends RoomTypes>(
       };
     }
 
-    return Result.match(core.decide(current.state, input.command), {
+    const decided = Result.try({
+      catch: (thrown): Crash => ({
+        cause: Inspectable.toStringUnknown(thrown, 0),
+        fault: faultNameOf(thrown),
+      }),
+      try: () => core.decide(current.state, input.command),
+    });
+
+    if (Result.isFailure(decided)) {
+      return crashed(decided.failure);
+    }
+
+    return Result.match(decided.success, {
       onFailure: (rejection) => reject(input, rejection),
       onSuccess: (events) => accept(input, events, connections),
     });
@@ -690,25 +752,15 @@ export const hostRoom = <T extends RoomTypes>(
       (now) => keyOf(now) === keyOf(deadline)
     );
 
-    const attempted = Result.try({
-      catch: (cause) => Inspectable.toStringUnknown(cause, 0),
-      try: () =>
-        commit(
-          {
-            at,
-            command,
-            grant: Option.none(),
-            origin: Origins.Server({ trigger: "Alarm" }),
-          },
-          connections
-        ),
-    });
-
-    const result = Result.getOrElse(attempted, (cause): CommitResult<T> => ({
-      events: [],
-      note: CommitNotes.Crashed({ cause }),
-      reply: unavailable("RoomHalted"),
-    }));
+    const result = commit(
+      {
+        at,
+        command,
+        grant: Option.none(),
+        origin: Origins.Server({ trigger: "Alarm" }),
+      },
+      connections
+    );
 
     if (
       CommitNotes.$is("Committed")(result.note) &&
@@ -717,12 +769,17 @@ export const hostRoom = <T extends RoomTypes>(
       keepRefusals(Option.none());
     }
 
-    const refusal = Result.match(attempted, {
-      onFailure: (cause) => Option.some(`the room core threw: ${cause}`),
-      onSuccess: ({ reply }) =>
-        stillDue && codec.reply.guards.Rejected(reply)
-          ? Option.some(codec.encodeRejection(reply.rejection))
+    const refusal = CommitNotes.$match(result.note, {
+      Committed: () => Option.none<string>(),
+      Crashed: ({ cause }) => Option.some(`the room core threw: ${cause}`),
+      Halted: () => Option.none<string>(),
+      Rejected: () =>
+        stillDue && codec.reply.guards.Rejected(result.reply)
+          ? Option.some(codec.encodeRejection(result.reply.rejection))
           : Option.none(),
+      Replayed: () => Option.none<string>(),
+      RoomHalted: () => Option.none<string>(),
+      StorageFailed: () => Option.none<string>(),
     });
 
     const refused = Option.match(refusal, {
@@ -731,6 +788,75 @@ export const hostRoom = <T extends RoomTypes>(
     });
 
     return { result, ...refused };
+  };
+
+  const keepCommandFaults = (faults: number) => {
+    current = { ...current, commandFaults: faults };
+    Result.try(() => {
+      storage.noteCommandFaults(faults);
+    });
+  };
+
+  const stallFor = (at: number, connections: Connections) =>
+    core.nextDeadline(current.state).pipe(
+      Option.flatMap(({ due }) => core.stalled(current.state, due, at)),
+      Option.map((command) => ({
+        command,
+        result: commit(
+          {
+            at,
+            command,
+            grant: Option.none(),
+            origin: Origins.Server({ trigger: "Stall" }),
+          },
+          connections
+        ),
+      }))
+    );
+
+  const answerMember = (
+    input: CommitInput<T>,
+    connections: Connections
+  ): MemberAnswer<T> => {
+    const result = commit(input, connections);
+    const quiet = { fault: Option.none(), result, stall: Option.none() };
+
+    if (!CommitNotes.$is("Crashed")(result.note)) {
+      if (
+        current.commandFaults > 0 &&
+        (CommitNotes.$is("Committed")(result.note) ||
+          CommitNotes.$is("Rejected")(result.note))
+      ) {
+        keepCommandFaults(0);
+      }
+
+      return quiet;
+    }
+
+    const faults = current.commandFaults + 1;
+
+    keepCommandFaults(faults);
+
+    const stall =
+      faults >= policy.stallAfter
+        ? stallFor(input.at, connections)
+        : Option.none();
+
+    return {
+      fault: Option.some(
+        new CommandFault({
+          code: current.code,
+          command: core.commandKind(input.command),
+          fault: result.note.fault,
+          faults,
+          stalled: Option.exists(stall, ({ result: marked }) =>
+            CommitNotes.$is("Committed")(marked.note)
+          ),
+        })
+      ),
+      result,
+      stall,
+    };
   };
 
   const noteAttendance = (
@@ -757,6 +883,7 @@ export const hostRoom = <T extends RoomTypes>(
 
   return {
     answerDeadline,
+    answerMember,
     armAlarm,
     authenticate: (hash: Uint8Array) =>
       matchCredential(current.credentials, hash),

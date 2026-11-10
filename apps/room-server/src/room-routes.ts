@@ -227,6 +227,7 @@ export const roomRoutes = <R>(
       );
 
       return yield* JoinOutcomeSchema.match(outcome, {
+        Faulted: () => refuse("ServerFault"),
         Invalid: () => refuse("BadRequest"),
         Joined: ({ player, token }) => created(code.value, player, token),
         NotFound: () => refuse("NotFound"),

@@ -47,6 +47,7 @@ import type { AnalyticsSink, RoomMeasures } from "./analytics.js";
 import type { BeaconGaveUp } from "./beacon-gave-up.js";
 import { askBeacon, Beacon } from "./beacon.js";
 import type { BeaconAnswer } from "./beacon.js";
+import type { CommandFault } from "./command-fault.js";
 import { DeviceHashSchema } from "./device.js";
 import { Entropy, liveEntropy } from "./entropy.js";
 import { oversized } from "./frame-limits.js";
@@ -390,7 +391,9 @@ export const roomObject = <T extends RoomTypes, Tally>(
             )
           );
 
-        const logFault = (fault: RefusedDeadline | BeaconGaveUp) =>
+        const logFault = (
+          fault: RefusedDeadline | BeaconGaveUp | CommandFault
+        ) =>
           Effect.sync(() => {
             faults.push(fault.message);
           }).pipe(
@@ -653,7 +656,7 @@ export const roomObject = <T extends RoomTypes, Tally>(
 
                   const stamped = core.stamp(live.value.player, at, command);
 
-                  const result = room.commit(
+                  const { fault, result, stall } = room.answerMember(
                     {
                       at,
                       command: stamped,
@@ -674,6 +677,14 @@ export const roomObject = <T extends RoomTypes, Tally>(
                   );
 
                   yield* logCommit(result, stamped);
+
+                  for (const thrown of Option.toArray(fault)) {
+                    yield* logFault(thrown);
+                  }
+
+                  for (const stalled of Option.toArray(stall)) {
+                    yield* logCommit(stalled.result, stalled.command);
+                  }
                 }),
               Hello: ({ after, protocol, token }) =>
                 Effect.gen(function* greet() {
@@ -968,7 +979,10 @@ export const roomObject = <T extends RoomTypes, Tally>(
                   token: minted.token,
                 }),
               Rejected: () => JoinOutcomeSchema.cases.Refused.make({}),
-              Unavailable: () => JoinOutcomeSchema.cases.RoomHalted.make({}),
+              Unavailable: ({ reason }) =>
+                reason === "RoomFault"
+                  ? JoinOutcomeSchema.cases.Faulted.make({})
+                  : JoinOutcomeSchema.cases.RoomHalted.make({}),
             });
           }).pipe(
             Effect.flatMap(Schema.encodeEffect(JoinOutcomeSchema)),

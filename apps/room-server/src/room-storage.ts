@@ -45,6 +45,8 @@ export interface RoomStorage {
   readonly credentials: () => readonly Credential[];
   readonly refusals: () => Option.Option<Refusals>;
   readonly noteRefusals: (refusals: Option.Option<Refusals>) => void;
+  readonly commandFaults: () => number;
+  readonly noteCommandFaults: (faults: number) => void;
   readonly setAlarm: (at: Option.Option<number>) => void;
   readonly forget: Effect.Effect<void>;
 }
