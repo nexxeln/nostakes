@@ -119,6 +119,9 @@ export const InRoomSchema = Schema.Struct({
   pending: Schema.Array(PendingSchema),
   picked: Schema.Option(Schema.Int),
   player: PlayerIdSchema,
+  resumed: Schema.Option(
+    Schema.Struct({ player: PlayerIdSchema, receivedAt: Schema.Int })
+  ),
   settings: Schema.Option(SettingsDraftSchema),
   shown: Schema.Option(ShownViewSchema),
   update: Schema.Option(PageUpdateSchema),

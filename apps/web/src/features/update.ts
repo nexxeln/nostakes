@@ -13,6 +13,7 @@ import {
   ChipAmountSchema,
   MemberCommandSchema,
   RoomViews,
+  SeenEvents,
 } from "@nostakes/room";
 import type { MemberCommand, SeenEvent } from "@nostakes/room";
 import { Match, Option, Result, Schema } from "effect";
@@ -84,6 +85,7 @@ const freshRoom = (code: InRoom["code"], player: InRoom["player"]): InRoom => ({
   pending: [],
   picked: Option.none(),
   player,
+  resumed: Option.none(),
   settings: Option.none(),
   shown: Option.none(),
   update: Option.none(),
@@ -612,6 +614,22 @@ export const update = (model: Model, message: Message): Return =>
               -KEPT_CLOCK_SAMPLES
             )
           : room.clockSamples,
+        resumed: Option.orElse(
+          Option.fromUndefinedOr(
+            events.findLast(
+              ({ event }) =>
+                SeenEvents.$is("TableAttended")(event) &&
+                Option.isSome(event.quietSince)
+            )
+          ).pipe(
+            Option.flatMap(({ event }) =>
+              SeenEvents.$is("TableAttended")(event)
+                ? Option.some({ player: event.player, receivedAt })
+                : Option.none()
+            )
+          ),
+          () => room.resumed
+        ),
         shown: Option.some({ receivedAt, seq, view }),
       })),
     PickedAvatar: ({ avatar }) => {

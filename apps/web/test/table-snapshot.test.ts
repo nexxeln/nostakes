@@ -43,6 +43,7 @@ const roomWith = (
   pending: acting ? [{ acting: true, key: 1, label: "Calling" }] : [],
   picked: Option.none(),
   player: PLAYER,
+  resumed: Option.none(),
   settings: Option.none(),
   shown: Option.some({ receivedAt: 0, seq: 1, view }),
   update: Option.none(),

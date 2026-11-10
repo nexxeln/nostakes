@@ -6,6 +6,7 @@ import type { MemberCommand } from "@nostakes/room";
 import { Option } from "effect";
 import type { Html, HtmlBuilder } from "foldkit/html";
 
+import { attendanceLine } from "./attendance-line.js";
 import { faceButton, soundSwitch, themeSwitch } from "./chrome.js";
 import { face } from "./face-builder.js";
 import { Messages } from "./message.js";
@@ -131,10 +132,14 @@ const header = (
     ]
   );
 
-const noticeLine = (room: InRoom, h: H): Html =>
+const noticeLine = (model: Model, room: InRoom, h: H): Html =>
   h.div(
     [h.Class("status-line"), h.AriaLive("polite")],
     [
+      Option.match(attendanceLine(room, model.now), {
+        onNone: () => h.empty,
+        onSome: (text) => h.span([h.Class("attendance-line")], [text]),
+      }),
       Option.match(room.update, {
         onNone: () => h.empty,
         onSome: (update) =>
@@ -744,7 +749,7 @@ export const roomView = (model: Model, room: InRoom, h: H): Html => {
     [h.Class("page room")],
     [
       header(model, room, open, h),
-      noticeLine(room, h),
+      noticeLine(model, room, h),
       Option.match(view, {
         onNone: () =>
           refused
