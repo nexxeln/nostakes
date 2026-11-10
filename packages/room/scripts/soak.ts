@@ -155,6 +155,7 @@ const tableConfig = (random: Random): TableConfig => {
       underTheGun: random.chance(60) ? 2 : random.below(2),
     },
     straddleSize: random.chance(30) ? "TwoBigBlinds" : "Doubling",
+    voluntaryShows: random.chance(30) ? "BothCards" : "EitherCard",
   });
 };
 

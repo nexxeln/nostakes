@@ -54,6 +54,13 @@ export const ShowdownOrderSchema = Schema.Literals([
 
 export type ShowdownOrder = typeof ShowdownOrderSchema.Type;
 
+export const VoluntaryShowsSchema = Schema.Literals([
+  "EitherCard",
+  "BothCards",
+]);
+
+export type VoluntaryShows = typeof VoluntaryShowsSchema.Type;
+
 export const StraddleSizeSchema = Schema.Literals(["Doubling", "TwoBigBlinds"]);
 
 export type StraddleSize = typeof StraddleSizeSchema.Type;
@@ -119,6 +126,11 @@ export const TableConfigSchema = Schema.Struct({
     description:
       "Doubling: each straddle is twice the one before, so two, four, then eight big blinds. TwoBigBlinds: every straddle is two big blinds.",
     title: "Straddle size",
+  }),
+  voluntaryShows: setting(VoluntaryShowsSchema, "EitherCard", {
+    description:
+      "After a hand, a player dealt in may show cards nobody saw. EitherCard: one or both. BothCards: both or neither.",
+    title: "Showing after a hand",
   }),
 })
   .check(

@@ -9,6 +9,7 @@ import {
   NothingToHunt,
   RabbitAlreadyHunted,
   RabbitHuntOff,
+  ShowBothCards,
 } from "../src/index.js";
 import type { TableConfig } from "../src/index.js";
 import {
@@ -67,6 +68,17 @@ describe("voluntary shows", () => {
   it("lets the winner of a fold-out show one card", () => {
     expect(run(walk(baseConfig), shows(2, "Kc")).events).toStrictEqual([
       Events.CardsShown({ cards: cards("Kc"), seat: seat(2) }),
+    ]);
+  });
+
+  it("refuses one card and accepts both when the table shows both or neither", () => {
+    const bothOrNone = walk({ ...baseConfig, voluntaryShows: "BothCards" });
+
+    expect(rejection(bothOrNone, shows(2, "Kc"))).toStrictEqual(
+      new ShowBothCards({ seat: seat(2) })
+    );
+    expect(run(bothOrNone, shows(2, "Kc Tc")).events).toStrictEqual([
+      Events.CardsShown({ cards: cards("Kc Tc"), seat: seat(2) }),
     ]);
   });
 

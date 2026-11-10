@@ -241,6 +241,7 @@ export const planNight = (
       smallBlind: small,
       straddle: { button: random.chance(50), underTheGun: random.below(3) },
       straddleSize: random.chance(30) ? "TwoBigBlinds" : "Doubling",
+      voluntaryShows: random.chance(30) ? "BothCards" : "EitherCard",
     },
     timeBankRefill:
       recipe.turnSeconds > 0 && random.chance(50)

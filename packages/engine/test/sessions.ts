@@ -63,6 +63,7 @@ export const SessionSchema = Schema.Struct({
   ),
   straddlesDouble: Schema.Boolean,
   underTheGun: between(0, 3),
+  voluntaryBoth: Schema.Boolean,
 });
 
 export type Session = typeof SessionSchema.Type;
@@ -94,6 +95,7 @@ export const configOf = (source: Session): TableConfig =>
     smallBlind: chipCount(source.smallBlind),
     straddle: { button: source.button, underTheGun: source.underTheGun },
     straddleSize: source.straddlesDouble ? "Doubling" : "TwoBigBlinds",
+    voluntaryShows: source.voluntaryBoth ? "BothCards" : "EitherCard",
   });
 
 const randomConfig = (random: SeededRandom): TableConfig => {
@@ -111,6 +113,7 @@ const randomConfig = (random: SeededRandom): TableConfig => {
     smallBlind: chipCount(small),
     straddle: { button: random.chance(1, 2), underTheGun: random.below(4) },
     straddleSize: random.chance(1, 3) ? "TwoBigBlinds" : "Doubling",
+    voluntaryShows: random.chance(1, 3) ? "BothCards" : "EitherCard",
   });
 };
 

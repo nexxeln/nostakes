@@ -11,6 +11,7 @@ import {
   NothingToHunt,
   RabbitAlreadyHunted,
   RabbitHuntOff,
+  ShowBothCards,
 } from "./rejection.js";
 import type { Rejection } from "./rejection.js";
 import { isInHand, occupantOf } from "./state.js";
@@ -61,6 +62,15 @@ export const showCards = (state: TableState, command: CommandOf<"ShowCards">) =>
         return Result.fail(
           new CardAlreadyPublic({ card: shown, seat: command.seat })
         );
+      }
+
+      const hidden = player.holeCards.filter(
+        (card) =>
+          !player.publicCards.includes(card) && !command.cards.includes(card)
+      );
+
+      if (state.config.voluntaryShows === "BothCards" && hidden.length > 0) {
+        return Result.fail(new ShowBothCards({ seat: command.seat }));
       }
 
       return Result.succeed([

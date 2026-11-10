@@ -20,6 +20,7 @@ import { RunsOutOfRange } from "./rejections/runs-out-of-range.js";
 import { SeatEmpty } from "./rejections/seat-empty.js";
 import { SeatInHand } from "./rejections/seat-in-hand.js";
 import { SeatTaken } from "./rejections/seat-taken.js";
+import { ShowBothCards } from "./rejections/show-both-cards.js";
 import { StraddleAboveChipLimit } from "./rejections/straddle-above-chip-limit.js";
 import { StraddleNotAllowed } from "./rejections/straddle-not-allowed.js";
 import { WinningHandMustTable } from "./rejections/winning-hand-must-table.js";
@@ -31,6 +32,7 @@ export const RejectionSchema = Schema.Union([
   NothingToHunt,
   RabbitAlreadyHunted,
   RabbitHuntOff,
+  ShowBothCards,
   AmountNotPositive,
   ChipLimitExceeded,
   HandInProgress,
@@ -77,6 +79,8 @@ export { RunsOutOfRange } from "./rejections/runs-out-of-range.js";
 export { SeatEmpty } from "./rejections/seat-empty.js";
 
 export { SeatInHand } from "./rejections/seat-in-hand.js";
+
+export { ShowBothCards } from "./rejections/show-both-cards.js";
 
 export { SeatTaken } from "./rejections/seat-taken.js";
 

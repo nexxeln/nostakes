@@ -76,6 +76,7 @@ export const DEFAULT_SETTINGS: RoomSettings = Schema.decodeSync(
     smallBlind: 1,
     straddle: { button: false, underTheGun: 0 },
     straddleSize: "Doubling",
+    voluntaryShows: "EitherCard",
   },
   timeBankRefill: TimeBankRefills.NoRefill(),
   timeBankSeconds: 60,

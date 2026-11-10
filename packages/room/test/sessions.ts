@@ -112,6 +112,7 @@ export const tableConfigFrom = (random: SeededRandom): TableConfig => {
     smallBlind: chips(small),
     straddle: { button: random.chance(1, 2), underTheGun: random.below(3) },
     straddleSize: random.chance(1, 3) ? "TwoBigBlinds" : "Doubling",
+    voluntaryShows: random.chance(1, 3) ? "BothCards" : "EitherCard",
   });
 };
 

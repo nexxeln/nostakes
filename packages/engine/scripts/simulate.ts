@@ -121,6 +121,7 @@ const randomConfig = (random: Random): TableConfig => {
       underTheGun: random.chance(60) ? 2 : random.below(2),
     },
     straddleSize: random.chance(30) ? "TwoBigBlinds" : "Doubling",
+    voluntaryShows: random.chance(30) ? "BothCards" : "EitherCard",
   });
 };
 
@@ -541,6 +542,7 @@ const newCounts = () => ({
   noAntes: 0,
   oddChips: 0,
   oneRunCutShort: 0,
+  partialShowsRefused: 0,
   rabbitHunts: 0,
   runOuts: 0,
   shortAllIns: 0,
@@ -744,6 +746,9 @@ const countRejection = (
     ? 1
     : 0;
   counts.chipLimitRejected += Predicate.isTagged(rejection, "ChipLimitExceeded")
+    ? 1
+    : 0;
+  counts.partialShowsRefused += Predicate.isTagged(rejection, "ShowBothCards")
     ? 1
     : 0;
   counts.straddleLimitRejected += Predicate.isTagged(

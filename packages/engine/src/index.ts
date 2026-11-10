@@ -103,6 +103,7 @@ export {
   SeatEmpty,
   SeatInHand,
   SeatTaken,
+  ShowBothCards,
   StraddleAboveChipLimit,
   StraddleNotAllowed,
   StraddleProblemSchema,
@@ -122,6 +123,7 @@ export {
   StraddleRulesSchema,
   StraddleSizeSchema,
   TableConfigSchema,
+  VoluntaryShowsSchema,
   type AllInHands,
   type Ante,
   type RunCount,
@@ -131,6 +133,7 @@ export {
   type StraddleRules,
   type StraddleSize,
   type TableConfig,
+  type VoluntaryShows,
 } from "./rules.js";
 
 export {

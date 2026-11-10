@@ -167,7 +167,10 @@ REPLAY_ONLY = {
     "straddle-list": "Brief rule 8, recomputed for accepted and rejected straddle lists. PokerKit takes any blind list.",
     "run-cap": "Brief rule 19's cap of maxRuns and the remaining deck. PokerKit has no cap.",
     "rabbit-hunt": "Brief rule 27, the next undealt cards from the exported deck. PokerKit has no rabbit hunt.",
-    "voluntary-show": "Brief rule 26, legality of after-hand shows. PokerKit has no after-hand shows.",
+    "voluntary-show": (
+        "Brief rule 26, legality of after-hand shows, and with voluntaryShows BothCards that "
+        "a show leaves no hole card hidden. PokerKit has no after-hand shows."
+    ),
     "showdown-must-table": (
         "Showdown brief rule 3, that a seat must table a hand that beats or ties the tabled "
         "hands of a pot another live seat contests. PokerKit lets any seat muck."
@@ -1045,7 +1048,8 @@ class Hand:
                 continue
             held = set(self.hole[self.index[seat]]) if seat in self.index else set()
             cards = set(command["cards"])
-            legal = seat in self.index and cards <= held and not (cards & public[seat])
+            both = self.config.get("voluntaryShows") != "BothCards" or held <= cards | public[seat]
+            legal = seat in self.index and cards <= held and not (cards & public[seat]) and both
             if step["accepted"] != legal:
                 self.differ("voluntary-show", f"seat {seat} shows {sorted(cards)}: engine {step['accepted']} ({rejection}), replay {legal}")
             if step["accepted"]:

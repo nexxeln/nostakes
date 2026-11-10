@@ -284,6 +284,7 @@ describe("JSON codecs for phase 2 storage and transport", () => {
           "SeatEmpty",
           "SeatInHand",
           "SeatTaken",
+          "ShowBothCards",
           "StraddleNotAllowed",
           "WinningHandMustTable",
         ]);

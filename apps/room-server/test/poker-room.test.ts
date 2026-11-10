@@ -78,7 +78,7 @@ describe("the poker room adapter", () => {
     const view = openView(welcomeView(room, ana, 1000));
 
     expect(encodeSettings(view.settings)).toBe(
-      '{"approval":{"chips":false,"seats":false},"betweenHandsSeconds":5,"buyIn":{"max":400,"min":40},"dealing":"Automatic","runChoiceSeconds":15,"seats":9,"showdownSeconds":15,"shuffle":"Plain","sitOutAfterTimeouts":1,"table":{"allInHands":"FaceUp","ante":{"_tag":"NoAnte"},"bigBlind":2,"maxRuns":1,"rabbitHunt":false,"runCount":"Vote","showdown":"Interactive","showdownOrder":"RiverAggressor","smallBlind":1,"straddle":{"button":false,"underTheGun":0},"straddleSize":"Doubling"},"timeBankRefill":{"_tag":"NoRefill"},"timeBankSeconds":60,"topUps":"UpToMax","turnSeconds":30}'
+      '{"approval":{"chips":false,"seats":false},"betweenHandsSeconds":5,"buyIn":{"max":400,"min":40},"dealing":"Automatic","runChoiceSeconds":15,"seats":9,"showdownSeconds":15,"shuffle":"Plain","sitOutAfterTimeouts":1,"table":{"allInHands":"FaceUp","ante":{"_tag":"NoAnte"},"bigBlind":2,"maxRuns":1,"rabbitHunt":false,"runCount":"Vote","showdown":"Interactive","showdownOrder":"RiverAggressor","smallBlind":1,"straddle":{"button":false,"underTheGun":0},"straddleSize":"Doubling","voluntaryShows":"EitherCard"},"timeBankRefill":{"_tag":"NoRefill"},"timeBankSeconds":60,"topUps":"UpToMax","turnSeconds":30}'
     );
   });
 
