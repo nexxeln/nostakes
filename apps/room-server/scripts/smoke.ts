@@ -1,4 +1,9 @@
-import { clientCodec, roomClient, webSocketTransport } from "@nostakes/client";
+import {
+  Activities,
+  clientCodec,
+  roomClient,
+  webSocketTransport,
+} from "@nostakes/client";
 import type { ClientSchemas, ClientState, RoomClient } from "@nostakes/client";
 import { ActionSchema, SeatIndexSchema } from "@nostakes/engine";
 import { HttpRefusalSchema, RoomPassSchema } from "@nostakes/protocol";
@@ -24,6 +29,7 @@ import {
   Duration,
   Effect,
   Exit,
+  Fiber,
   Option,
   Schedule,
   Schema,
@@ -223,6 +229,38 @@ const openView = (state: SmokeState) =>
 const closedView = (state: SmokeState) =>
   state.view.pipe(Option.filter(RoomViews.$is("Closed")));
 
+const isDealtFromBeacon = SeenEventSchema.guards.DealtFromBeacon;
+
+const isDealtWithoutBeacon = SeenEventSchema.guards.DealtWithoutBeacon;
+
+const dealLine = (event: SeenEvent) => {
+  if (isDealtFromBeacon(event)) {
+    return Option.some(
+      `the first hand was dealt from drand round ${event.round}`
+    );
+  }
+
+  if (isDealtWithoutBeacon(event)) {
+    return Option.some(
+      `the first hand was dealt without the beacon (${event.reason}) for round ${event.round}`
+    );
+  }
+
+  return Option.none();
+};
+
+const firstDeal = (client: SmokeClient) =>
+  client.activity.pipe(
+    Stream.map((activity) =>
+      Activities.$is("Applied")(activity)
+        ? dealLine(activity.event)
+        : Option.none()
+    ),
+    Stream.filter(Option.isSome),
+    Stream.runHead,
+    Effect.map(Option.flatten)
+  );
+
 const ask = (client: SmokeClient, step: string, command: MemberCommand) =>
   client.send(command).pipe(
     Effect.mapError((failure) => failed(step, failure._tag)),
@@ -287,6 +325,8 @@ const smoke = Effect.gen(function* smoke() {
   yield* waitFor(ben, "connect Ben's socket", openView);
   yield* note("both sockets are live");
 
+  const deal = yield* firstDeal(ana).pipe(Effect.forkScoped);
+
   yield* ask(
     ana,
     "seat Ana",
@@ -303,10 +343,10 @@ const smoke = Effect.gen(function* smoke() {
   const toAct = (state: SmokeState) =>
     openView(state).pipe(
       Option.filter(({ legal }) => Option.isSome(legal)),
-      Option.map(({ fairness }) => fairness)
+      Option.map(({ code }) => code)
     );
 
-  const [first, fairness] = yield* Effect.raceFirst(
+  const [first] = yield* Effect.raceFirst(
     waitFor(ana, "deal the first hand", toAct).pipe(
       Effect.map((seen) => [ana, seen] as const)
     ),
@@ -316,13 +356,10 @@ const smoke = Effect.gen(function* smoke() {
   );
 
   yield* note(
-    Option.match(fairness.dealt, {
-      onNone: () => "the first hand was dealt without a seal",
-      onSome: ({ deal }) =>
-        "round" in deal
-          ? `the first hand was dealt from drand round ${deal.round}`
-          : `the first hand was dealt without the beacon: ${deal.reason}`,
-    })
+    Option.getOrElse(
+      yield* Fiber.join(deal),
+      () => "the first hand was dealt without a sealed deal event"
+    )
   );
 
   yield* ask(ana, "queue the close", Commands.CloseRoom.make({}));
