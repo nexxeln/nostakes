@@ -715,15 +715,13 @@ const sameShowdown = (
 };
 
 const automaticOutcome = (state: TableState, command: Command) =>
-  TableStates.$is("InHand")(state)
-    ? Result.getOrElse(
-        decide(
-          { ...state, config: { ...state.config, showdown: "Automatic" } },
-          command
-        ),
-        (): readonly Event[] => []
-      )
-    : [];
+  Result.getOrElse(
+    decide(
+      { ...state, config: { ...state.config, showdown: "Automatic" } },
+      command
+    ),
+    (): readonly Event[] => []
+  );
 
 const countRejection = (
   counts: Counts,
