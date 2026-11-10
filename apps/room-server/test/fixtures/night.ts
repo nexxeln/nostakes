@@ -36,7 +36,7 @@ export interface NightPlan {
   readonly restartHands: readonly number[];
   readonly voteRestarts: number;
   readonly ruleChanges: readonly RuleChange[];
-  readonly silences: readonly { readonly bot: number; readonly hand: number }[];
+  readonly silences: readonly number[];
   readonly temper: Temper;
   readonly limitMs: number;
 }
@@ -197,10 +197,10 @@ export const planNight = (
     settings,
     silences:
       recipe.turnSeconds > 0
-        ? Array.from({ length: recipe.silences }, (_, index) => ({
-            bot: index % recipe.players,
-            hand: 2 + index * 3 + random.below(2),
-          }))
+        ? Array.from(
+            { length: recipe.silences },
+            (_, index) => 2 + index * 3 + random.below(2)
+          )
         : [],
     spectators: random.chance(50) ? 1 : 0,
     temper,
@@ -271,10 +271,12 @@ export const runNight = (base: string, opened: OpenedNight) =>
 
     const control: NightControl = {
       closing: false,
+      quiet: new Set(),
       ruleChanges: plan.ruleChanges,
       rulesApplied: 0,
       seats: plan.players + plan.lateJoiners,
       silences: plan.silences,
+      silencesTaken: 0,
       stop: false,
     };
 

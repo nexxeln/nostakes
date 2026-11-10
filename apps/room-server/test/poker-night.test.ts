@@ -71,7 +71,7 @@ test(
     expect(results.flatMap((result) => result.verdict.problems)).toEqual([]);
     expect(total((counts) => counts.hands)).toBeGreaterThanOrEqual(30);
     expect(total((counts) => counts.restarts)).toBeGreaterThanOrEqual(3);
-    expect(total((counts) => counts.timeouts)).toBeGreaterThanOrEqual(1);
+    expect(total((counts) => counts.timeouts)).toBeGreaterThanOrEqual(3);
     expect(total((counts) => counts.reconnects)).toBeGreaterThanOrEqual(3);
     expect(
       total((counts) => counts.duplicatesConfirmed)

@@ -88,7 +88,9 @@ export interface NightControl {
   closing: boolean;
   rulesApplied: number;
   readonly ruleChanges: readonly RuleChange[];
-  readonly silences: readonly { readonly bot: number; readonly hand: number }[];
+  readonly silences: readonly number[];
+  silencesTaken: number;
+  readonly quiet: Set<PlayerId>;
   readonly seats: number;
 }
 
@@ -522,14 +524,15 @@ export const startBot = (setup: BotSetup) => {
     if (decided !== key && open.settings.turnSeconds > 0) {
       decided = key;
 
-      const planned = control.silences.some(
-        (silence) =>
-          silence.bot === setup.index &&
-          silence.hand === hand &&
-          open.hand.pipe(
-            Option.exists((current) => current.street === "Preflop")
-          )
-      );
+      const due = control.silences[control.silencesTaken];
+      const planned = due !== undefined && hand >= due;
+
+      control.silencesTaken += planned ? 1 : 0;
+      control.quiet.delete(pass.player);
+
+      if (planned) {
+        control.quiet.add(pass.player);
+      }
 
       if (planned || random.chance(temper.silencePercent)) {
         stats.silences += 1;
@@ -657,7 +660,12 @@ export const startBot = (setup: BotSetup) => {
       Option.filter(({ player }) => player !== pass.player)
     );
 
-    if (away && Option.isSome(other) && random.chance(5)) {
+    if (
+      away &&
+      Option.isSome(other) &&
+      !control.quiet.has(other.value.player) &&
+      random.chance(5)
+    ) {
       return intent(Commands.ActForSeat.make({ player: other.value.player }));
     }
 
