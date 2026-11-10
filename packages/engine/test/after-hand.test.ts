@@ -176,6 +176,36 @@ describe("rabbit hunting", () => {
     );
   });
 
+  it("follows the rules in force when asked, so a change that lands as the hand ends governs its shows and hunts", () => {
+    const ended = foldedOnTheFlop(hunting);
+
+    const changed = (config: TableConfig) =>
+      run(ended, Commands.ChangeRules({ config })).state;
+
+    const stricter = changed({
+      ...hunting,
+      rabbitHunters: "StillIn",
+      voluntaryShows: "BothCards",
+    });
+
+    expect([
+      run(ended, hunts(0)).events,
+      run(ended, shows(0, "Qc")).events,
+    ]).toStrictEqual([
+      [Events.RabbitHunted({ cards: cards("5h 6h") })],
+      [Events.CardsShown({ cards: cards("Qc"), seat: seat(0) })],
+    ]);
+    expect([
+      rejection(stricter, hunts(0)),
+      rejection(stricter, shows(0, "Qc")),
+      rejection(changed(baseConfig), hunts(0)),
+    ]).toStrictEqual([
+      new FoldedSeatCannotHunt({ seat: seat(0) }),
+      new ShowBothCards({ seat: seat(0) }),
+      new RabbitHuntOff({ seat: seat(0) }),
+    ]);
+  });
+
   it("has nothing to hunt after the whole board was dealt", () => {
     const checkedDown = play(
       startHand(occupiedTable(hunting, { 0: 200, 1: 200 }), deck).state,

@@ -22,8 +22,8 @@ uv run --locked --script tools/differential/replay.py tools/differential/finding
 
 ## How it works
 
-1. `packages/engine/scripts/export-hands.ts` plays seeded tables through the real engine. Tables have two to nine seats, every ante kind, single, double, and button straddles, `maxRuns` from 1 to 4, `showdown` Automatic or Interactive, `allInHands` FaceUp or Hidden, `runCount` Vote or Fixed, `straddleSize` Doubling or TwoBigBlinds, `showdownOrder` RiverAggressor or LastAggressor, `voluntaryShows` EitherCard or BothCards, `rabbitHunters` DealtIn or StillIn, and churn between hands. At an interactive showdown a seat tables, or mucks when it may. It also tries illegal actions, run choices, mucks of winning hands, and showdown choices out of turn. It prints one JSON object per hand: rules, seats and stacks, the previous button, the deck, the straddle list, every command with the pending decision before it and whether the engine accepted it, the events, after-hand shows and rabbit hunts, and the final stacks.
-2. `replay.py` rebuilds each hand in PokerKit with the same stacks, blinds, antes, and straddles. It deals every card explicitly from the exported deck, applies the same actions, and compares:
+1. `packages/engine/scripts/export-hands.ts` plays seeded tables through the real engine. Tables have two to nine seats, every ante kind, single, double, and button straddles, `maxRuns` from 1 to 4, `showdown` Automatic or Interactive, `allInHands` FaceUp or Hidden, `runCount` Vote or Fixed, `straddleSize` Doubling or TwoBigBlinds, `showdownOrder` RiverAggressor or LastAggressor, `voluntaryShows` EitherCard or BothCards, `rabbitHunters` DealtIn or StillIn, and churn between hands. At an interactive showdown a seat tables, or mucks when it may. It also tries illegal actions, run choices, mucks of winning hands, and showdown choices out of turn. It prints one JSON object per hand: rules, seats and stacks, the previous button, the deck, the straddle list, every command with the pending decision before it and whether the engine accepted it, the events, after-hand shows and rabbit hunts, each with the rules in force when it was asked, and the final stacks. A rules change between hands can land before those shows and hunts, as a change the host queues during a hand lands when it ends.
+2. `replay.py` first checks every setting in the hand's rules, its refused starts, and its after-hand commands against the settings and values it was taught. Anything else is an `unknown-setting` difference, so a new engine setting fails the run until the replay models it or names an exclusion for it. It then rebuilds each hand in PokerKit with the same stacks, blinds, antes, and straddles. It deals every card explicitly from the exported deck, applies the same actions, and compares:
    - whose turn it is at every decision,
    - the call amount and the minimum and maximum raise at every decision,
    - that every accepted action is legal in PokerKit and every rejected action is illegal there,
@@ -72,6 +72,7 @@ PokerKit has no model of these. The replay checks them with its own arithmetic f
 - the cap on the number of runs (rule 19),
 - rabbit hunting (rule 27), including who may hunt under `rabbitHunters` StillIn,
 - voluntary shows after the hand (rule 26), including both-or-neither under `voluntaryShows` BothCards,
+- that a show or hunt after the hand follows the rules in force when the seat asks, not the rules the hand was dealt under,
 - at an interactive showdown, that a seat must table a hand that beats or ties the tabled hands of a pot another live seat contests, and may muck otherwise. PokerKit lets any seat muck, so the replay decides this with PokerKit's hand values.
 
 ## Findings

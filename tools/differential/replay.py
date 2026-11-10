@@ -181,6 +181,42 @@ REPLAY_ONLY = {
 }
 
 
+SETTING_CHOICES = {
+    "allInHands": {"FaceUp", "Hidden"},
+    "rabbitHunters": {"DealtIn", "StillIn"},
+    "runCount": {"Vote", "Fixed"},
+    "showdown": {"Automatic", "Interactive"},
+    "showdownOrder": {"RiverAggressor", "LastAggressor"},
+    "straddleSize": {"Doubling", "TwoBigBlinds"},
+    "voluntaryShows": {"EitherCard", "BothCards"},
+}
+
+ANTE_FIELDS = {"BigBlindPays": {"_tag", "amount"}, "EveryPlayer": {"_tag", "amount"}, "NoAnte": {"_tag"}}
+
+
+def known_setting(key, value):
+    match key:
+        case "bigBlind" | "maxRuns" | "smallBlind":
+            return type(value) is int
+        case "rabbitHunt":
+            return type(value) is bool
+        case "ante":
+            return isinstance(value, dict) and ANTE_FIELDS.get(value.get("_tag")) == set(value)
+        case "straddle":
+            return isinstance(value, dict) and set(value) == {"button", "underTheGun"}
+        case _:
+            return value in SETTING_CHOICES.get(key, ())
+
+
+def unknown_settings(record):
+    configs = [record["config"]]
+    configs += [rejected["config"] for rejected in record["rejectedStarts"]]
+    configs += [step["config"] for step in record["after"]]
+    return sorted(
+        {f"{key}={json.dumps(value)}" for config in configs for key, value in config.items() if not known_setting(key, value)}
+    )
+
+
 class Hand:
     def __init__(self, record):
         self.record = record
@@ -1027,16 +1063,19 @@ class Hand:
         undealt = [] if ran_out else self.deck[2 * self.count + board : 2 * self.count + 5]
         hunted = False
         folded = {e["seat"] for e in events if e["_tag"] == "Folded"}
-        still_in_only = self.config.get("rabbitHunters") == "StillIn"
         for step in self.record["after"]:
             command = step["command"]
             seat = command["seat"]
+            rules = step["config"]
             rejection = None if step["accepted"] else step["rejection"]["tag"]
             if command["_tag"] == "RabbitHunt":
                 self.replay_checked.add("rabbit-hunt")
+                if (rejection == "RabbitHuntOff") != (not rules["rabbitHunt"]):
+                    self.differ("rabbit-hunt", f"rabbit hunting {'on' if rules['rabbitHunt'] else 'off'}, engine answered {rejection}")
+                    continue
                 if rejection in ("RabbitHuntOff", "NotInLastHand"):
                     continue
-                if still_in_only and seat in folded:
+                if rules.get("rabbitHunters") == "StillIn" and seat in folded:
                     if rejection != "FoldedSeatCannotHunt":
                         self.differ("rabbit-hunt", f"seat {seat} folded, engine answered {rejection}, replay expects FoldedSeatCannotHunt")
                     continue
@@ -1060,7 +1099,7 @@ class Hand:
                 continue
             held = set(self.hole[self.index[seat]]) if seat in self.index else set()
             cards = set(command["cards"])
-            both = self.config.get("voluntaryShows") != "BothCards" or held <= cards | public[seat]
+            both = rules.get("voluntaryShows") != "BothCards" or held <= cards | public[seat]
             legal = seat in self.index and cards <= held and not (cards & public[seat]) and both
             if step["accepted"] != legal:
                 self.differ("voluntary-show", f"seat {seat} shows {sorted(cards)}: engine {step['accepted']} ({rejection}), replay {legal}")
@@ -1102,6 +1141,21 @@ def straddle_problem(config, seats, dealt, button, straddles):
 
 def replay(line):
     record = json.loads(line)
+    unknown = unknown_settings(record)
+    if unknown:
+        detail = f"replay.py does not know {', '.join(unknown)}: teach it the setting, or name an exclusion if PokerKit cannot follow it"
+        return {
+            "hand": record["hand"],
+            "seats": len(record["start"][0]["dealtIn"]),
+            "steps": len(record["steps"]),
+            "features": [],
+            "configured": [],
+            "excluded": [],
+            "replayChecked": [],
+            "stopped": "unknown-setting",
+            "differences": [("unknown-setting", detail)],
+            "compared": False,
+        }
     hand = Hand(record)
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")

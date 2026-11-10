@@ -471,6 +471,10 @@ interface Step {
   readonly rejection: ReturnType<typeof rejectionRecord> | null;
 }
 
+interface AfterStep extends Step {
+  readonly config: TableConfig;
+}
+
 interface TableSnapshot {
   readonly config: TableConfig;
   readonly previousButton: number | null;
@@ -483,7 +487,7 @@ interface RejectedStart extends TableSnapshot {
 }
 
 interface HandRecord extends TableSnapshot {
-  readonly after: Step[];
+  readonly after: AfterStep[];
   readonly deck: readonly number[];
   final: ReturnType<typeof seatsRecord> | null;
   readonly hand: number;
@@ -613,14 +617,17 @@ const exportHands = (seed: number, wanted: number) =>
       const shown = afterHand(state, random);
 
       if (current !== null && Option.isSome(shown) && random.chance(30)) {
-        current.after.push(
-          stepRecord(
+        const { config } = state;
+
+        current.after.push({
+          ...stepRecord(
             shown.value,
             apply(shown.value),
             { kind: "Nothing" },
             false
-          )
-        );
+          ),
+          config,
+        });
       }
     };
 
