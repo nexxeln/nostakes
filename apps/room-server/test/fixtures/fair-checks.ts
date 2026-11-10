@@ -41,6 +41,7 @@ export const FAIRNESS_COUNT_NAMES = [
   "unjudged",
   "sealsWithdrawn",
   "withdrawnWhileAway",
+  "withdrawnStalled",
   "sealedDeals",
   "waitBeyondPauseMs",
 ] as const;
@@ -62,6 +63,7 @@ export const emptyFairness = (): FairnessCounts => ({
   sealsWithdrawn: 0,
   unjudged: 0,
   waitBeyondPauseMs: 0,
+  withdrawnStalled: 0,
   withdrawnWhileAway: 0,
 });
 
@@ -253,11 +255,14 @@ const missingText = (missing: MissingEvidence) =>
       `cards ${cards.join(",")} were shown with no opening`,
   });
 
+export const sealKeyOf = (hand: number, round: number) => `${hand}:${round}`;
+
 export const judgeDevice = (
   device: string,
   stretches: readonly Stretch[],
   room: string,
-  now: number
+  now: number,
+  withdrawnStalled: ReadonlySet<string> = new Set()
 ): DeviceJudgement => {
   const witness = stretches.at(-1)?.witness ?? emptyWitness;
   const counts = emptyFairness();
@@ -337,7 +342,9 @@ export const judgeDevice = (
   }
 
   for (const problem of undealtSeals(stretches)) {
-    if (
+    if (withdrawnStalled.has(sealKeyOf(problem.hand, problem.round))) {
+      counts.withdrawnStalled += 1;
+    } else if (
       problem.withdrawal === "while away" ||
       problem.withdrawal === "too close to the round"
     ) {

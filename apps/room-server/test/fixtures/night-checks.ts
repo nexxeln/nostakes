@@ -41,6 +41,7 @@ import {
   addFairness,
   emptyFairness,
   judgeDevice,
+  sealKeyOf,
   stretchesFrom,
   waitBeyondPause,
 } from "./fair-checks.js";
@@ -124,10 +125,14 @@ export const COUNT_NAMES = [
   "drops",
   "duplicates",
   "duplicatesConfirmed",
+  "endedAfterHand",
+  "endedBetweenHands",
+  "endedStalled",
   "events",
   "everyPlayerAnteHands",
   "framesChecked",
   "hands",
+  "handsCancelled",
   "handsWithApproval",
   "handsWithoutApproval",
   "illegal",
@@ -211,10 +216,14 @@ export const emptyCounts = (): NightCounts => ({
   drops: 0,
   duplicates: 0,
   duplicatesConfirmed: 0,
+  endedAfterHand: 0,
+  endedBetweenHands: 0,
+  endedStalled: 0,
   events: 0,
   everyPlayerAnteHands: 0,
   framesChecked: 0,
   hands: 0,
+  handsCancelled: 0,
   handsWithApproval: 0,
   handsWithoutApproval: 0,
   illegal: 0,
@@ -255,8 +264,11 @@ export const emptyCounts = (): NightCounts => ({
   welcomeClockChecks: 0,
 });
 
+export type NightEnding = "AsItComes" | "MidHand" | "Stalled";
+
 export interface NightEvidence {
   readonly checked: boolean;
+  readonly ending: NightEnding;
   readonly seed: number;
   readonly code: RoomCode;
   readonly events: readonly string[];
@@ -1637,7 +1649,7 @@ const checkStorage = (checker: Checker, evidence: NightEvidence) => {
     report(checker, `the room halted: ${evidence.halted.value}`);
   }
 
-  if (evidence.refusedAlarms > 0) {
+  if (evidence.refusedAlarms > 0 && evidence.ending !== "Stalled") {
     report(
       checker,
       `the room refused the server's own answer to its next deadline at ${evidence.refusedAlarms} alarm runs`
@@ -1714,6 +1726,62 @@ const sealedDealsIn = (events: readonly RoomEvent[]): SealedDeals => {
   return { fromBeacon, plain, withoutBeacon };
 };
 
+const stalledAt = (events: readonly RoomEvent[], index: number) => {
+  const stalled = events.findLastIndex(
+    (event, at) => at < index && RoomEvents.$is("TableStalled")(event)
+  );
+
+  const cleared = events.findLastIndex(
+    (event, at) => at < index && RoomEvents.$is("StallCleared")(event)
+  );
+
+  return stalled > cleared;
+};
+
+const withdrawnWhileStalled = (events: readonly RoomEvent[]) =>
+  new Set(
+    events.flatMap((event, index) =>
+      RoomEvents.$is("SealWithdrawn")(event) && stalledAt(events, index)
+        ? [sealKeyOf(event.hand, event.round)]
+        : []
+    )
+  );
+
+const checkEnding = (
+  checker: Checker,
+  evidence: NightEvidence,
+  events: readonly RoomEvent[]
+) => {
+  const closed = events.findIndex(RoomEvents.$is("RoomClosed"));
+
+  if (closed === -1) {
+    return;
+  }
+
+  const stalled = stalledAt(events, closed);
+
+  checker.counts.handsCancelled += events.filter(
+    RoomEvents.$is("HandCancelled")
+  ).length;
+
+  if (stalled) {
+    checker.counts.endedStalled += 1;
+  } else if (events.some(RoomEvents.$is("CloseQueued"))) {
+    checker.counts.endedAfterHand += 1;
+  } else {
+    checker.counts.endedBetweenHands += 1;
+  }
+
+  if ((evidence.ending === "Stalled") !== stalled) {
+    report(
+      checker,
+      stalled
+        ? "the room closed stalled in a night nobody jammed"
+        : "the night was jammed to end stalled, and the room was not stalled when it closed"
+    );
+  }
+};
+
 const checkFairness = (
   checker: Checker,
   evidence: NightEvidence,
@@ -1729,7 +1797,8 @@ const checkFairness = (
       device.label,
       stretchesFrom(device.arrivals),
       evidence.code,
-      now
+      now,
+      withdrawnWhileStalled(events)
     );
 
     addFairness(fairness, judged.counts);
@@ -1905,6 +1974,8 @@ export const checkNight = (evidence: NightEvidence): NightVerdict => {
   if (JSON.stringify(state) !== JSON.stringify(replayed)) {
     report(checker, "folding the log event by event differs from replay");
   }
+
+  checkEnding(checker, evidence, events);
 
   const transfers = checkSettlement(checker, received.finals, ledger.net);
   const fair = checkFairness(checker, evidence, events);

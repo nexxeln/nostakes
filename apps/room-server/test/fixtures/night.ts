@@ -30,10 +30,20 @@ import type { ClientBotRecord, ClientTemper } from "./client-bot.js";
 import { timeline } from "./client-wire.js";
 import type { Timeline } from "./client-wire.js";
 import { checkNight } from "./night-checks.js";
-import type { NightEvidence, NightVerdict } from "./night-checks.js";
+import type {
+  NightEnding,
+  NightEvidence,
+  NightVerdict,
+} from "./night-checks.js";
 import { createPokerRoom, joinPokerRoom } from "./poker-http.js";
 import { wallClock } from "./poker-socket.js";
-import { inspect, queueCodes, refusedAlarms, restart } from "./stack.js";
+import {
+  inspect,
+  jamRoom,
+  queueCodes,
+  refusedAlarms,
+  restart,
+} from "./stack.js";
 import { TEST_CHAIN } from "./test-beacon.js";
 
 type EncodedSettings = typeof RoomSettingsSchema.Encoded;
@@ -41,6 +51,7 @@ type EncodedSettings = typeof RoomSettingsSchema.Encoded;
 export type TableRules = Partial<EncodedSettings["table"]>;
 
 export interface NightPlan {
+  readonly ending: NightEnding;
   readonly seed: number;
   readonly code: RoomCode;
   readonly settings: RoomSettings;
@@ -95,6 +106,10 @@ export const SEALED_DEAL_WAIT_MS =
 export const CLOSE_GRACE_MS = 30_000;
 
 export const SETTLE_LIMIT_MS = 30_000;
+
+export const STALL_LIMIT_MS = 20_000;
+
+export const MID_HAND_WAIT_MS = 15_000;
 
 interface Watched {
   readonly latest: () => Option.Option<RoomView>;
@@ -190,6 +205,7 @@ export const RULES: readonly RuleChange[] = [
 ];
 
 export interface NightRecipe {
+  readonly ending: NightEnding;
   readonly shuffle: Shuffle;
   readonly handBudgetMs: number;
   readonly rotation: number;
@@ -368,6 +384,7 @@ export const planNight = (
   return {
     ...plan,
     clients,
+    ending: recipe.ending,
     limitMs: plan.limitMs + recipe.hands * slowRulesAllowanceMs(played),
     settings: played,
   };
@@ -619,6 +636,37 @@ export const playNight = (base: string, opened: OpenedNight) =>
     };
 
     let settlingSince = Option.none<number>();
+    let endingSince = Option.none<number>();
+    let jammed = false;
+
+    const timeToClose = (open: OpenView, now: number) =>
+      Effect.gen(function* decideClosing() {
+        const since = Option.getOrElse(endingSince, () => now);
+
+        endingSince = Option.some(since);
+
+        if (plan.ending === "MidHand") {
+          return Option.isSome(open.hand) || now - since > MID_HAND_WAIT_MS
+            ? Option.some(
+                Option.isSome(open.hand) ? "mid-hand" : "a hand that never came"
+              )
+            : Option.none();
+        }
+
+        if (plan.ending === "AsItComes") {
+          return Option.some("as it comes");
+        }
+
+        if (!jammed) {
+          note("jamming the room's deals so it stalls");
+          yield* jamRoom(base, plan.code, true);
+          jammed = true;
+        }
+
+        return Option.isSome(open.stalled)
+          ? Option.some("stalled")
+          : Option.none();
+      });
 
     const settle = (now: number): Option.Option<string> => {
       const unsettled = unsettledClients();
@@ -672,15 +720,34 @@ export const playNight = (base: string, opened: OpenedNight) =>
           continue;
         }
 
-        if (hands >= plan.hands && !control.closing) {
-          note(`closing after ${hands} hands`);
-          control.closing = true;
-        }
-
         const open = view.pipe(Option.filter(RoomViews.$is("Open")));
 
         if (Option.isNone(open)) {
           continue;
+        }
+
+        if (hands >= plan.hands && !control.closing) {
+          const reason = yield* timeToClose(open.value, now);
+
+          if (Option.isSome(reason)) {
+            note(`closing after ${hands} hands, ${reason.value}`);
+            control.closing = true;
+          } else if (
+            jammed &&
+            endingSince.pipe(
+              Option.exists((since) => now - since > STALL_LIMIT_MS)
+            )
+          ) {
+            problem = Option.some(
+              `the jammed room was not marked stalled within ${STALL_LIMIT_MS} ms`
+            );
+
+            continue;
+          }
+        }
+
+        if (jammed) {
+          progress = now;
         }
 
         const moment = control.closing
@@ -754,6 +821,7 @@ export const playNight = (base: string, opened: OpenedNight) =>
         checked: plan.settings.shuffle === "Checked",
         clients,
         code: plan.code,
+        ending: plan.ending,
         events: inspection.events,
         halted: inspection.halted,
         memoryMatchesLog: inspection.memoryMatchesLog,

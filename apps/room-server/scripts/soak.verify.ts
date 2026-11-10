@@ -29,7 +29,7 @@ import {
   DEAF_REPLY_BOUND_MS,
   emptyCounts,
 } from "../test/fixtures/night-checks.js";
-import type { CountName } from "../test/fixtures/night-checks.js";
+import type { CountName, NightEnding } from "../test/fixtures/night-checks.js";
 import {
   judgeNight,
   openNight,
@@ -208,7 +208,16 @@ const FAIRNESS_EXPECTED: readonly FairnessCountName[] = [
   "plainHands",
 ];
 
+const ENDINGS: readonly NightEnding[] = [
+  "AsItComes",
+  "MidHand",
+  "Stalled",
+  "AsItComes",
+];
+
 const INFORMATIONAL: ReadonlySet<CountName> = new Set([
+  "endedBetweenHands",
+  "handsCancelled",
   "catchUpsSkipped",
   "quietPauses",
   "quietResumes",
@@ -301,6 +310,7 @@ const summarize = (
     `  showdowns: tabled ${counts.showdownTables}, mucked ${counts.showdownMucks}, chosen at or after the clock's deadline ${counts.lateShowdownChoices}, won without showing ${counts.unshownWinners}, winning hands refused a muck ${counts.illegalMucks}`,
     `  hands with approval ${counts.handsWithApproval} and without ${counts.handsWithoutApproval}, approvals ${counts.approvals}, denials ${counts.denials}`,
     `  settings changed ${counts.settingsChanged}, rules queued ${counts.rulesQueued}, closes queued in a hand ${counts.closeQueued}`,
+    `  nights ended between hands ${counts.endedBetweenHands}, after the hand in play ${counts.endedAfterHand}, from a stalled room ${counts.endedStalled}; hands cancelled when a stalled night ended ${counts.handsCancelled}`,
     `  frames checked ${counts.framesChecked}, views checked ${counts.viewsChecked}, viewFor ${views > 0 ? ((viewMs * 1000) / views).toFixed(1) : "n/a"} µs each over ${views}`,
     `  client bots ${counts.clientBots}: commands ${counts.clientCommands}, traced to the log ${counts.clientCommandsTraced}, issued right before a drop ${counts.clientIssuedBeforeDrop}, resent after a drop ${counts.clientResent}`,
     `  client drops: bot close ${counts.clientDropsBotClose}, server restart ${counts.clientDropsRestart}, unanswered on a deaf line ${counts.clientDropsDeafUnanswered}, black hole ${counts.clientDropsBlackHole}; server silence limit ${counts.clientDropsSilenceLimit}, deaf and silent ${counts.clientDropsDeafSilence}, unanswered on a clear line ${counts.clientDropsUnansweredOnClearLine}, unexplained ${counts.clientDropsUnexplained}, failed reconnects ${counts.clientFailedAttempts}`,
@@ -387,6 +397,7 @@ test(
         {
           betweenHandsSeconds: index % 2,
           clientPercent: 50,
+          ending: ENDINGS[index % ENDINGS.length] ?? "AsItComes",
           handBudgetMs: HAND_BUDGET_MS,
           hands: perRoom + (index % 3),
           players: 2 + (index % 8),

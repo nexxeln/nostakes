@@ -55,6 +55,14 @@ export const wakeAt = (base: string, code: RoomCode, at: number) =>
     Effect.orDie
   );
 
+export const jamRoom = (base: string, code: RoomCode, on: boolean) =>
+  HttpClientRequest.post(new URL(`/test/rooms/${code}/jam`, base)).pipe(
+    HttpClientRequest.bodyJsonUnsafe({ on }),
+    HttpClient.execute,
+    Effect.asVoid,
+    Effect.orDie
+  );
+
 export const queueCodes = (base: string, codes: readonly RoomCode[]) =>
   HttpClientRequest.post(new URL("/test/codes", base)).pipe(
     HttpClientRequest.bodyJsonUnsafe({ codes }),

@@ -1,7 +1,7 @@
 import * as Cloudflare from "@alchemy.run/cloudflare";
 import type * as cf from "@cloudflare/workers-types";
 import { RoomCodeSchema } from "@nostakes/protocol";
-import { Effect, Layer, Schema } from "effect";
+import { Effect, Layer, Option, Schema } from "effect";
 import * as HttpRouter from "effect/http/HttpRouter";
 import * as HttpServerRequest from "effect/http/HttpServerRequest";
 import * as HttpServerResponse from "effect/http/HttpServerResponse";
@@ -20,16 +20,50 @@ import type { scriptedEntropy } from "./test-entropy.js";
 
 const AlarmAt = Schema.Int;
 
+const JAM_TABLE =
+  "create table if not exists test_jam (id integer primary key check (id = 1), jammed integer not null)";
+
+const JamRows = Schema.Array(Schema.Struct({ jammed: Schema.Int }));
+
+const decodeJamRows = Schema.decodeUnknownSync(JamRows);
+
+const storedJam = (storage: cf.DurableObjectStorage) => {
+  storage.sql.exec(JAM_TABLE);
+
+  return (
+    decodeJamRows(storage.sql.exec("select jammed from test_jam").toArray())[0]
+      ?.jammed === 1
+  );
+};
+
+const storeJam = (storage: cf.DurableObjectStorage, jammed: boolean) => {
+  storage.sql.exec(JAM_TABLE);
+  storage.sql.exec(
+    "insert or replace into test_jam (id, jammed) values (1, ?)",
+    jammed ? 1 : 0
+  );
+};
+
 export const roomObjectWithTestHooks = <T extends RoomTypes>(
-  core: HostedRoom<T>,
+  coreFor: (jammed: () => boolean) => HostedRoom<T>,
   entropyFor: (state: cf.DurableObjectState) => Layer.Layer<Entropy>,
   beacon: Layer.Layer<Beacon> = testBeacon,
   retainFor = ROOM_RETENTION_MS,
   retries: RetryPolicy = RETRY_POLICY
 ) =>
   Cloudflare.DurableObjectState.pipe(
-    Effect.flatMap((state) =>
-      roomObject(core, {
+    Effect.flatMap((state) => {
+      const jam = { on: Option.none<boolean>() };
+
+      const jammed = () => {
+        const on = Option.getOrElse(jam.on, () => storedJam(state.raw.storage));
+
+        jam.on = Option.some(on);
+
+        return on;
+      };
+
+      return roomObject(coreFor(jammed), {
         beacon,
         entropy: entropyFor(state.raw),
         retainFor,
@@ -39,6 +73,16 @@ export const roomObjectWithTestHooks = <T extends RoomTypes>(
           instance.pipe(
             Effect.map((room) => ({
               ...room,
+              jam: (wanted: typeof Schema.Boolean.Encoded) =>
+                Schema.decodeEffect(Schema.Boolean)(wanted).pipe(
+                  Effect.flatMap((on) =>
+                    Effect.sync(() => {
+                      storeJam(state.raw.storage, on);
+                      jam.on = Option.some(on);
+                    })
+                  ),
+                  Effect.orDie
+                ),
               restart: () =>
                 Effect.sync(() => {
                   state.raw.abort("restart requested by a test");
@@ -53,12 +97,13 @@ export const roomObjectWithTestHooks = <T extends RoomTypes>(
             }))
           )
         )
-      )
-    )
+      );
+    })
   );
 
 export interface TestRoomStub {
   readonly inspect: () => Effect.Effect<typeof InspectionSchema.Encoded>;
+  readonly jam: (on: boolean) => Effect.Effect<void>;
   readonly restart: () => Effect.Effect<void>;
   readonly wakeAt: (at: number) => Effect.Effect<void>;
 }
@@ -72,6 +117,8 @@ const CodePath = Schema.Struct({ code: RoomCodeSchema });
 const CodesBody = Schema.Struct({ codes: Schema.Array(RoomCodeSchema) });
 
 const AlarmBody = Schema.Struct({ at: Schema.Int });
+
+const JamBody = Schema.Struct({ on: Schema.Boolean });
 
 const inspection = HttpServerResponse.schemaJson(InspectionSchema);
 
@@ -105,6 +152,15 @@ export const testRoutes = (
     return HttpServerResponse.empty({ status: 204 });
   }).pipe(Effect.orDie);
 
+  const jam = Effect.gen(function* jamRoom() {
+    const room = yield* roomOf;
+    const { on } = yield* HttpServerRequest.schemaBodyJson(JamBody);
+
+    yield* room.jam(on);
+
+    return HttpServerResponse.empty({ status: 204 });
+  }).pipe(Effect.orDie);
+
   const queueCodes = Effect.gen(function* queueCodes() {
     const body = yield* HttpServerRequest.schemaBodyJson(CodesBody);
 
@@ -119,6 +175,7 @@ export const testRoutes = (
     HttpRouter.add("GET", "/test/rooms/:code", inspect),
     HttpRouter.add("POST", "/test/rooms/:code/restart", restart),
     HttpRouter.add("POST", "/test/rooms/:code/alarm", wake),
+    HttpRouter.add("POST", "/test/rooms/:code/jam", jam),
     HttpRouter.add("POST", "/test/codes", queueCodes)
   );
 };

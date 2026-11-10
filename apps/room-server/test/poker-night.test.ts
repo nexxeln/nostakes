@@ -12,6 +12,7 @@ import {
   emptyFairness,
   FAIRNESS_COUNT_NAMES,
 } from "./fixtures/fair-checks.js";
+import type { NightEnding } from "./fixtures/night-checks.js";
 import {
   judgeNight,
   openNight,
@@ -38,6 +39,7 @@ const CHECKED_HANDS_PER_ROOM = 2;
 const CHECKED_HANDS = 2 * CHECKED_HANDS_PER_ROOM;
 
 interface SmallRoom {
+  readonly ending: NightEnding;
   readonly players: number;
   readonly shuffle: Shuffle;
   readonly hands: number;
@@ -46,20 +48,22 @@ interface SmallRoom {
 
 const ROOMS: readonly SmallRoom[] = [
   {
+    ending: "AsItComes",
     hands: CHECKED_HANDS_PER_ROOM,
     players: 3,
     restarts: 0,
     shuffle: "Checked",
   },
   {
+    ending: "Stalled",
     hands: CHECKED_HANDS_PER_ROOM,
     players: 2,
     restarts: 0,
     shuffle: "Checked",
   },
-  { hands: 9, players: 5, restarts: 1, shuffle: "Plain" },
-  { hands: 9, players: 2, restarts: 1, shuffle: "Plain" },
-  { hands: 9, players: 4, restarts: 1, shuffle: "Plain" },
+  { ending: "MidHand", hands: 9, players: 5, restarts: 1, shuffle: "Plain" },
+  { ending: "AsItComes", hands: 9, players: 2, restarts: 1, shuffle: "Plain" },
+  { ending: "AsItComes", hands: 9, players: 4, restarts: 1, shuffle: "Plain" },
 ];
 
 const TEMPER: Temper = {
@@ -94,25 +98,27 @@ test(
     const { url } = yield* deployed;
     const base = yield* Effect.fromNullishOr(url).pipe(Effect.orDie);
 
-    const plans = ROOMS.map(({ hands, players, restarts, shuffle }, index) =>
-      planNight(
-        SEED + index,
-        {
-          betweenHandsSeconds: 0,
-          clientPercent: 50,
-          handBudgetMs: 4000,
-          hands,
-          players,
-          restarts,
-          rotation: index * 2,
-          shuffle,
-          silences: 1,
-          tableRules: {},
-          turnSeconds: 1,
-        },
-        TEMPER,
-        CHAOS
-      )
+    const plans = ROOMS.map(
+      ({ ending, hands, players, restarts, shuffle }, index) =>
+        planNight(
+          SEED + index,
+          {
+            betweenHandsSeconds: 0,
+            clientPercent: 50,
+            ending,
+            handBudgetMs: 4000,
+            hands,
+            players,
+            restarts,
+            rotation: index * 2,
+            shuffle,
+            silences: 1,
+            tableRules: {},
+            turnSeconds: 1,
+          },
+          TEMPER,
+          CHAOS
+        )
     );
 
     const opened = [];
@@ -173,6 +179,8 @@ test(
       total((counts) => counts.duplicatesConfirmed)
     ).toBeGreaterThanOrEqual(1);
     expect(total((counts) => counts.viewsChecked)).toBeGreaterThan(0);
+    expect(total((counts) => counts.endedStalled)).toBe(1);
+    expect(total((counts) => counts.endedAfterHand)).toBeGreaterThanOrEqual(1);
     expect(total((counts) => counts.clientBots)).toBeGreaterThanOrEqual(3);
     expect(
       total((counts) => counts.clientCommandsTraced)

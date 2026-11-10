@@ -492,7 +492,7 @@ export const plannerFor = (setup: PlannerSetup) => {
     const seated = open.seats.filter(({ occupant }) => Option.isSome(occupant));
 
     if (control.closing) {
-      return open.queued.close
+      return open.queued.close && Option.isNone(open.stalled)
         ? Option.none()
         : intent(Commands.CloseRoom.make({}));
     }
@@ -780,6 +780,15 @@ export const plannerFor = (setup: PlannerSetup) => {
 
   const choose = (open: OpenView): Option.Option<Intent> => {
     const me = seatOf(open, pass.player);
+
+    if (
+      control.closing &&
+      Option.isSome(open.stalled) &&
+      open.host !== pass.player &&
+      random.chance(40)
+    ) {
+      return intent(Commands.CloseRoom.make({}), random.below(200));
+    }
 
     const choosing = open.hand.pipe(
       Option.flatMap((hand) => hand.choosingRuns)

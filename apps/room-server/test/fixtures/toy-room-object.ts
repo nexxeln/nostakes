@@ -9,7 +9,7 @@ import { TOY_RETRIES, toyRoom } from "./toy-room.js";
 export default class ToyRoom extends Cloudflare.DurableObject<ToyRoom>()(
   "ToyRoom",
   roomObjectWithTestHooks(
-    toyRoom,
+    () => toyRoom,
     () => seededEntropy(DEAL_SEED),
     testBeacon,
     ROOM_RETENTION_MS,

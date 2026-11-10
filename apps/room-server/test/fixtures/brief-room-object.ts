@@ -10,7 +10,7 @@ export const BRIEF_RETENTION_MS = 3000;
 export default class BriefRoom extends Cloudflare.DurableObject<BriefRoom>()(
   "BriefRoom",
   roomObjectWithTestHooks(
-    toyRoom,
+    () => toyRoom,
     () => seededEntropy(DEAL_SEED),
     testBeacon,
     BRIEF_RETENTION_MS
