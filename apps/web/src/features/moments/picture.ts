@@ -9,12 +9,12 @@ import {
 } from "../card-art.js";
 import type { SuitLetter } from "../card-art.js";
 import type { Deck, Theme } from "../model.js";
+import { FRAME_SIZES } from "../pictures/paper.js";
+import type { PictureFrame } from "../pictures/paper.js";
 import { chipsText } from "./captions.js";
 import type { MomentPicture, PictureFace } from "./schema.js";
 
 export type { MomentPicture, PictureFace } from "./schema.js";
-
-export type PictureFrame = "Chat" | "Story" | "Table";
 
 export interface PictureLook {
   readonly deck: Deck;
@@ -22,14 +22,6 @@ export interface PictureLook {
   readonly frame: PictureFrame;
   readonly theme: Theme;
 }
-
-export const FRAME_SIZES: Readonly<
-  Record<PictureFrame, { readonly height: number; readonly width: number }>
-> = {
-  Chat: { height: 1350, width: 1080 },
-  Story: { height: 1920, width: 1080 },
-  Table: { height: 1350, width: 1080 },
-};
 
 const CARD_RATIO = CARD_HEIGHT / 100;
 

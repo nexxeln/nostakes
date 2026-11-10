@@ -10,7 +10,6 @@ import { Schema } from "effect";
 import { CustomElement } from "foldkit";
 
 import { DeckSchema, ThemeSchema } from "../model.js";
-import { MomentPictureSchema } from "./schema.js";
 
 export const MOMENT_TAG = "nostakes-moment";
 
@@ -34,7 +33,7 @@ export const MomentHandSchema = Schema.Struct({
 export type MomentHand = typeof MomentHandSchema.Type;
 
 export const momentElement = CustomElement.define({
-  events: { keep: MomentPictureSchema },
+  events: {},
   properties: {
     dealing: Schema.Boolean,
     hand: Schema.NullOr(MomentHandSchema),

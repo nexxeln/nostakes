@@ -15,6 +15,8 @@ import {
   transformOf,
 } from "../../features/moments/timeline.js";
 import type { Plan, Pose } from "../../features/moments/timeline.js";
+import type { KeptFrame } from "../../features/pictures/paper.js";
+import { Keeper } from "../pictures/keeper.js";
 import { noiseFor, perform } from "./synth.js";
 import type { Synth } from "./synth.js";
 
@@ -25,9 +27,10 @@ const STYLE = `
 .card svg { display: block; width: 100%; height: auto; overflow: visible; }
 .card .part { transform-box: fill-box; transform-origin: center; }
 .wrap { transform-origin: 50% 40%; }
-.keep { position: absolute; right: 8px; top: 6px; pointer-events: auto; font: 700 var(--text-2, 15px)/1 var(--font-body, sans-serif); color: var(--color-raised-ink, #1f1c31); background: var(--color-raised, #fffdf8); border: 0; border-radius: var(--radius-3, 10px); padding: 8px 12px; box-shadow: var(--shadow-sheet-1); display: flex; gap: 6px; align-items: center; min-height: 36px; }
-.keep:active { transform: translate(var(--press-1, 1px 1.8px)); }
-.keep b { color: var(--color-accent-ink, #d63a00); }
+.keeping { position: absolute; right: 8px; top: 6px; display: flex; gap: 6px; pointer-events: none; }
+.keeping button { pointer-events: auto; font: 700 var(--text-2, 15px)/1 var(--font-body, sans-serif); color: var(--color-raised-ink, #1f1c31); background: var(--color-raised, #fffdf8); border: 0; border-radius: var(--radius-3, 10px); padding: 8px 12px; box-shadow: var(--shadow-sheet-1); display: flex; gap: 6px; align-items: center; min-height: 36px; }
+.keeping button:active { transform: translate(var(--press-1, 1px 1.8px)); }
+.keeping b { color: var(--color-accent-ink, #d63a00); }
 .gone { display: none; }
 `;
 
@@ -87,7 +90,9 @@ const idle = (work: () => void) => {
 class NostakesMoment extends HTMLElement {
   readonly #root: ShadowRoot;
   readonly #card: HTMLDivElement;
+  readonly #keeping: HTMLDivElement;
   readonly #keep: HTMLButtonElement;
+  #keeper: Keeper | null = null;
   readonly #motion = globalThis.matchMedia("(prefers-reduced-motion: reduce)");
   #scene: MomentScene | null = null;
   #hand: MomentHand | null = null;
@@ -98,7 +103,7 @@ class NostakesMoment extends HTMLElement {
   #synth: Synth | null = null;
   readonly #random = seededNoise();
   #holding: Animation | null = null;
-  #keeping: Animation | null = null;
+  #offered: Animation | null = null;
 
   constructor() {
     super();
@@ -111,13 +116,11 @@ class NostakesMoment extends HTMLElement {
     this.#card.addEventListener("click", () => {
       this.#leave();
     });
-    this.#keep = document.createElement("button");
-    this.#keep.className = "keep gone";
-    this.#keep.type = "button";
-    this.#keep.addEventListener("click", () => {
-      this.#emitKeep();
-    });
-    this.#root.append(style, this.#card, this.#keep);
+    this.#keeping = document.createElement("div");
+    this.#keeping.className = "keeping gone";
+    this.#keep = this.#keepButton("keep", "Chat");
+    this.#keeping.append(this.#keep);
+    this.#root.append(style, this.#card, this.#keeping);
   }
 
   connectedCallback() {
@@ -127,7 +130,29 @@ class NostakesMoment extends HTMLElement {
   disconnectedCallback() {
     globalThis.removeEventListener("pointerdown", this.#unlock);
     this.#holding?.cancel();
-    this.#keeping?.cancel();
+    this.#offered?.cancel();
+    this.#keeper?.drop();
+  }
+
+  #keepButton(name: string, frame: KeptFrame) {
+    const button = document.createElement("button");
+
+    button.className = name;
+    button.type = "button";
+    button.addEventListener("click", () => {
+      this.#keepAs(frame);
+    });
+
+    return button;
+  }
+
+  #keepAs(frame: KeptFrame) {
+    const keeper = this.#keeper;
+
+    if (keeper !== null) {
+      this.dataset.keeping = frame;
+      keeper.keep(frame);
+    }
   }
 
   get hand(): MomentHand | null {
@@ -172,6 +197,24 @@ class NostakesMoment extends HTMLElement {
     this.#scene = scene;
     this.#shownId = scene.id;
     this.dataset.moment = scene.id;
+    this.#keeper?.drop();
+    delete this.dataset.drawn;
+    this.#keeper = new Keeper(
+      {
+        svg: (frame, fonts) =>
+          pictureSvg(scene.picture, {
+            deck: scene.deck,
+            fonts,
+            frame,
+            theme: scene.theme,
+          }),
+        title: scene.picture.title,
+      },
+      (frames) => {
+        this.dataset.drawn = frames.join(" ");
+      }
+    );
+    this.#keeper.prepare(["Chat"]);
     this.#show(scene);
   }
 
@@ -274,7 +317,7 @@ class NostakesMoment extends HTMLElement {
     const still = this.#motion.matches;
 
     this.#holding?.cancel();
-    this.#keeping?.cancel();
+    this.#offered?.cancel();
     this.#fit();
     this.#card.className = small ? "card small" : "card";
     this.#card.innerHTML = `<div class="wrap">${pictureSvg(picture, {
@@ -283,7 +326,7 @@ class NostakesMoment extends HTMLElement {
       frame: "Table",
       theme: scene.theme,
     })}</div>`;
-    this.#keep.className = "keep gone";
+    this.#keeping.className = "keeping gone";
     this.#play(picture);
 
     const holding =
@@ -334,11 +377,11 @@ class NostakesMoment extends HTMLElement {
       return;
     }
 
-    this.#keep.className = "keep";
+    this.#keeping.className = "keeping";
     this.#keep.innerHTML = `Keep <b>${scene.picture.title}</b>`;
-    this.#keeping = this.#keep.animate(STILL, { duration: KEEP_MS });
-    this.#keeping.onfinish = () => {
-      this.#keep.className = "keep gone";
+    this.#offered = this.#keeping.animate(STILL, { duration: KEEP_MS });
+    this.#offered.onfinish = () => {
+      this.#keeping.className = "keeping gone";
     };
   }
 
@@ -351,20 +394,6 @@ class NostakesMoment extends HTMLElement {
 
     this.#holding?.cancel();
     this.#settle(scene);
-  }
-
-  #emitKeep() {
-    const scene = this.#scene;
-
-    if (scene !== null) {
-      this.dispatchEvent(
-        new CustomEvent("keep", {
-          bubbles: true,
-          composed: true,
-          detail: scene.picture,
-        })
-      );
-    }
   }
 }
 

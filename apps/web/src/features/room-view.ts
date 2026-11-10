@@ -447,7 +447,6 @@ const tableView = (
             )
           ),
           moment.Sound(model.sound),
-          moment.OnKeep((picture) => Messages.KeptMoment({ picture })),
           moment.Dealing(Option.isSome(view.legal)),
         ],
         []

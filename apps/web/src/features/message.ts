@@ -20,7 +20,6 @@ import {
   LinkSchema,
   ThemeSchema,
 } from "./model.js";
-import { MomentPictureSchema } from "./moments/schema.js";
 import { PresetSchema, RuleGroupSchema } from "./rules-copy.js";
 import { TableIntentSchema } from "./table/snapshot.js";
 
@@ -74,7 +73,6 @@ export const Messages = defineMessageUnion({
   ClosedSheet: {},
   CompletedCopy: { copied: CopiedSchema },
   CompletedForget: { code: RoomCodeSchema },
-  CompletedKeep: { kept: Schema.Boolean },
   CompletedNavigation: { path: Schema.String },
   CompletedPreference: {},
   CompletedWake: {},
@@ -99,7 +97,6 @@ export const Messages = defineMessageUnion({
     signal: RoomSignalSchema,
   },
   JudgedHand: { hand: Schema.Int, mark: FairMarks },
-  KeptMoment: { picture: MomentPictureSchema },
   MissedStandings: { reason: Schema.String },
   PickedAvatar: { avatar: AvatarSchema },
   ReleasedConnection: {},

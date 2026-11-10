@@ -39,7 +39,6 @@ import {
   CreateRoom,
   ForgetRoom,
   JoinRoom,
-  KeepMoment,
   ReadStandings,
   ReloadPage,
   SaveLearned,
@@ -56,7 +55,7 @@ import type { RoomConnection } from "../client/connection.js";
 import { haltedText } from "./halted.js";
 import { Messages, ReplyOutcomes } from "./message.js";
 import type { Message, ReplyOutcome } from "./message.js";
-import { FairMarks, HaltedStandings, Screens, pageTheme } from "./model.js";
+import { FairMarks, HaltedStandings, Screens } from "./model.js";
 import type { Flags, InRoom, Link, Model, RulesSheet } from "./model.js";
 import { NO_MOMENTS, watchedMoments } from "./moments/watch.js";
 import { considerUpdate } from "./page-update.js";
@@ -920,7 +919,6 @@ export const update = (model: Model, message: Message): Return =>
     CompletedCopy: ({ copied }) =>
       editRoom(model, (room) => ({ ...room, copied })),
     CompletedForget: () => ({ model }),
-    CompletedKeep: () => ({ model }),
     CompletedNavigation: () => ({ model }),
     CompletedPreference: () => ({ model }),
     CompletedWake: () => ({ model }),
@@ -1043,12 +1041,6 @@ export const update = (model: Model, message: Message): Return =>
           }
         : kept;
     },
-    KeptMoment: ({ picture }) => ({
-      commands: [
-        KeepMoment({ deck: model.deck, picture, theme: pageTheme(model) }),
-      ],
-      model,
-    }),
     MissedStandings: ({ reason }) =>
       editRoom(model, (room) => ({
         ...room,

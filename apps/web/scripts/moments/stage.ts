@@ -4,17 +4,18 @@ import { Effect } from "effect";
 
 import { defineMoment } from "../../src/client/moments/element.js";
 import type { MomentScene } from "../../src/client/moments/element.js";
-import { pictureFile } from "../../src/client/moments/share.js";
+import { EMBEDDED_FONTS, pngFile } from "../../src/client/pictures/png.js";
 import { MOMENT_TAG } from "../../src/features/moments/element.js";
 import { pictureSvg } from "../../src/features/moments/picture.js";
-import type { PictureFrame } from "../../src/features/moments/picture.js";
+import { fileNameOf } from "../../src/features/pictures/paper.js";
+import type { KeptFrame } from "../../src/features/pictures/paper.js";
 import { SAMPLE_NAMES, samplePicture } from "./samples.js";
 
 const params = new URLSearchParams(globalThis.location.search);
 
 const theme = params.get("theme") === "Dark" ? "Dark" : "Light";
 
-const frame: PictureFrame = params.get("frame") === "Story" ? "Story" : "Chat";
+const frame: KeptFrame = params.get("frame") === "Story" ? "Story" : "Chat";
 
 const deck = params.get("deck") === "four" ? "FourColour" : "TwoColour";
 
@@ -61,7 +62,11 @@ const live = (into: Element) => {
 };
 
 const png = (into: Element) =>
-  pictureFile(picture, { deck, theme }, frame).pipe(
+  pngFile(
+    pictureSvg(picture, { deck, fonts: EMBEDDED_FONTS, frame, theme }),
+    frame,
+    fileNameOf(picture.title, frame)
+  ).pipe(
     Effect.flatMap((file) => {
       const image = document.createElement("img");
 

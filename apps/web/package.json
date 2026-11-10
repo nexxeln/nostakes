@@ -12,10 +12,11 @@
     "build": "vite build",
     "brand": "node scripts/brand.ts",
     "check": "pnpm run typecheck",
-    "verify": "node scripts/two-players.ts && PHONE_ENGINES=chromium node scripts/phones.ts",
+    "verify": "node scripts/two-players.ts && PHONE_ENGINES=chromium node scripts/phones.ts && KEEP_ENGINES=chromium node scripts/keep-pictures.ts",
     "phones": "node scripts/phones.ts",
     "shots": "node scripts/phone-shots.ts",
-    "moments": "node scripts/moment-pictures.ts"
+    "moments": "node scripts/moment-pictures.ts",
+    "keep": "node scripts/keep-pictures.ts"
   },
   "dependencies": {
     "@effect/platform-browser": "4.1.2",
