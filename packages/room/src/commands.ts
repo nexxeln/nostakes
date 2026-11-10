@@ -8,7 +8,7 @@ import {
 import { Data, Schema } from "effect";
 
 import { ActorSchema, AvatarSchema, NameSchema } from "./identity.js";
-import { ChipAmountSchema, RoomSettingsSchema } from "./settings.js";
+import { ChipAmountSchema, RequestedSettingsSchema } from "./settings.js";
 import { MillisSchema } from "./time.js";
 
 const envelope = { at: MillisSchema, by: ActorSchema };
@@ -20,7 +20,7 @@ export const RoomCommandSchema = Schema.TaggedUnion({
   ActForSeat: naming,
   ApproveChips: naming,
   ApproveSeat: naming,
-  ChangeSettings: { ...envelope, settings: RoomSettingsSchema },
+  ChangeSettings: { ...envelope, settings: RequestedSettingsSchema },
   ChooseRuns: { ...envelope, runs: RunCountSchema },
   CloseRoom: envelope,
   Deal: { ...envelope, shuffleBytes: Schema.Uint8Array },

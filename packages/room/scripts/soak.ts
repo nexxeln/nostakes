@@ -164,6 +164,7 @@ const roomSettings = (random: Random): RoomSettings => {
     runChoiceSeconds: 2 + random.below(10),
     seats: random.chance(50) ? 9 : 2 + random.below(8),
     showdownSeconds: 2 + random.below(15),
+    shuffle: "Plain",
     table: tableConfig(random),
     timeBankRefill: random.chance(50)
       ? TimeBankRefills.NoRefill()

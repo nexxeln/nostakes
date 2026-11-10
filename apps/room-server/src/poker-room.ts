@@ -61,6 +61,7 @@ export const DEFAULT_SETTINGS: RoomSettings = Schema.decodeSync(
   runChoiceSeconds: 15,
   seats: 9,
   showdownSeconds: 15,
+  shuffle: "Plain",
   table: {
     ante: Antes.NoAnte(),
     bigBlind: 2,

@@ -1,7 +1,12 @@
 import { describe, expect, it } from "@effect/vitest";
 import { Schema, SchemaAST } from "effect";
 
-import { RoomEventSchema, RoomSettingsSchema } from "../src/index.js";
+import {
+  MemberCommandSchema,
+  OpenRequestSchema,
+  RoomEventSchema,
+  RoomSettingsSchema,
+} from "../src/index.js";
 import { settings } from "./fixtures.js";
 
 const decodeSettings = Schema.decodeUnknownSync(
@@ -10,6 +15,14 @@ const decodeSettings = Schema.decodeUnknownSync(
 
 const decodeEvent = Schema.decodeUnknownSync(
   Schema.fromJsonString(Schema.toCodecJson(RoomEventSchema))
+);
+
+const decodeOpenRequest = Schema.decodeUnknownSync(
+  Schema.fromJsonString(Schema.toCodecJson(OpenRequestSchema))
+);
+
+const decodeMemberCommand = Schema.decodeUnknownSync(
+  Schema.fromJsonString(Schema.toCodecJson(MemberCommandSchema))
 );
 
 const SETTINGS_BEFORE_SHOWDOWNS = `{
@@ -32,6 +45,7 @@ const SETTINGS_BEFORE_SHOWDOWNS = `{
 const withEveryDefault = {
   ...settings,
   showdownSeconds: 15,
+  shuffle: "Plain",
   table: { ...settings.table, showdown: "Automatic" },
 };
 
@@ -54,6 +68,43 @@ describe("settings stored before a field existed", () => {
     expect(decodeEvent(stored)).toMatchObject({
       settings: withEveryDefault,
     });
+  });
+});
+
+describe("the shuffle setting when a sender leaves it out", () => {
+  it("reads a stored log from before it existed as a plain shuffle", () => {
+    expect(decodeSettings(SETTINGS_BEFORE_SHOWDOWNS).shuffle).toBe("Plain");
+  });
+
+  it("opens a new room with a checked shuffle", () => {
+    const request = decodeOpenRequest(
+      `{"avatar":"","name":"Ann","settings":${SETTINGS_BEFORE_SHOWDOWNS}}`
+    );
+
+    expect(request.settings?.shuffle).toBe("Checked");
+  });
+
+  it("keeps a host's settings change checked", () => {
+    const command = decodeMemberCommand(
+      `{"_tag":"ChangeSettings","settings":${SETTINGS_BEFORE_SHOWDOWNS}}`
+    );
+
+    expect(
+      MemberCommandSchema.guards.ChangeSettings(command) &&
+        command.settings.shuffle
+    ).toBe("Checked");
+  });
+
+  it("keeps a setting a sender spelled out", () => {
+    const plain = SETTINGS_BEFORE_SHOWDOWNS.replace(
+      '"turnSeconds": 0',
+      '"turnSeconds": 0, "shuffle": "Plain"'
+    );
+
+    expect(
+      decodeOpenRequest(`{"avatar":"","name":"Ann","settings":${plain}}`)
+        .settings?.shuffle
+    ).toBe("Plain");
   });
 });
 

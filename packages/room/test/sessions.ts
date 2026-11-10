@@ -124,6 +124,7 @@ export const settingsFrom = (random: SeededRandom): RoomSettings => ({
   runChoiceSeconds: 1 + random.below(10),
   seats: random.chance(1, 2) ? 9 : 2 + random.below(8),
   showdownSeconds: 1 + random.below(20),
+  shuffle: "Plain",
   table: tableConfigFrom(random),
   timeBankRefill: random.chance(1, 2)
     ? TimeBankRefills.NoRefill()

@@ -87,7 +87,11 @@ export const ApprovalSchema = Schema.Struct({
   }),
 });
 
-export const RoomSettingsSchema = Schema.Struct({
+export const ShuffleSchema = Schema.Literals(["Checked", "Plain"]);
+
+export type Shuffle = typeof ShuffleSchema.Type;
+
+const settingsFields = (shuffleWhenAbsent: Shuffle) => ({
   approval: ApprovalSchema.annotate({
     description: "What the host must approve before it happens.",
     title: "Approval",
@@ -121,6 +125,11 @@ export const RoomSettingsSchema = Schema.Struct({
       title: "Showdown clock",
     }
   ),
+  shuffle: setting(ShuffleSchema, shuffleWhenAbsent, {
+    description:
+      "Checked: before each hand the server seals two decks, and the order comes from a public drand beacon round named in the seal, so every player's device can check each card it was shown. Plain: the server shuffles alone and nobody can check the deck. A change applies from the next sealed hand.",
+    title: "Fair shuffle",
+  }),
   table: TableConfigSchema.annotate({
     description:
       "The rules of a hand. A change made during a hand applies from the next hand.",
@@ -142,6 +151,10 @@ export const RoomSettingsSchema = Schema.Struct({
     title: "Turn clock",
   }),
 });
+
+export const RoomSettingsSchema = Schema.Struct(settingsFields("Plain"));
+
+export const RequestedSettingsSchema = Schema.Struct(settingsFields("Checked"));
 
 export type RoomSettings = typeof RoomSettingsSchema.Type;
 

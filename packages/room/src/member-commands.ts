@@ -2,7 +2,7 @@ import { Schema } from "effect";
 
 import { RoomCommandSchema } from "./commands.js";
 import { AvatarSchema, NameSchema } from "./identity.js";
-import { RoomSettingsSchema } from "./settings.js";
+import { RequestedSettingsSchema } from "./settings.js";
 
 const { cases } = RoomCommandSchema;
 
@@ -46,7 +46,7 @@ export type MemberCommand = typeof MemberCommandSchema.Type;
 export const OpenRequestSchema = Schema.Struct({
   avatar: AvatarSchema,
   name: NameSchema,
-  settings: Schema.optionalKey(RoomSettingsSchema),
+  settings: Schema.optionalKey(RequestedSettingsSchema),
 });
 
 export type OpenRequest = typeof OpenRequestSchema.Type;
