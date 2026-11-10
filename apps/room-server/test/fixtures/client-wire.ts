@@ -138,8 +138,12 @@ export const clientWire = (journal: Timeline) => {
 
       frames.push(text);
 
+      const heard = lines[number - 1]?.mode !== "BlackHole";
+
       for (const message of Option.toArray(decoded)) {
-        arrivals.push({ at: wallClock(), message, text });
+        if (heard) {
+          arrivals.push({ at: wallClock(), message, text });
+        }
       }
 
       for (const { to } of Option.toArray(

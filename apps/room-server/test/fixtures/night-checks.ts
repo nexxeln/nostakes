@@ -35,8 +35,8 @@ import {
   addFairness,
   emptyFairness,
   judgeDevice,
+  stretchesFrom,
   waitBeyondPause,
-  witnessFrom,
 } from "./fair-checks.js";
 import type { FairnessCounts, Proof } from "./fair-checks.js";
 import { decodeServerFrame, pokerCodec, wallClock } from "./poker-socket.js";
@@ -1557,7 +1557,7 @@ const checkFairness = (
   for (const device of devicesOf(evidence)) {
     const judged = judgeDevice(
       device.label,
-      witnessFrom(device.arrivals),
+      stretchesFrom(device.arrivals),
       evidence.code,
       now
     );

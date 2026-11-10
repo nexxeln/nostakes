@@ -118,9 +118,38 @@ export interface DeviceJudgement {
 
 const at = (time: number) => EpochMillisSchema.make(Math.round(time));
 
-export const witnessFrom = (arrivals: readonly Arrival[]): Witness => {
+export interface Stretch {
+  readonly witness: Witness;
+  readonly lastHeardAt: number;
+}
+
+const firstNewSeq = (message: Arrival["message"]): Option.Option<number> => {
+  if (guards.Events(message)) {
+    return Option.some(message.from);
+  }
+
+  if (!guards.Welcome(message)) {
+    return Option.none();
+  }
+
+  const { catchUp } = message;
+
+  if (pokerCodec.catchUp.guards.Missed(catchUp)) {
+    return Option.some(catchUp.from);
+  }
+
+  return pokerCodec.catchUp.guards.Skipped(catchUp)
+    ? Option.some(catchUp.from)
+    : Option.some(message.seq + 1);
+};
+
+export const stretchesFrom = (
+  arrivals: readonly Arrival[]
+): readonly Stretch[] => {
+  const stretches: Stretch[] = [];
   let witness = emptyWitness;
   let applied = 0;
+  let lastHeardAt = Option.none<number>();
 
   const apply = (
     events: readonly Parameters<typeof witnessEvent>[1][],
@@ -136,6 +165,16 @@ export const witnessFrom = (arrivals: readonly Arrival[]): Witness => {
 
   for (const { at: time, message } of arrivals) {
     const when = at(time);
+    const first = firstNewSeq(message);
+
+    const skipsAhead =
+      applied > 0 && Option.isSome(first) && first.value > applied + 1;
+
+    for (const heard of Option.toArray(lastHeardAt)) {
+      if (skipsAhead) {
+        stretches.push({ lastHeardAt: heard, witness });
+      }
+    }
 
     if (guards.Welcome(message)) {
       const { catchUp } = message;
@@ -157,10 +196,48 @@ export const witnessFrom = (arrivals: readonly Arrival[]): Witness => {
       applied = Math.max(applied, message.to);
       witness = witnessView(witness, message.view, when);
     }
+
+    lastHeardAt = Option.some(time);
   }
 
-  return witness;
+  for (const heard of Option.toArray(lastHeardAt)) {
+    stretches.push({ lastHeardAt: heard, witness });
+  }
+
+  return stretches;
 };
+
+const sealKeys = (witness: Witness): readonly string[] => {
+  const ordinals = new Map<number, number>();
+
+  return sealsSeen(witness).map(({ hand }) => {
+    const ordinal = ordinals.get(hand) ?? 0;
+
+    ordinals.set(hand, ordinal + 1);
+
+    return `${hand}:${ordinal}`;
+  });
+};
+
+export const undealtSeals = (stretches: readonly Stretch[]) =>
+  stretches.flatMap((stretch, index) => {
+    const before = new Set(
+      Option.fromUndefinedOr(stretches[index - 1]).pipe(
+        Option.map(({ witness }) => sealKeys(witness)),
+        Option.getOrElse((): readonly string[] => [])
+      )
+    );
+
+    const keys = sealKeys(stretch.witness);
+
+    return sealsWithNoDeal(
+      TEST_CHAIN,
+      at(stretch.lastHeardAt),
+      sealsSeen(stretch.witness).filter(
+        (_, position) => !before.has(keys[position] ?? "")
+      )
+    );
+  });
 
 const verdictText = (verdict: Verdict) =>
   Verdicts.$match(verdict, {
@@ -182,10 +259,11 @@ const missingText = (missing: MissingEvidence) =>
 
 export const judgeDevice = (
   device: string,
-  witness: Witness,
+  stretches: readonly Stretch[],
   room: string,
   now: number
 ): DeviceJudgement => {
+  const witness = stretches.at(-1)?.witness ?? emptyWitness;
   const counts = emptyFairness();
   const problems: string[] = [];
   const proofs: Proof[] = [];
@@ -262,11 +340,7 @@ export const judgeDevice = (
     counts.sealsWithdrawn += Option.isSome(seal.withdrawn) ? 1 : 0;
   }
 
-  for (const problem of sealsWithNoDeal(
-    TEST_CHAIN,
-    at(now),
-    sealsSeen(witness)
-  )) {
+  for (const problem of undealtSeals(stretches)) {
     if (
       problem.withdrawal === "while away" ||
       problem.withdrawal === "too close to the round"
