@@ -44,6 +44,10 @@ export { attendanceCommand, quietDueAt, seatedPlayers } from "./attendance.js";
 
 export { stallCommand } from "./stalls.js";
 
+export { ClosingSchema } from "./closing.js";
+
+export type { Closing } from "./closing.js";
+
 export { evolve, evolveAll, replay } from "./evolve.js";
 
 export type { RoomLog } from "./evolve.js";

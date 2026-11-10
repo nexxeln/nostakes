@@ -27,7 +27,7 @@ import { answerChips, leaveSeat, requestChips } from "./money.js";
 import { withOpenings } from "./openings.js";
 import { play } from "./play.js";
 import { actForLeavingSeat, endOfHand } from "./queue.js";
-import { QueueNotDue, RoomIsClosed } from "./rejection.js";
+import { NotTheHost, QueueNotDue, RoomIsClosed } from "./rejection.js";
 import type { RoomRejection } from "./rejection.js";
 import { changeSettings } from "./rules.js";
 import { dealSealed, sealNextHand, withdrawStale } from "./sealing.js";
@@ -39,7 +39,7 @@ import {
   sitOut,
 } from "./seats.js";
 import { RoomSettingsSchema } from "./settings.js";
-import { clearingStall, noteStall } from "./stalls.js";
+import { clearingStall, isStalled, noteStall } from "./stalls.js";
 import { RoomStates, handInProgress, isOpen, queueWaiting } from "./state.js";
 import type { Open, RoomState } from "./state.js";
 import { MillisSchema, latest } from "./time.js";
@@ -100,7 +100,12 @@ const decideOpen = (state: Open, command: RoomCommand): Decision =>
       byMember(state, choose, (player) => choosePosting(state, player, choose)),
     ChooseRuns: (choose) =>
       byMember(state, choose, (player) => play(state, player, choose)),
-    CloseRoom: (close) => byHost(state, close, () => closeRoom(state, close)),
+    CloseRoom: (close) =>
+      byMember(state, close, (player) =>
+        player === state.host || isStalled(state)
+          ? closeRoom(state, close)
+          : Result.fail(new NotTheHost({ host: state.host, player }))
+      ),
     Deal: (dealing) =>
       Result.flatMap(fromServer(dealing), () => deal(state, dealing)),
     DealNextHand: (call) =>

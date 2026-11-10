@@ -21,6 +21,7 @@ import { DeckOpeningSchema } from "@nostakes/shuffle";
 import { Data, Effect, Option, Schema } from "effect";
 
 import { nextDealAt, timeBankLeft } from "./clocks.js";
+import { ClosingSchema, closingOf } from "./closing.js";
 import {
   HandNumberSchema,
   OpenedCardSchema,
@@ -356,6 +357,7 @@ export const RoomViewSchema = Schema.TaggedUnion({
     attendance: attendanceField,
     balances: Schema.Array(BalanceSchema),
     clocks: ClocksViewSchema,
+    closing: absentAs(ClosingSchema, "Now"),
     code: RoomCodeSchema,
     departed: departedField,
     fairness: FairnessViewSchema,
@@ -675,6 +677,7 @@ const openView = (state: Open, audience: Audience, at: Millis): RoomView => {
     attendance: state.attendance,
     balances: balances(allEntries(state.entries)),
     clocks: clocksView(state, latest(at, state.now)),
+    closing: closingOf(state, latest(at, state.now)),
     code: state.code,
     departed: profilesOf(state.departed),
     fairness: fairnessView(state, audience),

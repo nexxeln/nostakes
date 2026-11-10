@@ -1,19 +1,25 @@
 import { describe, expect, it } from "@effect/vitest";
 import { Actions, ChipsSchema } from "@nostakes/engine";
 import { AmountSchema, NetSchema } from "@nostakes/ledger";
-import { Result } from "effect";
+import { Option, Result } from "effect";
 
 import {
+  Audiences,
   CloseAlreadyQueued,
+  Deadlines,
   NotTheHost,
   RoomCommands,
   RoomEvents,
   RoomIsClosed,
   RoomStates,
+  RoomViews,
+  SealedSeatsMoved,
   SettlesAfterHand,
   settlement,
+  viewFor,
 } from "../src/index.js";
-import type { RoomEvent, Settlement } from "../src/index.js";
+import type { RoomEvent, RoomState, Settlement } from "../src/index.js";
+import { dealFromBeacon, sealAt } from "./beacon.js";
 import {
   ann,
   as,
@@ -22,6 +28,7 @@ import {
   dealAt,
   join,
   ms,
+  openOf,
   player,
   openedBy,
   rejection,
@@ -29,6 +36,8 @@ import {
   run,
   runAll,
   seat,
+  server,
+  settings,
   sit,
 } from "./fixtures.js";
 
@@ -147,5 +156,169 @@ describe("closing", () => {
       RoomEvents.RoomClosed({ at: ms(20), settlement: finalSettlement }),
     ]);
     expect(RoomStates.$is("Closed")(last.state)).toBe(true);
+  });
+});
+
+const stall = (at: number) =>
+  RoomCommands.NoteStall({
+    at: ms(at),
+    by: server,
+    deadline: Deadlines.DealDue({ at: ms(at) }),
+  });
+
+const raisedTo = (to: number, at = 20) =>
+  RoomCommands.Act({
+    action: Actions.RaiseTo({ to: ChipsSchema.make(to) }),
+    at: ms(at),
+    by: as(ann),
+  });
+
+const evenSettlement: Settlement = {
+  balances: [ann, bob, cat].map((who) => ({
+    boughtIn: 200,
+    cashedOut: 200,
+    net: NetSchema.make(0),
+    player: who,
+  })),
+  transfers: [],
+};
+
+const closingFor = (state: RoomState, at: number) => {
+  const view = viewFor(state, Audiences.Spectator(), ms(at));
+
+  return RoomViews.$is("Open")(view)
+    ? Option.some(view.closing)
+    : Option.none();
+};
+
+describe("ending a stalled night", () => {
+  it("cancels the hand in play at once, gives every chip in the pot back to the seat that put it in, and settles", () => {
+    const raised = run(dealt, raisedTo(30)).state;
+    const stalled = run(raised, stall(25)).state;
+    const ended = run(stalled, close(30));
+
+    expect(ended.events).toStrictEqual([
+      RoomEvents.HandCancelled({
+        at: ms(30),
+        hand: 1,
+        restored: [ann, bob, cat].map((who, index) => ({
+          player: who,
+          seat: seat(index),
+          stack: ChipsSchema.make(200),
+        })),
+      }),
+      ...[ann, bob, cat].map((who, index) =>
+        RoomEvents.CashedOut({
+          amount: ChipsSchema.make(200),
+          at: ms(30),
+          player: who,
+          seat: seat(index),
+        })
+      ),
+      RoomEvents.RoomClosed({ at: ms(30), settlement: evenSettlement }),
+    ]);
+  });
+
+  it("lets any member end the night once it is stalled, and only the host before", () => {
+    expect(rejection(dealt, close(15, bob))).toStrictEqual(
+      new NotTheHost({ host: ann, player: bob })
+    );
+
+    const ended = run(run(dealt, stall(25)).state, close(30, bob));
+
+    expect(RoomStates.$is("Closed")(ended.state)).toBe(true);
+    expect(ended.events.at(-1)).toStrictEqual(
+      RoomEvents.RoomClosed({ at: ms(30), settlement: evenSettlement })
+    );
+  });
+
+  it("ends a night whose queued close waits on a hand that can no longer finish", () => {
+    const queued = run(dealt, close(15)).state;
+
+    expect(rejection(queued, close(16))).toStrictEqual(
+      new CloseAlreadyQueued({ handNumber: 1 })
+    );
+
+    const ended = run(run(queued, stall(20)).state, close(21));
+
+    expect(ended.events[0]?._tag).toBe("HandCancelled");
+    expect(RoomStates.$is("Closed")(ended.state)).toBe(true);
+  });
+
+  it("tells every viewer what ending the night would do now", () => {
+    expect(
+      [afterOneHand, dealt, run(dealt, stall(25)).state].map((state) =>
+        closingFor(state, 30)
+      )
+    ).toStrictEqual([
+      Option.some("Now"),
+      Option.some("AfterHand"),
+      Option.some("CancelsHand"),
+    ]);
+  });
+});
+
+describe("ending a night whose sealed hand the room cannot deal", () => {
+  const checked = {
+    ...settings,
+    betweenHandsSeconds: 5,
+    shuffle: "Checked" as const,
+  };
+
+  const START = 10_000;
+
+  const ROUND_DUE = 15_000;
+
+  const sealed = run(
+    runAll(openedBy(ann, checked), [
+      join(bob),
+      join(cat),
+      sit(ann, 0),
+      sit(bob, 1),
+      sit(cat, 2),
+      RoomCommands.StartGame({ at: ms(START), by: as(ann) }),
+    ]),
+    sealAt(START, 1)
+  ).state;
+
+  const misSealed: RoomState = {
+    ...openOf(sealed),
+    sealed: openOf(sealed).sealed.pipe(
+      Option.map((seal) => ({ ...seal, seats: seal.seats.toReversed() }))
+    ),
+  };
+
+  it("queues the close while the seal binds, and once the room is stalled withdraws the seal and settles", () => {
+    const { round } = Option.getOrThrow(openOf(misSealed).sealed);
+
+    expect(
+      rejection(misSealed, dealFromBeacon(ROUND_DUE, round))
+    ).toBeInstanceOf(SealedSeatsMoved);
+
+    const queued = run(misSealed, close(ROUND_DUE));
+
+    expect(queued.events).toStrictEqual([
+      RoomEvents.CloseQueued({ at: ms(ROUND_DUE) }),
+    ]);
+
+    const ended = run(
+      run(queued.state, stall(ROUND_DUE + 1)).state,
+      close(ROUND_DUE + 2)
+    );
+
+    expect(ended.events[0]).toStrictEqual(
+      RoomEvents.SealWithdrawn({
+        at: ms(ROUND_DUE + 2),
+        hand: 1,
+        reason: "RoomClosing",
+        round,
+      })
+    );
+    expect(ended.events.at(-1)).toStrictEqual(
+      RoomEvents.RoomClosed({
+        at: ms(ROUND_DUE + 2),
+        settlement: evenSettlement,
+      })
+    );
   });
 });

@@ -296,8 +296,10 @@ export const authorityProblems = (step: Step): readonly string[] => {
 
   const member = actor.player;
 
+  const endsStalledNight = tag === "CloseRoom" && Option.isSome(before.stalled);
+
   if (HOSTING.has(tag)) {
-    return member === before.host
+    return member === before.host || endsStalledNight
       ? []
       : [`${tag} accepted from ${member}, not the host`];
   }
@@ -393,7 +395,8 @@ export const viewRoundTrips = roundTrip(RoomViewSchema);
 export const deadlineRoundTrips = roundTrip(DeadlineSchema);
 
 const isHandEnded = (event: RoomEvent) =>
-  RoomEvents.$is("Table")(event) && Events.$is("HandEnded")(event.event);
+  RoomEvents.$is("HandCancelled")(event) ||
+  (RoomEvents.$is("Table")(event) && Events.$is("HandEnded")(event.event));
 
 interface QueueWatch {
   chips: { readonly amount: number; readonly player: PlayerId }[];
@@ -534,7 +537,9 @@ export const queueProblems = (steps: readonly Step[]): readonly string[] => {
       );
     }
 
-    if (ended && stillQueued(watch)) {
+    const droppedWithNight = step.events.some(RoomEvents.$is("HandCancelled"));
+
+    if (ended && stillQueued(watch) && !droppedWithNight) {
       problems.push(
         `a hand ended with items still queued after ${step.command._tag}`
       );
@@ -731,7 +736,7 @@ export const clockProblems = (
       : []
   );
 
-  const open = [...banks].join(",");
+  const open = isOpen(final) ? [...banks].join(",") : "";
 
   return open === runningBank(final).join(",")
     ? problems

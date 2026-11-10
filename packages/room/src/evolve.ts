@@ -1,5 +1,11 @@
-import { Events, evolve as evolveTable, initialTable } from "@nostakes/engine";
-import type { Event, PlayerId, SeatIndex } from "@nostakes/engine";
+import {
+  Events,
+  Seats,
+  TableStates,
+  evolve as evolveTable,
+  initialTable,
+} from "@nostakes/engine";
+import type { Chips, Event, PlayerId, SeatIndex } from "@nostakes/engine";
 import { Option } from "effect";
 
 import { postingSeats } from "./dealing.js";
@@ -45,6 +51,7 @@ export const opened = (event: RoomEventOf<"RoomOpened">): Open =>
     departed: [],
     entries: new Map(),
     game: "Waiting",
+    handStacks: new Map(),
     host: event.host,
     members: [],
     now: event.at,
@@ -103,6 +110,57 @@ const dealtInto = (state: Open, seats: readonly SeatIndex[]): Open => {
   return { ...state, clocks: { ...state.clocks, handsDealt } };
 };
 
+const stacksOf = (
+  state: Open,
+  seats: readonly SeatIndex[]
+): ReadonlyMap<SeatIndex, Chips> =>
+  new Map(
+    seats.flatMap((seat) =>
+      Option.toArray(occupantAt(state.table, seat)).map(
+        ({ stack }): readonly [SeatIndex, Chips] => [seat, stack]
+      )
+    )
+  );
+
+interface Restored {
+  readonly seat: SeatIndex;
+  readonly stack: Chips;
+}
+
+const cancelled = (state: Open, restored: readonly Restored[]): Open => {
+  const { table } = state;
+
+  if (!TableStates.$is("InHand")(table)) {
+    return state;
+  }
+
+  const seats = table.seats.map((occupied, index) => {
+    const back = restored.find(({ seat }) => seat === index);
+
+    return back !== undefined && Seats.$is("Occupied")(occupied)
+      ? { ...occupied, stack: back.stack }
+      : occupied;
+  });
+
+  return {
+    ...state,
+    clocks: { ...state.clocks, decision: Option.none() },
+    queued: { ...state.queued, chips: [] },
+    record: Option.none(),
+    table: TableStates.BetweenHands({
+      button: Option.some(table.button),
+      config: table.config,
+      handNumber: table.handNumber,
+      lastBlinds: Option.some({
+        big: table.hand.bigBlindSeat,
+        small: table.hand.smallBlindSeat,
+      }),
+      lastHand: Option.none(),
+      seats,
+    }),
+  };
+};
+
 const proofFor = (state: Open, handNumber: number): Open =>
   Option.exists(state.proof, (proof) => proof.sealed.hand === handNumber)
     ? state
@@ -114,6 +172,7 @@ const onTable = (state: Open, event: Event, at: Millis): Open => {
       ? {
           ...proofFor(dealtInto(state, event.dealtIn), event.handNumber),
           dealCalled: false,
+          handStacks: stacksOf(state, event.dealtIn),
         }
       : state),
     record: recorded(state.record, event),
@@ -280,6 +339,7 @@ const evolveOpen = (state: Open, event: RoomEvent): RoomState =>
       dealtFromSeal(state, () => ProofDeals.WithoutBeacon({ reason })),
     GamePaused: (): Open => ({ ...state, dealCalled: false, game: "Waiting" }),
     GameStarted: (): Open => ({ ...state, game: "Running" }),
+    HandCancelled: ({ restored }) => cancelled(state, restored),
     HandSealed: ({ at, decks, hand, roots, round, seats, secret }) => ({
       ...state,
       sealed: Option.some({

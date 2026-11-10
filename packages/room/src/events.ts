@@ -1,4 +1,5 @@
 import {
+  ChipsSchema,
   EventSchema,
   PlayerIdSchema,
   SeatIndexSchema,
@@ -101,6 +102,17 @@ export const roomEventFields = {
   },
   GamePaused: { at },
   GameStarted: { at },
+  HandCancelled: {
+    at,
+    hand: HandNumberSchema,
+    restored: Schema.Array(
+      Schema.Struct({
+        player: PlayerIdSchema,
+        seat: SeatIndexSchema,
+        stack: ChipsSchema,
+      })
+    ),
+  },
   HostChanged: { at, host: PlayerIdSchema },
   LeaveQueued: { at, player: PlayerIdSchema },
   MarkedAway: { at, seat: SeatIndexSchema },
