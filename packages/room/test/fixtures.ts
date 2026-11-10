@@ -151,3 +151,38 @@ export const openOf = (state: RoomState) => {
 
   return state;
 };
+
+const ORDER = "23456789TJQKA";
+
+const SUITS_IN_ORDER = "cdhs";
+
+const cardNumber = (text: string) =>
+  ORDER.indexOf(text.charAt(0)) * 4 + SUITS_IN_ORDER.indexOf(text.charAt(1));
+
+export const bytesForDeck = (leading: string) => {
+  const wanted = leading
+    .split(" ")
+    .filter((word) => word.length > 0)
+    .map(cardNumber);
+
+  const deck = [
+    ...wanted,
+    ...Array.from({ length: 52 }, (_, card) => card).filter(
+      (card) => !wanted.includes(card)
+    ),
+  ];
+
+  const cards = Array.from({ length: 52 }, (_, card) => card);
+  const bytes = new Uint8Array(51);
+
+  for (let top = 51; top > 0; top -= 1) {
+    const drawn = cards.indexOf(deck[top] ?? 0);
+    const held = cards[top] ?? 0;
+
+    bytes[51 - top] = drawn;
+    cards[top] = cards[drawn] ?? 0;
+    cards[drawn] = held;
+  }
+
+  return bytes;
+};
