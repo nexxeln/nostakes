@@ -16,7 +16,13 @@ export const Actions = Data.taggedEnum<Action>();
 export const RaiseRangeSchema = Schema.Struct({
   maxTo: ChipsSchema,
   minTo: ChipsSchema,
-});
+}).check(
+  Schema.makeFilter((range) =>
+    range.minTo <= range.maxTo
+      ? undefined
+      : "the smallest raise must not exceed the largest; a seat that can only go all in short of a full raise has minTo equal to maxTo"
+  )
+);
 
 export type RaiseRange = typeof RaiseRangeSchema.Type;
 

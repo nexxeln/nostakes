@@ -379,6 +379,17 @@ describe("generated sessions", () => {
 
         const legal = legalActions(step.before);
 
+        const inverted = legal.pipe(
+          Option.flatMap(({ raise }) => raise),
+          Option.filter(({ maxTo, minTo }) => minTo > maxTo)
+        );
+
+        if (Option.isSome(inverted)) {
+          mismatches.push(
+            `a raise range from ${inverted.value.minTo} down to ${inverted.value.maxTo}`
+          );
+        }
+
         if (Option.isSome(legal)) {
           for (const action of candidateActions(legal.value)) {
             const command = Commands.Act({ action, seat: legal.value.seat });

@@ -99,7 +99,6 @@ describe("the table snapshot", () => {
           expect(legal?.call ?? null).toBe(Option.getOrNull(allowed.call));
           expect(legal?.raise?.min ?? null).toBe(
             allowed.raise.pipe(
-              Option.filter(({ maxTo, minTo }) => minTo <= maxTo),
               Option.map(({ minTo }) => minTo),
               Option.getOrNull
             )

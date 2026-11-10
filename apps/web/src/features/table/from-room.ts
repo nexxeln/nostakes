@@ -373,7 +373,6 @@ const legalOfView = (view: OpenView): HeroLegal | null => {
       muck: false,
       raise: Option.getOrNull(
         legal.raise.pipe(
-          Option.filter(({ maxTo, minTo }) => minTo <= maxTo),
           Option.map(({ maxTo, minTo }) => ({
             isBet: nobodyBet,
             max: maxTo,
