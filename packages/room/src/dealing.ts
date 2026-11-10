@@ -147,11 +147,12 @@ export const postingSeats = (state: Open): readonly SeatIndex[] =>
     )
   );
 
-const startHand = (state: Open, deck: Deck, straddles: readonly SeatIndex[]) =>
-  decideTable(
-    state.table,
-    Commands.StartHand({ deck, posts: postingSeats(state), straddles })
-  );
+const startHand = (
+  state: Open,
+  deck: Deck,
+  straddles: readonly SeatIndex[],
+  posts: readonly SeatIndex[]
+) => decideTable(state.table, Commands.StartHand({ deck, posts, straddles }));
 
 const clockwiseAfter = (seats: readonly SeatIndex[], after: SeatIndex) => [
   ...seats.filter((seat) => seat > after),
@@ -167,8 +168,12 @@ const leadingWhile = (
   return stop === -1 ? seats : seats.slice(0, stop);
 };
 
-export const straddlesFor = (state: Open, deck: Deck): readonly SeatIndex[] => {
-  const dryRun = startHand(state, deck, []);
+export const straddlesFor = (
+  state: Open,
+  deck: Deck,
+  posts: readonly SeatIndex[]
+): readonly SeatIndex[] => {
+  const dryRun = startHand(state, deck, [], posts);
 
   const started = Result.isSuccess(dryRun)
     ? dryRun.success.find(Events.$is("HandStarted"))
@@ -200,16 +205,20 @@ export const straddlesFor = (state: Open, deck: Deck): readonly SeatIndex[] => {
 
   return (
     candidates.find((straddles) =>
-      Result.isSuccess(startHand(state, deck, straddles))
+      Result.isSuccess(startHand(state, deck, straddles, posts))
     ) ?? []
   );
 };
 
-export const handStart = (state: Open, deck: Deck) =>
+export const handStart = (
+  state: Open,
+  deck: Deck,
+  posts: readonly SeatIndex[] = postingSeats(state)
+) =>
   Commands.StartHand({
     deck,
-    posts: postingSeats(state),
-    straddles: straddlesFor(state, deck),
+    posts,
+    straddles: straddlesFor(state, deck, posts),
   });
 
 export const deal = (state: Open, command: RoomCommandOf<"Deal">): Decision =>

@@ -86,12 +86,13 @@ export const sealDue = (state: Open): Option.Option<Millis> =>
 
 const dealOrderOf = (
   state: Open,
-  deck: TableDeck
+  deck: TableDeck,
+  posts: readonly SeatIndex[] = postingSeats(state)
 ): Result.Result<readonly SeatIndex[], TableRejected> =>
   Result.mapBoth(
     decideTable(
       state.table,
-      Commands.StartHand({ deck, posts: postingSeats(state), straddles: [] })
+      Commands.StartHand({ deck, posts, straddles: [] })
     ),
     {
       onFailure: (rejection) => new TableRejected({ rejection }),
@@ -217,9 +218,9 @@ const sameOrder = (left: readonly SeatIndex[], right: readonly SeatIndex[]) =>
 const startSealed =
   (sealed: Sealed, deck: TableDeck, at: Millis): Step =>
   (state) =>
-    Result.flatMap(dealOrderOf(state, deck), (order): Decision =>
+    Result.flatMap(dealOrderOf(state, deck, sealed.seats), (order): Decision =>
       sameOrder(order, sealed.seats)
-        ? onTable(state.table, handStart(state, deck), at)
+        ? onTable(state.table, handStart(state, deck, sealed.seats), at)
         : Result.fail(
             new SealedSeatsMoved({ dealt: order, sealed: sealed.seats })
           )

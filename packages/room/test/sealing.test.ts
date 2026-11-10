@@ -29,7 +29,7 @@ import {
   viewFor,
 } from "../src/index.js";
 import type { RoomEvent, RoomState } from "../src/index.js";
-import { dealFromBeacon, sealAt } from "./beacon.js";
+import { dealFromBeacon, sealAt, serverAnswer } from "./beacon.js";
 import {
   ann,
   as,
@@ -40,6 +40,7 @@ import {
   ms,
   openOf,
   openedBy,
+  player,
   rejection,
   run,
   runAll,
@@ -100,7 +101,7 @@ const dealtSeats = (state: RoomState) => {
   const { table } = openOf(state);
 
   return TableStates.$is("InHand")(table)
-    ? table.hand.players.map((player) => player.seat)
+    ? table.hand.players.map((dealt) => dealt.seat)
     : [];
 };
 
@@ -465,5 +466,89 @@ describe("a sealed hand that will not be dealt", () => {
     expect(late.events).toStrictEqual([
       RoomEvents.CloseQueued({ at: ms(START + 2000) }),
     ]);
+  });
+});
+
+const eve = player("eve");
+
+const foldOrAnswer = (state: RoomState, step: number): RoomState => {
+  const open = openOf(state);
+  const pending = pendingDecisions(open.table);
+
+  if (PendingDecisions.$is("Bet")(pending)) {
+    const held = open.table.seats[pending.legal.seat];
+
+    return held !== undefined && Seats.$is("Occupied")(held)
+      ? run(
+          state,
+          RoomCommands.Act({
+            action: Actions.Fold(),
+            at: open.now,
+            by: as(held.player),
+          })
+        ).state
+      : state;
+  }
+
+  return Option.match(nextDeadline(state), {
+    onNone: () => state,
+    onSome: (deadline) => run(state, serverAnswer(deadline, step)).state,
+  });
+};
+
+const handsPlayed = (state: RoomState) => openOf(state).table.handNumber;
+
+describe("a sealed deal at a casino table", () => {
+  it("deals the sealed seats even when a posting player changes their mind after the seal", () => {
+    const casino = {
+      ...checked,
+      table: { ...checked.table, blindPosting: "Casino" as const },
+    };
+
+    let state = runAll(openedBy(ann, casino), [
+      join(bob),
+      join(cat),
+      join(dan),
+      join(eve),
+      sit(ann, 0),
+      sit(bob, 1),
+      sit(cat, 2),
+      sit(eve, 3),
+      RoomCommands.StartGame({ at: ms(START), by: as(ann) }),
+    ]);
+
+    for (let step = 0; step < 40 && handsPlayed(state) < 1; step += 1) {
+      state = foldOrAnswer(state, step);
+    }
+
+    for (let step = 40; step < 80 && isInHand(state); step += 1) {
+      state = foldOrAnswer(state, step);
+    }
+
+    const { now } = openOf(state);
+
+    const posting = runAll(state, [
+      sit(dan, 5, 200, now),
+      RoomCommands.ChoosePosting({ at: ms(now), by: as(dan), post: true }),
+    ]);
+
+    const sealed = Option.match(nextDeadline(posting), {
+      onNone: () => run(posting, sealAt(now, 99)),
+      onSome: (deadline) => run(posting, serverAnswer(deadline, 99)),
+    });
+
+    expect(sealedEvent(sealed.events).seats).toContain(seat(5));
+
+    const changed = run(
+      sealed.state,
+      RoomCommands.ChoosePosting({ at: ms(now + 1), by: as(dan), post: false })
+    ).state;
+
+    const dealt = Option.match(nextDeadline(changed), {
+      onNone: () => changed,
+      onSome: (deadline) => run(changed, serverAnswer(deadline, 100)).state,
+    });
+
+    expect(dealtSeats(dealt)).toContain(seat(5));
   });
 });
