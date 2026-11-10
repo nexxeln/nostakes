@@ -15,6 +15,7 @@ import { isLive, isYou, nameOf } from "./room.js";
 import type { OpenView } from "./room.js";
 import { rulesCard } from "./rules-view.js";
 import { icon, sheet, sheetLayer, sheetTop } from "./sheet.js";
+import { serverNowOf, takeOverLine } from "./stuck-line.js";
 
 type H = HtmlBuilder<Message>;
 
@@ -449,6 +450,31 @@ const stuckBlock = (view: OpenView, h: H): Html =>
       )
     : h.empty;
 
+const takeOverBlock = (
+  model: Model,
+  room: InRoom,
+  view: OpenView,
+  h: H
+): Html =>
+  Option.match(takeOverLine(view, serverNowOf(room.clockSamples, model.now)), {
+    onNone: () => h.empty,
+    onSome: (text) =>
+      h.div(
+        [h.Class("menu-alert"), h.Role("status")],
+        [
+          h.span([h.Class("menu-alert-text")], [text]),
+          commandButton(
+            h,
+            room,
+            Commands.ClaimHost.make({}),
+            "Take over",
+            "Taking over as host",
+            "button small"
+          ),
+        ]
+      ),
+  });
+
 const codeButton = (room: InRoom, h: H): Html =>
   h.button(
     [
@@ -470,6 +496,7 @@ export const menuSheet = (
   sheetLayer(h, "Menu", "menu-sheet", [
     sheetTop(h, codeButton(room, h)),
     stuckBlock(view, h),
+    takeOverBlock(model, room, view, h),
     ...approvals(room, view, h),
     h.div(
       [h.Class("menu-columns")],

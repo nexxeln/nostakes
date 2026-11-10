@@ -371,6 +371,20 @@ html:has(.room) {
   text-align: center;
 }
 
+.status-line > .stuck-line {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-1) var(--space-1) var(--space-4);
+  pointer-events: auto;
+  text-align: start;
+}
+
+.stuck-line .button {
+  flex: none;
+  width: auto;
+}
+
 .status-line > .problem {
   background: var(--color-accent);
   color: var(--color-on-accent);

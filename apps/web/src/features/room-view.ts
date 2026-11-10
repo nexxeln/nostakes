@@ -19,10 +19,11 @@ import type { Message } from "./message.js";
 import { FairMarks, pageTheme } from "./model.js";
 import type { InRoom, Model } from "./model.js";
 import { updateLine } from "./page-update.js";
-import { hasLeft, isLive, isYou, nameOf, viewOf } from "./room.js";
+import { hasLeft, isLive, isYou, nameOf, openViewOf, viewOf } from "./room.js";
 import type { ClosedView, OpenView } from "./room.js";
 import { rulesSheet } from "./rules-view.js";
 import { sheet } from "./sheet.js";
+import { stuckLine } from "./stuck-line.js";
 import { heroSeatOf, tableSnapshot } from "./table/from-room.js";
 import { tableElement } from "./table/snapshot.js";
 
@@ -134,10 +135,35 @@ const header = (
     ]
   );
 
+const stuckNotice = (room: InRoom, h: H): Html =>
+  Option.match(openViewOf(room).pipe(Option.flatMap(stuckLine)), {
+    onNone: () => h.empty,
+    onSome: (text) =>
+      h.div(
+        [h.Class("stuck-line"), h.Role("status")],
+        [
+          h.span([h.Class("stuck-line-text")], [text]),
+          h.button(
+            [
+              h.Type("button"),
+              h.Class("button small"),
+              h.OnClick(
+                Messages.ClickedConfirm({
+                  confirm: MemberCommandSchema.cases.CloseRoom.make({}),
+                })
+              ),
+            ],
+            ["End the night"]
+          ),
+        ]
+      ),
+  });
+
 const noticeLine = (model: Model, room: InRoom, h: H): Html =>
   h.div(
     [h.Class("status-line"), h.AriaLive("polite")],
     [
+      stuckNotice(room, h),
       Option.match(attendanceLine(room, model.now), {
         onNone: () => h.empty,
         onSome: (text) => h.span([h.Class("attendance-line")], [text]),
