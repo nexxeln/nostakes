@@ -2,6 +2,7 @@ import { Events, evolve as evolveTable, initialTable } from "@nostakes/engine";
 import type { Event, PlayerId, SeatIndex } from "@nostakes/engine";
 import { Option } from "effect";
 
+import { postingSeats } from "./dealing.js";
 import { RoomEvents } from "./events.js";
 import type { RoomEvent, RoomEventOf } from "./events.js";
 import { boughtIn, cashedOut, withEntry } from "./money.js";
@@ -280,7 +281,16 @@ const evolveOpen = (state: Open, event: RoomEvent): RoomState =>
     GameStarted: (): Open => ({ ...state, game: "Running" }),
     HandSealed: ({ at, decks, hand, roots, round, seats, secret }) => ({
       ...state,
-      sealed: Option.some({ at, decks, hand, roots, round, seats, secret }),
+      sealed: Option.some({
+        at,
+        decks,
+        hand,
+        posts: postingSeats(state),
+        roots,
+        round,
+        seats,
+        secret,
+      }),
     }),
     HostChanged: ({ host }) => ({ ...state, host }),
     LeaveQueued: ({ player }) => ({

@@ -114,6 +114,7 @@ export interface Sealed {
   readonly round: BeaconRound;
   readonly roots: readonly [Digest, Digest];
   readonly seats: readonly SeatIndex[];
+  readonly posts: readonly SeatIndex[];
   readonly decks: readonly [SealedDeck, SealedDeck];
   readonly secret: SaltSecret;
 }

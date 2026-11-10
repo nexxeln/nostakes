@@ -552,3 +552,72 @@ describe("a sealed deal at a casino table", () => {
     expect(dealtSeats(dealt)).toContain(seat(5));
   });
 });
+
+describe("a sealed deal after a heads-up hand at a casino table", () => {
+  it("deals a new player who comes in on the big blind without posting, where posting would put them behind a dead button", () => {
+    const casino = {
+      ...checked,
+      table: { ...checked.table, blindPosting: "Casino" as const },
+    };
+
+    let state = runAll(openedBy(ann, casino), [
+      join(bob),
+      join(cat),
+      join(eve),
+      sit(ann, 0),
+      sit(bob, 1),
+      sit(cat, 2),
+      RoomCommands.StartGame({ at: ms(START), by: as(ann) }),
+    ]);
+
+    let step = 0;
+
+    const playHand = () => {
+      const before = handsPlayed(state);
+
+      for (; step < 400 && handsPlayed(state) === before; step += 1) {
+        state = foldOrAnswer(state, step);
+      }
+
+      for (; step < 400 && isInHand(state); step += 1) {
+        state = foldOrAnswer(state, step);
+      }
+    };
+
+    playHand();
+    playHand();
+
+    state = runAll(state, [
+      sit(eve, 3, 200, openOf(state).now),
+      RoomCommands.SitOut({ at: openOf(state).now, by: as(ann) }),
+    ]);
+
+    playHand();
+
+    expect(handsPlayed(state)).toBe(3);
+
+    state = runAll(state, [
+      RoomCommands.SitOut({ at: openOf(state).now, by: as(cat) }),
+      RoomCommands.SitIn({ at: openOf(state).now, by: as(ann) }),
+    ]);
+
+    const sealed = Option.match(nextDeadline(state), {
+      onNone: () => run(state, sealAt(openOf(state).now, 300)),
+      onSome: (deadline) => run(state, serverAnswer(deadline, 300)),
+    });
+
+    expect(sealedEvent(sealed.events).seats).toStrictEqual([
+      seat(3),
+      seat(0),
+      seat(1),
+    ]);
+
+    const dealt = Option.match(nextDeadline(sealed.state), {
+      onNone: () => sealed.state,
+      onSome: (deadline) =>
+        run(sealed.state, serverAnswer(deadline, 301)).state,
+    });
+
+    expect(dealtSeats(dealt)).toStrictEqual([seat(0), seat(1), seat(3)]);
+  });
+});

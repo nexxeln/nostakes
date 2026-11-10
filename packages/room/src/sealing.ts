@@ -218,9 +218,9 @@ const sameOrder = (left: readonly SeatIndex[], right: readonly SeatIndex[]) =>
 const startSealed =
   (sealed: Sealed, deck: TableDeck, at: Millis): Step =>
   (state) =>
-    Result.flatMap(dealOrderOf(state, deck, sealed.seats), (order): Decision =>
+    Result.flatMap(dealOrderOf(state, deck, sealed.posts), (order): Decision =>
       sameOrder(order, sealed.seats)
-        ? onTable(state.table, handStart(state, deck, sealed.seats), at)
+        ? onTable(state.table, handStart(state, deck, sealed.posts), at)
         : Result.fail(
             new SealedSeatsMoved({ dealt: order, sealed: sealed.seats })
           )
