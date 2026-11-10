@@ -1,4 +1,4 @@
-import { Schema } from "effect";
+import { Data, Schema } from "effect";
 
 export const DECK_SIZE = 52;
 
@@ -83,3 +83,72 @@ export const DeckOpeningSchema = Schema.Struct({
 });
 
 export type DeckOpening = typeof DeckOpeningSchema.Type;
+
+export const RandomnessSchema = thirtyTwoBytes.pipe(Schema.brand("Randomness"));
+
+export type Randomness = typeof RandomnessSchema.Type;
+
+export const SeedSchema = thirtyTwoBytes.pipe(Schema.brand("Seed"));
+
+export type Seed = typeof SeedSchema.Type;
+
+export const SeatSchema = Schema.Int.check(
+  Schema.isBetween({ maximum: MAX_DEALT_IN - 1, minimum: 0 })
+);
+
+export const BeaconRoundSchema = Schema.Int.check(
+  Schema.isGreaterThanOrEqualTo(1)
+);
+
+export const ContributionSchema = Schema.TaggedUnion({
+  Beacon: { randomness: RandomnessSchema, round: BeaconRoundSchema },
+  Player: { seat: SeatSchema, value: RandomnessSchema },
+});
+
+export type Contribution = typeof ContributionSchema.Type;
+
+export type PlayerContribution = typeof ContributionSchema.cases.Player.Type;
+
+export const Contributions = Data.taggedEnum<Contribution>();
+
+export const SealSchema = Schema.Struct({
+  beaconRound: Schema.Option(BeaconRoundSchema),
+  roots: Schema.Tuple([DigestSchema, DigestSchema]),
+});
+
+export type Seal = typeof SealSchema.Type;
+
+export const RoleSchema = Schema.TaggedUnion({
+  Community: {
+    drawn: Schema.Int.check(
+      Schema.isBetween({ maximum: DECK_SIZE - 1, minimum: 0 })
+    ),
+  },
+  Hole: { pass: Schema.Literals([0, 1]), turn: SeatSchema },
+});
+
+export type Role = typeof RoleSchema.Type;
+
+export const Roles = Data.taggedEnum<Role>();
+
+export const SightingSchema = Schema.Struct({
+  opening: OpeningSchema,
+  role: RoleSchema,
+  shown: CardSchema,
+});
+
+export type Sighting = typeof SightingSchema.Type;
+
+export const PlayerSawSchema = Schema.Struct({
+  context: HandContextSchema,
+  contributions: Schema.Array(ContributionSchema),
+  dealtIn: Schema.Int.check(
+    Schema.isBetween({ maximum: MAX_DEALT_IN, minimum: 2 })
+  ),
+  mine: Schema.Option(ContributionSchema.cases.Player),
+  seal: SealSchema,
+  sightings: Schema.Array(SightingSchema),
+  spare: DeckOpeningSchema,
+});
+
+export type PlayerSaw = typeof PlayerSawSchema.Type;
