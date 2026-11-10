@@ -25,6 +25,7 @@ import {
   SEATS,
   SeenEventSchema,
   TimeBankRefills,
+  decide,
   evolve,
   nextDeadline,
   timeBankLeft,
@@ -39,6 +40,7 @@ import type {
   RoomEventOf,
   RoomState,
 } from "../src/index.js";
+import { serverAnswer } from "./beacon.js";
 import type { Step } from "./sessions.js";
 
 const sittingAt = (state: Open, seat: SeatIndex) =>
@@ -803,3 +805,22 @@ export const topUpProblems = (step: Step): readonly string[] => {
     ? [`${player} was refused a top-up ${before.settings.topUps} allows`]
     : [];
 };
+
+export const deadlineProblems = (
+  step: Step,
+  index: number
+): readonly string[] =>
+  step.after === step.before
+    ? []
+    : Option.match(nextDeadline(step.after), {
+        onNone: () => [],
+        onSome: (deadline) => {
+          const answer = decide(step.after, serverAnswer(deadline, index));
+
+          return Result.isFailure(answer)
+            ? [
+                `after ${step.command._tag} the room refused its own answer to ${deadline._tag}: ${answer.failure._tag}`,
+              ]
+            : [];
+        },
+      });

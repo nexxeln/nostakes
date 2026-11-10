@@ -366,6 +366,13 @@ describe("liveness", () => {
         if (Option.isSome(deadline)) {
           const decision = run(serverAnswer(deadline.value, steps));
 
+          if (Result.isFailure(decision)) {
+            stalled.push(
+              `${deadline.value._tag} refused: ${decision.failure._tag}`
+            );
+            break;
+          }
+
           started += tableEvents(decision, Events.$is("HandStarted"));
           ended += tableEvents(decision, Events.$is("HandEnded"));
           votesExpired += Deadlines.$is("RunChoiceClock")(deadline.value)
@@ -459,6 +466,13 @@ describe("liveness at an interactive showdown", () => {
 
         if (Option.isSome(deadline)) {
           const decision = run(serverAnswer(deadline.value, steps));
+
+          if (Result.isFailure(decision)) {
+            stalled.push(
+              `${deadline.value._tag} refused: ${decision.failure._tag}`
+            );
+            break;
+          }
 
           started += tableEvents(decision, Events.$is("HandStarted"));
           ended += tableEvents(decision, Events.$is("HandEnded"));
