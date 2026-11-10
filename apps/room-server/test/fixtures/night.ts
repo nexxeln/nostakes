@@ -33,7 +33,7 @@ import { checkNight } from "./night-checks.js";
 import type { NightEvidence, NightVerdict } from "./night-checks.js";
 import { createPokerRoom, joinPokerRoom } from "./poker-http.js";
 import { wallClock } from "./poker-socket.js";
-import { inspect, queueCodes, restart } from "./stack.js";
+import { inspect, queueCodes, refusedAlarms, restart } from "./stack.js";
 import { TEST_CHAIN } from "./test-beacon.js";
 
 type EncodedSettings = typeof RoomSettingsSchema.Encoded;
@@ -757,6 +757,7 @@ export const playNight = (base: string, opened: OpenedNight) =>
         events: inspection.events,
         halted: inspection.halted,
         memoryMatchesLog: inspection.memoryMatchesLog,
+        refusedAlarms: refusedAlarms(inspection),
         restarts,
         seed: plan.seed,
         seqs: inspection.seqs,

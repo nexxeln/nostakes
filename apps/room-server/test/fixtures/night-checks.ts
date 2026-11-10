@@ -262,6 +262,7 @@ export interface NightEvidence {
   readonly events: readonly string[];
   readonly seqs: readonly number[];
   readonly halted: Option.Option<string>;
+  readonly refusedAlarms: number;
   readonly memoryMatchesLog: boolean;
   readonly bots: readonly BotRecord[];
   readonly clients: readonly ClientBotRecord[];
@@ -1634,6 +1635,13 @@ const checkStorage = (checker: Checker, evidence: NightEvidence) => {
 
   if (Option.isSome(evidence.halted)) {
     report(checker, `the room halted: ${evidence.halted.value}`);
+  }
+
+  if (evidence.refusedAlarms > 0) {
+    report(
+      checker,
+      `the room refused the server's own answer to its next deadline at ${evidence.refusedAlarms} alarm runs`
+    );
   }
 
   if (!evidence.memoryMatchesLog) {

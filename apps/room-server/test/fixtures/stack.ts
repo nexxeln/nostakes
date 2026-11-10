@@ -7,6 +7,7 @@ import * as HttpClient from "effect/http/HttpClient";
 import * as HttpClientRequest from "effect/http/HttpClientRequest";
 
 import { InspectionSchema } from "../../src/room-rpc.js";
+import type { Inspection } from "../../src/room-rpc.js";
 import BriefWorker from "./brief-worker.js";
 import ToyWorker from "./toy-worker.js";
 
@@ -36,6 +37,9 @@ export const inspect = (base: string, code: RoomCode) =>
     Effect.flatMap(Schema.decodeUnknownEffect(InspectionSchema)),
     Effect.orDie
   );
+
+export const refusedAlarms = (inspection: Inspection) =>
+  inspection.alarmRuns.filter(({ outcome }) => outcome === "Rejected").length;
 
 export const restart = (base: string, code: RoomCode) =>
   HttpClient.post(new URL(`/test/rooms/${code}/restart`, base)).pipe(

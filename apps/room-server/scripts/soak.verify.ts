@@ -44,7 +44,7 @@ import type {
 } from "../test/fixtures/night.js";
 import { wallClock } from "../test/fixtures/poker-socket.js";
 import { PokerStack } from "../test/fixtures/poker-stack.js";
-import { inspect } from "../test/fixtures/stack.js";
+import { inspect, refusedAlarms } from "../test/fixtures/stack.js";
 
 const { afterAll, beforeAll, deploy, destroy, test } = Test.make({
   dev: true,
@@ -461,7 +461,7 @@ test(
             const stored = yield* inspect(base, plan.code);
             const path = yield* saveLog(seed, night, stored.events);
 
-            const failure = `${plan.code} (seed ${plan.seed}): ${outcome.failure.message} The room halted: ${Option.getOrElse(stored.halted, () => "no")}. log ${path}`;
+            const failure = `${plan.code} (seed ${plan.seed}): ${outcome.failure.message} The room halted: ${Option.getOrElse(stored.halted, () => "no")}. Alarm runs whose own command the room refused: ${refusedAlarms(stored)} of ${stored.alarmRuns.length}. log ${path}`;
 
             failures.push(failure);
             yield* Console.log(`  wave ${wavesJudged + 1} FAILED ${failure}`);
