@@ -2,6 +2,8 @@ import { describe, expect, it } from "@effect/vitest";
 import { Option } from "effect";
 
 import {
+  Antes,
+  Commands,
   Events,
   IllegalAction,
   NoBettingRound,
@@ -9,6 +11,7 @@ import {
   PendingDecisions,
   pendingDecisions,
 } from "../src/index.js";
+import type { Event } from "../src/index.js";
 import {
   actAs,
   baseConfig,
@@ -24,6 +27,8 @@ import {
   play,
   raisesTo,
   rejection,
+  runAll,
+  runCount,
   seat,
   stacksOf,
   startHand,
@@ -47,6 +52,119 @@ const legal = (
           minTo: chipCount(raise[0]),
         }),
   seat: seat(index),
+});
+
+const tagsOf = (events: readonly Event[]) => events.map((event) => event._tag);
+
+const potsOf = (events: readonly Event[]) =>
+  events.filter((event) => Events.$is("PotAwarded")(event));
+
+const RAN_OUT_ONCE = [
+  "RunsAgreed",
+  "HandsTabled",
+  "StreetDealt",
+  "StreetDealt",
+  "StreetDealt",
+  "ShowdownReached",
+  "PotAwarded",
+  "HandEnded",
+];
+
+describe("Rule 7 amended: a seat is asked to act only if another seat could respond or it owes chips someone put in", () => {
+  it("heads-up, a big blind all in for 5 after a 9-chip ante leaves the button nothing to decide, so the board runs out (differential finding dead-decision-after-short-big-blind)", () => {
+    const dealt = startHand(
+      occupiedTable(
+        {
+          ...baseConfig,
+          ante: Antes.EveryPlayer({ amount: chipCount(9) }),
+          maxRuns: runCount(2),
+        },
+        { 1: 525, 2: 14 }
+      ),
+      deckStartingWith("5c 7s Ks 8d 9s 6d 2h Ts 4h")
+    ).state;
+
+    expect(pendingDecisions(dealt)).toStrictEqual(
+      PendingDecisions.ChooseRuns({
+        maxRuns: runCount(2),
+        seats: [seat(1), seat(2)],
+      })
+    );
+
+    const ran = runAll(dealt, [
+      Commands.ChooseRuns({ runs: runCount(2), seat: seat(1) }),
+      Commands.ChooseRuns({ runs: runCount(1), seat: seat(2) }),
+    ]);
+
+    expect(potsOf(ran.events)).toStrictEqual([
+      Events.PotAwarded({
+        amount: chipCount(28),
+        eligible: [seat(1), seat(2)],
+        pot: 1,
+        run: 1,
+        winners: [{ amount: chipCount(28), seat: seat(1) }],
+      }),
+    ]);
+    expect(stacksOf(ran.state).slice(1, 3)).toStrictEqual([539, 0]);
+  });
+
+  it("multiway, rule 7 holds while another seat can respond, but once everyone folds to the small blind against a big blind all in for 4, the blind is not asked to act: its extra chip comes back and the board runs out", () => {
+    const started = startHand(
+      occupiedTable(baseConfig, { 0: 200, 1: 200, 2: 4, 3: 200 }),
+      deckStartingWith("2c Ah Kc Qd 7d Ad Ks Qs 9h 6s 3c Jd 4s")
+    ).state;
+
+    expect(legalOf(started)).toStrictEqual(legal(3, false, 10, [20, 200]));
+
+    const folded = play(started, [
+      [3, folds],
+      [0, folds],
+    ]);
+
+    expect(tagsOf(folded.events)).toStrictEqual([
+      "Folded",
+      "Folded",
+      "UncalledBetReturned",
+      ...RAN_OUT_ONCE,
+    ]);
+    expect([folded.events[2], ...potsOf(folded.events)]).toStrictEqual([
+      Events.UncalledBetReturned({ amount: chipCount(1), seat: seat(1) }),
+      Events.PotAwarded({
+        amount: chipCount(8),
+        eligible: [seat(1), seat(2)],
+        pot: 1,
+        run: 1,
+        winners: [{ amount: chipCount(8), seat: seat(2) }],
+      }),
+    ]);
+    expect(stacksOf(folded.state).slice(0, 4)).toStrictEqual([
+      200, 196, 8, 200,
+    ]);
+  });
+
+  it("heads-up, a big blind all in for 8 of 10 leaves the small blind a real call of 3, not 5, with no raise, and calling it runs the board out with nothing to return", () => {
+    const started = startHand(
+      occupiedTable(baseConfig, { 0: 200, 1: 8 }),
+      deckStartingWith("2c Ah 7d Ad 9h 6s 3c Jd 4s")
+    ).state;
+
+    expect(legalOf(started)).toStrictEqual(legal(0, false, 3, null));
+
+    const called = play(started, [[0, calls]]);
+
+    expect(tagsOf(called.events)).toStrictEqual(["Called", ...RAN_OUT_ONCE]);
+    expect([called.events[0], ...potsOf(called.events)]).toStrictEqual([
+      Events.Called({ allIn: false, amount: chipCount(3), seat: seat(0) }),
+      Events.PotAwarded({
+        amount: chipCount(16),
+        eligible: [seat(0), seat(1)],
+        pot: 1,
+        run: 1,
+        winners: [{ amount: chipCount(16), seat: seat(0) }],
+      }),
+    ]);
+    expect(stacksOf(called.state).slice(0, 2)).toStrictEqual([208, 0]);
+  });
 });
 
 describe("betting order", () => {

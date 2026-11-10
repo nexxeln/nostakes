@@ -45,14 +45,32 @@ export const openRound = (currentBet: Chips, lastFullRaise: Chips): Round => ({
 const hasActed = (round: Round, seat: SeatIndex) =>
   Option.isSome(round.actedAt[seat] ?? Option.none());
 
-const needsToAct = (round: Round, player: HandPlayer, activeCount: number) =>
+const othersCanRespond = (hand: Hand, seat: SeatIndex) =>
+  hand.players.some(
+    (other) => other.seat !== seat && other.status === "Active"
+  );
+
+const betToMatch = (hand: Hand, round: Round, seat: SeatIndex) => {
+  if (othersCanRespond(hand, seat)) {
+    return round.currentBet;
+  }
+
+  const matchable = Math.max(
+    0,
+    ...notFolded(hand)
+      .filter((other) => other.seat !== seat)
+      .map((other) => other.committedThisStreet)
+  );
+
+  return Math.min(round.currentBet, matchable);
+};
+
+const needsToAct = (hand: Hand, round: Round, player: HandPlayer) =>
   player.status === "Active" &&
-  (player.committedThisStreet < round.currentBet ||
-    (!hasActed(round, player.seat) && activeCount > 1));
+  (player.committedThisStreet < betToMatch(hand, round, player.seat) ||
+    (!hasActed(round, player.seat) && othersCanRespond(hand, player.seat)));
 
 export const seatToAct = (hand: Hand, round: Round, after: SeatIndex) => {
-  const activeCount = activePlayers(hand).length;
-
   if (notFolded(hand).length < 2) {
     return Option.none();
   }
@@ -60,7 +78,7 @@ export const seatToAct = (hand: Hand, round: Round, after: SeatIndex) => {
   return Option.map(
     Option.fromUndefinedOr(
       playersClockwiseAfter(hand.players, after).find((player) =>
-        needsToAct(round, player, activeCount)
+        needsToAct(hand, round, player)
       )
     ),
     (player) => player.seat
@@ -107,16 +125,17 @@ const legalFor = (state: InHand, betting: Betting): LegalActions => {
 
   const committed = player?.committedThisStreet ?? 0;
   const stack = stackOf(state, betting.toAct);
-  const owed = Math.max(0, betting.currentBet - committed);
-  const allInTo = committed + stack;
 
-  const othersCanRespond = state.hand.players.some(
-    (other) => other.seat !== betting.toAct && other.status === "Active"
+  const owed = Math.max(
+    0,
+    betToMatch(state.hand, betting, betting.toAct) - committed
   );
+
+  const allInTo = committed + stack;
 
   const canRaise =
     allInTo > betting.currentBet &&
-    othersCanRespond &&
+    othersCanRespond(state.hand, betting.toAct) &&
     reopenedFor(betting, betting.toAct);
 
   return {

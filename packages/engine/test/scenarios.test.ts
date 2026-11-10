@@ -15,6 +15,7 @@ import {
   occupiedTable,
   play,
   raisesTo,
+  runCount,
   seat,
   stacksOf,
   startHand,
@@ -123,29 +124,42 @@ describe("antes", () => {
     expect(stacksOf(hand.state).slice(0, 4)).toStrictEqual([88, 118, 88, 8]);
   });
 
-  it("gives each folder back the ante chips a seat all in for less than the ante could never match", () => {
+  it("with a seat all in for less than the ante, the small blind has nothing to decide once the button folds: its blind comes back and the button's unmatched ante goes to the side pot", () => {
     const config: TableConfig = {
       ...baseConfig,
       ante: Antes.EveryPlayer({ amount: chipCount(2) }),
     };
 
     const hand = play(
-      startHand(occupiedTable(config, { 0: 100, 1: 100, 2: 1 }), deck).state,
-      [
-        [0, folds],
-        [1, folds],
-      ]
+      startHand(
+        occupiedTable(config, { 0: 100, 1: 100, 2: 1 }),
+        deckStartingWith(`Kh Ah 7c Kd As 3s ${BOARD}`)
+      ).state,
+      [[0, folds]]
     );
 
     expect(hand.events).toStrictEqual([
       Events.Folded({ seat: seat(0) }),
-      Events.Folded({ seat: seat(1) }),
-      Events.UncalledBetReturned({ amount: chipCount(6), seat: seat(1) }),
-      Events.UncalledBetReturned({ amount: chipCount(1), seat: seat(0) }),
-      pot(1, 3, [2], 2),
+      Events.UncalledBetReturned({ amount: chipCount(5), seat: seat(1) }),
+      Events.RunsAgreed({ runs: runCount(1) }),
+      Events.HandsTabled({
+        hands: [
+          { cards: cards("Kh Kd"), seat: seat(1) },
+          { cards: cards("Ah As"), seat: seat(2) },
+        ],
+      }),
+      Events.StreetDealt({ cards: cards("2h 5d 9c"), run: 1, street: "Flop" }),
+      Events.StreetDealt({ cards: cards("Jh"), run: 1, street: "Turn" }),
+      Events.StreetDealt({ cards: cards("4d"), run: 1, street: "River" }),
+      Events.ShowdownReached({
+        order: [shown(1, "Kh Kd"), shown(2, "Ah As")],
+        run: 1,
+      }),
+      pot(1, 3, [1, 2], 2),
+      pot(2, 2, [1], 1),
       Events.HandEnded({ handNumber: 1 }),
     ]);
-    expect(stacksOf(hand.state).slice(0, 3)).toStrictEqual([99, 99, 3]);
+    expect(stacksOf(hand.state).slice(0, 3)).toStrictEqual([98, 100, 3]);
   });
 
   it("puts the big-blind ante into the main pot that a short big blind can still win", () => {

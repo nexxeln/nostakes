@@ -13,6 +13,7 @@ import {
   play,
   rejection,
   run,
+  runCount,
   seat,
   stacksOf,
   startHand,
@@ -65,7 +66,7 @@ const bigBlindAnteOf = (amount: number) =>
   });
 
 describe("forced-bet edges (rules 4 to 8)", () => {
-  it("Rule 5: with a 10-chip ante, seats all in for the exact ante, for less, and for the ante plus 4 of the big blind each win only their layer", () => {
+  it("Rule 5: with a 10-chip ante, seats all in for the exact ante, for less, and for the ante plus 4 of the big blind each win only their layer, and the last live seat calls only the 4 the big blind put in", () => {
     const started = startHand(
       occupiedTable(everyPlayerAnte, { 0: 10, 1: 7, 2: 14, 3: 1000 }),
       deck
@@ -83,13 +84,13 @@ describe("forced-bet edges (rules 4 to 8)", () => {
         seat: seat(2),
       }),
     ]);
-    expect(legalOf(started.state)).toStrictEqual(legal(3, false, 10, null));
+    expect(legalOf(started.state)).toStrictEqual(legal(3, false, 4, null));
 
     const called = play(started.state, [[3, calls]]);
 
     expect(called.events.slice(0, 2)).toStrictEqual([
-      Events.Called({ allIn: false, amount: chipCount(10), seat: seat(3) }),
-      Events.UncalledBetReturned({ amount: chipCount(6), seat: seat(3) }),
+      Events.Called({ allIn: false, amount: chipCount(4), seat: seat(3) }),
+      Events.RunsAgreed({ runs: runCount(1) }),
     ]);
     expect(potsOf(called.events)).toStrictEqual([
       Events.PotAwarded({

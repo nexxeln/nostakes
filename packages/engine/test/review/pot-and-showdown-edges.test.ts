@@ -154,21 +154,27 @@ describe("pot edges (rules 15 to 17)", () => {
     ]);
   });
 
-  it("Rule 15: when a big blind all in for 7 of a 10-chip ante is the last seat in, each folder gets back what it never matched, and a big-blind ante stays in the pot", () => {
+  it("Rule 15: against a big blind all in for 7 of a 10-chip ante, the small blind has nothing to decide once the button folds, takes back its blind, and alone contests the button's unmatched ante", () => {
     const shortAnte = play(
       startHand(
         occupiedTable(
           { ...baseConfig, ante: Antes.EveryPlayer({ amount: chipCount(10) }) },
           { 0: 1000, 1: 1000, 2: 7 }
         ),
-        deckStartingWith("Ac Kc Qc Jc Tc 9c")
+        deckStartingWith("7d Ah Kc 2c As Ks 9h 6s 3d Jd 4s")
       ).state,
-      [
-        [0, folds],
-        [1, folds],
-      ]
+      [[0, folds]]
     );
 
+    expect([shortAnte.events[1], ...potsOf(shortAnte.events)]).toStrictEqual([
+      Events.UncalledBetReturned({ amount: chipCount(5), seat: seat(1) }),
+      pot(21, [1, 2], 1, [[2, 21]]),
+      pot(6, [1], 2, [[1, 6]]),
+    ]);
+    expect(stacksOf(shortAnte.state).slice(0, 3)).toStrictEqual([990, 996, 21]);
+  });
+
+  it("Rule 15: when the small blind folds to a big blind all in for its blind and 5 of a 20-chip big-blind ante, the big blind takes back the 5 the small blind never matched and the ante stays in the pot", () => {
     const bigBlindAnte = play(
       startHand(
         occupiedTable(
@@ -186,13 +192,6 @@ describe("pot edges (rules 15 to 17)", () => {
       ]
     );
 
-    expect(shortAnte.events.slice(2)).toStrictEqual([
-      Events.UncalledBetReturned({ amount: chipCount(8), seat: seat(1) }),
-      Events.UncalledBetReturned({ amount: chipCount(3), seat: seat(0) }),
-      pot(21, [2], 1, [[2, 21]]),
-      Events.HandEnded({ handNumber: 1 }),
-    ]);
-    expect(stacksOf(shortAnte.state).slice(0, 3)).toStrictEqual([993, 993, 21]);
     expect(bigBlindAnte.events.slice(2)).toStrictEqual([
       Events.UncalledBetReturned({ amount: chipCount(5), seat: seat(2) }),
       pot(15, [2], 1, [[2, 15]]),

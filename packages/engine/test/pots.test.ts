@@ -90,9 +90,9 @@ describe("the fold-out", () => {
     expect(stacksOf(stolen.state).slice(0, 3)).toStrictEqual([215, 195, 190]);
   });
 
-  it("lets a short all-in big blind win only what it matched from the small blind that folds", () => {
+  it("returns to a short all-in big blind the part of its blind that the folding small blind never matched", () => {
     const short = play(
-      startHand(occupiedTable(baseConfig, { 0: 200, 1: 200, 2: 4 }), deck)
+      startHand(occupiedTable(baseConfig, { 0: 200, 1: 200, 2: 8 }), deck)
         .state,
       [
         [0, folds],
@@ -101,17 +101,17 @@ describe("the fold-out", () => {
     );
 
     expect(short.events.slice(2)).toStrictEqual([
-      Events.UncalledBetReturned({ amount: chipCount(1), seat: seat(1) }),
+      Events.UncalledBetReturned({ amount: chipCount(3), seat: seat(2) }),
       Events.PotAwarded({
-        amount: chipCount(8),
+        amount: chipCount(10),
         eligible: [seat(2)],
         pot: 1,
         run: 1,
-        winners: [{ amount: chipCount(8), seat: seat(2) }],
+        winners: [{ amount: chipCount(10), seat: seat(2) }],
       }),
       Events.HandEnded({ handNumber: 1 }),
     ]);
-    expect(stacksOf(short.state).slice(0, 3)).toStrictEqual([200, 196, 8]);
+    expect(stacksOf(short.state).slice(0, 3)).toStrictEqual([200, 195, 13]);
   });
 });
 
