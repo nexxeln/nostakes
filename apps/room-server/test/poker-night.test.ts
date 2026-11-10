@@ -6,7 +6,12 @@ import * as FetchHttpClient from "effect/http/FetchHttpClient";
 
 import type { Temper } from "./fixtures/bot.js";
 import type { ClientTemper } from "./fixtures/client-bot.js";
-import { openNight, planNight, runNight } from "./fixtures/night.js";
+import {
+  judgeNight,
+  openNight,
+  planNight,
+  playNight,
+} from "./fixtures/night.js";
 import { PokerStack } from "./fixtures/poker-stack.js";
 
 const { afterAll, beforeAll, deploy, destroy, test } = Test.make({
@@ -77,10 +82,12 @@ test(
       opened.push(yield* openNight(base, plan));
     }
 
-    const results = yield* Effect.all(
-      opened.map((night) => runNight(base, night)),
+    const played = yield* Effect.all(
+      opened.map((night) => playNight(base, night)),
       { concurrency: "unbounded" }
     );
+
+    const results = played.map(judgeNight);
 
     const total = (
       pick: (counts: (typeof results)[number]["verdict"]["counts"]) => number

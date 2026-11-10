@@ -23,7 +23,12 @@ import {
   emptyCounts,
 } from "../test/fixtures/night-checks.js";
 import type { CountName } from "../test/fixtures/night-checks.js";
-import { openNight, planNight, runNight } from "../test/fixtures/night.js";
+import {
+  judgeNight,
+  openNight,
+  planNight,
+  playNight,
+} from "../test/fixtures/night.js";
 import type {
   NightPlan,
   NightResult,
@@ -110,15 +115,17 @@ const watchEventLoop = (stalls: Stall[]) =>
 
 const describeStalls = (
   started: number,
+  playedUntil: number,
   stalls: readonly Stall[],
   results: readonly NightResult[]
 ) => {
   const at = (when: number) => `+${((when - started) / 1000).toFixed(1)} s`;
 
-  const longest = Math.max(0, ...stalls.map(({ ms }) => ms));
+  const whilePlaying = stalls.filter((stall) => stall.at < playedUntil);
+  const longest = Math.max(0, ...whilePlaying.map(({ ms }) => ms));
 
   return [
-    `  event loop stalls over ${STALL_REPORT_MS} ms: ${stalls.length}, longest ${longest.toFixed(0)} ms${stalls.length === 0 ? "" : `: ${stalls.map((stall) => `${at(stall.at)} ${stall.ms.toFixed(0)} ms`).join(", ")}`}`,
+    `  event loop stalls over ${STALL_REPORT_MS} ms while rooms were playing: ${whilePlaying.length}, longest ${longest.toFixed(0)} ms${whilePlaying.length === 0 ? "" : `: ${whilePlaying.map((stall) => `${at(stall.at)} ${stall.ms.toFixed(0)} ms`).join(", ")}`}; every room stopped playing at ${at(playedUntil)}`,
     `  checks after each night: ${results
       .toSorted((left, right) => left.checkedAt - right.checkedAt)
       .map(
@@ -305,9 +312,15 @@ test(
       opened.push(yield* openNight(base, plan));
     }
 
-    const outcomes = yield* Effect.all(
-      opened.map((night) => runNight(base, night).pipe(Effect.result)),
+    const played = yield* Effect.all(
+      opened.map((night) => playNight(base, night).pipe(Effect.result)),
       { concurrency: "unbounded" }
+    );
+
+    const playedUntil = wallClock();
+
+    const outcomes = played.map((outcome) =>
+      outcome.pipe(Result.map(judgeNight))
     );
 
     yield* Fiber.interrupt(probe);
@@ -360,9 +373,11 @@ test(
     );
 
     yield* Console.log(
-      [...lines, ...describeStalls(started, stalls, results), ...kept].join(
-        "\n"
-      )
+      [
+        ...lines,
+        ...describeStalls(started, playedUntil, stalls, results),
+        ...kept,
+      ].join("\n")
     );
 
     const failed =

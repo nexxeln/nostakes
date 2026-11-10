@@ -23,7 +23,7 @@ import type { ClientBotRecord, ClientTemper } from "./client-bot.js";
 import { timeline } from "./client-wire.js";
 import type { Timeline } from "./client-wire.js";
 import { checkNight } from "./night-checks.js";
-import type { NightVerdict } from "./night-checks.js";
+import type { NightEvidence, NightVerdict } from "./night-checks.js";
 import { createPokerRoom, joinPokerRoom } from "./poker-http.js";
 import { wallClock } from "./poker-socket.js";
 import { inspect, queueCodes, restart } from "./stack.js";
@@ -46,6 +46,13 @@ export interface NightPlan {
   readonly chaos: ClientTemper;
   readonly clients: readonly number[];
   readonly limitMs: number;
+}
+
+export interface PlayedNight {
+  readonly plan: NightPlan;
+  readonly evidence: NightEvidence;
+  readonly events: readonly string[];
+  readonly durationMs: number;
 }
 
 export interface NightResult {
@@ -340,7 +347,7 @@ export const openNight = (base: string, plan: NightPlan) =>
     return opened;
   });
 
-export const runNight = (base: string, opened: OpenedNight) =>
+export const playNight = (base: string, opened: OpenedNight) =>
   Effect.gen(function* playNightOut() {
     const { clients, plan } = opened;
     const { note } = opened.journal;
@@ -609,29 +616,38 @@ export const runNight = (base: string, opened: OpenedNight) =>
     );
 
     const inspection = yield* inspect(base, plan.code);
-    const checkedAt = wallClock();
 
-    const verdict = checkNight({
-      bots: records,
-      clients,
-      code: plan.code,
+    const played: PlayedNight = {
+      durationMs: wallClock() - started,
       events: inspection.events,
-      halted: inspection.halted,
-      memoryMatchesLog: inspection.memoryMatchesLog,
-      restarts,
-      seed: plan.seed,
-      seqs: inspection.seqs,
-      voteRestarts,
-    });
-
-    const result: NightResult = {
-      checkMs: wallClock() - checkedAt,
-      checkedAt,
-      durationMs: checkedAt - started,
-      events: inspection.events,
+      evidence: {
+        bots: records,
+        clients,
+        code: plan.code,
+        events: inspection.events,
+        halted: inspection.halted,
+        memoryMatchesLog: inspection.memoryMatchesLog,
+        restarts,
+        seed: plan.seed,
+        seqs: inspection.seqs,
+        voteRestarts,
+      },
       plan,
-      verdict,
     };
 
-    return result;
+    return played;
   });
+
+export const judgeNight = (played: PlayedNight): NightResult => {
+  const checkedAt = wallClock();
+  const verdict = checkNight(played.evidence);
+
+  return {
+    checkMs: wallClock() - checkedAt,
+    checkedAt,
+    durationMs: played.durationMs,
+    events: played.events,
+    plan: played.plan,
+    verdict,
+  };
+};
