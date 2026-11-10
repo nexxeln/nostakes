@@ -23,6 +23,7 @@ import type {
   PlainRefusal,
   PlayerId,
 } from "@nostakes/protocol";
+import type { RuntimeContext } from "alchemy/RuntimeContext";
 import {
   Array as Arr,
   Clock,
@@ -41,10 +42,15 @@ import * as Hex from "effect/encoding/Hex";
 import * as HttpServerRequest from "effect/http/HttpServerRequest";
 import * as HttpServerResponse from "effect/http/HttpServerResponse";
 
+import { measureAll, recorder } from "./analytics.js";
+import type { AnalyticsSink, RoomMeasures } from "./analytics.js";
 import { Beacon } from "./beacon.js";
+import { DeviceHashSchema } from "./device.js";
 import { Entropy, liveEntropy } from "./entropy.js";
 import { oversized } from "./frame-limits.js";
 import type { HostedRoom, RoomTypes } from "./hosted-room.js";
+import { measure } from "./measures.js";
+import type { Measure } from "./measures.js";
 import { RETRY_POLICY } from "./refused-deadline.js";
 import type { RefusedDeadline, RetryPolicy } from "./refused-deadline.js";
 import { refuseSocket } from "./refused-socket.js";
@@ -70,11 +76,13 @@ import { acknowledgeClose, closeWith } from "./socket-close.js";
 import { sqliteStorage } from "./sqlite-storage.js";
 import { workerdGlobals } from "./workerd.js";
 
-export interface RoomObjectOptions {
+export interface RoomObjectOptions<T extends RoomTypes, Tally> {
   readonly entropy: Layer.Layer<Entropy>;
   readonly beacon: Layer.Layer<Beacon>;
   readonly retainFor: number;
   readonly retries?: RetryPolicy;
+  readonly analytics: AnalyticsSink<RuntimeContext>;
+  readonly measures: RoomMeasures<T["Event"], Tally>;
 }
 
 const refusalStatus: Record<PlainRefusal["refusal"], number> = {
@@ -126,14 +134,25 @@ const send = (socket: cf.WebSocket, frame: string) => {
 };
 
 const OpenCallSchema = <OpenRequest extends Schema.Top>(request: OpenRequest) =>
-  Schema.Struct({ code: RoomCodeSchema, request });
+  Schema.Struct({
+    code: RoomCodeSchema,
+    device: Schema.optionalKey(DeviceHashSchema),
+    request,
+  });
 
 const JoinCallSchema = <JoinRequest extends Schema.Top>(request: JoinRequest) =>
-  Schema.Struct({ request });
+  Schema.Struct({ device: Schema.optionalKey(DeviceHashSchema), request });
 
-export const roomObject = <T extends RoomTypes>(
+const ROOM_KEY_LENGTH = 16;
+
+export const roomKeyOf = (objectId: string) =>
+  sha256(new TextEncoder().encode(`nostakes room ${objectId}`)).pipe(
+    Effect.map((digest) => Hex.encode(digest).slice(0, ROOM_KEY_LENGTH))
+  );
+
+export const roomObject = <T extends RoomTypes, Tally>(
   core: HostedRoom<T>,
-  options: RoomObjectOptions
+  options: RoomObjectOptions<T, Tally>
 ) =>
   Cloudflare.DurableObjectState.pipe(
     Effect.map((state) => {
@@ -167,9 +186,54 @@ export const roomObject = <T extends RoomTypes>(
         const faults: string[] = [];
         const buckets = new WeakMap<cf.WebSocket, Bucket>();
         const signalBuckets = new Map<PlayerId, Bucket>();
+        const runtimeContext = yield* Effect.context<RuntimeContext>();
+
+        const record = recorder(
+          {
+            write: (points) =>
+              options.analytics
+                .write(points)
+                .pipe(Effect.provideContext(runtimeContext)),
+          },
+          yield* roomKeyOf(raw.id.toString()),
+          (text) => {
+            faults.push(text);
+          }
+        );
+
+        const pending: Measure[] = [];
+        let tally = options.measures.empty;
+
+        const note = (...measures: readonly Measure[]) => {
+          pending.push(...measures);
+        };
+
+        const measured = (
+          events: readonly T["Event"][],
+          device: Option.Option<string>
+        ) => {
+          const [next, measures] = measureAll(
+            options.measures,
+            tally,
+            events,
+            device
+          );
+
+          tally = next;
+          note(...measures);
+        };
+
+        const flush = Effect.suspend(() => record(pending.splice(0)));
 
         const hosted = () =>
-          loadRoom(core, storage).pipe(
+          loadRoom(core, storage, (events) => {
+            [tally] = measureAll(
+              options.measures,
+              options.measures.empty,
+              events,
+              Option.none()
+            );
+          }).pipe(
             Option.map((loaded) =>
               hostRoom(
                 core,
@@ -237,6 +301,7 @@ export const roomObject = <T extends RoomTypes>(
             for (const socket of sockets()) {
               attach(socket, AttachmentSchema.cases.Closed.make({ reason }));
               closeWith(socket, reason);
+              note(measure("SocketClosed", { reason }));
             }
           },
           socketDeadline: Arr.head(
@@ -278,29 +343,55 @@ export const roomObject = <T extends RoomTypes>(
           }
         };
 
-        const logCommit = (result: CommitResult<T>, command: T["Command"]) =>
-          CommitNotes.$match(result.note, {
-            Committed: () => Effect.void,
-            Crashed: () => Effect.void,
-            Halted: ({ events, violations }) =>
-              Effect.logError("room halted on an unsound commit", {
-                command,
-                events,
-                violations,
-              }),
-            Rejected: () => Effect.void,
-            Replayed: () => Effect.void,
-            RoomHalted: () => Effect.void,
-            StorageFailed: ({ cause }) =>
-              Effect.logWarning("room commit could not be stored", {
-                cause,
-                command,
-              }),
-          });
+        const logCommit = (
+          result: CommitResult<T>,
+          command: T["Command"],
+          device: Option.Option<string> = Option.none()
+        ) =>
+          Effect.sync(() => {
+            measured(result.events, device);
+          }).pipe(
+            Effect.andThen(
+              CommitNotes.$match(result.note, {
+                Committed: () => Effect.void,
+                Crashed: () =>
+                  Effect.sync(() => {
+                    note(measure("ServerFault", { fault: "CoreCrashed" }));
+                  }),
+                Halted: ({ events, violations }) =>
+                  Effect.sync(() => {
+                    note(measure("ServerFault", { fault: "RoomHalted" }));
+                  }).pipe(
+                    Effect.andThen(
+                      Effect.logError("room halted on an unsound commit", {
+                        command,
+                        events,
+                        violations,
+                      })
+                    )
+                  ),
+                Rejected: () => Effect.void,
+                Replayed: () => Effect.void,
+                RoomHalted: () => Effect.void,
+                StorageFailed: ({ cause }) =>
+                  Effect.sync(() => {
+                    note(measure("ServerFault", { fault: "StorageFailed" }));
+                  }).pipe(
+                    Effect.andThen(
+                      Effect.logWarning("room commit could not be stored", {
+                        cause,
+                        command,
+                      })
+                    )
+                  ),
+              })
+            )
+          );
 
         const logRefusal = (refused: RefusedDeadline) =>
           Effect.sync(() => {
             faults.push(refused.message);
+            note(measure("AlarmRefused", { deadline: refused.deadline }));
           }).pipe(
             Effect.andThen(
               Effect.logError(refused.message).pipe(
@@ -320,6 +411,7 @@ export const roomObject = <T extends RoomTypes>(
 
           attach(socket, AttachmentSchema.cases.Closed.make({ reason }));
           closeWith(socket, reason);
+          note(measure("SocketClosed", { reason }));
 
           for (const room of Option.toArray(host)) {
             const stillThere = connectedPlayers(Option.none());
@@ -356,6 +448,7 @@ export const roomObject = <T extends RoomTypes>(
         }
 
         yield* attend(Option.none());
+        yield* flush;
 
         const welcomeSocket = (
           room: RoomHost<T>,
@@ -403,6 +496,10 @@ export const roomObject = <T extends RoomTypes>(
           }
 
           send(socket, welcome.success);
+
+          if (Option.isSome(after)) {
+            note(measure("SocketResumed", {}));
+          }
 
           if (wasConnected) {
             send(
@@ -619,11 +716,22 @@ export const roomObject = <T extends RoomTypes>(
             });
           });
 
-        const release = (socket: cf.WebSocket) =>
+        const release = (
+          socket: cf.WebSocket,
+          ending: "ClosedByClient" | "SocketError"
+        ) =>
           Effect.sync(() => {
             const wasLive = attachmentOf(socket).pipe(
               Option.filter(AttachmentSchema.guards.Live)
             );
+
+            if (
+              !attachmentOf(socket).pipe(
+                Option.exists(AttachmentSchema.guards.Closed)
+              )
+            ) {
+              note(measure("SocketClosed", { reason: ending }));
+            }
 
             acknowledgeClose(socket);
 
@@ -670,6 +778,7 @@ export const roomObject = <T extends RoomTypes>(
           const room = host.value;
 
           if (room.expiresAt() <= at) {
+            note(...Option.toArray(options.measures.abandoned(tally)));
             connectionsOf(room, Option.none()).closeAll("NotFound");
             yield* storage.forget;
             host = Option.none();
@@ -758,7 +867,7 @@ export const roomObject = <T extends RoomTypes>(
               });
             }
 
-            openStorage(
+            const opened = openStorage(
               core,
               storage,
               {
@@ -771,6 +880,8 @@ export const roomObject = <T extends RoomTypes>(
             );
 
             host = hosted();
+            tally = options.measures.empty;
+            measured(opened, Option.fromUndefinedOr(call.device));
 
             for (const room of Option.toArray(host)) {
               armAlarm(room);
@@ -833,7 +944,11 @@ export const roomObject = <T extends RoomTypes>(
               connectionsOf(room, Option.none())
             );
 
-            yield* logCommit(result, command);
+            yield* logCommit(
+              result,
+              command,
+              Option.fromUndefinedOr(call.device)
+            );
 
             return codecOf(room).reply.match(result.reply, {
               Accepted: () =>
@@ -905,14 +1020,20 @@ export const roomObject = <T extends RoomTypes>(
           }
 
           if (Option.isNone(host)) {
+            note(measure("SocketClosed", { reason: "NotFound" }));
+
             return yield* refuseSocket("NotFound");
           }
 
           if (Option.isSome(host.value.snapshot().halted)) {
+            note(measure("SocketClosed", { reason: "RoomHalted" }));
+
             return yield* refuseSocket("RoomHalted");
           }
 
           if (sockets().length >= MAX_SOCKETS) {
+            note(measure("SocketClosed", { reason: "TooManySockets" }));
+
             return yield* refuseSocket("TooManySockets");
           }
 
@@ -929,25 +1050,30 @@ export const roomObject = <T extends RoomTypes>(
         });
 
         return {
-          alarm: () => runAlarm,
-          fetch: upgrade,
+          alarm: () => runAlarm.pipe(Effect.ensuring(flush)),
+          fetch: upgrade.pipe(Effect.ensuring(flush)),
           inspect,
-          join,
-          open,
+          join: (input: typeof JoinCall.Encoded) =>
+            join(input).pipe(Effect.ensuring(flush)),
+          open: (input: typeof OpenCall.Encoded) =>
+            open(input).pipe(Effect.ensuring(flush)),
           webSocketClose: (socket: Cloudflare.WebSocket) =>
-            release(socket.ws).pipe(
-              Effect.andThen(attend(Option.some(socket.ws)))
+            release(socket.ws, "ClosedByClient").pipe(
+              Effect.andThen(attend(Option.some(socket.ws))),
+              Effect.ensuring(flush)
             ),
           webSocketError: (socket: Cloudflare.WebSocket) =>
-            release(socket.ws).pipe(
-              Effect.andThen(attend(Option.some(socket.ws)))
+            release(socket.ws, "SocketError").pipe(
+              Effect.andThen(attend(Option.some(socket.ws))),
+              Effect.ensuring(flush)
             ),
           webSocketMessage: (
             socket: Cloudflare.WebSocket,
             message: string | ArrayBuffer
           ) =>
             receive(socket.ws, message).pipe(
-              Effect.andThen(attend(Option.none()))
+              Effect.andThen(attend(Option.none())),
+              Effect.ensuring(flush)
             ),
         };
       });

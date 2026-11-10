@@ -15,6 +15,7 @@ import {
   Order,
   Result,
 } from "effect";
+import { constVoid } from "effect/Function";
 
 import { hashedCredential, matchCredential } from "./credentials.js";
 import type { HashedCredential } from "./credentials.js";
@@ -79,6 +80,7 @@ export const CommitNotes = Data.taggedEnum<CommitNote>();
 export interface CommitResult<T extends RoomTypes> {
   readonly reply: Reply<T>;
   readonly note: CommitNote;
+  readonly events: readonly T["Event"][];
 }
 
 export interface DeadlineAnswer<T extends RoomTypes> {
@@ -129,7 +131,8 @@ const gapsIn = (rows: readonly StoredEvent[]) =>
 
 export const loadRoom = <T extends RoomTypes>(
   core: HostedRoom<T>,
-  storage: RoomStorage
+  storage: RoomStorage,
+  replayed: (events: readonly T["Event"][]) => void = constVoid
 ): Option.Option<HostState<T>> =>
   storage.meta().pipe(
     Option.map((meta): HostState<T> => {
@@ -147,6 +150,8 @@ export const loadRoom = <T extends RoomTypes>(
       }
 
       const violations = [...gaps, ...core.invariants(state)];
+
+      replayed(events);
 
       return {
         code: meta.code,
@@ -170,12 +175,13 @@ export const openStorage = <T extends RoomTypes>(
   credential: Credential
 ) => {
   const { encodeEvent } = roomCodec(core);
+  const opened = core.open(input);
 
   storage.transaction(() => {
     storage.create(input.code);
     storage.grant(credential);
 
-    for (const [index, event] of core.open(input).entries()) {
+    for (const [index, event] of opened.entries()) {
       storage.appendEvent({
         at: input.at,
         event: encodeEvent(event),
@@ -183,6 +189,8 @@ export const openStorage = <T extends RoomTypes>(
       });
     }
   });
+
+  return opened;
 };
 
 const earliest = (times: readonly Option.Option<number>[]) =>
@@ -368,10 +376,12 @@ export const hostRoom = <T extends RoomTypes>(
 
     return Result.match(stored, {
       onFailure: (cause) => ({
+        events: [],
         note: CommitNotes.StorageFailed({ cause }),
         reply: unavailable("StorageFailed"),
       }),
       onSuccess: () => ({
+        events: [],
         note: CommitNotes.Rejected({
           stored: Origins.$is("Member")(input.origin),
         }),
@@ -411,6 +421,7 @@ export const hostRoom = <T extends RoomTypes>(
       halt(violations.join("; "), connections);
 
       return {
+        events: [],
         note: CommitNotes.Halted({
           events: Inspectable.toStringUnknown(events, 0),
           violations,
@@ -444,6 +455,7 @@ export const hostRoom = <T extends RoomTypes>(
 
     if (Result.isFailure(stored)) {
       return {
+        events: [],
         note: CommitNotes.StorageFailed({ cause: stored.failure }),
         reply: unavailable("StorageFailed"),
       };
@@ -457,6 +469,7 @@ export const hostRoom = <T extends RoomTypes>(
       halt(persisted.failure.join("; "), connections);
 
       return {
+        events: [],
         note: CommitNotes.Halted({
           events: Inspectable.toStringUnknown(events, 0),
           violations: persisted.failure,
@@ -492,7 +505,7 @@ export const hostRoom = <T extends RoomTypes>(
 
     armAlarm(connections.socketDeadline);
 
-    return { note: CommitNotes.Committed({ from, to }), reply };
+    return { events, note: CommitNotes.Committed({ from, to }), reply };
   };
 
   const commit = (
@@ -501,6 +514,7 @@ export const hostRoom = <T extends RoomTypes>(
   ): CommitResult<T> => {
     if (Option.isSome(current.halted)) {
       return {
+        events: [],
         note: CommitNotes.RoomHalted({ reason: current.halted.value }),
         reply: unavailable("RoomHalted"),
       };
@@ -510,6 +524,7 @@ export const hostRoom = <T extends RoomTypes>(
 
     if (Option.isSome(replayed)) {
       return {
+        events: [],
         note: CommitNotes.Replayed({ id: replayed.value.id }),
         reply: replayed.value.reply,
       };
@@ -690,6 +705,7 @@ export const hostRoom = <T extends RoomTypes>(
     });
 
     const result = Result.getOrElse(attempted, (cause): CommitResult<T> => ({
+      events: [],
       note: CommitNotes.Crashed({ cause }),
       reply: unavailable("RoomHalted"),
     }));

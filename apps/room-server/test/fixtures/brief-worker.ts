@@ -5,6 +5,7 @@ import * as HttpRouter from "effect/http/HttpRouter";
 import { unlimited } from "../../src/address-limits.js";
 import { roomRoutes } from "../../src/room-routes.js";
 import BriefRoom from "./brief-room-object.js";
+import { memoryAnalytics } from "./test-analytics.js";
 import { scriptedEntropy } from "./test-entropy.js";
 import { testRoutes } from "./test-hooks.js";
 import { TEST_ORIGIN } from "./toy-worker.js";
@@ -19,16 +20,18 @@ export default class BriefWorker extends Cloudflare.Worker<BriefWorker>()(
   Effect.gen(function* makeBriefWorker() {
     const rooms = yield* BriefRoom;
     const codes = scriptedEntropy();
+    const site = memoryAnalytics();
 
     const routes = yield* roomRoutes(rooms, {
       allowedOrigins: [TEST_ORIGIN],
+      analytics: site.sink,
       entropy: codes.layer,
       limits: unlimited,
     });
 
     return {
       fetch: yield* HttpRouter.toHttpEffect(
-        Layer.mergeAll(routes, testRoutes(rooms, codes))
+        Layer.mergeAll(routes, testRoutes(rooms, codes, site))
       ).pipe(Effect.orDie),
     };
   })

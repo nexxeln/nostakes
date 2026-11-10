@@ -8,6 +8,7 @@ import * as HttpServerResponse from "effect/http/HttpServerResponse";
 
 import { unlimited } from "../src/address-limits.js";
 import type { AddressLimits } from "../src/address-limits.js";
+import { noAnalytics } from "../src/analytics.js";
 import { roomRoutes } from "../src/room-routes.js";
 import type { RoomNamespace } from "../src/room-routes.js";
 import { seededEntropy } from "./fixtures/test-entropy.js";
@@ -65,6 +66,7 @@ const answer = (
 
     const routes = yield* roomRoutes(rooms, {
       allowedOrigins: [ORIGIN],
+      analytics: noAnalytics,
       entropy: seededEntropy(1),
       limits,
     });

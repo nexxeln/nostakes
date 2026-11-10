@@ -6,15 +6,24 @@ import * as HttpRouter from "effect/http/HttpRouter";
 import * as HttpServerRequest from "effect/http/HttpServerRequest";
 import * as HttpServerResponse from "effect/http/HttpServerResponse";
 
+import type { RoomMeasures } from "../../src/analytics.js";
 import type { Beacon } from "../../src/beacon.js";
 import type { Entropy } from "../../src/entropy.js";
 import type { HostedRoom, RoomTypes } from "../../src/hosted-room.js";
+import { StampedPointSchema } from "../../src/measures.js";
+import type { StampedPoint } from "../../src/measures.js";
 import { RETRY_POLICY } from "../../src/refused-deadline.js";
 import type { RetryPolicy } from "../../src/refused-deadline.js";
 import { bytesForCode } from "../../src/room-code.js";
 import { ROOM_RETENTION_MS } from "../../src/room-host.js";
 import { roomObject } from "../../src/room-object.js";
 import { InspectionSchema } from "../../src/room-rpc.js";
+import {
+  AnalyticsModeSchema,
+  objectAnalytics,
+  storedAnalytics,
+} from "./test-analytics.js";
+import type { AnalyticsMode } from "./test-analytics.js";
 import { testBeacon } from "./test-beacon.js";
 import type { scriptedEntropy } from "./test-entropy.js";
 
@@ -44,12 +53,17 @@ const storeJam = (storage: cf.DurableObjectStorage, jammed: boolean) => {
   );
 };
 
-export const roomObjectWithTestHooks = <T extends RoomTypes>(
+export interface TestHookOptions {
+  readonly beacon?: Layer.Layer<Beacon>;
+  readonly retainFor?: number;
+  readonly retries?: RetryPolicy;
+}
+
+export const roomObjectWithTestHooks = <T extends RoomTypes, Tally>(
   coreFor: (jammed: () => boolean) => HostedRoom<T>,
   entropyFor: (state: cf.DurableObjectState) => Layer.Layer<Entropy>,
-  beacon: Layer.Layer<Beacon> = testBeacon,
-  retainFor = ROOM_RETENTION_MS,
-  retries: RetryPolicy = RETRY_POLICY
+  measures: RoomMeasures<T["Event"], Tally>,
+  options: TestHookOptions = {}
 ) =>
   Cloudflare.DurableObjectState.pipe(
     Effect.flatMap((state) => {
@@ -64,15 +78,34 @@ export const roomObjectWithTestHooks = <T extends RoomTypes>(
       };
 
       return roomObject(coreFor(jammed), {
-        beacon,
+        analytics: objectAnalytics(state.raw),
+        beacon: options.beacon ?? testBeacon,
         entropy: entropyFor(state.raw),
-        retainFor,
-        retries,
+        measures,
+        retainFor: options.retainFor ?? ROOM_RETENTION_MS,
+        retries: options.retries ?? RETRY_POLICY,
       }).pipe(
         Effect.map((instance) =>
           instance.pipe(
             Effect.map((room) => ({
               ...room,
+              analytics: () =>
+                Effect.sync(() =>
+                  storedAnalytics(state.raw)
+                    .points()
+                    .map((stamped) =>
+                      Schema.encodeSync(StampedPointSchema)(stamped)
+                    )
+                ),
+              analyticsMode: (mode: AnalyticsMode) =>
+                Schema.decodeEffect(AnalyticsModeSchema)(mode).pipe(
+                  Effect.flatMap((decoded) =>
+                    Effect.sync(() => {
+                      storedAnalytics(state.raw).setMode(decoded);
+                    })
+                  ),
+                  Effect.orDie
+                ),
               jam: (wanted: typeof Schema.Boolean.Encoded) =>
                 Schema.decodeEffect(Schema.Boolean)(wanted).pipe(
                   Effect.flatMap((on) =>
@@ -102,6 +135,10 @@ export const roomObjectWithTestHooks = <T extends RoomTypes>(
   );
 
 export interface TestRoomStub {
+  readonly analytics: () => Effect.Effect<
+    readonly (typeof StampedPointSchema.Encoded)[]
+  >;
+  readonly analyticsMode: (mode: AnalyticsMode) => Effect.Effect<void>;
   readonly inspect: () => Effect.Effect<typeof InspectionSchema.Encoded>;
   readonly jam: (on: boolean) => Effect.Effect<void>;
   readonly restart: () => Effect.Effect<void>;
@@ -120,11 +157,22 @@ const AlarmBody = Schema.Struct({ at: Schema.Int });
 
 const JamBody = Schema.Struct({ on: Schema.Boolean });
 
+const ModeBody = Schema.Struct({ mode: AnalyticsModeSchema });
+
 const inspection = HttpServerResponse.schemaJson(InspectionSchema);
+
+const stampedPoints = HttpServerResponse.schemaJson(
+  Schema.Array(StampedPointSchema)
+);
+
+export interface SiteAnalytics {
+  readonly points: () => readonly StampedPoint[];
+}
 
 export const testRoutes = (
   rooms: TestRooms,
-  codes: ReturnType<typeof scriptedEntropy>
+  codes: ReturnType<typeof scriptedEntropy>,
+  site: SiteAnalytics
 ) => {
   const roomOf = HttpRouter.schemaPathParams(CodePath).pipe(
     Effect.map(({ code }) => rooms.getByName(code))
@@ -171,7 +219,30 @@ export const testRoutes = (
     return HttpServerResponse.empty({ status: 204 });
   }).pipe(Effect.orDie);
 
+  const roomAnalytics = roomOf.pipe(
+    Effect.flatMap((room) => room.analytics()),
+    Effect.flatMap(Schema.decodeEffect(Schema.Array(StampedPointSchema))),
+    Effect.flatMap((points) => stampedPoints(points)),
+    Effect.orDie
+  );
+
+  const setAnalyticsMode = Effect.gen(function* setAnalyticsMode() {
+    const room = yield* roomOf;
+    const { mode } = yield* HttpServerRequest.schemaBodyJson(ModeBody);
+
+    yield* room.analyticsMode(mode);
+
+    return HttpServerResponse.empty({ status: 204 });
+  }).pipe(Effect.orDie);
+
+  const siteAnalytics = Effect.suspend(() => stampedPoints(site.points())).pipe(
+    Effect.orDie
+  );
+
   return Layer.mergeAll(
+    HttpRouter.add("GET", "/test/analytics", siteAnalytics),
+    HttpRouter.add("GET", "/test/rooms/:code/analytics", roomAnalytics),
+    HttpRouter.add("POST", "/test/rooms/:code/analytics", setAnalyticsMode),
     HttpRouter.add("GET", "/test/rooms/:code", inspect),
     HttpRouter.add("POST", "/test/rooms/:code/restart", restart),
     HttpRouter.add("POST", "/test/rooms/:code/alarm", wake),

@@ -14,6 +14,7 @@ import {
 } from "effect";
 import * as FetchHttpClient from "effect/http/FetchHttpClient";
 
+import { siteAnalytics } from "../test/fixtures/analytics-checks.js";
 import type { Temper } from "../test/fixtures/bot.js";
 import type { ClientTemper } from "../test/fixtures/client-bot.js";
 import type { Moment } from "../test/fixtures/client-wire.js";
@@ -45,6 +46,7 @@ import type {
 import { wallClock } from "../test/fixtures/poker-socket.js";
 import { PokerStack } from "../test/fixtures/poker-stack.js";
 import { inspect, refusedAlarms } from "../test/fixtures/stack.js";
+import { funnelLines, funnelOf, groupPoints, healthLines } from "./funnel.ts";
 
 const { afterAll, beforeAll, deploy, destroy, test } = Test.make({
   dev: true,
@@ -479,10 +481,17 @@ test(
             continue;
           }
 
-          const { checkMs, checkedAt, durationMs, events, verdict } =
+          const { checkMs, checkedAt, durationMs, events, points, verdict } =
             judgeNight(outcome.success);
 
-          results.push({ checkMs, checkedAt, durationMs, plan, verdict });
+          results.push({
+            checkMs,
+            checkedAt,
+            durationMs,
+            plan,
+            points,
+            verdict,
+          });
 
           yield* Console.log(
             `  wave ${wavesJudged + 1} ${plan.code}: ${verdict.counts.hands} hands in ${(durationMs / 1000).toFixed(0)} s, checked in ${checkMs.toFixed(0)} ms, ${verdict.problems.length === 0 ? "ok" : `FAILED ${verdict.problems.slice(0, 3).join(" | ")}`}`
@@ -527,10 +536,26 @@ test(
       failures
     );
 
+    const site = yield* siteAnalytics(base);
+    const measuredUntil = wallClock() + 1;
+    const period = { from: 0, now: measuredUntil, to: measuredUntil };
+
+    const funnel = funnelOf(
+      groupPoints(
+        [...results.flatMap((result) => result.points), ...site],
+        period
+      ),
+      period
+    );
+
     yield* Console.log(
       [
         ...lines,
         ...describeStalls(started, windows, probe, results),
+        "  analytics the rooms recorded, as pnpm stats reads them:",
+        ...[...funnelLines(funnel), ...healthLines(funnel)].map(
+          (text) => `  ${text}`
+        ),
         ...kept,
       ].join("\n")
     );

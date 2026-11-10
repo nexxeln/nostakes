@@ -4,6 +4,7 @@ import * as HttpRouter from "effect/http/HttpRouter";
 
 import { unlimited } from "../../src/address-limits.js";
 import { roomRoutes } from "../../src/room-routes.js";
+import { memoryAnalytics } from "./test-analytics.js";
 import { scriptedEntropy } from "./test-entropy.js";
 import { testRoutes } from "./test-hooks.js";
 import ToyRoom from "./toy-room-object.js";
@@ -20,16 +21,18 @@ export default class ToyWorker extends Cloudflare.Worker<ToyWorker>()(
   Effect.gen(function* makeToyWorker() {
     const rooms = yield* ToyRoom;
     const codes = scriptedEntropy();
+    const site = memoryAnalytics();
 
     const routes = yield* roomRoutes(rooms, {
       allowedOrigins: [TEST_ORIGIN],
+      analytics: site.sink,
       entropy: codes.layer,
       limits: unlimited,
     });
 
     return {
       fetch: yield* HttpRouter.toHttpEffect(
-        Layer.mergeAll(routes, testRoutes(rooms, codes))
+        Layer.mergeAll(routes, testRoutes(rooms, codes, site))
       ).pipe(Effect.orDie),
     };
   })

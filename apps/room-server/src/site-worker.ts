@@ -58,7 +58,7 @@ export default class SiteWorker extends Cloudflare.Worker<SiteWorker>()(
 
     return yield* serveRooms(
       siteStage.pipe(Effect.map((stage) => [siteOrigin(stage)])),
-      sitePages(assets)
+      (record) => sitePages(assets, record)
     );
   })
 ) {}

@@ -5,6 +5,9 @@ import * as HttpRouter from "effect/http/HttpRouter";
 import * as HttpServerRequest from "effect/http/HttpServerRequest";
 import * as HttpServerResponse from "effect/http/HttpServerResponse";
 
+import type { Recorder } from "../src/analytics.js";
+import { measure } from "../src/measures.js";
+import type { Measure } from "../src/measures.js";
 import { ByteRanges, byteRangeOf, sitePages } from "../src/site-pages.js";
 import type { AssetFetcher } from "../src/site-pages.js";
 
@@ -58,9 +61,13 @@ const assets: AssetFetcher = {
   },
 };
 
-const answer = (path: string, init: RequestInit = {}) =>
+const answer = (
+  path: string,
+  init: RequestInit = {},
+  record: Recorder = () => Effect.void
+) =>
   Effect.gen(function* answerRequest() {
-    const handle = yield* HttpRouter.toHttpEffect(sitePages(assets));
+    const handle = yield* HttpRouter.toHttpEffect(sitePages(assets, record));
 
     const response = yield* handle.pipe(
       Effect.provideService(
@@ -225,5 +232,32 @@ describe("the preview clip", () => {
 
       expect(missing.status).toBe(404);
     })
+  );
+});
+
+describe("counting visits", () => {
+  it.effect(
+    "counts a page a browser opens as a document, by page and nothing else, and not a link preview's fetch",
+    () =>
+      Effect.gen(function* countVisits() {
+        const counted: Measure[] = [];
+
+        const record: Recorder = (measures) =>
+          Effect.sync(() => {
+            counted.push(...measures);
+          });
+
+        const opened = { headers: { "sec-fetch-dest": "document" } };
+
+        yield* answer("/", opened, record);
+        yield* answer("/r/K7P2XZ", opened, record);
+        yield* answer("/r/K7P2XZ", {}, record);
+        yield* answer("/preview/clip.mp4", opened, record);
+
+        expect(counted).toEqual([
+          measure("PageVisit", { page: "Home" }),
+          measure("PageVisit", { page: "Invite" }),
+        ]);
+      })
   );
 });

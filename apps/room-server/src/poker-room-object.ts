@@ -1,17 +1,26 @@
 import * as Cloudflare from "@alchemy.run/cloudflare";
 import { QUICKNET } from "@nostakes/shuffle";
+import { Effect } from "effect";
 
+import { analyticsDataset } from "./analytics.js";
 import { liveBeacon } from "./beacon.js";
 import { liveEntropy } from "./entropy.js";
+import { nightMeasures } from "./night-measures.js";
 import { pokerRoom } from "./poker-room.js";
 import { ROOM_RETENTION_MS } from "./room-host.js";
 import { roomObject } from "./room-object.js";
 
 export default class PokerRoom extends Cloudflare.DurableObject<PokerRoom>()(
   "PokerRoom",
-  roomObject(pokerRoom, {
-    beacon: liveBeacon(QUICKNET),
-    entropy: liveEntropy,
-    retainFor: ROOM_RETENTION_MS,
-  })
+  analyticsDataset.pipe(
+    Effect.flatMap((analytics) =>
+      roomObject(pokerRoom, {
+        analytics,
+        beacon: liveBeacon(QUICKNET),
+        entropy: liveEntropy,
+        measures: nightMeasures,
+        retainFor: ROOM_RETENTION_MS,
+      })
+    )
+  )
 ) {}

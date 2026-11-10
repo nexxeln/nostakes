@@ -1,5 +1,6 @@
 import * as Cloudflare from "@alchemy.run/cloudflare";
 
+import { noMeasures } from "../../src/analytics.js";
 import { testBeacon } from "./test-beacon.js";
 import { DEAL_SEED, seededEntropy } from "./test-entropy.js";
 import { roomObjectWithTestHooks } from "./test-hooks.js";
@@ -12,7 +13,7 @@ export default class BriefRoom extends Cloudflare.DurableObject<BriefRoom>()(
   roomObjectWithTestHooks(
     () => toyRoom,
     () => seededEntropy(DEAL_SEED),
-    testBeacon,
-    BRIEF_RETENTION_MS
+    noMeasures,
+    { beacon: testBeacon, retainFor: BRIEF_RETENTION_MS }
   )
 ) {}

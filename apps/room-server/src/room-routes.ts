@@ -9,7 +9,12 @@ import * as HttpServerResponse from "effect/http/HttpServerResponse";
 
 import { addressOf, tooManyRequests } from "./address-limits.js";
 import type { AddressLimits, LimitedAction } from "./address-limits.js";
+import { recorder } from "./analytics.js";
+import type { AnalyticsSink } from "./analytics.js";
+import { reportMeasure, reportFrom } from "./client-reports.js";
+import { DEVICE_HEADER, deviceOf } from "./device.js";
 import { Entropy } from "./entropy.js";
+import { measure, SITE_SCOPE } from "./measures.js";
 import { refuseSocket } from "./refused-socket.js";
 import { callRoom } from "./room-call-failed.js";
 import type { RoomCallFailed } from "./room-call-failed.js";
@@ -25,9 +30,11 @@ import { RouteFault } from "./route-fault.js";
 export interface RoomStub {
   readonly open: (input: {
     readonly code: string;
+    readonly device?: string;
     readonly request: Schema.Json;
   }) => Effect.Effect<typeof OpenOutcomeSchema.Encoded, RpcCallError>;
   readonly join: (input: {
+    readonly device?: string;
     readonly request: Schema.Json;
   }) => Effect.Effect<typeof JoinOutcomeSchema.Encoded, RpcCallError>;
   readonly fetch: (
@@ -43,17 +50,23 @@ export interface RoomRoutesOptions<R> {
   readonly allowedOrigins: readonly string[];
   readonly entropy: Layer.Layer<Entropy>;
   readonly limits: AddressLimits<R>;
+  readonly analytics: AnalyticsSink<R>;
 }
 
 const CodePath = Schema.Struct({ code: Schema.String });
+
+export const REPORTS_ROUTE = "/rooms/reports";
 
 const logged = (failure: RoomCallFailed | RouteFault) =>
   Effect.logError(failure.message).pipe(
     Effect.annotateLogs({ error: failure._tag })
   );
 
-const unavailable = (failure: RoomCallFailed) =>
-  logged(failure).pipe(Effect.andThen(refuse("RoomUnavailable")));
+const withDevice = (device: Option.Option<string>) =>
+  Option.match(device, {
+    onNone: () => ({}),
+    onSome: (hash) => ({ device: hash }),
+  });
 
 const decodeOpenOutcome = Schema.decodeEffect(OpenOutcomeSchema);
 
@@ -83,6 +96,13 @@ export const roomRoutes = <R>(
 ) =>
   Effect.gen(function* buildRoomRoutes() {
     const entropy = yield* Entropy.pipe(Effect.provide(options.entropy));
+    const record = recorder(options.analytics, SITE_SCOPE);
+
+    const unavailable = (failure: RoomCallFailed) =>
+      record([measure("ServerFault", { fault: "RoomCallFailed" })]).pipe(
+        Effect.andThen(logged(failure)),
+        Effect.andThen(refuse("RoomUnavailable"))
+      );
 
     const fromAllowedOrigin = HttpServerRequest.HttpServerRequest.pipe(
       Effect.map((request) =>
@@ -106,9 +126,17 @@ export const roomRoutes = <R>(
         return yield* handler;
       }).pipe(
         Effect.catchDefect((defect) =>
-          logged(
-            new RouteFault({ detail: Cause.pretty(Cause.die(defect)), route })
-          ).pipe(Effect.andThen(refuse("ServerFault")))
+          record([measure("ServerFault", { fault: "RouteFault" })]).pipe(
+            Effect.andThen(
+              logged(
+                new RouteFault({
+                  detail: Cause.pretty(Cause.die(defect)),
+                  route,
+                })
+              )
+            ),
+            Effect.andThen(refuse("ServerFault"))
+          )
         )
       );
 
@@ -122,13 +150,15 @@ export const roomRoutes = <R>(
       handler: Effect.Effect<
         HttpServerResponse.HttpServerResponse,
         never,
-        HttpServerRequest.HttpServerRequest | HttpRouter.RouteContext
+        HttpServerRequest.HttpServerRequest | HttpRouter.RouteContext | R
       >
     ) =>
       Effect.gen(function* checkAddress() {
         const address = yield* addressOf;
 
         if (!(yield* options.limits.allow(action, address))) {
+          yield* record([measure("RateLimited", { action })]);
+
           return yield* refusal;
         }
 
@@ -146,6 +176,8 @@ export const roomRoutes = <R>(
         return yield* refuse("BadRequest");
       }
 
+      const device = yield* deviceOf;
+
       for (let attempt = 0; attempt < MAX_CODE_ATTEMPTS; attempt += 1) {
         const code = yield* drawCode.pipe(Effect.eventually);
 
@@ -154,7 +186,7 @@ export const roomRoutes = <R>(
           "open",
           rooms
             .getByName(code)
-            .open({ code, request: body.value })
+            .open({ code, request: body.value, ...withDevice(device) })
             .pipe(Effect.flatMap(decodeOpenOutcome))
         );
 
@@ -183,12 +215,14 @@ export const roomRoutes = <R>(
         return yield* refuse("BadRequest");
       }
 
+      const device = yield* deviceOf;
+
       const outcome = yield* callRoom(
         code.value,
         "join",
         rooms
           .getByName(code.value)
-          .join({ request: body.value })
+          .join({ request: body.value, ...withDevice(device) })
           .pipe(Effect.flatMap(decodeJoinOutcome))
       );
 
@@ -221,6 +255,18 @@ export const roomRoutes = <R>(
       );
     }).pipe(Effect.catchTag("RoomCallFailed", unavailable));
 
+    const report = Effect.gen(function* report() {
+      const received = yield* reportFrom;
+
+      if (Option.isNone(received)) {
+        return yield* refuse("BadRequest");
+      }
+
+      yield* record([reportMeasure(received.value)]);
+
+      return HttpServerResponse.empty({ status: 204 });
+    });
+
     const connectRefusal = HttpServerRequest.HttpServerRequest.pipe(
       Effect.flatMap((request) =>
         request.headers.upgrade?.toLowerCase() === "websocket"
@@ -230,6 +276,14 @@ export const roomRoutes = <R>(
     );
 
     return Layer.mergeAll(
+      HttpRouter.add(
+        "POST",
+        REPORTS_ROUTE,
+        guarded(
+          `POST ${REPORTS_ROUTE}`,
+          limited("connect", tooManyRequests, report)
+        )
+      ),
       HttpRouter.add(
         "POST",
         "/rooms",
@@ -252,7 +306,7 @@ export const roomRoutes = <R>(
         )
       ),
       HttpRouter.cors({
-        allowedHeaders: ["content-type"],
+        allowedHeaders: ["content-type", DEVICE_HEADER],
         allowedMethods: ["GET", "POST"],
         allowedOrigins: options.allowedOrigins,
       })

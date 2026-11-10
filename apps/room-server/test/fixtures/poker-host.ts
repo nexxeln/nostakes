@@ -29,13 +29,22 @@ export const cy = PlayerIdSchema.make("cy-ccccccccccccc");
 export const shuffleBytesFor = (at: number, size: number) =>
   Uint8Array.from({ length: size }, (_, index) => (index * 7 + at) % 256);
 
+export const POKER_HOST_CODE = RoomCodeSchema.make("K7P2XZ");
+
+export const POKER_HOST_OPENED_AT = 1000;
+
 export const openPokerHost = (request: OpenRequest) => {
   const memory = memoryStorage();
 
-  openStorage(
+  const opened = openStorage(
     pokerRoom,
     memory.storage,
-    { at: 1000, code: RoomCodeSchema.make("K7P2XZ"), host: ana, request },
+    {
+      at: POKER_HOST_OPENED_AT,
+      code: POKER_HOST_CODE,
+      host: ana,
+      request,
+    },
     { hash: "a".repeat(64), player: ana }
   );
 
@@ -76,14 +85,14 @@ export const openPokerHost = (request: OpenRequest) => {
       connections()
     );
 
-  const join = (player: PlayerId, at: number, name: string) =>
+  const join = (player: PlayerId, at: number, name: string, avatar = "owl") =>
     host.commit(
       {
         at,
         command: pokerRoom.stamp(
           player,
           at,
-          pokerRoom.joinCommand({ avatar: "owl", name })
+          pokerRoom.joinCommand({ avatar, name })
         ),
         grant: Option.some({ hash: name.padEnd(64, "0"), player }),
         origin: Origins.Server({ trigger: "Join" }),
@@ -132,6 +141,7 @@ export const openPokerHost = (request: OpenRequest) => {
     host,
     join,
     memory,
+    opened,
     runDue,
     send,
     watch,

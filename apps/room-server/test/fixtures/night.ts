@@ -15,6 +15,9 @@ import type { RoomSettings, RoomView, Shuffle } from "@nostakes/room";
 import { SEALING_MARGIN_MS } from "@nostakes/shuffle";
 import { Duration, Effect, Option, Schema } from "effect";
 
+import type { StampedPoint } from "../../src/measures.js";
+import { checkAnalytics, hashesOf, roomAnalytics } from "./analytics-checks.js";
+import type { NightAnalytics } from "./analytics-checks.js";
 import { handsSeen, randomSource, startBot } from "./bot.js";
 import type {
   BotRecord,
@@ -67,6 +70,7 @@ export interface NightPlan {
   readonly chaos: ClientTemper;
   readonly clients: readonly number[];
   readonly limitMs: number;
+  readonly devices: readonly string[];
 }
 
 export interface PlayedNight {
@@ -74,6 +78,7 @@ export interface PlayedNight {
   readonly evidence: NightEvidence;
   readonly events: readonly string[];
   readonly durationMs: number;
+  readonly analytics: NightAnalytics;
 }
 
 export interface NightResult {
@@ -83,7 +88,13 @@ export interface NightResult {
   readonly checkMs: number;
   readonly events: readonly string[];
   readonly durationMs: number;
+  readonly points: readonly StampedPoint[];
 }
+
+export const DEVICE_GROUPS = 4;
+
+export const deviceFor = (seed: number, index: number) =>
+  `nostakes-bot-device-${seed % DEVICE_GROUPS}-${index}`;
 
 export class NightFailed extends Schema.TaggedError<
   NightFailed,
@@ -384,6 +395,10 @@ export const planNight = (
   return {
     ...plan,
     clients,
+    devices: Array.from(
+      { length: plan.players + plan.spectators + plan.lateJoiners },
+      (_, index) => deviceFor(seed, index)
+    ),
     ending: recipe.ending,
     limitMs: plan.limitMs + recipe.hands * slowRulesAllowanceMs(played),
     settings: played,
@@ -462,11 +477,15 @@ export const openNight = (base: string, plan: NightPlan) =>
 
     yield* queueCodes(base, [plan.code]);
 
-    const host = yield* createPokerRoom(base, {
-      avatar: "bot",
-      name: "bot0",
-      settings: plan.settings,
-    });
+    const host = yield* createPokerRoom(
+      base,
+      {
+        avatar: "bot",
+        name: "bot0",
+        settings: plan.settings,
+      },
+      Option.fromUndefinedOr(plan.devices[0])
+    );
 
     if (host.code !== plan.code) {
       return yield* new NightFailed({
@@ -480,10 +499,15 @@ export const openNight = (base: string, plan: NightPlan) =>
 
     for (let index = 1; index < plan.players + plan.spectators; index += 1) {
       passes.push(
-        yield* joinPokerRoom(base, plan.code, {
-          avatar: "bot",
-          name: `bot${index}`,
-        })
+        yield* joinPokerRoom(
+          base,
+          plan.code,
+          {
+            avatar: "bot",
+            name: `bot${index}`,
+          },
+          Option.fromUndefinedOr(plan.devices[index])
+        )
       );
     }
 
@@ -577,10 +601,15 @@ export const playNight = (base: string, opened: OpenedNight) =>
           return;
         }
 
-        const pass = yield* joinPokerRoom(base, plan.code, {
-          avatar: "late",
-          name: `bot${index}`,
-        });
+        const pass = yield* joinPokerRoom(
+          base,
+          plan.code,
+          {
+            avatar: "late",
+            name: `bot${index}`,
+          },
+          Option.fromUndefinedOr(plan.devices[index])
+        );
 
         yield* launch(pass, index);
       });
@@ -812,8 +841,19 @@ export const playNight = (base: string, opened: OpenedNight) =>
     );
 
     const inspection = yield* inspect(base, plan.code);
+    const points = yield* roomAnalytics(base, plan.code);
+    const hashes = yield* hashesOf(plan.devices);
 
     const played: PlayedNight = {
+      analytics: {
+        hashes,
+        points,
+        secrets: [
+          plan.code,
+          ...plan.devices,
+          ...plan.devices.map((_, index) => `bot${index}`),
+        ],
+      },
       durationMs: wallClock() - started,
       events: inspection.events,
       evidence: {
@@ -839,7 +879,15 @@ export const playNight = (base: string, opened: OpenedNight) =>
 
 export const judgeNight = (played: PlayedNight): NightResult => {
   const checkedAt = wallClock();
-  const verdict = checkNight(played.evidence);
+  const checked = checkNight(played.evidence);
+
+  const verdict = {
+    ...checked,
+    problems: [
+      ...checked.problems,
+      ...checkAnalytics(played.events, played.analytics),
+    ],
+  };
 
   return {
     checkMs: wallClock() - checkedAt,
@@ -847,6 +895,7 @@ export const judgeNight = (played: PlayedNight): NightResult => {
     durationMs: played.durationMs,
     events: played.events,
     plan: played.plan,
+    points: played.analytics.points,
     verdict,
   };
 };

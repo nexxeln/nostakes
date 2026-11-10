@@ -3,6 +3,8 @@ import * as HttpRouter from "effect/http/HttpRouter";
 import * as HttpServerRequest from "effect/http/HttpServerRequest";
 import * as HttpServerResponse from "effect/http/HttpServerResponse";
 
+import type { Recorder } from "./analytics.js";
+import { measure } from "./measures.js";
 import { siteOrigin } from "./site.js";
 
 export interface AssetFetcher {
@@ -109,12 +111,27 @@ const keptHeaders = (from: Headers, names: readonly string[]) =>
     )
   );
 
-const page = (assets: AssetFetcher, path: string) =>
+export type SitePage = "Home" | "Invite";
+
+const visited = (request: Request) =>
+  request.method === "GET" &&
+  request.headers.get("sec-fetch-dest") === "document";
+
+const page = <R>(
+  assets: AssetFetcher,
+  path: string,
+  kind: SitePage,
+  record: Recorder<R>
+) =>
   Effect.gen(function* servePage() {
-    const { response, url } = yield* fromAssets(assets, () => path);
+    const { request, response, url } = yield* fromAssets(assets, () => path);
 
     if (!response.ok) {
       return HttpServerResponse.fromWeb(response);
+    }
+
+    if (visited(request)) {
+      yield* record([measure("PageVisit", { page: kind })]);
     }
 
     const html = new TextEncoder().encode(
@@ -187,9 +204,9 @@ const media = (assets: AssetFetcher) =>
     );
   });
 
-export const sitePages = (assets: AssetFetcher) =>
+export const sitePages = <R>(assets: AssetFetcher, record: Recorder<R>) =>
   Layer.mergeAll(
-    HttpRouter.add("*", "/", page(assets, HOME_PAGE)),
-    HttpRouter.add("*", "/r/*", page(assets, INVITE_PAGE)),
+    HttpRouter.add("*", "/", page(assets, HOME_PAGE, "Home", record)),
+    HttpRouter.add("*", "/r/*", page(assets, INVITE_PAGE, "Invite", record)),
     HttpRouter.add("*", "/preview/*", media(assets))
   );
