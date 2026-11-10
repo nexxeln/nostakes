@@ -26,7 +26,7 @@ import type {
   Role,
   Temper,
 } from "./bot.js";
-import { clientWire } from "./client-wire.js";
+import { clientWire, describeFrame } from "./client-wire.js";
 import type { Line } from "./client-wire.js";
 import { pokerCodec, wallClock } from "./poker-socket.js";
 import { socketUrl } from "./room-client.js";
@@ -154,6 +154,8 @@ const REPLY_LIMIT_MS = 100_000;
 
 const LIVE_REPLY_LIMIT_MS = 8000;
 
+const STOP_GRACE_MS = 15_000;
+
 const NAP_LIMIT_MS = 60_000;
 
 const NAP_MIN_SEATED = 4;
@@ -268,11 +270,28 @@ export const startClientBot = (setup: ClientBotSetup) => {
     }
   };
 
+  const faultContext = () => {
+    const line = wire.lastLine();
+
+    return `line ${wire.opened()} ${line?.mode ?? "none"}, last frames ${(
+      line?.received ?? []
+    )
+      .slice(-5)
+      .map((text) =>
+        text.startsWith("echo ")
+          ? `echo ${describeFrame(text.slice(5))}`
+          : describeFrame(text)
+      )
+      .join(" / ")}; echoes ${wire.echoes().slice(-3).join(" / ")}`;
+  };
+
   const observe = (state: PokerClientState) => {
     const was = current.pipe(
       Option.map(({ connection }) => connection),
       Option.getOrElse((): ConnectionPhase => "Idle")
     );
+
+    const appliedBefore = lastSeq();
 
     current = Option.some(state);
 
@@ -287,7 +306,9 @@ export const startClientBot = (setup: ClientBotSetup) => {
       );
 
       if (PROTOCOL_FAULTS.has(reason)) {
-        problems.push(`${label} dropped its connection for ${reason}`);
+        problems.push(
+          `${label} dropped its connection for ${reason} after applying ${appliedBefore}; ${faultContext()}`
+        );
       }
 
       if (was === "Live") {
@@ -436,10 +457,11 @@ export const startClientBot = (setup: ClientBotSetup) => {
         let done = yield* poll;
         let polledAt = wallClock();
         let quietMs = 0;
+        let afterStopMs = 0;
 
         while (
           Option.isNone(done) &&
-          !control.stop &&
+          afterStopMs <= STOP_GRACE_MS &&
           wallClock() - started <= REPLY_LIMIT_MS &&
           quietMs <= LIVE_REPLY_LIMIT_MS
         ) {
@@ -448,6 +470,7 @@ export const startClientBot = (setup: ClientBotSetup) => {
           const now = wallClock();
 
           quietMs = liveOnClearLine() ? quietMs + now - polledAt : 0;
+          afterStopMs += control.stop ? now - polledAt : 0;
           polledAt = now;
         }
 
@@ -530,7 +553,7 @@ export const startClientBot = (setup: ClientBotSetup) => {
     });
 
     const echo = Effect.sync(() => {
-      const past = wire.pastBatches();
+      const past = wire.pastBatches(lastSeq());
       const frame = past[random.below(past.length)];
 
       stats.echoes += frame !== undefined && wire.inject(frame) ? 1 : 0;
@@ -588,6 +611,11 @@ export const startClientBot = (setup: ClientBotSetup) => {
 
       if (control.closing && !wokeForClose) {
         wokeForClose = true;
+
+        if (wire.lastLine()?.mode !== "Clear") {
+          wire.closeFromBot();
+        }
+
         yield* wake;
       }
 

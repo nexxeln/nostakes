@@ -1,5 +1,5 @@
 import { Transport, webSocketTransport } from "@nostakes/client";
-import { Effect, Layer, Result, Stream } from "effect";
+import { Effect, Layer, Option, Result, Stream } from "effect";
 
 import { decodeServerFrame, pokerCodec } from "./poker-socket.js";
 import { TEST_ORIGIN } from "./toy-worker.js";
@@ -9,24 +9,51 @@ export type LineMode = "Clear" | "BlackHole" | "Deaf";
 export interface Line {
   readonly raw: WebSocket;
   readonly offline: boolean;
+  readonly received: string[];
   mode: LineMode;
   closedByBot: boolean;
+}
+
+export interface PastBatch {
+  readonly text: string;
+  readonly to: number;
 }
 
 const UNREACHABLE_URL = "ws://127.0.0.1:9/offline";
 
 const SOCKET_OPEN = 1;
 
-const isEventsFrame = (text: string) =>
+const batchEnd = (text: string) =>
+  decodeServerFrame(text).pipe(
+    Result.getSuccess,
+    Option.filter(pokerCodec.server.guards.Events),
+    Option.map(({ to }) => to)
+  );
+
+export const describeFrame = (text: string) =>
   Result.match(decodeServerFrame(text), {
-    onFailure: () => false,
-    onSuccess: pokerCodec.server.guards.Events,
+    onFailure: () => "undecodable",
+    onSuccess: (message) =>
+      pokerCodec.server.match(message, {
+        Closing: ({ reason }) => `Closing ${reason}`,
+        Events: ({ from, to }) => `Events ${from}..${to}`,
+        Pong: () => "Pong",
+        Presence: () => "Presence",
+        Reply: ({ id }) => `Reply ${id}`,
+        Welcome: ({ catchUp, seq }) =>
+          `Welcome ${seq} ${pokerCodec.catchUp.match(catchUp, {
+            Missed: ({ events, from }) => `missed ${from}+${events.length}`,
+            Skipped: ({ from, to }) => `skipped ${from}..${to}`,
+            UpToDate: () => "up to date",
+          })}`,
+      }),
   });
 
 export const clientWire = () => {
   const lines: Line[] = [];
   const frames: string[] = [];
-  const batches: string[] = [];
+  const batches: PastBatch[] = [];
+  const echoes: string[] = [];
   let offline = false;
   let echoing = false;
 
@@ -35,20 +62,24 @@ export const clientWire = () => {
       ? new WebSocket(UNREACHABLE_URL)
       : new WebSocket(url, { headers: { origin: TEST_ORIGIN } });
 
+    const received: string[] = [];
+
     raw.addEventListener("message", (event) => {
+      const text = String(event.data);
+
+      received.push(echoing ? `echo ${text}` : text);
+
       if (echoing) {
         return;
       }
 
-      const text = String(event.data);
-
       frames.push(text);
 
-      if (isEventsFrame(text)) {
-        batches.push(text);
+      for (const to of Option.toArray(batchEnd(text))) {
+        batches.push({ text, to });
       }
     });
-    lines.push({ closedByBot: false, mode: "Clear", offline, raw });
+    lines.push({ closedByBot: false, mode: "Clear", offline, raw, received });
 
     return raw;
   });
@@ -104,6 +135,7 @@ export const clientWire = () => {
     deafen: () => {
       setMode("Deaf");
     },
+    echoes: (): readonly string[] => echoes,
     frames: (): readonly string[] => frames,
     goOffline: () => {
       offline = true;
@@ -124,6 +156,7 @@ export const clientWire = () => {
       }
 
       echoing = true;
+      echoes.push(describeFrame(text));
       line.raw.dispatchEvent(new MessageEvent("message", { data: text }));
       echoing = false;
 
@@ -132,7 +165,8 @@ export const clientWire = () => {
     lastLine: () => lines.at(-1),
     layer,
     opened: () => lines.filter((line) => !line.offline).length,
-    pastBatches: (): readonly string[] => batches,
+    pastBatches: (applied: number): readonly string[] =>
+      batches.flatMap(({ text, to }) => (to <= applied ? [text] : [])),
   };
 };
 
