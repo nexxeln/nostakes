@@ -285,6 +285,31 @@ importers:
         specifier: 5.1.0
         version: 5.1.0(@types/node@24.19.2)(vite@8.3.6(@types/node@24.19.2)(yaml@2.9.1))
 
+  packages/room:
+    dependencies:
+      '@nostakes/engine':
+        specifier: workspace:*
+        version: link:../engine
+      '@nostakes/ledger':
+        specifier: workspace:*
+        version: link:../ledger
+      effect:
+        specifier: 4.1.2
+        version: 4.1.2
+    devDependencies:
+      '@effect/vitest':
+        specifier: 4.1.2
+        version: 4.1.2(effect@4.1.2)(vitest@5.1.0(@types/node@24.19.2)(vite@8.3.6(@types/node@24.19.2)(yaml@2.9.1)))
+      '@types/node':
+        specifier: 24.19.2
+        version: 24.19.2
+      typescript:
+        specifier: 7.0.2
+        version: 7.0.2
+      vitest:
+        specifier: 5.1.0
+        version: 5.1.0(@types/node@24.19.2)(vite@8.3.6(@types/node@24.19.2)(yaml@2.9.1))
+
   tools/fence:
     devDependencies:
       '@effect/vitest':

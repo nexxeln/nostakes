@@ -24,6 +24,7 @@ Cloudflare Workers, a Durable Object per room, Alchemy, XState, and Foldkit arri
 
 - `@nostakes/engine` (`packages/engine`): pure no-limit hold'em rules
 - `@nostakes/ledger` (`packages/ledger`): buy-ins, cash-outs, and settle-up transfers
+- `@nostakes/room` (`packages/room`): one poker night as a pure reducer over the engine and the ledger: members, host, seats, clocks, the queue at the end of a hand, views, and redaction
 - `@nostakes/fence` (`tools/fence`): fixture tests for the lint rules and the hook policy. It ships nothing.
 
 ## Commands
