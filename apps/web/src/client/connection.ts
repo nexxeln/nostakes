@@ -23,7 +23,7 @@ const pageBuild = () =>
       ?.getAttribute("content")
   ).pipe(Option.flatMap(Schema.decodeOption(BuildIdSchema)));
 
-const socketUrl = (code: string) => {
+export const socketUrl = (code: string) => {
   const url = new URL(socketPath(code), globalThis.location.href);
 
   url.protocol = url.protocol === "https:" ? "wss:" : "ws:";

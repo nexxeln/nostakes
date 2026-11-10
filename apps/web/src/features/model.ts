@@ -144,6 +144,23 @@ export const Screens = defineTaggedUnion({
 
 export type Screen = typeof Screens.Type;
 
+export const RoomRecordSchema = Schema.Struct({
+  closed: Schema.Boolean,
+  code: RoomCodeSchema,
+  left: Schema.Boolean,
+  others: Schema.Array(Schema.String),
+  seenAt: Schema.Int,
+});
+
+export type RoomRecord = typeof RoomRecordSchema.Type;
+
+export const KnownRoomSchema = Schema.Struct({
+  player: PlayerIdSchema,
+  record: RoomRecordSchema,
+});
+
+export type KnownRoom = typeof KnownRoomSchema.Type;
+
 export const ModelSchema = Schema.Struct({
   faceDraft: Schema.Option(AvatarSchema),
   facePart: FacePartSchema,
@@ -153,6 +170,7 @@ export const ModelSchema = Schema.Struct({
   now: Schema.Int,
   profile: ProfileSchema,
   reloadedFor: Schema.Option(ReloadTargets),
+  rooms: Schema.Array(KnownRoomSchema),
   screen: Screens,
   sound: Schema.Boolean,
   theme: Schema.Option(ThemeSchema),
@@ -172,6 +190,7 @@ export const FlagsSchema = Schema.Struct({
   learned: Schema.Array(HintSchema),
   profile: ProfileSchema,
   reloadedFor: Schema.Option(ReloadTargets),
+  rooms: Schema.Array(KnownRoomSchema),
   saved: Schema.Option(SavedPassSchema),
   sound: Schema.Boolean,
   theme: Schema.Option(ThemeSchema),

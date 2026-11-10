@@ -7,7 +7,7 @@ import { face, faceSheet } from "./face-builder.js";
 import { Messages } from "./message.js";
 import type { Message } from "./message.js";
 import { Screens } from "./model.js";
-import type { Model } from "./model.js";
+import type { Model, RoomRecord } from "./model.js";
 import { roomView } from "./room-view.js";
 
 type H = HtmlBuilder<Message>;
@@ -66,6 +66,80 @@ const profileFields = (model: Model, h: H): readonly Html[] => [
   ),
 ];
 
+const LISTED_ROOMS = 3;
+
+const whoWasThere = (others: readonly string[]) => {
+  const [first, second, ...rest] = others;
+
+  if (first === undefined) {
+    return "Just you so far";
+  }
+
+  if (second === undefined) {
+    return `With ${first}`;
+  }
+
+  return rest.length === 0
+    ? `With ${first} and ${second}`
+    : `With ${first}, ${second} and ${rest.length} more`;
+};
+
+const roomState = (record: RoomRecord) => {
+  if (record.closed) {
+    return "Settled";
+  }
+
+  return record.left ? "You left" : "Open";
+};
+
+const yourRooms = (model: Model, h: H): Html =>
+  model.rooms.length === 0
+    ? h.empty
+    : h.section(
+        [h.Class("your-rooms"), h.AriaLabel("Your rooms")],
+        [
+          h.span([h.Class("field-label")], ["Your rooms"]),
+          h.ul(
+            [h.Class("room-list")],
+            model.rooms
+              .slice(0, LISTED_ROOMS)
+              .map(({ record }) =>
+                h.li(
+                  [h.Key(record.code)],
+                  [
+                    h.button(
+                      [
+                        h.Type("button"),
+                        h.Class("room-row"),
+                        h.OnClick(
+                          Messages.ClickedKnownRoom({ code: record.code })
+                        ),
+                      ],
+                      [
+                        h.span([h.Class("room-row-code")], [record.code]),
+                        h.span(
+                          [h.Class("room-row-who")],
+                          [whoWasThere(record.others)]
+                        ),
+                        h.span(
+                          [
+                            h.Class(
+                              record.closed || record.left
+                                ? "tag"
+                                : "tag is-open"
+                            ),
+                          ],
+                          [roomState(record)]
+                        ),
+                      ]
+                    ),
+                  ]
+                )
+              )
+          ),
+        ]
+      );
+
 const homeView = (
   model: Model,
   busy: boolean,
@@ -89,6 +163,7 @@ const homeView = (
           ),
         ]
       ),
+      yourRooms(model, h),
       h.form(
         [h.Class("card-panel"), h.OnSubmit(Messages.SubmittedCreate())],
         [

@@ -6,10 +6,18 @@ import { Effect, Option, Random, Schema } from "effect";
 import {
   ProfileSchema,
   ReloadTargets,
+  RoomRecordSchema,
   SavedPassSchema,
   ThemeSchema,
 } from "../features/model.js";
-import type { Flags, Profile, ReloadTarget, Theme } from "../features/model.js";
+import type {
+  Flags,
+  KnownRoom,
+  Profile,
+  ReloadTarget,
+  RoomRecord,
+  Theme,
+} from "../features/model.js";
 import { HintSchema } from "../features/table/snapshot.js";
 import type { Hint } from "../features/table/snapshot.js";
 
@@ -84,10 +92,76 @@ export const storeSound = (on: boolean) =>
 export const storeLearned = (learned: readonly Hint[]) =>
   writeItem(LEARNED_KEY, Schema.encodeSync(learnedJson)(learned));
 
+const ROOMS_KEY = "nostakes.rooms";
+
+const PASS_PREFIX = passKey("");
+
+const recordsJson = Schema.fromJsonString(Schema.Array(RoomRecordSchema));
+
+const storedRecords = readItem(ROOMS_KEY).pipe(
+  Effect.map((text) =>
+    text.pipe(
+      Option.flatMap(Schema.decodeOption(recordsJson)),
+      Option.getOrElse((): readonly RoomRecord[] => [])
+    )
+  )
+);
+
+const writeRecords = (records: readonly RoomRecord[]) =>
+  writeItem(ROOMS_KEY, Schema.encodeSync(recordsJson)(records));
+
+export const storeRoomRecord = (record: RoomRecord) =>
+  storedRecords.pipe(
+    Effect.flatMap((records) =>
+      writeRecords([
+        record,
+        ...records.filter(({ code }) => code !== record.code),
+      ])
+    )
+  );
+
+const storedPasses = Effect.sync(() =>
+  Array.from(
+    { length: globalThis.localStorage.length },
+    (_, index) => globalThis.localStorage.key(index) ?? ""
+  ).flatMap((key) =>
+    key.startsWith(PASS_PREFIX)
+      ? Option.toArray(
+          Option.fromNullishOr(globalThis.localStorage.getItem(key)).pipe(
+            Option.flatMap(Schema.decodeOption(passJson))
+          )
+        )
+      : []
+  )
+);
+
+export const knownRooms = Effect.gen(function* readKnownRooms() {
+  const passes = yield* storedPasses;
+  const records = yield* storedRecords;
+
+  return passes
+    .map(({ code, player }): KnownRoom => ({
+      player,
+      record: records.find((record) => record.code === code) ?? {
+        closed: false,
+        code,
+        left: false,
+        others: [],
+        seenAt: 0,
+      },
+    }))
+    .toSorted((one, other) => other.record.seenAt - one.record.seenAt);
+});
+
 export const forgetPass = (code: string) =>
   Effect.sync(() => {
     globalThis.localStorage.removeItem(passKey(code));
-  });
+  }).pipe(
+    Effect.andThen(storedRecords),
+    Effect.flatMap((records) =>
+      writeRecords(records.filter((record) => record.code !== code))
+    )
+  );
 
 export const reloadFor = (target: ReloadTarget) =>
   Schema.encodeEffect(reloadJson)(target).pipe(
@@ -163,11 +237,14 @@ export const readFlags = Effect.gen(function* readFlags() {
 
   const reloadedFor = yield* takeReloadedFor;
 
+  const rooms = yield* knownRooms;
+
   const flags: Flags = {
     invite,
     learned,
     profile,
     reloadedFor,
+    rooms,
     saved,
     sound,
     theme,

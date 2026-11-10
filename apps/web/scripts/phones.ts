@@ -33,6 +33,8 @@ const PAGE_COLOURS = { dark: "#0f1012", light: "#f4f1ea" } as const;
 
 const TABLE = "nostakes-table";
 
+const MISSING_ROOM = "QT8VND";
+
 class PhoneCheckFailed extends Schema.TaggedError<
   PhoneCheckFailed,
   { readonly brand: unique symbol }
@@ -500,6 +502,38 @@ const checkEngine = (engine: BrowserType, app: string) =>
     const left = yield* waitFor(spied(host, "locksActive"), (n) => n === 0);
 
     yield* note("leaving lets the screen sleep", left === 0, `${left} held`);
+
+    const realCode = new URL(host.url()).pathname.split("/").at(-1) ?? "";
+
+    yield* attempt("plant a pass for a room the server never had", () =>
+      guest.evaluate(
+        ([real, missing]) => {
+          const pass = globalThis.localStorage.getItem(`nostakes.pass.${real}`);
+
+          globalThis.localStorage.setItem(
+            `nostakes.pass.${missing}`,
+            (pass ?? "").replace(real, missing)
+          );
+        },
+        [realCode, MISSING_ROOM] as const
+      )
+    );
+    yield* attempt("the guest goes home", () =>
+      guest.goto(`${app}/?mute=1`, { waitUntil: "networkidle" })
+    );
+
+    const listed = yield* waitFor(
+      attempt("read the guest's rooms", () =>
+        guest.locator(".room-row-code").allTextContents()
+      ),
+      (codes) => !codes.includes(MISSING_ROOM)
+    );
+
+    yield* note(
+      "home lists the rooms you can go back to and drops one the server does not have",
+      listed.join(",") === realCode,
+      listed.join(",")
+    );
 
     return findings;
   }).pipe(Effect.scoped);

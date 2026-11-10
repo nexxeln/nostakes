@@ -36,6 +36,7 @@ const opened = init({
   learned: [],
   profile: { avatar: "🦊", name: "Ana" },
   reloadedFor: Option.none(),
+  rooms: [],
   saved: Option.some({ code: CODE, player: PLAYER }),
   sound: false,
   theme: Option.none(),

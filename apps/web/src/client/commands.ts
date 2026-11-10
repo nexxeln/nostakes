@@ -15,12 +15,14 @@ import { Messages, ReplyOutcomes } from "../features/message.js";
 import {
   ProfileSchema,
   ReloadTargets,
+  RoomRecordSchema,
   ThemeSchema,
 } from "../features/model.js";
 import { refusalText } from "../features/refusals.js";
 import { HintSchema } from "../features/table/snapshot.js";
 import { roomPath } from "../features/wire.js";
 import { RoomConnection } from "./connection.js";
+import { roomIsGone } from "./room-check.js";
 import {
   forgetPass,
   randomSeed,
@@ -28,6 +30,7 @@ import {
   storeLearned,
   storePass,
   storeProfile,
+  storeRoomRecord,
   storeSound,
   storeTheme,
 } from "./storage.js";
@@ -189,6 +192,22 @@ export const ShowPath = Command.define("ShowPath", {
       Effect.as(Messages.CompletedNavigation({ path }))
     ),
   messages: [Messages.CompletedNavigation],
+});
+
+export const CheckRoom = Command.define("CheckRoom", {
+  args: { code: RoomCodeSchema },
+  execute: ({ code }) =>
+    roomIsGone(code).pipe(
+      Effect.map((gone) => Messages.CheckedRoom({ code, gone }))
+    ),
+  messages: [Messages.CheckedRoom],
+});
+
+export const RememberRoom = Command.define("RememberRoom", {
+  args: { record: RoomRecordSchema },
+  execute: ({ record }) =>
+    storeRoomRecord(record).pipe(Effect.as(Messages.CompletedPreference())),
+  messages: [Messages.CompletedPreference],
 });
 
 export const ForgetRoom = Command.define("ForgetRoom", {

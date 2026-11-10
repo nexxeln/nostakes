@@ -44,6 +44,7 @@ const opened = (reloadedFor: Option.Option<ReloadTarget>) =>
     learned: [],
     profile: { avatar: "🦊", name: "Ana" },
     reloadedFor,
+    rooms: [],
     saved: Option.some({ code: CODE, player: PLAYER }),
     sound: false,
     theme: Option.none(),

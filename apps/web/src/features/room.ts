@@ -6,7 +6,7 @@ import type { RoomView } from "@nostakes/room";
 import { Option } from "effect";
 
 import { Screens } from "./model.js";
-import type { InRoom, Model, SavedPass } from "./model.js";
+import type { InRoom, Model, RoomRecord, SavedPass } from "./model.js";
 
 export type OpenView = Extract<RoomView, { readonly _tag: "Open" }>;
 
@@ -29,6 +29,24 @@ export const nameOf = (view: RoomView, player: PlayerId) =>
 
 export const hasLeft = (view: RoomView) =>
   view.departed.some(({ player }) => isYou(view, player));
+
+export const recordOf = (view: RoomView, seenAt: number): RoomRecord => ({
+  closed: RoomViews.$is("Closed")(view),
+  code: view.code,
+  left: hasLeft(view),
+  others: view.members
+    .filter(({ player }) => !isYou(view, player))
+    .map(({ name }) => name),
+  seenAt,
+});
+
+const RECORD_REFRESH_MS = 5 * 60 * 1000;
+
+export const recordChanged = (before: RoomRecord, after: RoomRecord) =>
+  before.closed !== after.closed ||
+  before.left !== after.left ||
+  before.others.join("\n") !== after.others.join("\n") ||
+  after.seenAt - before.seenAt >= RECORD_REFRESH_MS;
 
 export const viewOf = (room: InRoom): Option.Option<RoomView> =>
   room.shown.pipe(Option.map(({ view }) => view));

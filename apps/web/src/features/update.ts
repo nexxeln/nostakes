@@ -15,13 +15,14 @@ import {
   RoomViews,
   SeenEvents,
 } from "@nostakes/room";
-import type { MemberCommand, SeenEvent } from "@nostakes/room";
+import type { MemberCommand, RoomView, SeenEvent } from "@nostakes/room";
 import { Match, Option, Result, Schema } from "effect";
 import type * as HttpClient from "effect/http/HttpClient";
 import type { ManagedResource, Update } from "foldkit";
 
 import {
   ApplyTheme,
+  CheckRoom,
   CopyRoomLink,
   CopyText,
   CreateRoom,
@@ -30,6 +31,7 @@ import {
   ReloadPage,
   SaveLearned,
   SaveProfile,
+  RememberRoom,
   SaveSound,
   SendToRoom,
   ShowPath,
@@ -45,6 +47,8 @@ import { considerUpdate } from "./page-update.js";
 import { rejectionText } from "./rejections.js";
 import {
   isActing,
+  recordChanged,
+  recordOf,
   isLegal,
   isLive,
   isYou,
@@ -91,6 +95,11 @@ const freshRoom = (code: InRoom["code"], player: InRoom["player"]): InRoom => ({
   update: Option.none(),
 });
 
+const checksFor = (model: Model) =>
+  Screens.guards.Home(model.screen)
+    ? model.rooms.map(({ record }) => CheckRoom({ code: record.code }))
+    : [];
+
 export const init = (flags: Flags): Return => {
   const base = {
     faceDraft: Option.none(),
@@ -101,6 +110,7 @@ export const init = (flags: Flags): Return => {
     now: 0,
     profile: flags.profile,
     reloadedFor: flags.reloadedFor,
+    rooms: flags.rooms,
     sound: flags.sound,
     theme: flags.theme,
   };
@@ -133,7 +143,10 @@ export const init = (flags: Flags): Return => {
     }),
   });
 
-  return { ...opened, commands: [ApplyTheme({ theme: flags.theme })] };
+  return {
+    ...opened,
+    commands: [ApplyTheme({ theme: flags.theme }), ...checksFor(opened.model)],
+  };
 };
 
 const withRoom = (model: Model, room: InRoom): Model => ({
@@ -164,6 +177,36 @@ const editRoomThenUpdate = (
       ),
       model: withRoom(model, { ...room, update: step.update }),
     };
+  });
+
+const withoutRoom = (model: Model, code: string): Model => ({
+  ...model,
+  rooms: model.rooms.filter(({ record }) => record.code !== code),
+});
+
+const noteRoom = (step: Return, view: RoomView, seenAt: number): Return =>
+  Option.match(roomOf(step.model), {
+    onNone: () => step,
+    onSome: ({ player }) => {
+      const record = recordOf(view, seenAt);
+
+      const known = step.model.rooms.find(
+        (room) => room.record.code === record.code
+      );
+
+      return known !== undefined && !recordChanged(known.record, record)
+        ? step
+        : {
+            commands: [...(step.commands ?? []), RememberRoom({ record })],
+            model: {
+              ...withoutRoom(step.model, record.code),
+              rooms: [
+                { player, record },
+                ...withoutRoom(step.model, record.code).rooms,
+              ],
+            },
+          };
+    },
   });
 
 const send = (
@@ -472,6 +515,10 @@ export const update = (model: Model, message: Message): Return =>
           Option.map((draft) => ({ ...draft, [path]: value }))
         ),
       })),
+    CheckedRoom: ({ code, gone }) =>
+      gone
+        ? { commands: [ForgetRoom({ code })], model: withoutRoom(model, code) }
+        : { model },
     ChoseFacePart: ({ part }) => ({ model: { ...model, facePart: part } }),
     ChoseTheme: ({ theme }) => ({
       commands: [ApplyTheme({ theme: Option.some(theme) })],
@@ -518,11 +565,24 @@ export const update = (model: Model, message: Message): Return =>
       inRoom(model, (room) => ({
         commands: [ShowPath({ path: "/" }), ForgetRoom({ code: room.code })],
         model: {
-          ...model,
+          ...withoutRoom(model, room.code),
           faceDraft: Option.none(),
           screen: Screens.Home({ busy: false, problem: Option.none() }),
         },
       })),
+    ClickedKnownRoom: ({ code }) =>
+      Option.match(
+        Option.fromNullishOr(
+          model.rooms.find(({ record }) => record.code === code)
+        ),
+        {
+          onNone: () => ({ model }),
+          onSome: ({ player }) => ({
+            commands: [ShowPath({ path: roomPath(code) })],
+            model: withRoom(model, freshRoom(code, player)),
+          }),
+        }
+      ),
     ClickedMenu: () => editRoom(model, (room) => ({ ...room, menu: true })),
     ClickedOpenSettings: () =>
       editRoom(model, (room) => ({
@@ -607,31 +667,35 @@ export const update = (model: Model, message: Message): Return =>
       editRoom(model, (room) => settle(room, key, outcome)),
     GotTableIntent: ({ intent }) => fromTable(model, intent),
     GotUpdate: ({ events, receivedAt, seq, view }) =>
-      editRoomThenUpdate({ ...model, now: receivedAt }, (room) => ({
-        ...remember(room, events),
-        clockSamples: RoomViews.$is("Open")(view)
-          ? [...room.clockSamples, clockSampleOf(view, receivedAt)].slice(
-              -KEPT_CLOCK_SAMPLES
-            )
-          : room.clockSamples,
-        resumed: Option.orElse(
-          Option.fromUndefinedOr(
-            events.findLast(
-              ({ event }) =>
-                SeenEvents.$is("TableAttended")(event) &&
-                Option.isSome(event.quietSince)
-            )
-          ).pipe(
-            Option.flatMap(({ event }) =>
-              SeenEvents.$is("TableAttended")(event)
-                ? Option.some({ player: event.player, receivedAt })
-                : Option.none()
-            )
+      noteRoom(
+        editRoomThenUpdate({ ...model, now: receivedAt }, (room) => ({
+          ...remember(room, events),
+          clockSamples: RoomViews.$is("Open")(view)
+            ? [...room.clockSamples, clockSampleOf(view, receivedAt)].slice(
+                -KEPT_CLOCK_SAMPLES
+              )
+            : room.clockSamples,
+          resumed: Option.orElse(
+            Option.fromUndefinedOr(
+              events.findLast(
+                ({ event }) =>
+                  SeenEvents.$is("TableAttended")(event) &&
+                  Option.isSome(event.quietSince)
+              )
+            ).pipe(
+              Option.flatMap(({ event }) =>
+                SeenEvents.$is("TableAttended")(event)
+                  ? Option.some({ player: event.player, receivedAt })
+                  : Option.none()
+              )
+            ),
+            () => room.resumed
           ),
-          () => room.resumed
-        ),
-        shown: Option.some({ receivedAt, seq, view }),
-      })),
+          shown: Option.some({ receivedAt, seq, view }),
+        })),
+        view,
+        receivedAt
+      ),
     PickedAvatar: ({ avatar }) => {
       if (Option.isSome(model.faceDraft)) {
         return { model: { ...model, faceDraft: Option.some(avatar) } };
