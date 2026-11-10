@@ -1,16 +1,17 @@
-import { BACKDROPS, BODIES } from "./avatar.js";
+import { COLOURS, RANKS, SUITS } from "./avatar.js";
 import type {
   Avatar,
-  Backdrop,
-  Body,
+  Colour,
   Extra,
   Eyes,
   Eyewear,
   Headwear,
+  Mark,
   Mouth,
   Neckwear,
+  Rank,
   Species,
-  Tattoo,
+  Suit,
 } from "./avatar.js";
 
 type Weighted<T> = readonly [
@@ -69,184 +70,199 @@ const evenly = <T>(choices: readonly [T, ...(readonly T[])]): Weighted<T> => {
 const SPECIES_WEIGHTS: Weighted<Species> = [
   ["GreatWhite", 4],
   ["Hammerhead", 3],
-  ["Tiger", 3],
   ["Goldfish", 4],
   ["Puffer", 3],
   ["Piranha", 3],
-  ["Betta", 3],
   ["Angler", 2],
   ["Whale", 3],
   ["Octopus", 3],
 ];
 
-const NATIVE_BODIES: Readonly<Record<Species, Weighted<Body>>> = {
-  Angler: [
-    ["Midnight", 3],
-    ["Grape", 2],
-    ["Slate", 2],
-    ["Lagoon", 1],
-  ],
-  Betta: [
-    ["Grape", 3],
-    ["Coral", 2],
-    ["Sky", 2],
-    ["Bubblegum", 2],
-    ["Lagoon", 1],
-  ],
-  Goldfish: [
-    ["Orange", 5],
-    ["Lemon", 2],
-    ["Coral", 2],
-    ["Pearl", 1],
-    ["Bubblegum", 1],
-  ],
-  GreatWhite: [
-    ["Steel", 5],
-    ["Slate", 2],
-    ["Sky", 2],
-    ["Midnight", 1],
-    ["Pearl", 1],
-  ],
-  Hammerhead: [
-    ["Steel", 3],
-    ["Slate", 2],
-    ["Lagoon", 2],
-    ["Sand", 1],
-    ["Grape", 1],
-  ],
-  Octopus: [
-    ["Coral", 3],
-    ["Grape", 2],
-    ["Bubblegum", 2],
-    ["Orange", 1],
-    ["Lagoon", 1],
-  ],
-  Piranha: [
-    ["Steel", 3],
-    ["Slate", 3],
-    ["Grape", 1],
-    ["Midnight", 1],
-  ],
-  Puffer: [
-    ["Lemon", 4],
-    ["Sand", 2],
-    ["Sky", 1],
-    ["Bubblegum", 1],
-    ["Orange", 1],
-  ],
-  Tiger: [
-    ["Sand", 3],
-    ["Steel", 2],
-    ["Orange", 1],
-    ["Lagoon", 1],
-  ],
-  Whale: [
-    ["Midnight", 3],
-    ["Sky", 3],
-    ["Slate", 2],
-    ["Grape", 1],
-  ],
-};
+interface Native {
+  readonly colours: Weighted<Colour>;
+  readonly suit: Suit;
+  readonly rank: Rank;
+  readonly mouths: Weighted<Mouth>;
+}
 
-const CLASHES: Readonly<Record<Body, readonly Backdrop[]>> = {
-  Bubblegum: ["Neon", "Coral", "Lilac"],
-  Coral: ["Coral", "Neon", "Velvet"],
-  Grape: ["Lilac", "Velvet", "Deep"],
-  Lagoon: ["Lagoon", "Reef", "Felt"],
-  Lemon: ["Sunset", "Sand"],
-  Midnight: ["Deep", "Velvet", "Felt", "Reef"],
-  Orange: ["Sunset", "Coral", "Sand"],
-  Pearl: ["Sand", "Lagoon", "Lilac"],
-  Sand: ["Sand", "Sunset"],
-  Sky: ["Lagoon", "Lilac"],
-  Slate: ["Deep", "Velvet", "Felt"],
-  Steel: ["Lilac", "Lagoon"],
+const SHARK_MOUTHS: Weighted<Mouth> = [
+  ["Line", 4],
+  ["Smirk", 3],
+  ["Grin", 2],
+  ["Fangs", 2],
+  ["GoldTooth", 1],
+];
+
+const FISH_MOUTHS: Weighted<Mouth> = [
+  ["Pucker", 5],
+  ["Smirk", 1],
+  ["Line", 1],
+  ["Grin", 1],
+];
+
+const NATIVE: Readonly<Record<Species, Native>> = {
+  Angler: {
+    colours: [
+      ["BlueYellow", 2],
+      ["GreenYellow", 2],
+      ["RedYellow", 1],
+    ],
+    mouths: [
+      ["Fangs", 5],
+      ["Grin", 1],
+    ],
+    rank: "Ten",
+    suit: "Club",
+  },
+  Goldfish: {
+    colours: [
+      ["YellowRed", 4],
+      ["PinkYellow", 2],
+      ["RedPink", 2],
+    ],
+    mouths: FISH_MOUTHS,
+    rank: "Two",
+    suit: "Heart",
+  },
+  GreatWhite: {
+    colours: [
+      ["BlueYellow", 4],
+      ["GreenYellow", 2],
+      ["RedYellow", 2],
+      ["BluePink", 1],
+    ],
+    mouths: SHARK_MOUTHS,
+    rank: "King",
+    suit: "Spade",
+  },
+  Hammerhead: {
+    colours: [
+      ["GreenYellow", 3],
+      ["BlueYellow", 2],
+      ["BluePink", 2],
+      ["RedYellow", 1],
+    ],
+    mouths: SHARK_MOUTHS,
+    rank: "Ace",
+    suit: "Spade",
+  },
+  Octopus: {
+    colours: [
+      ["RedPink", 3],
+      ["BlueYellow", 2],
+      ["GreenPink", 2],
+    ],
+    mouths: [
+      ["Line", 3],
+      ["Smirk", 2],
+      ["Pucker", 2],
+      ["Grin", 1],
+    ],
+    rank: "Queen",
+    suit: "Club",
+  },
+  Piranha: {
+    colours: [
+      ["RedYellow", 3],
+      ["GreenPink", 1],
+      ["BlueYellow", 1],
+      ["RedPink", 1],
+    ],
+    mouths: [
+      ["Fangs", 4],
+      ["Grin", 2],
+      ["GoldTooth", 1],
+    ],
+    rank: "Jack",
+    suit: "Diamond",
+  },
+  Puffer: {
+    colours: [
+      ["YellowRed", 3],
+      ["PinkYellow", 2],
+      ["GreenPink", 1],
+      ["BluePink", 1],
+    ],
+    mouths: FISH_MOUTHS,
+    rank: "Seven",
+    suit: "Heart",
+  },
+  Whale: {
+    colours: [
+      ["PinkYellow", 3],
+      ["BluePink", 2],
+      ["YellowRed", 1],
+    ],
+    mouths: [
+      ["Line", 4],
+      ["Smirk", 1],
+      ["Grin", 1],
+    ],
+    rank: "King",
+    suit: "Diamond",
+  },
 };
 
 const EYE_WEIGHTS: Weighted<Eyes> = [
-  ["Round", 3],
-  ["Sleepy", 3],
-  ["Sharp", 3],
-  ["Wide", 2],
-  ["Beady", 2],
-];
-
-const MOUTH_WEIGHTS: Weighted<Mouth> = [
-  ["Smirk", 4],
-  ["Grin", 3],
-  ["Poker", 2],
-  ["Pout", 2],
-  ["Fangs", 2],
-  ["GoldTooth", 2],
+  ["Pips", 5],
+  ["Beads", 2],
+  ["Sleepy", 2],
+  ["Slits", 2],
 ];
 
 const HEADWEAR_WEIGHTS: Weighted<Headwear> = [
-  ["None", 17],
-  ["Cowboy", 3],
-  ["Fedora", 3],
+  ["None", 14],
+  ["Cowboy", 2],
+  ["Fedora", 2],
   ["Visor", 2],
   ["Crown", 2],
   ["Bandana", 2],
-  ["Headphones", 2],
   ["Cap", 2],
-  ["Captain", 2],
 ];
 
 const EYEWEAR_WEIGHTS: Weighted<Eyewear> = [
-  ["None", 13],
+  ["None", 12],
   ["Shades", 5],
-  ["Aviators", 3],
-  ["Wraps", 2],
   ["Round", 2],
-  ["Stars", 1],
   ["Monocle", 1],
-  ["Specs", 1],
-  ["Eyepatch", 1],
+  ["Patch", 1],
 ];
 
 const NECK_WEIGHTS: Weighted<Neckwear> = [
   ["None", 8],
-  ["Chain", 6],
-  ["Medallion", 3],
+  ["Chain", 5],
+  ["BowTie", 2],
   ["Bolo", 2],
-  ["Bowtie", 2],
-  ["Hoodie", 2],
-  ["Pearls", 1],
 ];
 
-const TATTOO_WEIGHTS: Weighted<Tattoo> = [
+const MARK_WEIGHTS: Weighted<Mark> = [
   ["None", 12],
-  ["Spade", 3],
-  ["Teardrop", 2],
-  ["Suits", 2],
-  ["Dice", 1],
+  ["Pips", 2],
+  ["Index", 2],
   ["Chip", 1],
-  ["Anchor", 1],
-  ["AllIn", 1],
-  ["NoFold", 1],
-  ["Scar", 2],
+  ["Dice", 1],
+  ["Teardrop", 1],
+  ["Scar", 1],
 ];
 
 const EXTRA_WEIGHTS: Weighted<Extra> = [
   ["None", 14],
   ["Toothpick", 3],
-  ["Cigar", 2],
-  ["Lollipop", 1],
-  ["Hoop", 2],
-  ["Bandaid", 1],
-  ["Ace", 2],
+  ["Chip", 2],
 ];
 
 const MOST_WORN = 3;
 
 const NATIVE_CHANCE_IN_TEN = 8;
 
+const NATIVE_CARD_IN_TEN = 6;
+
 const wornCount = (avatar: Avatar) =>
   [
     avatar.headwear !== "None",
     avatar.eyewear !== "None",
     avatar.neck !== "None",
-    avatar.tattoo !== "None",
+    avatar.mark !== "None",
     avatar.extra !== "None",
   ].filter(Boolean).length;
 
@@ -259,9 +275,9 @@ const pareDown = (avatar: Avatar): Avatar => {
     return pareDown({ ...avatar, extra: "None" });
   }
 
-  return avatar.tattoo === "None"
+  return avatar.mark === "None"
     ? { ...avatar, neck: "None" }
-    : pareDown({ ...avatar, tattoo: "None" });
+    : pareDown({ ...avatar, mark: "None" });
 };
 
 export const randomAvatar = (seed: number): Avatar => {
@@ -273,26 +289,23 @@ export const randomAvatar = (seed: number): Avatar => {
   const roll = (field: number) => advanceBy(start, field + 1);
 
   const species = pick(SPECIES_WEIGHTS, roll(0));
-
-  const body =
-    roll(1) % 10 < NATIVE_CHANCE_IN_TEN
-      ? pick(NATIVE_BODIES[species], roll(2))
-      : pick(evenly(BODIES), roll(2));
-
-  const clashes = CLASHES[body];
-  const backdrops = BACKDROPS.filter((backdrop) => !clashes.includes(backdrop));
-  const [firstBackdrop = "Felt", ...otherBackdrops] = backdrops;
+  const native = NATIVE[species];
+  const ownCard = roll(11) % 10 < NATIVE_CARD_IN_TEN;
 
   return pareDown({
-    backdrop: pick(evenly([firstBackdrop, ...otherBackdrops]), roll(3)),
-    body,
-    extra: pick(EXTRA_WEIGHTS, roll(4)),
-    eyes: pick(EYE_WEIGHTS, roll(5)),
-    eyewear: pick(EYEWEAR_WEIGHTS, roll(6)),
-    headwear: pick(HEADWEAR_WEIGHTS, roll(7)),
-    mouth: pick(MOUTH_WEIGHTS, roll(8)),
+    colour:
+      roll(1) % 10 < NATIVE_CHANCE_IN_TEN
+        ? pick(native.colours, roll(2))
+        : pick(evenly(COLOURS), roll(2)),
+    extra: pick(EXTRA_WEIGHTS, roll(3)),
+    eyes: pick(EYE_WEIGHTS, roll(4)),
+    eyewear: pick(EYEWEAR_WEIGHTS, roll(5)),
+    headwear: pick(HEADWEAR_WEIGHTS, roll(6)),
+    mark: pick(MARK_WEIGHTS, roll(7)),
+    mouth: pick(native.mouths, roll(8)),
     neck: pick(NECK_WEIGHTS, roll(9)),
+    rank: ownCard ? native.rank : pick(evenly(RANKS), roll(10)),
     species,
-    tattoo: pick(TATTOO_WEIGHTS, roll(10)),
+    suit: ownCard ? native.suit : pick(evenly(SUITS), roll(12)),
   });
 };

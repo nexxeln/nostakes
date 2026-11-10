@@ -2,21 +2,23 @@ import { Option, Schema, SchemaTransformation } from "effect";
 
 import {
   AvatarSchema,
-  BACKDROPS,
-  BODIES,
+  COLOURS,
   EXTRAS,
   EYES,
   EYEWEAR,
   HEADWEAR,
+  MARKS,
   MOUTHS,
   NECKWEAR,
+  RANKS,
   SPECIES,
-  TATTOOS,
+  SUITS,
 } from "./avatar.js";
 import type { Avatar } from "./avatar.js";
+import { fromSharksCode } from "./legacy.js";
 import { randomAvatar, seedFrom } from "./random.js";
 
-const CODE_PREFIX = "s1";
+const CODE_PREFIX = "h1";
 
 const DIGITS = "0123456789abcdefghijklmnopqrstuvwxyz";
 
@@ -28,51 +30,68 @@ const slot = <T extends string>(choices: Choices<T>) => ({
   pattern: `[${DIGITS.slice(0, choices.length)}]`,
 });
 
-const SLOTS = [
-  ["species", slot(SPECIES)],
-  ["body", slot(BODIES)],
-  ["eyes", slot(EYES)],
-  ["mouth", slot(MOUTHS)],
-  ["headwear", slot(HEADWEAR)],
-  ["eyewear", slot(EYEWEAR)],
-  ["neck", slot(NECKWEAR)],
-  ["tattoo", slot(TATTOOS)],
-  ["extra", slot(EXTRAS)],
-  ["backdrop", slot(BACKDROPS)],
+const SLOTS = {
+  colour: slot(COLOURS),
+  extra: slot(EXTRAS),
+  eyes: slot(EYES),
+  eyewear: slot(EYEWEAR),
+  headwear: slot(HEADWEAR),
+  mark: slot(MARKS),
+  mouth: slot(MOUTHS),
+  neck: slot(NECKWEAR),
+  rank: slot(RANKS),
+  species: slot(SPECIES),
+  suit: slot(SUITS),
+};
+
+const ORDER = [
+  "species",
+  "colour",
+  "suit",
+  "rank",
+  "eyes",
+  "mouth",
+  "headwear",
+  "eyewear",
+  "neck",
+  "mark",
+  "extra",
 ] as const;
 
 const CODE_PATTERN = new RegExp(
-  `^${CODE_PREFIX}${SLOTS.map(([, part]) => part.pattern).join("")}$`,
+  `^${CODE_PREFIX}${ORDER.map((part) => SLOTS[part].pattern).join("")}$`,
   "u"
 );
 
-const digitAt = (code: string, index: number) =>
-  code.charAt(CODE_PREFIX.length + index);
+const digitAt = (code: string, part: (typeof ORDER)[number]) =>
+  code.charAt(CODE_PREFIX.length + ORDER.indexOf(part));
 
 export const codeFor = (avatar: Avatar) =>
   CODE_PREFIX +
-  SLOTS[0][1].encode(avatar.species) +
-  SLOTS[1][1].encode(avatar.body) +
-  SLOTS[2][1].encode(avatar.eyes) +
-  SLOTS[3][1].encode(avatar.mouth) +
-  SLOTS[4][1].encode(avatar.headwear) +
-  SLOTS[5][1].encode(avatar.eyewear) +
-  SLOTS[6][1].encode(avatar.neck) +
-  SLOTS[7][1].encode(avatar.tattoo) +
-  SLOTS[8][1].encode(avatar.extra) +
-  SLOTS[9][1].encode(avatar.backdrop);
+  SLOTS.species.encode(avatar.species) +
+  SLOTS.colour.encode(avatar.colour) +
+  SLOTS.suit.encode(avatar.suit) +
+  SLOTS.rank.encode(avatar.rank) +
+  SLOTS.eyes.encode(avatar.eyes) +
+  SLOTS.mouth.encode(avatar.mouth) +
+  SLOTS.headwear.encode(avatar.headwear) +
+  SLOTS.eyewear.encode(avatar.eyewear) +
+  SLOTS.neck.encode(avatar.neck) +
+  SLOTS.mark.encode(avatar.mark) +
+  SLOTS.extra.encode(avatar.extra);
 
 const fromCode = (code: string): Avatar => ({
-  backdrop: SLOTS[9][1].decode(digitAt(code, 9)),
-  body: SLOTS[1][1].decode(digitAt(code, 1)),
-  extra: SLOTS[8][1].decode(digitAt(code, 8)),
-  eyes: SLOTS[2][1].decode(digitAt(code, 2)),
-  eyewear: SLOTS[5][1].decode(digitAt(code, 5)),
-  headwear: SLOTS[4][1].decode(digitAt(code, 4)),
-  mouth: SLOTS[3][1].decode(digitAt(code, 3)),
-  neck: SLOTS[6][1].decode(digitAt(code, 6)),
-  species: SLOTS[0][1].decode(digitAt(code, 0)),
-  tattoo: SLOTS[7][1].decode(digitAt(code, 7)),
+  colour: SLOTS.colour.decode(digitAt(code, "colour")),
+  extra: SLOTS.extra.decode(digitAt(code, "extra")),
+  eyes: SLOTS.eyes.decode(digitAt(code, "eyes")),
+  eyewear: SLOTS.eyewear.decode(digitAt(code, "eyewear")),
+  headwear: SLOTS.headwear.decode(digitAt(code, "headwear")),
+  mark: SLOTS.mark.decode(digitAt(code, "mark")),
+  mouth: SLOTS.mouth.decode(digitAt(code, "mouth")),
+  neck: SLOTS.neck.decode(digitAt(code, "neck")),
+  rank: SLOTS.rank.decode(digitAt(code, "rank")),
+  species: SLOTS.species.decode(digitAt(code, "species")),
+  suit: SLOTS.suit.decode(digitAt(code, "suit")),
 });
 
 export const AvatarFromCode = Schema.String.check(
@@ -88,5 +107,6 @@ export const parseAvatar = Schema.decodeUnknownOption(AvatarFromCode);
 
 export const avatarFor = (stored: string): Avatar =>
   parseAvatar(stored).pipe(
+    Option.orElse(() => fromSharksCode(stored)),
     Option.getOrElse(() => randomAvatar(seedFrom(stored)))
   );

@@ -15,14 +15,15 @@ import { HintSchema, TableEventSchema } from "./table/snapshot.js";
 export const FacePartSchema = Schema.Literals([
   "Species",
   "Colour",
+  "Suit",
+  "Card",
   "Eyes",
   "Mouth",
   "Headwear",
   "Eyewear",
   "Neck",
-  "Tattoo",
+  "Mark",
   "Extra",
-  "Backdrop",
 ]);
 
 export type FacePart = typeof FacePartSchema.Type;

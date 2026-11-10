@@ -1,7 +1,6 @@
 export {
   AvatarSchema,
-  BACKDROPS,
-  BODIES,
+  COLOURS,
   DEFAULT_AVATAR,
   EXPRESSIONS,
   ExpressionSchema,
@@ -9,25 +8,30 @@ export {
   EYES,
   EYEWEAR,
   HEADWEAR,
+  MARKS,
   MOUTHS,
   NECKWEAR,
+  RANKS,
   SPECIES,
-  TATTOOS,
+  SUITS,
+  THEMES,
 } from "./avatar.js";
 
 export type {
   Avatar,
-  Backdrop,
-  Body,
+  Colour,
   Expression,
   Extra,
   Eyes,
   Eyewear,
   Headwear,
+  Mark,
   Mouth,
   Neckwear,
+  Rank,
   Species,
-  Tattoo,
+  Suit,
+  Theme,
 } from "./avatar.js";
 
 export { AvatarFromCode, avatarFor, codeFor, parseAvatar } from "./code.js";

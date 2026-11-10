@@ -1,16 +1,17 @@
 import {
-  BACKDROPS,
-  BODIES,
   codeFor,
+  COLOURS,
   EXTRAS,
   EYES,
   EYEWEAR,
   HEADWEAR,
+  MARKS,
   MOUTHS,
   NECKWEAR,
+  RANKS,
   render,
   SPECIES,
-  TATTOOS,
+  SUITS,
 } from "@nostakes/avatar";
 import type { Avatar, Expression } from "@nostakes/avatar";
 import type { Html, HtmlBuilder } from "foldkit/html";
@@ -53,13 +54,9 @@ const choicesOf =
     }));
 
 const PICKERS: Readonly<Record<FacePart, PartPicker>> = {
-  Backdrop: {
-    choices: choicesOf("backdrop", BACKDROPS),
-    closeUp: false,
-    label: "Backdrop",
-  },
+  Card: { choices: choicesOf("rank", RANKS), closeUp: false, label: "Card" },
   Colour: {
-    choices: choicesOf("body", BODIES),
+    choices: choicesOf("colour", COLOURS),
     closeUp: false,
     label: "Colour",
   },
@@ -72,13 +69,14 @@ const PICKERS: Readonly<Record<FacePart, PartPicker>> = {
   Eyewear: {
     choices: choicesOf("eyewear", EYEWEAR),
     closeUp: true,
-    label: "Shades",
+    label: "Glasses",
   },
   Headwear: {
     choices: choicesOf("headwear", HEADWEAR),
     closeUp: false,
     label: "Hat",
   },
+  Mark: { choices: choicesOf("mark", MARKS), closeUp: true, label: "Mark" },
   Mouth: { choices: choicesOf("mouth", MOUTHS), closeUp: true, label: "Mouth" },
   Neck: { choices: choicesOf("neck", NECKWEAR), closeUp: false, label: "Neck" },
   Species: {
@@ -86,24 +84,21 @@ const PICKERS: Readonly<Record<FacePart, PartPicker>> = {
     closeUp: false,
     label: "Species",
   },
-  Tattoo: {
-    choices: choicesOf("tattoo", TATTOOS),
-    closeUp: true,
-    label: "Tattoo",
-  },
+  Suit: { choices: choicesOf("suit", SUITS), closeUp: false, label: "Suit" },
 };
 
 const PART_ORDER: readonly FacePart[] = [
   "Species",
   "Colour",
+  "Suit",
+  "Card",
   "Eyes",
   "Mouth",
   "Headwear",
   "Eyewear",
   "Neck",
-  "Tattoo",
+  "Mark",
   "Extra",
-  "Backdrop",
 ];
 
 const STRIP: readonly { expression: Expression; label: string }[] = [

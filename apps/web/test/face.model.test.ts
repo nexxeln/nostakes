@@ -261,14 +261,14 @@ describe("the face builder", () => {
       expect(checkedLabels(onPart(wearing, "Species"))).toStrictEqual([
         spaced(avatar.species),
       ]);
-      expect(checkedLabels(onPart(wearing, "Backdrop"))).toStrictEqual([
-        avatar.backdrop,
+      expect(checkedLabels(onPart(wearing, "Card"))).toStrictEqual([
+        avatar.rank,
       ]);
       expect(checkedLabels(onPart(wearing, "Extra"))).toStrictEqual([
         spaced(avatar.extra),
       ]);
-      expect(checkedLabels(onPart(wearing, "Tattoo"))).toStrictEqual([
-        spaced(avatar.tattoo),
+      expect(checkedLabels(onPart(wearing, "Mark"))).toStrictEqual([
+        spaced(avatar.mark),
       ]);
     }
   );
