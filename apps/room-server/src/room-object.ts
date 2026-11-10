@@ -517,7 +517,15 @@ export const roomObject = <T extends RoomTypes>(
 
       const open = (input: typeof OpenCall.Encoded) =>
         Effect.gen(function* openRoom() {
-          const call = yield* Schema.decodeEffect(OpenCall)(input);
+          const decoded = yield* Schema.decodeEffect(OpenCall)(input).pipe(
+            Effect.option
+          );
+
+          if (Option.isNone(decoded)) {
+            return OpenOutcomeSchema.cases.Invalid.make({});
+          }
+
+          const call = decoded.value;
 
           if (Option.isSome(host)) {
             return OpenOutcomeSchema.cases.AlreadyOpen.make({
@@ -560,7 +568,15 @@ export const roomObject = <T extends RoomTypes>(
 
       const join = (input: typeof JoinCall.Encoded) =>
         Effect.gen(function* joinRoom() {
-          const call = yield* Schema.decodeEffect(JoinCall)(input);
+          const decoded = yield* Schema.decodeEffect(JoinCall)(input).pipe(
+            Effect.option
+          );
+
+          if (Option.isNone(decoded)) {
+            return JoinOutcomeSchema.cases.Invalid.make({});
+          }
+
+          const call = decoded.value;
           const minted = yield* mintCredential;
           const at = yield* Clock.currentTimeMillis;
 

@@ -11,12 +11,14 @@ export const MAX_SOCKETS = 64;
 
 export const OpenOutcomeSchema = Schema.TaggedUnion({
   AlreadyOpen: { code: RoomCodeSchema },
+  Invalid: {},
   Opened: { player: PlayerIdSchema, token: TokenTextSchema },
 });
 
 export type OpenOutcome = typeof OpenOutcomeSchema.Type;
 
 export const JoinOutcomeSchema = Schema.TaggedUnion({
+  Invalid: {},
   Joined: { player: PlayerIdSchema, token: TokenTextSchema },
   NotFound: {},
   Refused: {},

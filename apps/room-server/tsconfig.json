@@ -7,6 +7,11 @@
         "allowedUnstableApis": [
           "@effect/vitest",
           "effect/Arbitrary",
+          "effect/http/FetchHttpClient",
+          "effect/http/HttpClient",
+          "effect/http/HttpClientRequest",
+          "effect/http/HttpRouter",
+          "effect/http/HttpServerError",
           "effect/http/HttpServerRequest",
           "effect/http/HttpServerResponse"
         ]
