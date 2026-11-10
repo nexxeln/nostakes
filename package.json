@@ -6,7 +6,7 @@
   "type": "module",
   "scripts": {
     "build": "turbo run build",
-    "dev": "turbo run dev --filter=@nostakes/web --filter=@nostakes/room-server",
+    "dev": "turbo run dev --filter=@nostakes/web",
     "check": "pnpm run lockfile:check && turbo run typecheck typecheck-scripts && ultracite check && oxfmt --check .",
     "deploy:preview": "node apps/room-server/scripts/deploy.ts deploy preview",
     "deploy:production": "node apps/room-server/scripts/deploy.ts deploy production",
