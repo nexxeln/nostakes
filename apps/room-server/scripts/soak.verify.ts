@@ -40,6 +40,7 @@ import type {
   NightPlan,
   NightResult,
   OpenedNight,
+  TableRules,
 } from "../test/fixtures/night.js";
 import { wallClock } from "../test/fixtures/poker-socket.js";
 import { PokerStack } from "../test/fixtures/poker-stack.js";
@@ -82,6 +83,7 @@ const TEMPER: Temper = {
   illegalPercent: 2,
   mustTableMuckPercent: 90,
   secondDevicePercent: 0.8,
+  shovePercent: 0,
   showdownSilencePercent: 15,
   silencePercent: 0.4,
   thinkMs: 30,
@@ -90,7 +92,7 @@ const TEMPER: Temper = {
 
 const CHAOS: ClientTemper = {
   blackHolePercent: 0.3,
-  deafAtClosePercent: 25,
+  deafAtClosePercent: 40,
   deafPercent: 0.1,
   dropPercent: 0.6,
   echoPercent: 0.5,
@@ -102,12 +104,23 @@ const CHAOS: ClientTemper = {
 
 const HAND_BUDGET_MS = 12_000;
 
-const UNCLOCKED_VOTE_SILENCE_PERCENT = 30;
+const UNCLOCKED_VOTE_SILENCE_PERCENT = 60;
+
+const UNCLOCKED_SHOVE_PERCENT = 15;
+
+const UNCLOCKED_TABLE: TableRules = { maxRuns: 3, runCount: "Vote" };
 
 const temperFor = (turnSeconds: number): Temper =>
   turnSeconds === 0
-    ? { ...TEMPER, voteSilencePercent: UNCLOCKED_VOTE_SILENCE_PERCENT }
+    ? {
+        ...TEMPER,
+        shovePercent: UNCLOCKED_SHOVE_PERCENT,
+        voteSilencePercent: UNCLOCKED_VOTE_SILENCE_PERCENT,
+      }
     : TEMPER;
+
+const tableRulesFor = (turnSeconds: number): TableRules =>
+  turnSeconds === 0 ? UNCLOCKED_TABLE : {};
 
 const CHECKED_ROOMS_IN_TEN = 7;
 
@@ -220,7 +233,7 @@ export class SoakFailed extends Schema.TaggedError<
 }
 
 const describePlan = (plan: NightPlan) =>
-  `${plan.code} seed ${plan.seed}: ${plan.players + plan.lateJoiners} players and ${plan.spectators} spectators, ${plan.hands} hands, turn ${plan.settings.turnSeconds}s, bank ${plan.settings.timeBankSeconds}s, runs ${plan.settings.table.maxRuns}, client bots ${plan.clients.join(",") || "none"}, rules ${plan.ruleChanges.map((rule) => `${rule.label} at ${rule.atHand}`).join("; ")}`;
+  `${plan.code} seed ${plan.seed}: ${plan.players + plan.lateJoiners} players and ${plan.spectators} spectators, ${plan.hands} hands, turn ${plan.settings.turnSeconds}s, bank ${plan.settings.timeBankSeconds}s, runs ${plan.settings.table.maxRuns} ${plan.settings.table.runCount === "Vote" ? "by vote" : "fixed"}, client bots ${plan.clients.join(",") || "none"}, rules ${plan.ruleChanges.map((rule) => `${rule.label} at ${rule.atHand}`).join("; ")}`;
 
 const sumCounts = (results: readonly JudgedNight[]) => {
   const total = emptyCounts();
@@ -384,6 +397,7 @@ test(
               ? "Checked"
               : "Plain",
           silences: 3,
+          tableRules: tableRulesFor(turnSeconds),
           turnSeconds,
         },
         temperFor(turnSeconds),

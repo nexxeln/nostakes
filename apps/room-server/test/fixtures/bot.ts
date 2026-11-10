@@ -87,6 +87,7 @@ export const randomSource = (seed: number): Random => {
 export interface Temper {
   readonly silencePercent: number;
   readonly voteSilencePercent: number;
+  readonly shovePercent: number;
   readonly showdownSilencePercent: number;
   readonly illegalPercent: number;
   readonly mustTableMuckPercent: number;
@@ -390,8 +391,18 @@ export const plannerFor = (setup: PlannerSetup) => {
       );
     }
 
+    const shoves =
+      temper.shovePercent > 0 &&
+      Option.isSome(legal.raise) &&
+      random.chance(temper.shovePercent);
+
     return intent(
-      Commands.Act.make({ action: answer(legal, random) }),
+      Commands.Act.make({
+        action:
+          shoves && Option.isSome(legal.raise)
+            ? Actions.RaiseTo({ to: legal.raise.value.maxTo })
+            : answer(legal, random),
+      }),
       random.below(temper.thinkMs)
     );
   };

@@ -38,6 +38,8 @@ import { TEST_CHAIN } from "./test-beacon.js";
 
 type EncodedSettings = typeof RoomSettingsSchema.Encoded;
 
+export type TableRules = Partial<EncodedSettings["table"]>;
+
 export interface NightPlan {
   readonly seed: number;
   readonly code: RoomCode;
@@ -198,6 +200,7 @@ export interface NightRecipe {
   readonly restarts: number;
   readonly silences: number;
   readonly clientPercent: number;
+  readonly tableRules: TableRules;
 }
 
 const clientIndices = (random: Random, bots: number, percent: number) => {
@@ -287,7 +290,7 @@ export const planNight = (
     showdownSeconds: random.between(1, 2),
     shuffle: recipe.shuffle,
     sitOutAfterTimeouts: [1, 1, 1, 0, 2][random.below(5)] ?? 1,
-    table: tableFrom(random, small),
+    table: { ...tableFrom(random, small), ...recipe.tableRules },
     timeBankRefill:
       recipe.turnSeconds > 0 && random.chance(50)
         ? TimeBankRefills.Refill({
