@@ -7,6 +7,10 @@ import {
   TokenSchema,
 } from "./primitives.js";
 
+export type WireCodec<T> = Schema.Codec<T, Schema.Json>;
+
+export type WireSchema = Schema.Top & { readonly Encoded: Schema.Json };
+
 export const CloseReasonSchema = Schema.Literals([
   "HelloTimeout",
   "NotAuthorized",
@@ -25,7 +29,7 @@ export const UnavailableReasonSchema = Schema.Literals([
 
 export type UnavailableReason = typeof UnavailableReasonSchema.Type;
 
-export const replyResult = <Rejection extends Schema.Top>(
+export const replyResult = <Rejection extends WireSchema>(
   rejection: Rejection
 ) =>
   Schema.TaggedUnion({
@@ -34,20 +38,20 @@ export const replyResult = <Rejection extends Schema.Top>(
     Unavailable: { reason: UnavailableReasonSchema },
   });
 
-export const clientMessage = <Command extends Schema.Top>(command: Command) =>
+export const clientMessage = <Command extends WireSchema>(command: Command) =>
   Schema.TaggedUnion({
     Command: { command, id: CommandIdSchema },
     Hello: { after: Schema.OptionFromNullOr(SeqSchema), token: TokenSchema },
     Ping: {},
   });
 
-export const clientFrame = <Command extends Schema.Top>(command: Command) =>
+export const clientFrame = <Command extends WireSchema>(command: Command) =>
   Schema.fromJsonString(clientMessage(command));
 
 export interface ServerSchemas<
-  Event extends Schema.Top,
-  View extends Schema.Top,
-  Rejection extends Schema.Top,
+  Event extends WireSchema,
+  View extends WireSchema,
+  Rejection extends WireSchema,
 > {
   readonly event: Event;
   readonly view: View;
@@ -55,9 +59,9 @@ export interface ServerSchemas<
 }
 
 export const serverMessage = <
-  Event extends Schema.Top,
-  View extends Schema.Top,
-  Rejection extends Schema.Top,
+  Event extends WireSchema,
+  View extends WireSchema,
+  Rejection extends WireSchema,
 >(
   schemas: ServerSchemas<Event, View, Rejection>
 ) =>
@@ -81,9 +85,9 @@ export const serverMessage = <
   });
 
 export const serverFrame = <
-  Event extends Schema.Top,
-  View extends Schema.Top,
-  Rejection extends Schema.Top,
+  Event extends WireSchema,
+  View extends WireSchema,
+  Rejection extends WireSchema,
 >(
   schemas: ServerSchemas<Event, View, Rejection>
 ) => Schema.fromJsonString(serverMessage(schemas));

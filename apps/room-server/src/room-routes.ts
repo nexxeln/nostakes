@@ -18,10 +18,10 @@ import { JoinOutcomeSchema, OpenOutcomeSchema } from "./room-rpc.js";
 export interface RoomStub {
   readonly open: (input: {
     readonly code: string;
-    readonly request: unknown;
+    readonly request: Schema.Json;
   }) => Effect.Effect<typeof OpenOutcomeSchema.Encoded>;
   readonly join: (input: {
-    readonly request: unknown;
+    readonly request: Schema.Json;
   }) => Effect.Effect<typeof JoinOutcomeSchema.Encoded>;
   readonly fetch: (
     request: HttpServerRequest.HttpServerRequest
@@ -57,6 +57,7 @@ const roomCodeOf = HttpRouter.schemaPathParams(CodePath).pipe(
 
 const jsonBody = HttpServerRequest.HttpServerRequest.pipe(
   Effect.flatMap((request) => request.json),
+  Effect.flatMap(Schema.decodeUnknownEffect(Schema.Json)),
   Effect.option
 );
 

@@ -9,6 +9,8 @@ export {
   type CloseReason,
   type ServerSchemas,
   type UnavailableReason,
+  type WireCodec,
+  type WireSchema,
 } from "./frames.js";
 
 export {

@@ -5,6 +5,7 @@ import {
   serverFrame,
   serverMessage,
 } from "@nostakes/protocol";
+import type { WireCodec } from "@nostakes/protocol";
 import { Schema } from "effect";
 
 export interface RoomTypes {
@@ -15,10 +16,10 @@ export interface RoomTypes {
 }
 
 export interface ClientSchemas<T extends RoomTypes> {
-  readonly command: Schema.Codec<T["Command"], unknown>;
-  readonly event: Schema.Codec<T["Event"], unknown>;
-  readonly view: Schema.Codec<T["View"], unknown>;
-  readonly rejection: Schema.Codec<T["Rejection"], unknown>;
+  readonly command: WireCodec<T["Command"]>;
+  readonly event: WireCodec<T["Event"]>;
+  readonly view: WireCodec<T["View"]>;
+  readonly rejection: WireCodec<T["Rejection"]>;
 }
 
 const utf8 = new TextEncoder();

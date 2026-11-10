@@ -1,5 +1,5 @@
-import type { PlayerId, RoomCode } from "@nostakes/protocol";
-import type { Option, Result, Schema } from "effect";
+import type { PlayerId, RoomCode, WireCodec } from "@nostakes/protocol";
+import type { Option, Result } from "effect";
 
 export interface RoomTypes {
   readonly State: unknown;
@@ -16,13 +16,13 @@ export interface RoomTypes {
 }
 
 export interface RoomSchemas<T extends RoomTypes> {
-  readonly memberCommand: Schema.Codec<T["MemberCommand"], unknown>;
-  readonly event: Schema.Codec<T["Event"], unknown>;
-  readonly redacted: Schema.Codec<T["Redacted"], unknown>;
-  readonly view: Schema.Codec<T["View"], unknown>;
-  readonly rejection: Schema.Codec<T["Rejection"], unknown>;
-  readonly openRequest: Schema.Codec<T["OpenRequest"], unknown>;
-  readonly joinRequest: Schema.Codec<T["JoinRequest"], unknown>;
+  readonly memberCommand: WireCodec<T["MemberCommand"]>;
+  readonly event: WireCodec<T["Event"]>;
+  readonly redacted: WireCodec<T["Redacted"]>;
+  readonly view: WireCodec<T["View"]>;
+  readonly rejection: WireCodec<T["Rejection"]>;
+  readonly openRequest: WireCodec<T["OpenRequest"]>;
+  readonly joinRequest: WireCodec<T["JoinRequest"]>;
 }
 
 export interface OpenInput<OpenRequest> {
