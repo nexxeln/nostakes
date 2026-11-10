@@ -1,6 +1,7 @@
 import * as Cloudflare from "@alchemy.run/cloudflare";
 import * as Test from "@alchemy.run/test/Vitest";
 import { expect } from "@effect/vitest";
+import type { Shuffle } from "@nostakes/room";
 import { Effect } from "effect";
 import * as FetchHttpClient from "effect/http/FetchHttpClient";
 
@@ -32,7 +33,34 @@ afterAll(destroy(PokerStack));
 
 const SEED = 20_261_110;
 
-const CHECKED_HANDS = 4;
+const CHECKED_HANDS_PER_ROOM = 2;
+
+const CHECKED_HANDS = 2 * CHECKED_HANDS_PER_ROOM;
+
+interface SmallRoom {
+  readonly players: number;
+  readonly shuffle: Shuffle;
+  readonly hands: number;
+  readonly restarts: number;
+}
+
+const ROOMS: readonly SmallRoom[] = [
+  {
+    hands: CHECKED_HANDS_PER_ROOM,
+    players: 3,
+    restarts: 0,
+    shuffle: "Checked",
+  },
+  {
+    hands: CHECKED_HANDS_PER_ROOM,
+    players: 2,
+    restarts: 0,
+    shuffle: "Checked",
+  },
+  { hands: 9, players: 5, restarts: 1, shuffle: "Plain" },
+  { hands: 9, players: 2, restarts: 1, shuffle: "Plain" },
+  { hands: 9, players: 4, restarts: 1, shuffle: "Plain" },
+];
 
 const TEMPER: Temper = {
   churnPercent: 6,
@@ -60,23 +88,23 @@ const CHAOS: ClientTemper = {
 };
 
 test(
-  "a small night: three rooms play about 30 hands over real sockets, with restarts, timeouts, reconnects, duplicates, and a second device, and every check holds",
+  "a small night: five rooms play about 30 hands at once over real sockets, with restarts, timeouts, reconnects, duplicates, and a second device, and every check holds",
   Effect.gen(function* smallNight() {
     const { url } = yield* deployed;
     const base = yield* Effect.fromNullishOr(url).pipe(Effect.orDie);
 
-    const plans = [3, 5, 2].map((players, index) =>
+    const plans = ROOMS.map(({ hands, players, restarts, shuffle }, index) =>
       planNight(
         SEED + index,
         {
           betweenHandsSeconds: 0,
           clientPercent: 50,
           handBudgetMs: 4000,
-          hands: index === 0 ? CHECKED_HANDS : 13,
+          hands,
           players,
-          restarts: 1,
+          restarts,
           rotation: index * 2,
-          shuffle: index === 0 ? "Checked" : "Plain",
+          shuffle,
           silences: 1,
           turnSeconds: 1,
         },
