@@ -104,6 +104,8 @@ export const BIG_POT_BLINDS = 20;
 
 export const REAL_BET_BLINDS = 10;
 
+export const REAL_POT_BLINDS = 6;
+
 export const COOLER_STAKE_BLINDS = 40;
 
 export const FAVOURITE_PERCENTS: readonly [number, number, number] = [
@@ -362,6 +364,7 @@ export const longShotTier = (
 };
 
 const realBet = (wager: Wager, bigBlind: number) =>
+  wager.potBefore >= REAL_POT_BLINDS * bigBlind &&
   wager.added >= REAL_BET_BLINDS * bigBlind &&
   wager.added * 2 >= wager.potBefore;
 

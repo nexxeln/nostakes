@@ -187,6 +187,7 @@ export {
   MomentKindSchema,
   Moments,
   REAL_BET_BLINDS,
+  REAL_POT_BLINDS,
   TIERS,
   bigHandTier,
   boardCategory,

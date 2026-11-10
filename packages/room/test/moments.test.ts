@@ -214,6 +214,24 @@ describe("a bluff", () => {
     ).toStrictEqual([]);
   });
 
+  it("is not a bluff when a shove takes down a pot of only the blinds", () => {
+    expect(
+      momentsIn({
+        deck: headsUp("8h 7h", "Ks Qd", "Ah 2h 9c 4s Kc"),
+        moves: [
+          act(0, calls),
+          act(1, checks),
+          ...[1, 2].flatMap(() => [act(1, checks), act(0, checks)]),
+          act(1, checks),
+          act(0, bets(990)),
+          act(1, folds),
+          shows(0, "8h 7h"),
+        ],
+        stacks,
+      })
+    ).toStrictEqual([]);
+  });
+
   it("is not a bluff when the shown hand had a pair of its own", () => {
     expect(
       momentsIn({
