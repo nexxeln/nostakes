@@ -1,13 +1,22 @@
 import { describe, expect, it } from "@effect/vitest";
-import { Effect, Option, Stream } from "effect";
+import { serverFrame, SeqSchema } from "@nostakes/protocol";
+import { Effect, Option, Schema, Stream } from "effect";
 
-import { roomClient } from "../src/index.js";
+import { clientCodec, roomClient } from "../src/index.js";
+import type { ClientSchemas } from "../src/index.js";
 import {
   fakeTransport,
   serverText,
   settle,
+  YOU,
 } from "./fixtures/fake-transport.js";
-import { ROOM_URL, TOKEN, toySchemas } from "./fixtures/toy-room.js";
+import {
+  ROOM_URL,
+  TOKEN,
+  ToyEventSchema,
+  toySchemas,
+} from "./fixtures/toy-room.js";
+import type { ToyTypes } from "./fixtures/toy-room.js";
 
 const BATCHES_PER_WINDOW = 1000;
 
@@ -27,6 +36,58 @@ const retainedHeap = Effect.fromNullishOr(globalThis.gc).pipe(
     return process.memoryUsage().heapUsed;
   })
 );
+
+const SEATS = 9;
+
+const AVATAR_CHARACTERS = 512;
+
+const WARM_UP_BATCHES = 500;
+
+const LARGE_VIEW_BATCHES = 2000;
+
+const LARGE_VIEW_RETAINED_BYTES_LIMIT = 1_000_000;
+
+const TableViewSchema = Schema.Struct({
+  seats: Schema.Array(
+    Schema.Struct({ avatar: Schema.String, stack: Schema.Int })
+  ),
+  total: Schema.Int,
+});
+
+const tableSchemas: ClientSchemas<
+  Omit<ToyTypes, "View"> & { readonly View: typeof TableViewSchema.Type }
+> = { ...toySchemas, view: TableViewSchema };
+
+const tableCodec = clientCodec(tableSchemas);
+
+const encodeTableFrame = Schema.encodeSync(serverFrame(tableSchemas));
+
+const tableView = (total: number) => ({
+  seats: Array.from({ length: SEATS }, (_, seat) => ({
+    avatar: String(seat).repeat(AVATAR_CHARACTERS),
+    stack: total + seat,
+  })),
+  total,
+});
+
+const tableWelcome = encodeTableFrame(
+  tableCodec.server.cases.Welcome.make({
+    catchUp: tableCodec.catchUp.cases.UpToDate.make({}),
+    seq: SeqSchema.make(0),
+    view: tableView(0),
+    you: YOU,
+  })
+);
+
+const tableBatch = (seq: number) =>
+  encodeTableFrame(
+    tableCodec.server.cases.Events.make({
+      events: [ToyEventSchema.cases.Added.make({ amount: 1, total: seq })],
+      from: SeqSchema.make(seq),
+      to: SeqSchema.make(seq),
+      view: tableView(seq),
+    })
+  );
 
 describe("a long night", () => {
   it.effect(
@@ -91,6 +152,62 @@ describe("a long night", () => {
           applied: Option.some(batch),
           connection: "Live",
           lastUpdate: Option.some(batch),
+        });
+      }).pipe(Effect.scoped),
+    120_000
+  );
+
+  it.effect(
+    "keeps no memory for the views of 2,000 batches with nine full seats",
+    () =>
+      Effect.gen(function* playLargeViews() {
+        const fake = yield* fakeTransport;
+
+        const client = yield* roomClient(tableSchemas, {
+          token: TOKEN,
+          url: ROOM_URL,
+        }).pipe(Effect.provide(fake.layer));
+
+        yield* client.updates.pipe(Stream.runDrain, Effect.forkScoped);
+        yield* client.start;
+        yield* settle;
+
+        const open = yield* Effect.fromNullishOr(fake.sockets[0]);
+
+        yield* open.accept;
+        yield* settle;
+        yield* open.push(tableWelcome);
+        yield* settle;
+
+        let batch = 0;
+
+        while (batch < WARM_UP_BATCHES) {
+          batch += 1;
+          yield* open.push(tableBatch(batch));
+          yield* settle;
+        }
+
+        const before = yield* retainedHeap;
+
+        while (batch < WARM_UP_BATCHES + LARGE_VIEW_BATCHES) {
+          batch += 1;
+          yield* open.push(tableBatch(batch));
+          yield* settle;
+        }
+
+        const after = yield* retainedHeap;
+        const state = yield* client.state;
+
+        expect(
+          after - before,
+          `bytes retained between batch ${WARM_UP_BATCHES} and batch ${batch}`
+        ).toBeLessThanOrEqual(LARGE_VIEW_RETAINED_BYTES_LIMIT);
+        expect({
+          applied: state.seq,
+          connection: state.connection,
+        }).toEqual({
+          applied: Option.some(batch),
+          connection: "Live",
         });
       }).pipe(Effect.scoped),
     120_000

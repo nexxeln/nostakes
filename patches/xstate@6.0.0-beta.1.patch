@@ -1,5 +1,5 @@
 diff --git a/dist/createActor-25900f76.cjs.js b/dist/createActor-25900f76.cjs.js
-index 2a4f5a114507e21d68e6635fd27bfe6f8f7b7e3d..d594acfa13a011dfcb0fb587baa33d965dd48dc4 100644
+index 2a4f5a114507e21d68e6635fd27bfe6f8f7b7e3d..8fe7bc0bbcde7db853727852f391fc6dac84485f 100644
 --- a/dist/createActor-25900f76.cjs.js
 +++ b/dist/createActor-25900f76.cjs.js
 @@ -2114,6 +2114,16 @@ function withSystemInspector(inspect, fn) {
@@ -293,7 +293,82 @@ index 2a4f5a114507e21d68e6635fd27bfe6f8f7b7e3d..d594acfa13a011dfcb0fb587baa33d96
      };
      state.identityProvider = () => {
        if (identityRef) {
-@@ -7011,5 +7162,7 @@ exports.toTransitionConfigArray = toTransitionConfigArray;
+@@ -5465,6 +5616,9 @@ class RuntimeSystem {
+       return;
+     }
+     const inspectionSource = source;
++    if (!inspectionSource._inTransition) {
++      return;
++    }
+     const collected = inspectionSource._collectedSent ??= [];
+     collected.push({
+       targetRef: target,
+@@ -5987,6 +6141,12 @@ class Actor {
+     this._collectedActions = void 0;
+     /** @internal Events relayed to other actors during the in-flight transition. */
+     this._collectedSent = void 0;
++    /**
++     * @internal Whether a transition is in flight: while the actor starts,
++     * processes an event, or recovers from an execution error. Sends are recorded
++     * for `sent[]` only then.
++     */
++    this._inTransition = false;
+     this._initialEffects = void 0;
+     this.registryKey = void 0;
+     /** The globally unique process ID for this invocation. */
+@@ -6214,6 +6374,8 @@ class Actor {
+     if (!errorEvent) {
+       return false;
+     }
++    const inTransition = this._inTransition;
++    this._inTransition = true;
+     try {
+       const [nextSnapshot, effects] = finalizeTransitionResult(this._actorScope, snapshot, this.logic.transition(snapshot, errorEvent, this._actorScope));
+       this._setSnapshot(nextSnapshot);
+@@ -6222,6 +6384,8 @@ class Actor {
+       return true;
+     } catch {
+       return false;
++    } finally {
++      this._inTransition = inTransition;
+     }
+   }
+   _next(snapshot) {
+@@ -6433,6 +6597,15 @@ class Actor {
+ 
+   /** Starts the Actor from the initial state */
+   start() {
++    const inTransition = this._inTransition;
++    this._inTransition = true;
++    try {
++      return this._start();
++    } finally {
++      this._inTransition = inTransition;
++    }
++  }
++  _start() {
+     if (this._processingStatus === ProcessingStatus.Running) {
+       // Do not restart the service if it is already started
+       return this;
+@@ -6548,7 +6721,16 @@ class Actor {
+     this.mailbox?.start();
+     return this;
+   }
+-  _process({
++  _process(item) {
++    const inTransition = this._inTransition;
++    this._inTransition = true;
++    try {
++      this._processEvent(item);
++    } finally {
++      this._inTransition = inTransition;
++    }
++  }
++  _processEvent({
+     event,
+     sourceRef
+   }) {
+@@ -7011,5 +7193,7 @@ exports.toTransitionConfigArray = toTransitionConfigArray;
  exports.transitionNode = transitionNode;
  exports.withActorSelf = withActorSelf;
  exports.withExecutionIdentity = withExecutionIdentity;
@@ -302,7 +377,7 @@ index 2a4f5a114507e21d68e6635fd27bfe6f8f7b7e3d..d594acfa13a011dfcb0fb587baa33d96
  exports.withSystemInspector = withSystemInspector;
  exports.xstateError = xstateError;
 diff --git a/dist/createActor-551369be.development.esm.js b/dist/createActor-551369be.development.esm.js
-index 2b3f7f0168fd457659922f827f27313cf80949b9..4bbbee551a2f8e725d890e78bc50ce1ae9f7a9b8 100644
+index 2b3f7f0168fd457659922f827f27313cf80949b9..3ca32d61c74ff48cbe7eb230b436bf2c860be708 100644
 --- a/dist/createActor-551369be.development.esm.js
 +++ b/dist/createActor-551369be.development.esm.js
 @@ -2201,6 +2201,16 @@ function withSystemInspector(inspect, fn) {
@@ -596,13 +671,88 @@ index 2b3f7f0168fd457659922f827f27313cf80949b9..4bbbee551a2f8e725d890e78bc50ce1a
      };
      state.identityProvider = () => {
        if (identityRef) {
-@@ -7173,3 +7324,4 @@ function createActor(logic, ...[options]) {
+@@ -5719,6 +5870,9 @@ class RuntimeSystem {
+       return;
+     }
+     const inspectionSource = source;
++    if (!inspectionSource._inTransition) {
++      return;
++    }
+     const collected = inspectionSource._collectedSent ??= [];
+     collected.push({
+       targetRef: target,
+@@ -6244,6 +6398,12 @@ class Actor {
+     this._collectedActions = void 0;
+     /** @internal Events relayed to other actors during the in-flight transition. */
+     this._collectedSent = void 0;
++    /**
++     * @internal Whether a transition is in flight: while the actor starts,
++     * processes an event, or recovers from an execution error. Sends are recorded
++     * for `sent[]` only then.
++     */
++    this._inTransition = false;
+     this._initialEffects = void 0;
+     this.registryKey = void 0;
+     /** The globally unique process ID for this invocation. */
+@@ -6471,6 +6631,8 @@ class Actor {
+     if (!errorEvent) {
+       return false;
+     }
++    const inTransition = this._inTransition;
++    this._inTransition = true;
+     try {
+       const [nextSnapshot, effects] = finalizeTransitionResult(this._actorScope, snapshot, this.logic.transition(snapshot, errorEvent, this._actorScope));
+       this._setSnapshot(nextSnapshot);
+@@ -6479,6 +6641,8 @@ class Actor {
+       return true;
+     } catch {
+       return false;
++    } finally {
++      this._inTransition = inTransition;
+     }
+   }
+   _next(snapshot) {
+@@ -6690,6 +6854,15 @@ class Actor {
+ 
+   /** Starts the Actor from the initial state */
+   start() {
++    const inTransition = this._inTransition;
++    this._inTransition = true;
++    try {
++      return this._start();
++    } finally {
++      this._inTransition = inTransition;
++    }
++  }
++  _start() {
+     if (this._processingStatus === ProcessingStatus.Running) {
+       // Do not restart the service if it is already started
+       return this;
+@@ -6805,7 +6978,16 @@ class Actor {
+     this.mailbox?.start();
+     return this;
+   }
+-  _process({
++  _process(item) {
++    const inTransition = this._inTransition;
++    this._inTransition = true;
++    try {
++      this._processEvent(item);
++    } finally {
++      this._inTransition = inTransition;
++    }
++  }
++  _processEvent({
+     event,
+     sourceRef
+   }) {
+@@ -7173,3 +7355,4 @@ function createActor(logic, ...[options]) {
  }
  
  export { allocateChildId as $, listenerLogic as A, subscriptionLogic as B, createListenerLogic as C, createSubscriptionLogic as D, Actor as E, matchesState as F, toObserver as G, executeEffects as H, InfiniteTransitionError as I, isBuiltInExecutableEffect as J, deliverEvent as K, runStep as L, stopActor as M, terminateActor as N, createInitEvent as O, ProcessingStatus as P, createDeadLetterEffect as Q, createCustomEffect as R, XSTATE_LOGIC_EFFECT_START as S, XSTATE_LOGIC_EFFECT_RESOLVE as T, XSTATE_LOGIC_EFFECT_REJECT as U, createEmitEffect as V, createSendToEffect as W, XSTATE_STOP_EFFECT as X, XSTATE_INIT as Y, publishEmittedEvent as Z, resolveRegisteredActorSource as _, assertUnreservedSourceName as a, assertChildIdFree as a0, reserveChildId as a1, hasUnescapedDot as a2, STATE_DELIMITER as a3, mapValues as a4, createInvokeId as a5, getDelayedTransitions as a6, getCandidates as a7, evaluateCandidate as a8, formatTransition as a9, initialMicrostep as aA, createStartEffect as aB, isStateId as aC, getPersistedSnapshot as aD, detachedScopes as aE, toStatePath as aF, hasAmbientInspector as aG, getProperAncestors as aH, isRemoteActorRef as aI, getAllOwnEvents as aJ, matchesEvent as aK, getRootActorId as aL, RUNTIME_OPERATIONS as aM, withSystemInspector as aN, createTimerEffect as aO, getSnapshotActorRef as aP, withExecutionIdentity as aQ, getTimerStart as aR, recordTimerStart as aS, diagnoseActorOptions as aT, createRemoteActorRef as aU, createInvokeTimeoutEvent as aV, parseGeneratedActorId as aW, NULL_EVENT as aa, toTransitionConfigArray as ab, matchesActorSession as ac, describeMachine as ad, formatRouteTransitions as ae, resolveStateValue as af, isInFinalState as ag, createInertActorScope as ah, setInertActorScopeSnapshot as ai, beginSpawnAllocation as aj, attachSnapshotActorRef as ak, macrostep as al, isInertActorScope as am, setSnapshotActorRef as an, cloneMachineSnapshot as ao, transitionNode as ap, XSTATE_TIMER as aq, getTransitionResult as ar, hasEffect as as, createErrorPlatformEvent as at, withActorSelf as au, resolveActionsWithContext as av, freezeContext as aw, takeSpawnAllocationCounters as ax, mergeActorIdCounters as ay, createSpawnEffect as az, getStateNodes as b, isActorRefLike as c, diagnoseAuthorConfig as d, createMachineSnapshot as e, diagnoseSetupConfig as f, getAllStateNodes as g, createActor as h, isAtomicStateNode as i, encodeAddressSegment as j, getActorIdPrefix as k, finalizeTransitionResult as l, matchesEventDescriptor as m, getTimerKey as n, isSerializedActorRef as o, parseDelayToMilliseconds as p, readTimerKey as q, resolveInvokedActorLogic as r, systemLogicMetadata as s, toArray as t, XSTATE_STOP as u, createDoneActorEvent as v, createErrorActorEvent as w, serializeTimerKey as x, matchesTimerKey as y, isMachineSnapshot as z };
 +export { adoptSystem, withExecutionOwner };
 diff --git a/dist/createActor-a49ae0ce.development.cjs.js b/dist/createActor-a49ae0ce.development.cjs.js
-index 98fcc786022a9710b9129b341bff2504d6a54be8..d14501002276f5608cdc39a3fe5d832feb3953fb 100644
+index 98fcc786022a9710b9129b341bff2504d6a54be8..1be0f4dbbf49030ff2f3340dd9b43b9bc51fda1d 100644
 --- a/dist/createActor-a49ae0ce.development.cjs.js
 +++ b/dist/createActor-a49ae0ce.development.cjs.js
 @@ -2203,6 +2203,16 @@ function withSystemInspector(inspect, fn) {
@@ -896,7 +1046,82 @@ index 98fcc786022a9710b9129b341bff2504d6a54be8..d14501002276f5608cdc39a3fe5d832f
      };
      state.identityProvider = () => {
        if (identityRef) {
-@@ -7286,4 +7437,6 @@ exports.toTransitionConfigArray = toTransitionConfigArray;
+@@ -5721,6 +5872,9 @@ class RuntimeSystem {
+       return;
+     }
+     const inspectionSource = source;
++    if (!inspectionSource._inTransition) {
++      return;
++    }
+     const collected = inspectionSource._collectedSent ??= [];
+     collected.push({
+       targetRef: target,
+@@ -6246,6 +6400,12 @@ class Actor {
+     this._collectedActions = void 0;
+     /** @internal Events relayed to other actors during the in-flight transition. */
+     this._collectedSent = void 0;
++    /**
++     * @internal Whether a transition is in flight: while the actor starts,
++     * processes an event, or recovers from an execution error. Sends are recorded
++     * for `sent[]` only then.
++     */
++    this._inTransition = false;
+     this._initialEffects = void 0;
+     this.registryKey = void 0;
+     /** The globally unique process ID for this invocation. */
+@@ -6473,6 +6633,8 @@ class Actor {
+     if (!errorEvent) {
+       return false;
+     }
++    const inTransition = this._inTransition;
++    this._inTransition = true;
+     try {
+       const [nextSnapshot, effects] = finalizeTransitionResult(this._actorScope, snapshot, this.logic.transition(snapshot, errorEvent, this._actorScope));
+       this._setSnapshot(nextSnapshot);
+@@ -6481,6 +6643,8 @@ class Actor {
+       return true;
+     } catch {
+       return false;
++    } finally {
++      this._inTransition = inTransition;
+     }
+   }
+   _next(snapshot) {
+@@ -6692,6 +6856,15 @@ class Actor {
+ 
+   /** Starts the Actor from the initial state */
+   start() {
++    const inTransition = this._inTransition;
++    this._inTransition = true;
++    try {
++      return this._start();
++    } finally {
++      this._inTransition = inTransition;
++    }
++  }
++  _start() {
+     if (this._processingStatus === ProcessingStatus.Running) {
+       // Do not restart the service if it is already started
+       return this;
+@@ -6807,7 +6980,16 @@ class Actor {
+     this.mailbox?.start();
+     return this;
+   }
+-  _process({
++  _process(item) {
++    const inTransition = this._inTransition;
++    this._inTransition = true;
++    try {
++      this._processEvent(item);
++    } finally {
++      this._inTransition = inTransition;
++    }
++  }
++  _processEvent({
+     event,
+     sourceRef
+   }) {
+@@ -7286,4 +7468,6 @@ exports.toTransitionConfigArray = toTransitionConfigArray;
  exports.transitionNode = transitionNode;
  exports.withActorSelf = withActorSelf;
  exports.withExecutionIdentity = withExecutionIdentity;
@@ -904,7 +1129,7 @@ index 98fcc786022a9710b9129b341bff2504d6a54be8..d14501002276f5608cdc39a3fe5d832f
 +exports.withExecutionOwner = withExecutionOwner;
  exports.withSystemInspector = withSystemInspector;
 diff --git a/dist/createActor-cbe3abac.esm.js b/dist/createActor-cbe3abac.esm.js
-index 2481e9dfa28c2b764b8a6c1888bbbfeff7dc4c15..0c8a2b75f83a3751088555124a68c2088c6ea3bb 100644
+index 2481e9dfa28c2b764b8a6c1888bbbfeff7dc4c15..c0f6ce3e50ef65f213b43428f35c746a0d6c9703 100644
 --- a/dist/createActor-cbe3abac.esm.js
 +++ b/dist/createActor-cbe3abac.esm.js
 @@ -2112,6 +2112,16 @@ function withSystemInspector(inspect, fn) {
@@ -1198,7 +1423,82 @@ index 2481e9dfa28c2b764b8a6c1888bbbfeff7dc4c15..0c8a2b75f83a3751088555124a68c208
      };
      state.identityProvider = () => {
        if (identityRef) {
-@@ -6900,3 +7051,4 @@ function createActor(logic, ...[options]) {
+@@ -5463,6 +5614,9 @@ class RuntimeSystem {
+       return;
+     }
+     const inspectionSource = source;
++    if (!inspectionSource._inTransition) {
++      return;
++    }
+     const collected = inspectionSource._collectedSent ??= [];
+     collected.push({
+       targetRef: target,
+@@ -5985,6 +6139,12 @@ class Actor {
+     this._collectedActions = void 0;
+     /** @internal Events relayed to other actors during the in-flight transition. */
+     this._collectedSent = void 0;
++    /**
++     * @internal Whether a transition is in flight: while the actor starts,
++     * processes an event, or recovers from an execution error. Sends are recorded
++     * for `sent[]` only then.
++     */
++    this._inTransition = false;
+     this._initialEffects = void 0;
+     this.registryKey = void 0;
+     /** The globally unique process ID for this invocation. */
+@@ -6212,6 +6372,8 @@ class Actor {
+     if (!errorEvent) {
+       return false;
+     }
++    const inTransition = this._inTransition;
++    this._inTransition = true;
+     try {
+       const [nextSnapshot, effects] = finalizeTransitionResult(this._actorScope, snapshot, this.logic.transition(snapshot, errorEvent, this._actorScope));
+       this._setSnapshot(nextSnapshot);
+@@ -6220,6 +6382,8 @@ class Actor {
+       return true;
+     } catch {
+       return false;
++    } finally {
++      this._inTransition = inTransition;
+     }
+   }
+   _next(snapshot) {
+@@ -6431,6 +6595,15 @@ class Actor {
+ 
+   /** Starts the Actor from the initial state */
+   start() {
++    const inTransition = this._inTransition;
++    this._inTransition = true;
++    try {
++      return this._start();
++    } finally {
++      this._inTransition = inTransition;
++    }
++  }
++  _start() {
+     if (this._processingStatus === ProcessingStatus.Running) {
+       // Do not restart the service if it is already started
+       return this;
+@@ -6546,7 +6719,16 @@ class Actor {
+     this.mailbox?.start();
+     return this;
+   }
+-  _process({
++  _process(item) {
++    const inTransition = this._inTransition;
++    this._inTransition = true;
++    try {
++      this._processEvent(item);
++    } finally {
++      this._inTransition = inTransition;
++    }
++  }
++  _processEvent({
+     event,
+     sourceRef
+   }) {
+@@ -6900,3 +7082,4 @@ function createActor(logic, ...[options]) {
  }
  
  export { resolveRegisteredActorSource as $, isMachineSnapshot as A, listenerLogic as B, subscriptionLogic as C, createListenerLogic as D, createSubscriptionLogic as E, Actor as F, matchesState as G, toObserver as H, InfiniteTransitionError as I, executeEffects as J, isBuiltInExecutableEffect as K, deliverEvent as L, runStep as M, stopActor as N, terminateActor as O, ProcessingStatus as P, createInitEvent as Q, createDeadLetterEffect as R, createCustomEffect as S, XSTATE_LOGIC_EFFECT_START as T, XSTATE_LOGIC_EFFECT_RESOLVE as U, XSTATE_LOGIC_EFFECT_REJECT as V, createEmitEffect as W, XSTATE_STOP_EFFECT as X, createSendToEffect as Y, XSTATE_INIT as Z, publishEmittedEvent as _, assertUnreservedSourceName as a, allocateChildId as a0, assertChildIdFree as a1, reserveChildId as a2, hasUnescapedDot as a3, STATE_DELIMITER as a4, mapValues as a5, createInvokeId as a6, getDelayedTransitions as a7, getCandidates as a8, evaluateCandidate as a9, initialMicrostep as aA, createStartEffect as aB, isStateId as aC, getPersistedSnapshot as aD, detachedScopes as aE, hasAmbientInspector as aF, getProperAncestors as aG, isRemoteActorRef as aH, getAllOwnEvents as aI, matchesEvent as aJ, getRootActorId as aK, RUNTIME_OPERATIONS as aL, withSystemInspector as aM, createTimerEffect as aN, getSnapshotActorRef as aO, withExecutionIdentity as aP, getTimerStart as aQ, recordTimerStart as aR, diagnoseActorOptions as aS, createRemoteActorRef as aT, createInvokeTimeoutEvent as aU, parseGeneratedActorId as aV, formatTransition as aa, NULL_EVENT as ab, toTransitionConfigArray as ac, matchesActorSession as ad, describeMachine as ae, formatRouteTransitions as af, resolveStateValue as ag, isInFinalState as ah, createInertActorScope as ai, setInertActorScopeSnapshot as aj, beginSpawnAllocation as ak, attachSnapshotActorRef as al, macrostep as am, isInertActorScope as an, setSnapshotActorRef as ao, cloneMachineSnapshot as ap, transitionNode as aq, XSTATE_TIMER as ar, getTransitionResult as as, hasEffect as at, createErrorPlatformEvent as au, withActorSelf as av, resolveActionsWithContext as aw, takeSpawnAllocationCounters as ax, mergeActorIdCounters as ay, createSpawnEffect as az, getStateNodes as b, isActorRefLike as c, diagnoseAuthorConfig as d, createMachineSnapshot as e, diagnoseSetupConfig as f, getAllStateNodes as g, createActor as h, isAtomicStateNode as i, encodeAddressSegment as j, getActorIdPrefix as k, finalizeTransitionResult as l, matchesEventDescriptor as m, getTimerKey as n, isSerializedActorRef as o, parseDelayToMilliseconds as p, readTimerKey as q, resolveInvokedActorLogic as r, systemLogicMetadata as s, toArray as t, XSTATE_STOP as u, createDoneActorEvent as v, createErrorActorEvent as w, xstateError as x, serializeTimerKey as y, matchesTimerKey as z };
