@@ -132,6 +132,25 @@ test(
     }
 
     yield* Effect.logInfo(
+      `small night signals: ${(
+        [
+          "signalsSent",
+          "peeksWithoutCards",
+          "signalDeliveries",
+          "peekDeliveries",
+          "reactionDeliveries",
+          "clientSignalsSent",
+          "clientSignalsKeptOnDevice",
+          "clientSignalsHeard",
+        ] as const
+      )
+        .map(
+          (name) =>
+            `${name} ${results.reduce((sum, result) => sum + result.verdict.counts[name], 0)}`
+        )
+        .join(", ")}`
+    );
+    yield* Effect.logInfo(
       `small night fair shuffle: ${FAIRNESS_COUNT_NAMES.map((name) => `${name} ${fairness[name]}`).join(", ")}`
     );
 
@@ -171,6 +190,12 @@ test(
     expect(total((counts) => counts.clientWakes)).toBeGreaterThanOrEqual(1);
     expect(total((counts) => counts.clientEchoes)).toBeGreaterThanOrEqual(1);
     expect(total((counts) => counts.clientUnexpectedRefusals)).toBe(0);
+    expect(total((counts) => counts.signalDeliveries)).toBeGreaterThan(0);
+    expect(total((counts) => counts.peekDeliveries)).toBeGreaterThan(0);
+    expect(total((counts) => counts.reactionDeliveries)).toBeGreaterThan(0);
+    expect(total((counts) => counts.peeksWithoutCards)).toBeGreaterThan(0);
+    expect(total((counts) => counts.clientSignalsSent)).toBeGreaterThan(0);
+    expect(total((counts) => counts.clientSignalsHeard)).toBeGreaterThan(0);
   }).pipe(Effect.provide(FetchHttpClient.layer)),
   { timeout: 120_000 }
 );

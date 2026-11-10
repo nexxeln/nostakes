@@ -15,6 +15,7 @@ import {
   SeenEventSchema,
   RoomEvents,
   RoomStates,
+  RoomSignalSchema,
   RoomViews,
   audienceOf,
   chipsOnTable,
@@ -24,7 +25,12 @@ import {
   replay,
   viewFor,
 } from "@nostakes/room";
-import type { RoomEvent, RoomState, RoomView } from "@nostakes/room";
+import type {
+  RoomEvent,
+  RoomSignal,
+  RoomState,
+  RoomView,
+} from "@nostakes/room";
 import { Option, Predicate, Result, Schema } from "effect";
 
 import { pokerRoom } from "../../src/poker-room.js";
@@ -41,6 +47,7 @@ import {
 import type { FairnessCounts, Proof } from "./fair-checks.js";
 import { decodeServerFrame, pokerCodec, wallClock } from "./poker-socket.js";
 import type { Arrival } from "./poker-socket.js";
+import { describeSignal } from "./signal-plan.js";
 import { beaconDown } from "./test-beacon.js";
 
 const eventCodec = Schema.fromJsonString(Schema.toCodecJson(RoomEventSchema));
@@ -104,6 +111,9 @@ export const COUNT_NAMES = [
   "clientIssuedBeforeDrop",
   "clientNaps",
   "clientResent",
+  "clientSignalsHeard",
+  "clientSignalsKeptOnDevice",
+  "clientSignalsSent",
   "clientSkippedRanges",
   "clientUnexpectedRefusals",
   "clientViewsChecked",
@@ -125,10 +135,13 @@ export const COUNT_NAMES = [
   "lateShowdownChoices",
   "multiRunHands",
   "noAnteHands",
+  "peekDeliveries",
+  "peeksWithoutCards",
   "protocolViolations",
   "quietPauses",
   "quietResumes",
   "rabbitHunts",
+  "reactionDeliveries",
   "reconnects",
   "rejected",
   "replyTimeouts",
@@ -141,6 +154,8 @@ export const COUNT_NAMES = [
   "showdownMucks",
   "showdownTables",
   "shows",
+  "signalDeliveries",
+  "signalsSent",
   "silences",
   "straddles",
   "tablesUnattended",
@@ -183,6 +198,9 @@ export const emptyCounts = (): NightCounts => ({
   clientIssuedBeforeDrop: 0,
   clientNaps: 0,
   clientResent: 0,
+  clientSignalsHeard: 0,
+  clientSignalsKeptOnDevice: 0,
+  clientSignalsSent: 0,
   clientSkippedRanges: 0,
   clientUnexpectedRefusals: 0,
   clientViewsChecked: 0,
@@ -204,10 +222,13 @@ export const emptyCounts = (): NightCounts => ({
   lateShowdownChoices: 0,
   multiRunHands: 0,
   noAnteHands: 0,
+  peekDeliveries: 0,
+  peeksWithoutCards: 0,
   protocolViolations: 0,
   quietPauses: 0,
   quietResumes: 0,
   rabbitHunts: 0,
+  reactionDeliveries: 0,
   reconnects: 0,
   rejected: 0,
   replyTimeouts: 0,
@@ -220,6 +241,8 @@ export const emptyCounts = (): NightCounts => ({
   showdownMucks: 0,
   showdownTables: 0,
   shows: 0,
+  signalDeliveries: 0,
+  signalsSent: 0,
   silences: 0,
   straddles: 0,
   tablesUnattended: 0,
@@ -293,7 +316,14 @@ interface Trace {
   readonly where: string;
 }
 
+interface SignalSeen {
+  readonly from: PlayerId;
+  readonly signal: RoomSignal;
+  readonly where: string;
+}
+
 interface Received {
+  readonly signals: Map<number, SignalSeen[]>;
   readonly events: Map<number, Seen[]>;
   readonly views: Map<number, Seen[]>;
   readonly welcomes: Map<number, WelcomeSeen[]>;
@@ -479,6 +509,8 @@ const addBotStats = (checker: Checker, bot: BotRecord) => {
   counts.silences += stats.silences;
   counts.protocolViolations += stats.protocolViolations;
   counts.replyTimeouts += stats.replyTimeouts;
+  counts.signalsSent += stats.signals.sent;
+  counts.peeksWithoutCards += stats.signals.peeksWithoutCards;
 
   if (stats.replyTimeouts > 0) {
     report(
@@ -639,6 +671,30 @@ const eventsArrived = (
   lineage.next = Option.some(message.to + 1);
 };
 
+const signalArrived = (
+  checker: Checker,
+  received: Received,
+  where: string,
+  lineage: Lineage,
+  arrival: Arrival
+) => {
+  const { message } = arrival;
+
+  if (!guards.Signal(message)) {
+    return;
+  }
+
+  if (!lineage.welcomed) {
+    report(checker, `${where} got a signal before its welcome`);
+  }
+
+  pushTo(received.signals, Option.getOrElse(lineage.next, () => 1) - 1, {
+    from: message.from,
+    signal: message.signal,
+    where,
+  });
+};
+
 const viewOf = (arrival: Arrival) => {
   const { message } = arrival;
 
@@ -685,6 +741,7 @@ const indexBot = (checker: Checker, received: Received, bot: BotRecord) => {
           arrival
         );
         eventsArrived(checker, received, where, lineage, player, arrival);
+        signalArrived(checker, received, where, lineage, arrival);
 
         for (const seen of Option.toArray(viewOf(arrival))) {
           latest = latest.pipe(Option.exists(({ at }) => at > seen.at))
@@ -751,6 +808,9 @@ const addClientStats = (checker: Checker, client: ClientBotRecord) => {
   counts.clientUnexpectedRefusals += stats.unexpectedRefusals;
   counts.clientEchoes += stats.echoes;
   counts.clientNaps += stats.naps;
+  counts.clientSignalsSent += stats.signalsSent;
+  counts.clientSignalsKeptOnDevice += stats.signalsKeptOnDevice;
+  counts.clientSignalsHeard += stats.signalsHeard;
   counts.commands += stats.commands;
   counts.rejected += stats.rejected;
   counts.illegal += stats.illegal;
@@ -1332,6 +1392,61 @@ const checkWelcomes = (
   }
 };
 
+const shownToSender = (
+  state: RoomState,
+  from: PlayerId,
+  signal: RoomSignal
+) => {
+  const view = viewFor(state, audienceOf(state, from), state.now);
+
+  return (
+    view.members.some(({ player }) => player === from) &&
+    RoomSignalSchema.match(signal, {
+      Peeking: () =>
+        RoomViews.$is("Open")(view) &&
+        view.settings.peeking &&
+        view.holeCards.length > 0 &&
+        view.hand.pipe(
+          Option.exists((hand) =>
+            hand.players.some(
+              (dealt) =>
+                dealt.player === from &&
+                dealt.status !== "Folded" &&
+                !dealt.mucked
+            )
+          )
+        ),
+      Reaction: () => true,
+    })
+  );
+};
+
+const checkSignals = (
+  checker: Checker,
+  state: RoomState,
+  seen: readonly SignalSeen[],
+  seq: number
+) => {
+  for (const { from, signal, where } of seen) {
+    checker.counts.signalDeliveries += 1;
+    checker.counts.peekDeliveries += RoomSignalSchema.guards.Peeking(signal)
+      ? 1
+      : 0;
+    checker.counts.reactionDeliveries += RoomSignalSchema.guards.Reaction(
+      signal
+    )
+      ? 1
+      : 0;
+
+    if (!shownToSender(state, from, signal)) {
+      report(
+        checker,
+        `${where} was relayed ${describeSignal(from, signal)} at ${seq}, which the room refuses there`
+      );
+    }
+  }
+};
+
 const withoutClocks = (view: RoomView) => {
   const json = decodeJson(encodeView(view));
 
@@ -1663,6 +1778,7 @@ export const checkNight = (evidence: NightEvidence): NightVerdict => {
     clientViews: new Map(),
     events: new Map(),
     finals: [],
+    signals: new Map(),
     traces: [],
     views: new Map(),
     welcomes: new Map(),
@@ -1769,6 +1885,7 @@ export const checkNight = (evidence: NightEvidence): NightVerdict => {
       seq
     );
     checkClientViews(checker, state, received.clientViews.get(seq) ?? [], seq);
+    checkSignals(checker, state, received.signals.get(seq) ?? [], seq);
 
     if (needed.has(seq)) {
       statesAfter.set(seq, state);

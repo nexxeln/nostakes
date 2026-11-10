@@ -28,7 +28,7 @@ import type { Scope } from "effect";
 
 import { MemberCommandSchema, pokerRoom } from "../../src/poker-room.js";
 import type { MemberCommand } from "../../src/poker-room.js";
-import { plannerFor, refusedWinningMuck } from "./bot.js";
+import { plannerFor, randomSource, refusedWinningMuck } from "./bot.js";
 import type {
   Intent,
   NightControl,
@@ -42,6 +42,7 @@ import type { Line, LineMode, Moment } from "./client-wire.js";
 import { pokerCodec, wallClock } from "./poker-socket.js";
 import type { Arrival } from "./poker-socket.js";
 import { socketUrl } from "./room-client.js";
+import { signalPlanner, signalSeedFor } from "./signal-plan.js";
 
 export interface PokerClientTypes {
   readonly Command: MemberCommand;
@@ -130,6 +131,9 @@ export interface ClientBotStats {
   unexpectedRefusals: number;
   echoes: number;
   naps: number;
+  signalsSent: number;
+  signalsKeptOnDevice: number;
+  signalsHeard: number;
 }
 
 export interface ClientBotRecord {
@@ -261,11 +265,19 @@ export const startClientBot = (setup: ClientBotSetup) => {
     naps: 0,
     rejected: 0,
     resent: 0,
+    signalsHeard: 0,
+    signalsKeptOnDevice: 0,
+    signalsSent: 0,
     silences: 0,
     skippedRanges: 0,
     unexpectedRefusals: 0,
     wakes: 0,
   };
+
+  const signals = signalPlanner(
+    randomSource(signalSeedFor(setup.index, pass.code)),
+    pass.player
+  );
 
   const planner = plannerFor({
     control,
@@ -520,6 +532,14 @@ export const startClientBot = (setup: ClientBotSetup) => {
       Stream.runForEach((item) =>
         Effect.sync(() => {
           absorb(item);
+        })
+      ),
+      Effect.forkScoped
+    );
+    yield* client.signals.pipe(
+      Stream.runForEach(() =>
+        Effect.sync(() => {
+          stats.signalsHeard += 1;
         })
       ),
       Effect.forkScoped
@@ -811,6 +831,15 @@ export const startClientBot = (setup: ClientBotSetup) => {
 
       if (control.stop || state.connection !== "Live" || Option.isNone(open)) {
         continue;
+      }
+
+      if (!control.closing && signals.due()) {
+        const outcome = yield* client
+          .signal(signals.next(open.value))
+          .pipe(Effect.orDie);
+
+        stats.signalsSent += outcome === "Sent" ? 1 : 0;
+        stats.signalsKeptOnDevice += outcome === "Sent" ? 0 : 1;
       }
 
       const disruption = control.closing

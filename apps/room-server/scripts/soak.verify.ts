@@ -205,6 +205,7 @@ const INFORMATIONAL: ReadonlySet<CountName> = new Set([
   "clientDropsUnansweredOnClearLine",
   "clientDropsUnexplained",
   "clientFailedAttempts",
+  "clientSignalsKeptOnDevice",
   "clientUnexpectedRefusals",
   "replyTimeouts",
 ]);
@@ -291,6 +292,7 @@ const summarize = (
     `  client bots ${counts.clientBots}: commands ${counts.clientCommands}, traced to the log ${counts.clientCommandsTraced}, issued right before a drop ${counts.clientIssuedBeforeDrop}, resent after a drop ${counts.clientResent}`,
     `  client drops: bot close ${counts.clientDropsBotClose}, server restart ${counts.clientDropsRestart}, unanswered on a deaf line ${counts.clientDropsDeafUnanswered}, black hole ${counts.clientDropsBlackHole}; server silence limit ${counts.clientDropsSilenceLimit}, deaf and silent ${counts.clientDropsDeafSilence}, unanswered on a clear line ${counts.clientDropsUnansweredOnClearLine}, unexplained ${counts.clientDropsUnexplained}, failed reconnects ${counts.clientFailedAttempts}`,
     `  commands issued on a deaf line ${counts.clientDeafCommands}, answered ${deafReplies.length}, slowest reply ${slowestDeafReply.toFixed(0)} ms (bound ${DEAF_REPLY_BOUND_MS} ms), lines deafened as the room closed ${counts.clientDeafAtClose}`,
+    `  signals: sent by socket bots ${counts.signalsSent}, of them peeks without cards ${counts.peeksWithoutCards}; sent by client bots ${counts.clientSignalsSent}, kept on the device ${counts.clientSignalsKeptOnDevice}, heard by client bots ${counts.clientSignalsHeard}; relayed to socket bots ${counts.signalDeliveries} (peeks ${counts.peekDeliveries}, reactions ${counts.reactionDeliveries}), each checked against the room's rule at its place in the log`,
     `  client wakes ${counts.clientWakes}, naps ${counts.clientNaps}, skipped ranges ${counts.clientSkippedRanges}, past batches echoed ${counts.clientEchoes}, events checked ${counts.clientEventsChecked}, views checked ${counts.clientViewsChecked}, unexpected refusals ${counts.clientUnexpectedRefusals}`,
     `  replay of the longest night (${longest?.plan.code ?? "none"}, ${longest?.verdict.counts.hands ?? 0} hands, ${longest?.verdict.counts.events ?? 0} events): ${(longest?.verdict.replayMs ?? 0).toFixed(1)} ms`,
     `  settlement transfers per room: ${results.map((result) => result.verdict.transfers.join(",")).join(" ")} (total ${counts.transfers})`,

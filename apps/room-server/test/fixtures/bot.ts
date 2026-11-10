@@ -33,6 +33,8 @@ import {
   wallClock,
 } from "./poker-socket.js";
 import type { PokerSocket } from "./poker-socket.js";
+import { signalPlanner, signalSeedFor } from "./signal-plan.js";
+import type { SignalTally } from "./signal-plan.js";
 
 export type OpenView = typeof RoomViewSchema.cases.Open.Type;
 
@@ -137,6 +139,7 @@ export interface BotStats {
   silences: number;
   replyTimeouts: number;
   protocolViolations: number;
+  signals: SignalTally;
 }
 
 export type Role = "Player" | "Spectator";
@@ -824,6 +827,11 @@ export const startBot = (setup: BotSetup) => {
   const main: Device = { name: "main", sockets: [] };
   const second: Device = { name: "second", sockets: [] };
 
+  const signals = signalPlanner(
+    randomSource(signalSeedFor(setup.index, pass.code)),
+    pass.player
+  );
+
   const stats: BotStats = {
     commands: 0,
     drops: 0,
@@ -836,6 +844,7 @@ export const startBot = (setup: BotSetup) => {
     replyTimeouts: 0,
     resent: 0,
     secondDevices: 0,
+    signals: signals.tally,
     silences: 0,
   };
 
@@ -1123,6 +1132,15 @@ export const startBot = (setup: BotSetup) => {
     }
   });
 
+  const signalSometimes = (open: OpenView) =>
+    Effect.gen(function* sendSignal() {
+      for (const { socket } of Option.toArray(currentOf(main))) {
+        yield* socket.send(
+          pokerCodec.client.cases.Signal.make({ signal: signals.next(open) })
+        );
+      }
+    });
+
   const keepAlive = Effect.gen(function* keepAlive() {
     for (const device of [main, second]) {
       for (const { socket } of Option.toArray(currentOf(device))) {
@@ -1152,6 +1170,10 @@ export const startBot = (setup: BotSetup) => {
       }
 
       yield* chaos;
+
+      if (!control.closing && signals.due()) {
+        yield* signalSometimes(current.value);
+      }
 
       if (!control.closing && random.chance(temper.illegalPercent / 20)) {
         yield* sendServerOnly;
