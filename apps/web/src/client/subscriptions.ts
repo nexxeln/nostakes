@@ -1,13 +1,13 @@
 import { Activities } from "@nostakes/client";
 import type { ClientState, RoomUpdate } from "@nostakes/client";
-import { Clock, Effect, Option, Schema, Stream } from "effect";
+import { Clock, Effect, Option, Predicate, Ref, Schema, Stream } from "effect";
 import { Subscription } from "foldkit";
 import type { ManagedResource } from "foldkit";
 
 import { Messages } from "../features/message.js";
 import type { Message } from "../features/message.js";
 import type { Link, Model } from "../features/model.js";
-import { clockRunning, roomOf } from "../features/room.js";
+import { clockRunning, keepsScreenAwake, roomOf } from "../features/room.js";
 import type { PokerClientTypes } from "../features/wire.js";
 import { RoomConnection } from "./connection.js";
 
@@ -83,6 +83,44 @@ const wakes = Stream.merge(
   )
 );
 
+const releaseLock = (held: Ref.Ref<Option.Option<WakeLockSentinel>>) =>
+  Ref.getAndSet(held, Option.none()).pipe(
+    Effect.flatMap(
+      Option.match({
+        onNone: () => Effect.void,
+        onSome: (sentinel) =>
+          Effect.tryPromise(() => sentinel.release()).pipe(Effect.ignore),
+      })
+    )
+  );
+
+const requestLock = (held: Ref.Ref<Option.Option<WakeLockSentinel>>) =>
+  pageVisible() && Predicate.hasProperty(globalThis.navigator, "wakeLock")
+    ? releaseLock(held).pipe(
+        Effect.andThen(
+          Effect.tryPromise(() =>
+            globalThis.navigator.wakeLock.request("screen")
+          )
+        ),
+        Effect.flatMap((sentinel) => Ref.set(held, Option.some(sentinel))),
+        Effect.ignore
+      )
+    : Effect.void;
+
+const screenAwake = Effect.gen(function* holdTheScreen() {
+  const held = yield* Effect.acquireRelease(
+    Ref.make(Option.none<WakeLockSentinel>()),
+    releaseLock
+  );
+
+  yield* requestLock(held);
+
+  return Stream.fromEventListener(globalThis.document, "visibilitychange").pipe(
+    Stream.mapEffect(() => requestLock(held)),
+    Stream.drain
+  );
+}).pipe(Stream.unwrap);
+
 export const subscriptions = Subscription.make<
   Model,
   Message,
@@ -107,6 +145,15 @@ export const subscriptions = Subscription.make<
           Option.filter(({ connected }) => connected),
           Option.map(({ code }) => code)
         ),
+      }),
+    }
+  ),
+  screen: entry(
+    { awake: Schema.Boolean },
+    {
+      dependenciesToStream: ({ awake }) => (awake ? screenAwake : Stream.empty),
+      modelToDependencies: (model) => ({
+        awake: Option.exists(roomOf(model), keepsScreenAwake),
       }),
     }
   ),

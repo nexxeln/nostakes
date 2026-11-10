@@ -57,6 +57,20 @@ export const isLegal = (legal: LegalActions, action: Action) =>
       ),
   });
 
+export const keepsScreenAwake = (room: InRoom) =>
+  Option.exists(
+    openViewOf(room),
+    (view) =>
+      view.game === "Running" &&
+      !hasLeft(view) &&
+      view.seats.some(({ occupant }) =>
+        Option.exists(
+          occupant,
+          ({ player, sittingOut }) => isYou(view, player) && !sittingOut
+        )
+      )
+  );
+
 export const clockRunning = (room: InRoom) =>
   Option.exists(
     openViewOf(room),

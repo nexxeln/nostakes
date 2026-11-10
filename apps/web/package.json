@@ -12,7 +12,8 @@
     "build": "vite build",
     "brand": "node scripts/brand.ts",
     "check": "pnpm run typecheck",
-    "verify": "node scripts/two-players.ts"
+    "verify": "node scripts/two-players.ts && PHONE_ENGINES=chromium node scripts/phones.ts",
+    "phones": "node scripts/phones.ts"
   },
   "dependencies": {
     "@effect/platform-browser": "4.1.2",

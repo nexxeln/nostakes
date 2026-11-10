@@ -34,6 +34,13 @@
   --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
   --ease-back: cubic-bezier(0.3, 1.35, 0.5, 1);
 
+  --inset-top: env(safe-area-inset-top, 0px);
+  --inset-right: env(safe-area-inset-right, 0px);
+  --inset-bottom: env(safe-area-inset-bottom, 0px);
+  --inset-left: env(safe-area-inset-left, 0px);
+  --gutter-left: max(var(--space-4), var(--inset-left));
+  --gutter-right: max(var(--space-4), var(--inset-right));
+
   --size-touch: 2.75rem;
   --size-bar: 3rem;
   --size-page: 26rem;

@@ -1,26 +1,13 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
-import {
-  Console,
-  Deferred,
-  Effect,
-  Option,
-  Schedule,
-  Schema,
-  Stream,
-} from "effect";
-import * as ChildProcess from "effect/process/ChildProcess";
+import { Console, Effect, Option, Schedule, Schema } from "effect";
 import { chromium } from "playwright-core";
 import type { Browser, Page } from "playwright-core";
+
+import { localSite, mutedBrowser } from "./local-site.ts";
 
 const WEB_PORT = 5199;
 
 const WEB = `http://localhost:${WEB_PORT}`;
-
-const REPO = new URL("../../..", import.meta.url).pathname;
-
-const ROOM_SERVER_READY = /ready at (?<url>http:\/\/localhost:\d+)/u;
-
-const WEB_READY = /Local:\s+(?<url>http:\/\/localhost:\d+)/u;
 
 class NightFailed extends Schema.TaggedError<
   NightFailed,
@@ -39,93 +26,6 @@ const attempt = <A>(step: string, run: () => Promise<A>) =>
     catch: (cause) => new NightFailed({ detail: String(cause), step }),
     try: run,
   });
-
-const started = (label: string, ready: RegExp, command: ChildProcess.Command) =>
-  Effect.gen(function* startProcess() {
-    const url = yield* Deferred.make<string>();
-    const handle = yield* command;
-
-    yield* handle.all.pipe(
-      Stream.decodeText(),
-      Stream.splitLines,
-      Stream.runForEach((line) =>
-        Option.match(Option.fromNullishOr(ready.exec(line)?.groups?.url), {
-          onNone: () => Effect.void,
-          onSome: (found) => Deferred.succeed(url, found),
-        })
-      ),
-      Effect.ignore,
-      Effect.forkScoped
-    );
-
-    return yield* Deferred.await(url).pipe(
-      Effect.timeout("90 seconds"),
-      Effect.mapError(
-        () =>
-          new NightFailed({ detail: "never said it was ready", step: label })
-      )
-    );
-  });
-
-const roomServer = started(
-  "start the room server",
-  ROOM_SERVER_READY,
-  ChildProcess.make(
-    "pnpm",
-    [
-      "--filter",
-      "@nostakes/room-server",
-      "exec",
-      "alchemy",
-      "dev",
-      "--no-input",
-      "--stage",
-      "verify_web",
-      "scripts/local.run.ts",
-    ],
-    {
-      cwd: REPO,
-      env: {
-        ALLOWED_ORIGINS: WEB,
-        CLOUDFLARE_ACCOUNT_ID: "00000000000000000000000000000000",
-        NO_COLOR: "1",
-      },
-      extendEnv: true,
-      killSignal: "SIGINT",
-    }
-  )
-);
-
-const webServer = (roomServerUrl: string) =>
-  started(
-    "start the web app",
-    WEB_READY,
-    ChildProcess.make(
-      "pnpm",
-      [
-        "--filter",
-        "@nostakes/web",
-        "exec",
-        "vite",
-        "dev",
-        "--port",
-        String(WEB_PORT),
-        "--strictPort",
-      ],
-      {
-        cwd: REPO,
-        env: { NO_COLOR: "1", ROOM_SERVER_URL: roomServerUrl },
-        extendEnv: true,
-      }
-    )
-  );
-
-const browser = Effect.acquireRelease(
-  attempt("launch a headless, muted browser", () =>
-    chromium.launch({ args: ["--mute-audio"], headless: true })
-  ),
-  (opened) => Effect.promise(() => opened.close())
-);
 
 const MUTED_PAGE = "?mute=1";
 
@@ -319,15 +219,12 @@ const playHand = (pages: readonly Page[], watcher: Page) =>
   });
 
 const night = Effect.gen(function* playOneHand() {
-  const roomServerUrl = yield* roomServer;
+  const { app, roomServer } = yield* localSite(WEB_PORT, "verify_web");
 
-  yield* Console.log(`room server at ${roomServerUrl}`);
+  yield* Console.log(`room server at ${roomServer}`);
+  yield* Console.log(`web app at ${app}`);
 
-  const web = yield* webServer(roomServerUrl);
-
-  yield* Console.log(`web app at ${web}`);
-
-  const opened = yield* browser;
+  const opened = yield* mutedBrowser(chromium);
   const ana = yield* player(opened);
   const ben = yield* player(opened);
 

@@ -186,6 +186,20 @@ export const ForgetRoom = Command.define("ForgetRoom", {
   messages: [Messages.CompletedForget],
 });
 
+const paintThemeColor = (chosen: boolean) => {
+  const page = globalThis
+    .getComputedStyle(globalThis.document.documentElement)
+    .getPropertyValue("--color-page")
+    .trim();
+
+  for (const meta of globalThis.document.querySelectorAll<HTMLMetaElement>(
+    'meta[name="theme-color"]'
+  )) {
+    meta.dataset.scheme ??= meta.content;
+    meta.content = chosen ? page : meta.dataset.scheme;
+  }
+};
+
 export const ApplyTheme = Command.define("ApplyTheme", {
   args: { theme: Schema.Option(ThemeSchema) },
   execute: ({ theme }) =>
@@ -200,6 +214,7 @@ export const ApplyTheme = Command.define("ApplyTheme", {
           root.dataset.theme = chosen === "Dark" ? "dark" : "light";
         },
       });
+      paintThemeColor(Option.isSome(theme));
     }).pipe(
       Effect.andThen(storeTheme(theme)),
       Effect.as(Messages.CompletedPreference())
