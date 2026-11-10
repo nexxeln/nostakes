@@ -915,6 +915,9 @@ html:has(.room) {
   .sheet {
     border-radius: var(--radius-4);
   }
+  .sheet::before {
+    display: none;
+  }
 }
 
 .sheet-title {
