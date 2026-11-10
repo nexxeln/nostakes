@@ -181,7 +181,7 @@ const MOUTH_WEIGHTS: Weighted<Mouth> = [
 ];
 
 const HEADWEAR_WEIGHTS: Weighted<Headwear> = [
-  ["None", 12],
+  ["None", 17],
   ["Cowboy", 3],
   ["Fedora", 3],
   ["Visor", 2],
@@ -193,7 +193,7 @@ const HEADWEAR_WEIGHTS: Weighted<Headwear> = [
 ];
 
 const EYEWEAR_WEIGHTS: Weighted<Eyewear> = [
-  ["None", 9],
+  ["None", 13],
   ["Shades", 5],
   ["Aviators", 3],
   ["Wraps", 2],
