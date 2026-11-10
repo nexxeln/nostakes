@@ -12,6 +12,7 @@ import { defineMessageUnion } from "foldkit/message";
 import { defineTaggedUnion } from "foldkit/schema";
 
 import {
+  ConfirmSchema,
   CopiedSchema,
   DeckSchema,
   FacePartSchema,
@@ -19,6 +20,7 @@ import {
   LinkSchema,
   ThemeSchema,
 } from "./model.js";
+import { PresetSchema, RuleGroupSchema } from "./rules-copy.js";
 import { TableIntentSchema } from "./table/snapshot.js";
 
 export const ReplyOutcomes = defineTaggedUnion({
@@ -43,20 +45,25 @@ export const Messages = defineMessageUnion({
   CheckedRoom: { code: RoomCodeSchema, gone: Schema.Boolean },
   ChoseDeck: { deck: DeckSchema },
   ChoseFacePart: { part: FacePartSchema },
+  ChosePreset: { preset: PresetSchema },
   ChoseTheme: { theme: ThemeSchema },
+  ClickedAddChips: {},
   ClickedCancelFace: {},
-  ClickedCloseSettings: {},
+  ClickedConfirm: { confirm: ConfirmSchema },
   ClickedCopyLink: {},
   ClickedCopyProof: { hand: Schema.Int },
   ClickedCopySettlement: {},
   ClickedEditFace: {},
   ClickedFairness: {},
   ClickedHome: {},
+  ClickedHouseRules: {},
   ClickedKnownRoom: { code: RoomCodeSchema },
+  ClickedMember: { player: PlayerIdSchema },
   ClickedMenu: {},
-  ClickedOpenSettings: {},
   ClickedRequestChips: {},
   ClickedRoomCommand: { command: MemberCommandSchema, label: Schema.String },
+  ClickedRuleGroup: { group: RuleGroupSchema },
+  ClickedRuleHelp: { path: Schema.String },
   ClickedSaveFace: {},
   ClickedSaveSettings: {},
   ClickedSeat: { seat: Schema.Int },

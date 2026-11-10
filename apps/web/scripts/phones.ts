@@ -497,6 +497,7 @@ const checkEngine = (engine: BrowserType, app: string) =>
       (yield* nativeWakeLock(host)) ? "yes" : "no, the app skips it"
     );
     yield* button(host, "Menu");
+    yield* button(host, "Leave");
     yield* button(host, "Leave the room");
 
     const left = yield* waitFor(spied(host, "locksActive"), (n) => n === 0);

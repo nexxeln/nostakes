@@ -24,8 +24,10 @@ const roomWith = (
   live: boolean,
   acting: boolean
 ): InRoom => ({
+  addingChips: false,
   clockSamples: [],
   code: RoomCodeSchema.make("ABC234"),
+  confirm: Option.none(),
   connected: true,
   copied: "Nothing",
   drafts: { buyIn: "", chips: "", seat: Option.none() },
@@ -40,6 +42,7 @@ const roomWith = (
     refusal: Option.none(),
     retryDelayMs: Option.none(),
   }),
+  member: Option.none(),
   menu: false,
   notice: Option.none(),
   peeks: [],
@@ -48,7 +51,7 @@ const roomWith = (
   player: PLAYER,
   reactions: [],
   resumed: Option.none(),
-  settings: Option.none(),
+  rules: Option.none(),
   shown: Option.some({ receivedAt: 0, seq: 1, view }),
   update: Option.none(),
 });

@@ -6,10 +6,15 @@ import {
   ProtocolVersionSchema,
   RoomCodeSchema,
 } from "@nostakes/protocol";
-import { ReactionSchema, RoomViewSchema } from "@nostakes/room";
+import {
+  MemberCommandSchema,
+  ReactionSchema,
+  RoomViewSchema,
+} from "@nostakes/room";
 import { Option, Schema } from "effect";
 import { defineTaggedUnion } from "foldkit/schema";
 
+import { RuleGroupSchema } from "./rules-copy.js";
 import { HintSchema, TableEventSchema } from "./table/snapshot.js";
 
 export const FacePartSchema = Schema.Literals([
@@ -101,6 +106,22 @@ export const SettingsDraftSchema = Schema.Record(Schema.String, Schema.String);
 
 export type SettingsDraft = typeof SettingsDraftSchema.Type;
 
+export const RulesSheetSchema = Schema.Struct({
+  draft: SettingsDraftSchema,
+  help: Schema.Option(Schema.String),
+  open: Schema.Option(RuleGroupSchema),
+});
+
+export type RulesSheet = typeof RulesSheetSchema.Type;
+
+export const ConfirmSchema = Schema.Union([
+  MemberCommandSchema.cases.CloseRoom,
+  MemberCommandSchema.cases.LeaveRoom,
+  MemberCommandSchema.cases.RemoveFromSeat,
+]);
+
+export type Confirm = typeof ConfirmSchema.Type;
+
 export const DraftsSchema = Schema.Struct({
   buyIn: Schema.String,
   chips: Schema.String,
@@ -139,8 +160,10 @@ export const FairHandSchema = Schema.Struct({
 export type FairHand = typeof FairHandSchema.Type;
 
 export const InRoomSchema = Schema.Struct({
+  addingChips: Schema.Boolean,
   clockSamples: Schema.Array(Schema.Int),
   code: RoomCodeSchema,
+  confirm: Schema.Option(ConfirmSchema),
   connected: Schema.Boolean,
   copied: CopiedSchema,
   drafts: DraftsSchema,
@@ -148,6 +171,7 @@ export const InRoomSchema = Schema.Struct({
   fairness: Schema.Array(FairHandSchema),
   fairnessOpen: Schema.Boolean,
   link: Schema.Option(LinkSchema),
+  member: Schema.Option(PlayerIdSchema),
   menu: Schema.Boolean,
   notice: Schema.Option(Schema.String),
   peeks: Schema.Array(
@@ -167,7 +191,7 @@ export const InRoomSchema = Schema.Struct({
   resumed: Schema.Option(
     Schema.Struct({ player: PlayerIdSchema, receivedAt: Schema.Int })
   ),
-  settings: Schema.Option(SettingsDraftSchema),
+  rules: Schema.Option(RulesSheetSchema),
   shown: Schema.Option(ShownViewSchema),
   update: Schema.Option(PageUpdateSchema),
 });

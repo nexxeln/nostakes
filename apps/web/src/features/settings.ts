@@ -203,3 +203,12 @@ export const settingsFrom = (
   decodeSettings(valueOf(SETTINGS_ROOT, draft)).pipe(
     Result.mapError((issue) => `Check the settings: ${issue.message}`)
   );
+
+const encodedText = (settings: RoomSettings) =>
+  JSON.stringify(encodeSettings(settings));
+
+export const savesAs = (draft: SettingsDraft, settings: RoomSettings) =>
+  Result.match(settingsFrom(draft), {
+    onFailure: () => false,
+    onSuccess: (saved) => encodedText(saved) === encodedText(settings),
+  });

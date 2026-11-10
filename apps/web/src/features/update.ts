@@ -51,7 +51,7 @@ import type { RoomConnection } from "../client/connection.js";
 import { Messages, ReplyOutcomes } from "./message.js";
 import type { Message, ReplyOutcome } from "./message.js";
 import { FairMarks, Screens } from "./model.js";
-import type { Flags, InRoom, Model } from "./model.js";
+import type { Flags, InRoom, Model, RulesSheet } from "./model.js";
 import { considerUpdate } from "./page-update.js";
 import { rejectionText } from "./rejections.js";
 import {
@@ -67,7 +67,8 @@ import {
   settlementText,
   viewOf,
 } from "./room.js";
-import { draftOf, settingsFrom } from "./settings.js";
+import { openDraft, withPreset } from "./rules.js";
+import { settingsFrom } from "./settings.js";
 import { forgetExpired, heard, reacted } from "./signals.js";
 import {
   KEPT_CLOCK_SAMPLES,
@@ -87,8 +88,10 @@ type Return = Update.Return<Model, Message, Services>;
 const Commands = MemberCommandSchema.cases;
 
 const freshRoom = (code: InRoom["code"], player: InRoom["player"]): InRoom => ({
+  addingChips: false,
   clockSamples: [],
   code,
+  confirm: Option.none(),
   connected: false,
   copied: "Nothing",
   drafts: { buyIn: "", chips: "", seat: Option.none() },
@@ -96,6 +99,7 @@ const freshRoom = (code: InRoom["code"], player: InRoom["player"]): InRoom => ({
   fairness: [],
   fairnessOpen: false,
   link: Option.none(),
+  member: Option.none(),
   menu: false,
   notice: Option.none(),
   peeks: [],
@@ -104,7 +108,7 @@ const freshRoom = (code: InRoom["code"], player: InRoom["player"]): InRoom => ({
   player,
   reactions: [],
   resumed: Option.none(),
-  settings: Option.none(),
+  rules: Option.none(),
   shown: Option.none(),
   update: Option.none(),
 });
@@ -250,6 +254,9 @@ const send = (
     model: {
       ...withRoom(model, {
         ...room,
+        addingChips: false,
+        confirm: Option.none(),
+        member: Option.none(),
         notice: Option.none(),
         pending: [...room.pending, { acting, key, label }],
         picked: Option.none(),
@@ -331,6 +338,33 @@ const requestChips = (model: Model): Return =>
           ),
       }
     )
+  );
+
+const editRules = (
+  model: Model,
+  edit: (sheet: RulesSheet) => RulesSheet
+): Return =>
+  editRoom(model, (room) => ({
+    ...room,
+    rules: room.rules.pipe(Option.map(edit)),
+  }));
+
+const topUpRoom = (room: InRoom) =>
+  Option.match(
+    openViewOf(room).pipe(
+      Option.flatMap((view) =>
+        Option.fromNullishOr(
+          view.seats.find(({ occupant }) =>
+            Option.exists(occupant, ({ player }) => isYou(view, player))
+          )
+        ).pipe(
+          Option.flatMap(({ occupant }) => occupant),
+          Option.map(({ stack }) => view.settings.buyIn.max - stack)
+        )
+      ),
+      Option.filter((chips) => chips > 0)
+    ),
+    { onNone: () => "", onSome: String }
   );
 
 const pickSeat = (model: Model, seat: number): Return =>
@@ -581,11 +615,9 @@ export const update = (model: Model, message: Message): Return =>
       model: { ...model, profile: { ...model.profile, name: value } },
     }),
     ChangedSetting: ({ path, value }) =>
-      editRoom(model, (room) => ({
-        ...room,
-        settings: room.settings.pipe(
-          Option.map((draft) => ({ ...draft, [path]: value }))
-        ),
+      editRules(model, (sheet) => ({
+        ...sheet,
+        draft: { ...sheet.draft, [path]: value },
       })),
     ChangedSystemTheme: ({ theme }) => ({
       model: { ...model, systemTheme: theme },
@@ -599,15 +631,33 @@ export const update = (model: Model, message: Message): Return =>
       model: { ...model, deck },
     }),
     ChoseFacePart: ({ part }) => ({ model: { ...model, facePart: part } }),
+    ChosePreset: ({ preset }) =>
+      editRules(model, (sheet) => ({
+        ...sheet,
+        draft: withPreset(sheet.draft, preset),
+      })),
     ChoseTheme: ({ theme }) => ({
       commands: [ApplyTheme({ theme: Option.some(theme) })],
       model: { ...model, theme: Option.some(theme) },
     }),
+    ClickedAddChips: () =>
+      editRoom(model, (room) => ({
+        ...room,
+        addingChips: true,
+        drafts: { ...room.drafts, chips: topUpRoom(room) },
+        menu: false,
+      })),
     ClickedCancelFace: () => ({
       model: { ...model, faceDraft: Option.none() },
     }),
-    ClickedCloseSettings: () =>
-      editRoom(model, (room) => ({ ...room, settings: Option.none() })),
+    ClickedConfirm: ({ confirm }) =>
+      editRoom(model, (room) => ({
+        ...room,
+        confirm: Option.some(confirm),
+        member: Option.none(),
+        menu: false,
+        picked: Option.none(),
+      })),
     ClickedCopyLink: () =>
       inRoom(model, (room) => ({
         commands: [CopyRoomLink({ code: room.code })],
@@ -665,6 +715,18 @@ export const update = (model: Model, message: Message): Return =>
           screen: Screens.Home({ busy: false, problem: Option.none() }),
         },
       })),
+    ClickedHouseRules: () =>
+      editRoom(model, (room) => ({
+        ...room,
+        menu: false,
+        rules: openViewOf(room).pipe(
+          Option.map(({ settings }) => ({
+            draft: openDraft(settings),
+            help: Option.none(),
+            open: Option.none(),
+          }))
+        ),
+      })),
     ClickedKnownRoom: ({ code }) =>
       Option.match(
         Option.fromNullishOr(
@@ -678,15 +740,13 @@ export const update = (model: Model, message: Message): Return =>
           }),
         }
       ),
-    ClickedMenu: () => editRoom(model, (room) => ({ ...room, menu: true })),
-    ClickedOpenSettings: () =>
+    ClickedMember: ({ player }) =>
       editRoom(model, (room) => ({
         ...room,
+        member: Option.some(player),
         menu: false,
-        settings: openViewOf(room).pipe(
-          Option.map(({ settings }) => draftOf(settings))
-        ),
       })),
+    ClickedMenu: () => editRoom(model, (room) => ({ ...room, menu: true })),
     ClickedRequestChips: () => requestChips(model),
     ClickedRoomCommand: ({ command, label }) =>
       MemberCommandSchema.guards.Act(command)
@@ -694,12 +754,27 @@ export const update = (model: Model, message: Message): Return =>
         : inRoom(model, (room) =>
             isLive(room) ? send(model, room, command, label) : { model }
           ),
+    ClickedRuleGroup: ({ group }) =>
+      editRules(model, (sheet) => ({
+        ...sheet,
+        help: Option.none(),
+        open: Option.contains(sheet.open, group)
+          ? Option.none()
+          : Option.some(group),
+      })),
+    ClickedRuleHelp: ({ path }) =>
+      editRules(model, (sheet) => ({
+        ...sheet,
+        help: Option.contains(sheet.help, path)
+          ? Option.none()
+          : Option.some(path),
+      })),
     ClickedSaveFace: () => saveFace(model),
     ClickedSaveSettings: () =>
       inRoom(model, (room) =>
-        Option.match(room.settings, {
+        Option.match(room.rules, {
           onNone: () => ({ model }),
-          onSome: (draft) =>
+          onSome: ({ draft }) =>
             Result.match(settingsFrom(draft), {
               onFailure: (problem) => ({
                 model: withRoom(model, notice(room, problem)),
@@ -707,7 +782,7 @@ export const update = (model: Model, message: Message): Return =>
               onSuccess: (settings) =>
                 send(
                   model,
-                  { ...room, settings: Option.none() },
+                  { ...room, rules: Option.none() },
                   Commands.ChangeSettings.make({ settings }),
                   "Saving the settings"
                 ),
@@ -720,11 +795,14 @@ export const update = (model: Model, message: Message): Return =>
     ClosedSheet: () =>
       editRoom(model, (room) => ({
         ...room,
+        addingChips: false,
+        confirm: Option.none(),
         drafts: { ...room.drafts, seat: Option.none() },
         fairnessOpen: false,
+        member: Option.none(),
         menu: false,
         picked: Option.none(),
-        settings: Option.none(),
+        rules: Option.none(),
       })),
     CompletedCopy: ({ copied }) =>
       editRoom(model, (room) => ({ ...room, copied })),
