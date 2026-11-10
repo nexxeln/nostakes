@@ -11,6 +11,7 @@ import type { OpenView } from "../room.js";
 import { HappeningSchema, Happenings } from "./snapshot.js";
 import type {
   ActionClock,
+  AfterHand,
   Happening,
   HeroLegal,
   Hint,
@@ -188,11 +189,7 @@ const noteOf = (occupant: Occupant, here: boolean) => {
     return "Sitting out";
   }
 
-  if (occupant.away || !here) {
-    return "Away";
-  }
-
-  return occupant.straddling ? "Straddle" : "";
+  return occupant.away || !here ? "Away" : "";
 };
 
 const statusBetweenHands = (
@@ -205,6 +202,20 @@ const statusBetweenHands = (
   }
 
   return folded.has(seat) ? "Folded" : "In";
+};
+
+const heldCards = (held: {
+  readonly between: boolean;
+  readonly mine: boolean;
+  readonly status: SeatStatus;
+  readonly heroCards: number;
+  readonly ownCards: number;
+}) => {
+  if (held.mine && held.between) {
+    return held.heroCards;
+  }
+
+  return held.status === "Folded" || held.status === "Out" ? 0 : held.ownCards;
 };
 
 const occupiedSeat = (
@@ -260,7 +271,13 @@ const occupiedSeat = (
       onNone: () => 0,
       onSome: ({ committedThisStreet }) => committedThisStreet,
     }),
-    cardsHeld: status === "Folded" || status === "Out" ? 0 : ownCards,
+    cardsHeld: heldCards({
+      between: Option.isNone(view.hand),
+      heroCards,
+      mine,
+      ownCards,
+      status,
+    }),
     initials: initialsOf(member?.name ?? "?"),
     name: mine ? "You" : (member?.name ?? "Someone"),
     note: noteOf(occupant, here),
@@ -386,6 +403,82 @@ const waitingLine = (room: InRoom, view: OpenView) => {
   return Option.isSome(view.legal) && !isLive(room) ? "Reconnecting" : "";
 };
 
+const afterHandOf = (
+  view: OpenView,
+  heroSeat: Option.Option<number>,
+  folded: ReadonlySet<number>
+): AfterHand => {
+  const none: AfterHand = { bothOnly: false, rabbit: false, showable: [] };
+
+  if (Option.isSome(view.hand)) {
+    return none;
+  }
+
+  return Option.match(view.lastHand, {
+    onNone: () => none,
+    onSome: (last) => {
+      const shown = new Set(
+        last.shown
+          .filter(({ seat }) => Option.contains(heroSeat, seat))
+          .flatMap(({ cards }) => cards)
+      );
+
+      const { table } = view.settings;
+      const stillIn = Option.exists(heroSeat, (seat) => !folded.has(seat));
+
+      const mayHunt =
+        Option.isSome(heroSeat) &&
+        (table.rabbitHunters === "DealtIn" || stillIn);
+
+      return {
+        bothOnly: table.voluntaryShows === "BothCards",
+        rabbit:
+          table.rabbitHunt &&
+          mayHunt &&
+          last.rabbit.length === 0 &&
+          last.boards.some((board) => board.length < 5),
+        showable: texts(last.yourCards.filter((card) => !shown.has(card))),
+      };
+    },
+  });
+};
+
+const runVoteOf = (view: OpenView, heroSeat: Option.Option<number>) =>
+  view.hand.pipe(
+    Option.flatMap(({ choosingRuns }) => choosingRuns),
+    Option.filter(({ seats }) =>
+      Option.exists(heroSeat, (seat) => seats.some((voter) => voter === seat))
+    ),
+    Option.map(({ maxRuns }) => maxRuns),
+    Option.getOrNull
+  );
+
+const handFields = (view: OpenView) =>
+  Option.match(view.hand, {
+    onNone: () => {
+      const last = Option.getOrNull(view.lastHand);
+
+      return {
+        boards: (last?.boards ?? []).map(texts),
+        buttonSeat: null,
+        handId: last?.handNumber ?? 0,
+        heroCards: texts(last?.yourCards ?? []),
+        pots: [],
+        rabbit: texts(last?.rabbit ?? []),
+        toAct: null,
+      };
+    },
+    onSome: (hand) => ({
+      boards: hand.boards.map(texts),
+      buttonSeat: hand.button,
+      handId: hand.handNumber,
+      heroCards: texts(view.holeCards),
+      pots: hand.pots.map(({ amount }) => amount),
+      rabbit: [],
+      toAct: Option.getOrNull(Option.orElse(hand.toAct, () => hand.toShow)),
+    }),
+  });
+
 export const tableSnapshot = (
   room: InRoom,
   view: OpenView,
@@ -406,26 +499,20 @@ export const tableSnapshot = (
       })
     );
 
-  const hand = Option.getOrNull(view.hand);
-  const last = Option.getOrNull(view.lastHand);
+  const free = isLive(room) && !isActing(room);
 
   return {
+    ...handFields(view),
+    afterHand: afterHandOf(view, heroSeat, folded),
     bigBlind: view.settings.table.bigBlind,
-    boards: (hand?.boards ?? last?.boards ?? []).map(texts),
-    buttonSeat: hand?.button ?? null,
     clock: clockOf(view, room),
     events: room.events,
-    handId: hand?.handNumber ?? last?.handNumber ?? 0,
-    heroCards: texts(hand === null ? (last?.yourCards ?? []) : view.holeCards),
     heroSeat: Option.getOrNull(heroSeat),
+    hostTools: view.host === room.player,
     learned,
-    legal: isLive(room) && !isActing(room) ? legalOfView(view) : null,
-    pots: (hand?.pots ?? []).map(({ amount }) => amount),
+    legal: free ? legalOfView(view) : null,
+    runVote: free ? runVoteOf(view, heroSeat) : null,
     seats,
-    toAct:
-      hand === null
-        ? null
-        : Option.getOrNull(Option.orElse(hand.toAct, () => hand.toShow)),
     waiting: waitingLine(room, view),
   };
 };

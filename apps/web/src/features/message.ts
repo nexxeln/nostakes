@@ -49,6 +49,7 @@ export const Messages = defineMessageUnion({
   ClickedSeat: { seat: Schema.Int },
   ClickedShuffleFace: {},
   ClickedSit: { seat: Schema.Int },
+  ClosedSheet: {},
   CompletedCopy: { copied: CopiedSchema },
   CompletedForget: { code: RoomCodeSchema },
   CompletedNavigation: { path: Schema.String },

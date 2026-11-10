@@ -1,5 +1,12 @@
 import { avatarFor, codeFor } from "@nostakes/avatar";
-import { Actions, ChipsSchema, SeatIndexSchema } from "@nostakes/engine";
+import {
+  Actions,
+  CardFromText,
+  ChipsSchema,
+  RunCountSchema,
+  SeatIndexSchema,
+  ShownCardsSchema,
+} from "@nostakes/engine";
 import type { Action } from "@nostakes/engine";
 import { RoomCodeSchema } from "@nostakes/protocol";
 import {
@@ -64,6 +71,7 @@ const freshRoom = (code: InRoom["code"], player: InRoom["player"]): InRoom => ({
   link: Option.none(),
   notice: Option.none(),
   pending: [],
+  picked: Option.none(),
   player,
   settings: Option.none(),
 });
@@ -146,6 +154,7 @@ const send = (
         ...room,
         notice: Option.none(),
         pending: [...room.pending, { acting, key, label }],
+        picked: Option.none(),
       }),
       nextKey: key + 1,
     },
@@ -253,6 +262,15 @@ const showdownChoice = (
       : { model }
   );
 
+const afterHand = (
+  model: Model,
+  command: MemberCommand,
+  label: string
+): Return =>
+  inRoom(model, (room) =>
+    isLive(room) ? send(model, room, command, label) : { model }
+  );
+
 const learn = (model: Model, hint: Hint): Return => {
   if (model.learned.includes(hint)) {
     return { model };
@@ -269,14 +287,45 @@ const fromTable = (model: Model, intent: TableIntent): Return =>
       Call: () => act(model, Actions.Call()),
       Check: () => act(model, Actions.Check()),
       Fold: () => act(model, Actions.Fold()),
+      HuntRabbit: () =>
+        afterHand(model, Commands.RabbitHunt.make({}), "Hunting the rabbit"),
       Learned: ({ hint }) => learn(model, hint),
       Muck: () => showdownChoice(model, Commands.MuckHand.make({}), "Mucking"),
+      Pick: ({ seat }) =>
+        editRoom(model, (room) => ({ ...room, picked: Option.some(seat) })),
       Raise: ({ to }) =>
         Option.match(Schema.decodeOption(ChipsSchema)(to), {
           onNone: () => ({ model }),
           onSome: (amount) => act(model, Actions.RaiseTo({ to: amount })),
         }),
+      Runs: ({ runs }) =>
+        Option.match(RunCountSchema.makeOption(runs), {
+          onNone: () => ({ model }),
+          onSome: (count) =>
+            afterHand(
+              model,
+              Commands.ChooseRuns.make({ runs: count }),
+              count === 1 ? "Running it once" : `Running it ${count} times`
+            ),
+        }),
       Show: () => showdownChoice(model, Commands.TableHand.make({}), "Showing"),
+      ShowCards: ({ cards }) =>
+        Option.match(
+          Option.all(
+            cards.map((card) => Schema.decodeOption(CardFromText)(card))
+          ).pipe(
+            Option.flatMap((picked) => ShownCardsSchema.makeOption(picked))
+          ),
+          {
+            onNone: () => ({ model }),
+            onSome: (shown) =>
+              afterHand(
+                model,
+                Commands.ShowCards.make({ cards: shown }),
+                "Showing"
+              ),
+          }
+        ),
       Sit: ({ seat }) => pickSeat(model, seat),
     })
   );
@@ -464,6 +513,8 @@ export const update = (model: Model, message: Message): Return =>
     ClickedSeat: ({ seat }) => pickSeat(model, seat),
     ClickedShuffleFace: () => ({ commands: [ShuffleFace()], model }),
     ClickedSit: ({ seat }) => sit(model, seat),
+    ClosedSheet: () =>
+      editRoom(model, (room) => ({ ...room, picked: Option.none() })),
     CompletedCopy: ({ copied }) =>
       editRoom(model, (room) => ({ ...room, copied })),
     CompletedForget: () => ({ model }),

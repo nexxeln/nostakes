@@ -53,6 +53,7 @@ interface Tile {
   readonly ringSvg: SVGSVGElement;
   readonly ring: SVGRectElement;
   readonly name: HTMLDivElement;
+  readonly note: HTMLDivElement;
   readonly shown: HTMLDivElement;
   readonly status: Status;
   readonly stack: Counter;
@@ -73,6 +74,7 @@ interface Pile {
 
 interface HandGesture {
   readonly id: number;
+  readonly origin: EventTarget | null;
   readonly x0: number;
   readonly y0: number;
   readonly t0: number;
@@ -323,9 +325,6 @@ const setPile = (pile: Pile, amount: number) => {
 const detentsFor = (spot: RaiseSpot): readonly PlacedDetent[] =>
   placeDetents(raiseDetents(spot), spot.min, spot.max);
 
-const keyValue = (sizing: KeySizing) =>
-  sizing.typed === "" ? sizing.value : Number(sizing.typed);
-
 const raiseHeading = (spot: RaiseSpot) => (spot.isBet ? "Bet" : "Raise to");
 
 const raiseWord = (spot: RaiseSpot, allIn: boolean) => {
@@ -336,8 +335,69 @@ const raiseWord = (spot: RaiseSpot, allIn: boolean) => {
   return spot.isBet ? "Bet" : "Raise";
 };
 
+interface Sizing {
+  readonly min: number;
+  readonly max: number;
+  readonly detents: readonly PlacedDetent[];
+  readonly ladder: readonly number[];
+  readonly typing: boolean;
+  readonly heading: (value: number) => string;
+  readonly word: (value: number) => string;
+  readonly amount: (value: number) => string;
+  readonly commit: (value: number) => TableIntent;
+  readonly lesson: Hint | null;
+}
+
+const runWord = (runs: number) => {
+  if (runs === 1) {
+    return "once";
+  }
+
+  return runs === 2 ? "twice" : `${runs} times`;
+};
+
+const raiseSizing = (spot: RaiseSpot): Sizing => ({
+  amount: formatChips,
+  commit: (to) => TableIntents.Raise.make({ to }),
+  detents: detentsFor(spot),
+  heading: (value) => (value >= spot.max ? "All in" : raiseHeading(spot)),
+  ladder: raiseLadder(spot),
+  lesson: "Raise",
+  max: spot.max,
+  min: spot.min,
+  typing: true,
+  word: (value) => raiseWord(spot, value >= spot.max),
+});
+
+const runSizing = (most: number): Sizing => {
+  const counts = Array.from(
+    { length: Math.max(1, most) },
+    (_, index) => index + 1
+  );
+
+  return {
+    amount: runWord,
+    commit: (runs) => TableIntents.Runs.make({ runs }),
+    detents: placeDetents(
+      counts.map((runs) => ({ label: runWord(runs), value: runs })),
+      1,
+      Math.max(1, most)
+    ),
+    heading: () => "Run it",
+    ladder: counts,
+    lesson: null,
+    max: Math.max(1, most),
+    min: 1,
+    typing: false,
+    word: () => "Run it",
+  };
+};
+
+const keyValue = (sizing: KeySizing) =>
+  sizing.typed === "" ? sizing.value : Number(sizing.typed);
+
 const keyNote = (
-  spot: RaiseSpot,
+  spot: Sizing,
   keyed: boolean,
   low: boolean,
   high: boolean
@@ -480,6 +540,58 @@ const separate = <B extends Placement>(
   return placed;
 };
 
+const bettingKeys = (legal: HeroLegal, me: SeatSnapshot | undefined) => {
+  const callWord =
+    me !== undefined && legal.call !== null && legal.call >= me.stack
+      ? "All in"
+      : "Call";
+
+  const passive = legal.check ? [keyHint("C", "Check")] : [];
+
+  const calling =
+    !legal.check && legal.call !== null ? [keyHint("C", callWord)] : [];
+
+  const raising =
+    legal.raise === null
+      ? []
+      : [keyHint("R", legal.raise.isBet ? "Bet" : "Raise")];
+
+  return [keyHint("F", "Fold"), ...passive, ...calling, ...raising];
+};
+
+const keyParts = (
+  vote: number,
+  legal: HeroLegal | null,
+  me: SeatSnapshot | undefined
+) => {
+  if (vote > 0) {
+    return Array.from({ length: Math.min(vote, 9) }, (_, index) =>
+      keyHint(String(index + 1), runWord(index + 1))
+    );
+  }
+
+  if (legal === null) {
+    return [];
+  }
+
+  if (legal.show || legal.muck) {
+    return [
+      ...(legal.show ? [keyHint("S", "Show")] : []),
+      ...(legal.muck ? [keyHint("F", "Muck")] : []),
+    ];
+  }
+
+  return bettingKeys(legal, me);
+};
+
+const renderNote = (host: HTMLElement, node: HTMLElement, note: string) => {
+  if (node.textContent !== note) {
+    node.textContent = note;
+  }
+
+  toggle(host, "noted", note !== "");
+};
+
 export class NostakesTable extends HTMLElement {
   #snap: TableSnapshot | null = null;
   readonly #root: ShadowRoot;
@@ -505,12 +617,14 @@ export class NostakesTable extends HTMLElement {
   #pot!: Counter;
   #potSide!: HTMLDivElement;
   #slots: HTMLDivElement[] = [];
+  #runs!: HTMLDivElement;
   #boardShown: readonly string[] = [];
   #self!: HTMLDivElement;
   #selfFrame!: HTMLDivElement;
   #selfPic!: HTMLDivElement;
   #selfStatus!: Status;
   #selfStack!: Counter;
+  #selfNote!: HTMLDivElement;
   #selfRing!: SVGRectElement;
   #selfRingSvg!: SVGSVGElement;
   readonly #selfScale = new Spring(1, 160, 0.6);
@@ -696,9 +810,18 @@ export class NostakesTable extends HTMLElement {
     el("div", "k", this.#potRoot, "pot");
     this.#pot = new Counter(el("div", "v", this.#potRoot, "0"));
     this.#potSide = el("div", "side", this.#potRoot);
-    this.#slots = Array.from({ length: 5 }, () =>
-      el("div", "slot", this.#room)
-    );
+    this.#slots = Array.from({ length: 5 }, () => {
+      const slot = el("div", "slot", this.#room);
+
+      slot.addEventListener("click", () => {
+        if (slot.classList.contains("hunt")) {
+          this.#emit(TableIntents.HuntRabbit.make({}));
+        }
+      });
+
+      return slot;
+    });
+    this.#runs = el("div", "runs", this.#room);
   }
 
   #buildSelf() {
@@ -713,6 +836,7 @@ export class NostakesTable extends HTMLElement {
     const line = el("div", "line", label);
 
     this.#selfStack = new Counter(el("div", "st", line, "0"));
+    this.#selfNote = el("div", "note", line);
     this.#selfStatus = {
       act: el("div", "act", line),
       host: this.#self,
@@ -852,6 +976,7 @@ export class NostakesTable extends HTMLElement {
     const line = el("div", "line", label);
     const stack = new Counter(el("div", "st", line));
     const act = el("div", "act", line);
+    const note = el("div", "note", line);
     const ringSvg = svgEl("svg", root);
 
     ringSvg.classList.add("ring");
@@ -861,6 +986,14 @@ export class NostakesTable extends HTMLElement {
     ring.setAttribute("pathLength", "100");
 
     const shown = el("div", "shown", root);
+
+    if (info.status !== "Empty") {
+      root.addEventListener("click", () => {
+        if (this.#snap?.hostTools === true) {
+          this.#emit(TableIntents.Pick.make({ seat: info.seat }));
+        }
+      });
+    }
 
     if (info.status === "Empty") {
       const sit = () => {
@@ -884,6 +1017,7 @@ export class NostakesTable extends HTMLElement {
       joyUntil: 0,
       lastTransform: "",
       name,
+      note,
       opacity: new Spring(1, 80, 1),
       pic,
       ring,
@@ -1172,6 +1306,9 @@ export class NostakesTable extends HTMLElement {
       slot.replaceChildren();
     }
 
+    this.#runs.replaceChildren();
+    delete this.#runs.dataset.key;
+
     for (const holder of this.#handCards) {
       holder.replaceChildren();
       delete holder.dataset.card;
@@ -1270,6 +1407,8 @@ export class NostakesTable extends HTMLElement {
       info.status === "Folded" || info.status === "Out"
     );
     toggle(tile.root, "away", info.away);
+    renderNote(tile.root, tile.note, info.note);
+    this.#renderPickable(tile, info);
 
     if (info.shown.length > 0 && tile.shown.childElementCount === 0) {
       for (const [index, card] of info.shown.entries()) {
@@ -1332,19 +1471,7 @@ export class NostakesTable extends HTMLElement {
     toggle(this.#chip, "gone", !seated);
 
     if (me !== undefined) {
-      if (!this.#held(`stack:${me.seat}`)) {
-        this.#selfStack.set(me.stack, now);
-      }
-
-      if (this.#selfPic.textContent !== me.initials) {
-        this.#selfPic.textContent = me.initials;
-      }
-
-      toggle(
-        this.#self,
-        "folded",
-        me.status === "Folded" || me.status === "Out"
-      );
+      this.#renderSelf(me, now);
     }
 
     const dealt =
@@ -1352,7 +1479,10 @@ export class NostakesTable extends HTMLElement {
         ? 0
         : me.cardsHeld - (this.#pending.get(`deal:${me.seat}`) ?? 0);
 
-    const holding = me !== undefined && me.status !== "Folded" && dealt > 0;
+    const showable = snapshot.afterHand.showable.length > 0;
+
+    const holding =
+      me !== undefined && dealt > 0 && (me.status !== "Folded" || showable);
 
     toggle(this.#hand, "gone", !holding);
 
@@ -1368,25 +1498,98 @@ export class NostakesTable extends HTMLElement {
           holder.append(cardEl(want, geo.handCardW));
         }
       }
+
+      toggle(holder, "up", want !== "" && me?.shown.includes(want) === true);
     }
+
+    renderNote(this.#self, this.#selfNote, me?.note ?? "");
+    this.#renderAfterHand(snapshot, holding);
 
     this.#renderChip(snapshot, me);
     this.#renderShowdown(snapshot);
     this.#renderKeys(this.#canAct() ? snapshot.legal : null, me, holding);
   }
 
+  #renderPickable(tile: Tile, info: SeatSnapshot) {
+    const pickable = this.#snap?.hostTools === true && info.status !== "Empty";
+
+    if (pickable === tile.root.classList.contains("pickable")) {
+      return;
+    }
+
+    toggle(tile.root, "pickable", pickable);
+
+    if (pickable) {
+      tile.root.setAttribute("role", "button");
+      tile.root.setAttribute("aria-label", `Host tools for ${info.name}`);
+    } else {
+      tile.root.removeAttribute("role");
+      tile.root.removeAttribute("aria-label");
+    }
+  }
+
+  #renderSelf(me: SeatSnapshot, now: number) {
+    if (!this.#held(`stack:${me.seat}`)) {
+      this.#selfStack.set(me.stack, now);
+    }
+
+    if (this.#selfPic.textContent !== me.initials) {
+      this.#selfPic.textContent = me.initials;
+    }
+
+    toggle(this.#self, "folded", me.status === "Folded" || me.status === "Out");
+  }
+
+  #renderAfterHand(snapshot: TableSnapshot, holding: boolean) {
+    const { bothOnly, showable } = snapshot.afterHand;
+    const offering = holding && showable.length > 0 && snapshot.legal === null;
+
+    toggle(this.#hand, "offering", offering);
+
+    if (offering) {
+      this.#handLabel.textContent =
+        bothOnly || showable.length === 1
+          ? "Tap to show"
+          : "Tap a card to show it";
+      this.#handLabel.classList.add("on");
+    }
+  }
+
+  #showAfterHand(target: EventTarget | null) {
+    const snapshot = this.#snap;
+
+    if (snapshot === null || !this.#hand.classList.contains("offering")) {
+      return false;
+    }
+
+    const { bothOnly, showable } = snapshot.afterHand;
+    const holder = target instanceof Element ? target.closest(".hc") : null;
+
+    const tapped =
+      holder instanceof HTMLElement ? (holder.dataset.card ?? "") : "";
+
+    const cards = bothOnly || !showable.includes(tapped) ? showable : [tapped];
+
+    this.#emit(TableIntents.ShowCards.make({ cards }));
+
+    return true;
+  }
+
   #renderChip(snapshot: TableSnapshot, me: SeatSnapshot | undefined) {
     const legal = this.#canAct() ? snapshot.legal : null;
-    const betting = legal !== null && !legal.show && !legal.muck;
+    const voting = this.#canVote();
+    const live = voting || (legal !== null && !legal.show && !legal.muck);
 
-    toggle(this.#chip, "live", betting);
-    toggle(this.#chip, "idle", !betting);
+    toggle(this.#chip, "live", live);
+    toggle(this.#chip, "idle", !live);
 
     if (this.#chipG?.mode === "size" || this.#keySize !== null) {
       return;
     }
 
-    const [first, second] = chipWords(snapshot, legal, me);
+    const [first, second] = voting
+      ? (["Run it", "once"] as const)
+      : chipWords(snapshot, legal, me);
 
     this.#chipA.textContent = first;
     this.#chipB.textContent = second;
@@ -1409,7 +1612,8 @@ export class NostakesTable extends HTMLElement {
       this.#handLabel.classList.add("on");
     } else if (
       !this.#hand.classList.contains("open") &&
-      !this.#hand.classList.contains("armed")
+      !this.#hand.classList.contains("armed") &&
+      !this.#hand.classList.contains("offering")
     ) {
       this.#handLabel.classList.remove("on");
     }
@@ -1454,7 +1658,8 @@ export class NostakesTable extends HTMLElement {
       return;
     }
 
-    const board = snapshot.boards[0] ?? [];
+    const dealt = snapshot.boards[0] ?? [];
+    const board = [...dealt, ...snapshot.rabbit].slice(0, 5);
 
     if (
       board.length < this.#boardShown.length ||
@@ -1479,6 +1684,7 @@ export class NostakesTable extends HTMLElement {
       if (slot !== undefined && card !== undefined) {
         const node = cardEl(card, geo.cardW, true);
 
+        toggle(node, "rabbit", index >= dealt.length);
         slot.append(node);
 
         if (animate) {
@@ -1488,6 +1694,78 @@ export class NostakesTable extends HTMLElement {
     }
 
     this.#boardShown = [...board];
+    this.#renderHunt(snapshot, board.length);
+    this.#renderRuns(snapshot, geo);
+  }
+
+  #renderHunt(snapshot: TableSnapshot, filled: number) {
+    const hunting = snapshot.afterHand.rabbit && snapshot.rabbit.length === 0;
+
+    for (const [index, slot] of this.#slots.entries()) {
+      const open = hunting && index >= filled;
+
+      toggle(slot, "hunt", open);
+
+      if (open && index === filled) {
+        slot.dataset.hint = "Rabbit";
+      } else {
+        delete slot.dataset.hint;
+      }
+
+      if (open) {
+        slot.setAttribute("role", "button");
+        slot.setAttribute("aria-label", "Hunt the rabbit");
+      } else {
+        slot.removeAttribute("role");
+        slot.removeAttribute("aria-label");
+      }
+    }
+  }
+
+  #renderRuns(snapshot: TableSnapshot, geo: Geo) {
+    const [first = [], ...extra] = snapshot.boards;
+    const key = JSON.stringify(extra);
+
+    if (this.#runs.dataset.key === key) {
+      return;
+    }
+
+    this.#runs.dataset.key = key;
+    this.#runs.replaceChildren();
+
+    const width = Math.round(geo.cardW * 0.62);
+
+    for (const [row, board] of extra.entries()) {
+      for (const [index, card] of board.entries()) {
+        const spot = geo.board[index];
+
+        if (spot !== undefined && first[index] !== card) {
+          const node = cardEl(card, width, true);
+          const step = width * 1.4 + 6;
+
+          const top = geo.boardInStrip
+            ? geo.strip.y - 8 - (row + 1) * step
+            : spot.y + geo.cardW * 0.7 + 10 + row * step;
+
+          node.classList.add("run");
+          node.style.left = `${spot.x - width / 2}px`;
+          node.style.top = `${top}px`;
+          this.#runs.append(node);
+          node.animate(
+            [
+              { opacity: 0, translate: "0 -8px" },
+              { opacity: 1, translate: "0 0" },
+            ],
+            {
+              delay: index * 120,
+              duration: this.#reduced ? 120 : 360,
+              fill: "backwards",
+            }
+          );
+          this.#sound.card((index * 120) / 1000);
+        }
+      }
+    }
   }
 
   #dealToBoard(node: HTMLDivElement, index: number, order: number, geo: Geo) {
@@ -2140,6 +2418,7 @@ export class NostakesTable extends HTMLElement {
       lastT: event.timeStamp,
       lastY: event.clientY,
       mode: "press",
+      origin: event.target,
       t0: event.timeStamp,
       vy: 0,
       x0: event.clientX,
@@ -2255,7 +2534,21 @@ export class NostakesTable extends HTMLElement {
       return;
     }
 
-    if (gesture.mode === "press" && event.timeStamp - gesture.t0 > 250) {
+    const quick =
+      gesture.mode === "press" && event.timeStamp - gesture.t0 <= 250;
+
+    if (
+      event.type === "pointerup" &&
+      quick &&
+      this.#showAfterHand(gesture.origin)
+    ) {
+      this.#pressPeek = false;
+      this.#syncPeek();
+
+      return;
+    }
+
+    if (gesture.mode === "press" && !quick) {
       this.#learn("Peek");
     }
 
@@ -2353,6 +2646,12 @@ export class NostakesTable extends HTMLElement {
       return;
     }
 
+    if (this.#canVote()) {
+      this.#voteKey(event);
+
+      return;
+    }
+
     const legal = this.#snap?.legal;
 
     if (legal === undefined || legal === null || !this.#canAct()) {
@@ -2370,6 +2669,17 @@ export class NostakesTable extends HTMLElement {
       this.#keySizeKey(event.key);
     }
   };
+
+  #voteKey(event: KeyboardEvent) {
+    const most = this.#snap?.runVote ?? 1;
+    const runs = event.key === "Enter" ? 1 : Number(event.key);
+
+    if (Number.isInteger(runs) && runs >= 1 && runs <= most) {
+      event.preventDefault();
+      this.#sound.unlock();
+      this.#act(TableIntents.Runs.make({ runs }));
+    }
+  }
 
   #showdownKey(event: KeyboardEvent, legal: HeroLegal) {
     const key = event.key.toLowerCase();
@@ -2415,36 +2725,47 @@ export class NostakesTable extends HTMLElement {
     }
   }
 
-  #spot(): RaiseSpot | null {
-    const snapshot = this.#snap;
-    const raise = snapshot?.legal?.raise;
-    const me = this.#seat(snapshot?.heroSeat ?? null);
+  #canVote() {
+    return (
+      this.#snap?.runVote !== null &&
+      this.#snap?.runVote !== undefined &&
+      !this.#locked
+    );
+  }
 
-    if (
-      snapshot === null ||
-      raise === undefined ||
-      raise === null ||
-      me === undefined
-    ) {
+  #sizing(): Sizing | null {
+    const snapshot = this.#snap;
+
+    if (snapshot === null) {
       return null;
     }
 
-    const bets = snapshot.seats.map(({ bet }) => bet);
+    if (snapshot.runVote !== null) {
+      return runSizing(snapshot.runVote);
+    }
+
+    const raise = snapshot.legal?.raise;
+    const me = this.#seat(snapshot.heroSeat);
+
+    if (raise === undefined || raise === null || me === undefined) {
+      return null;
+    }
+
     const toCall = snapshot.legal?.call ?? 0;
 
-    return {
+    return raiseSizing({
       bigBlind: snapshot.bigBlind,
       callTo: me.bet + toCall,
       isBet: raise.isBet,
       max: raise.max,
       min: raise.min,
-      potTotal: sum(snapshot.pots) + sum(bets),
+      potTotal: sum(snapshot.pots) + sum(snapshot.seats.map(({ bet }) => bet)),
       toCall,
-    };
+    });
   }
 
   #startKeySize(typed: string) {
-    const spot = this.#spot();
+    const spot = this.#sizing();
 
     if (spot === null) {
       return;
@@ -2460,7 +2781,7 @@ export class NostakesTable extends HTMLElement {
 
   #keySizeKey(key: string) {
     const sizing = this.#keySize;
-    const spot = this.#spot();
+    const spot = this.#sizing();
 
     if (sizing === null || spot === null) {
       return;
@@ -2469,9 +2790,8 @@ export class NostakesTable extends HTMLElement {
     if (key === "Enter") {
       const value = clamp(keyValue(sizing), spot.min, spot.max);
 
-      this.#learn("Raise");
       this.#endKeySize();
-      this.#act(TableIntents.Raise.make({ to: value }));
+      this.#commit(spot, value);
 
       return;
     }
@@ -2496,9 +2816,9 @@ export class NostakesTable extends HTMLElement {
     this.#paintKeySize(spot);
   }
 
-  #stepDetent(sizing: KeySizing, spot: RaiseSpot, up: boolean) {
+  #stepDetent(sizing: KeySizing, spot: Sizing, up: boolean) {
     const current = keyValue(sizing);
-    const detents = detentsFor(spot);
+    const { detents } = spot;
 
     const pick = up
       ? detents.find(({ value }) => value > current)
@@ -2512,7 +2832,7 @@ export class NostakesTable extends HTMLElement {
     this.#sound.tick(true);
   }
 
-  #paintKeySize(spot: RaiseSpot) {
+  #paintKeySize(spot: Sizing) {
     const geo = this.#geo;
     const sizing = this.#keySize;
 
@@ -2526,8 +2846,7 @@ export class NostakesTable extends HTMLElement {
     const detent =
       sizing.typed === ""
         ? sizing.detent
-        : (detentsFor(spot).find((entry) => entry.value === value)?.label ??
-          null);
+        : (spot.detents.find((entry) => entry.value === value)?.label ?? null);
 
     const length = geo.chip.y - LINE - geo.railTop;
 
@@ -2569,29 +2888,9 @@ export class NostakesTable extends HTMLElement {
         legal?.show !== true
     );
 
-    if (legal !== null && (legal.show || legal.muck)) {
-      parts.push(
-        ...(legal.show ? [keyHint("S", "Show")] : []),
-        ...(legal.muck ? [keyHint("F", "Muck")] : [])
-      );
-    } else if (legal !== null) {
-      parts.push(keyHint("F", "Fold"));
-
-      if (legal.check) {
-        parts.push(keyHint("C", "Check"));
-      } else if (legal.call !== null) {
-        parts.push(
-          keyHint(
-            "C",
-            me !== undefined && legal.call >= me.stack ? "All in" : "Call"
-          )
-        );
-      }
-
-      if (legal.raise !== null) {
-        parts.push(keyHint("R", legal.raise.isBet ? "Bet" : "Raise"));
-      }
-    }
+    parts.push(
+      ...keyParts(this.#canVote() ? (this.#snap?.runVote ?? 0) : 0, legal, me)
+    );
 
     const signature = parts.map((part) => part.textContent).join("|");
 
@@ -2608,13 +2907,14 @@ export class NostakesTable extends HTMLElement {
 
     const legal = this.#snap?.legal;
 
-    if (
-      !this.#canAct() ||
-      legal === undefined ||
-      legal === null ||
-      legal.show ||
-      legal.muck
-    ) {
+    const betting =
+      this.#canAct() &&
+      legal !== undefined &&
+      legal !== null &&
+      !legal.show &&
+      !legal.muck;
+
+    if (!betting && !this.#canVote()) {
       nudge(this.#chip);
 
       return;
@@ -2645,7 +2945,7 @@ export class NostakesTable extends HTMLElement {
 
     gesture.dy = gesture.y0 - event.clientY;
 
-    const spot = this.#spot();
+    const spot = this.#sizing();
 
     if (gesture.mode === "press" && gesture.dy > 16 && spot !== null) {
       gesture.mode = "size";
@@ -2657,7 +2957,7 @@ export class NostakesTable extends HTMLElement {
       return;
     }
 
-    if (!this.#canAct() || spot === null) {
+    if ((!this.#canAct() && !this.#canVote()) || spot === null) {
       this.#chipG = null;
       this.#closeRail();
       this.#chip.style.transform = "";
@@ -2682,24 +2982,20 @@ export class NostakesTable extends HTMLElement {
       animation.cancel();
     }
 
-    const legal = this.#snap?.legal;
+    const spot = this.#sizing();
 
     const released =
-      event.type === "pointerup" &&
-      this.#canAct() &&
-      legal !== undefined &&
-      legal !== null;
+      event.type === "pointerup" && (this.#canAct() || this.#canVote());
 
     if (released && gesture.mode === "press" && Math.abs(gesture.dy) < 14) {
-      this.#tapChip(legal);
+      this.#tapChip();
     } else if (
       released &&
       gesture.mode === "size" &&
       gesture.dy > LINE &&
-      legal.raise !== null
+      spot !== null
     ) {
-      this.#learn("Raise");
-      this.#act(TableIntents.Raise.make({ to: gesture.value }));
+      this.#commit(spot, gesture.value);
     }
 
     this.#closeRail();
@@ -2709,29 +3005,34 @@ export class NostakesTable extends HTMLElement {
   };
 
   readonly #onChipClick = (event: MouseEvent) => {
-    const legal = this.#snap?.legal;
-
-    if (
-      event.detail === 0 &&
-      this.#canAct() &&
-      legal !== undefined &&
-      legal !== null &&
-      !legal.show &&
-      !legal.muck
-    ) {
-      this.#tapChip(legal);
+    if (event.detail === 0) {
+      this.#tapChip();
     }
   };
 
-  #tapChip(legal: HeroLegal) {
-    if (legal.check) {
+  #tapChip() {
+    const legal = this.#snap?.legal;
+
+    if (this.#canVote()) {
+      this.#act(TableIntents.Runs.make({ runs: 1 }));
+    } else if (!this.#canAct() || legal === undefined || legal === null) {
+      nudge(this.#chip);
+    } else if (legal.check) {
       this.#act(TableIntents.Check.make({}));
     } else if (legal.call !== null) {
       this.#act(TableIntents.Call.make({}));
     }
   }
 
-  #openRail(spot: RaiseSpot) {
+  #commit(spot: Sizing, value: number) {
+    if (spot.lesson !== null) {
+      this.#learn(spot.lesson);
+    }
+
+    this.#act(spot.commit(clamp(value, spot.min, spot.max)));
+  }
+
+  #openRail(spot: Sizing) {
     const geo = this.#geo;
 
     if (geo === null) {
@@ -2748,10 +3049,13 @@ export class NostakesTable extends HTMLElement {
 
     const length = geo.chip.y - LINE - geo.railTop;
 
-    this.#detentEls = detentsFor(spot).map((detent) => {
+    this.#detentEls = spot.detents.map((detent) => {
       const node = el("div", "det", this.#rail, `${detent.label} `);
 
-      el("b", "", node, formatChips(detent.value));
+      if (spot.typing) {
+        el("b", "", node, spot.amount(detent.value));
+      }
+
       node.style.right = `${geo.w - geo.chip.x + 6}px`;
       node.style.top = `${geo.chip.y - LINE - detent.t * length}px`;
       node.dataset.label = detent.label;
@@ -2765,7 +3069,7 @@ export class NostakesTable extends HTMLElement {
     this.#railFill.style.height = "0px";
   }
 
-  #sizeTo(gesture: ChipGesture, spot: RaiseSpot) {
+  #sizeTo(gesture: ChipGesture, spot: Sizing) {
     const geo = this.#geo;
 
     if (geo === null) {
@@ -2776,12 +3080,12 @@ export class NostakesTable extends HTMLElement {
     const lift = clamp(gesture.dy, 0, length + LINE);
     const t = clamp((gesture.dy - LINE) / length, 0, 1);
 
-    const hit = detentsFor(spot).findLast(
+    const hit = spot.detents.findLast(
       (detent) => Math.abs(detent.t - t) < DETENT_SNAP
     );
 
     const value =
-      hit?.value ?? nearestOnLadder(raiseLadder(spot), t, spot.min, spot.max);
+      hit?.value ?? nearestOnLadder(spot.ladder, t, spot.min, spot.max);
 
     const detent = hit?.label ?? null;
 
@@ -2798,7 +3102,7 @@ export class NostakesTable extends HTMLElement {
   }
 
   #paintSize(
-    spot: RaiseSpot,
+    spot: Sizing,
     paint: {
       readonly value: number;
       readonly detent: string | null;
@@ -2813,7 +3117,6 @@ export class NostakesTable extends HTMLElement {
     }
 
     const above = paint.lift > LINE || this.#keySize !== null;
-    const allIn = paint.value >= spot.max;
     const keyed = this.#keySize !== null;
     const low = paint.typed < spot.min;
     const high = paint.typed > spot.max;
@@ -2830,14 +3133,14 @@ export class NostakesTable extends HTMLElement {
 
     this.#readout.style.opacity = above ? "1" : "0";
     this.#cancel.style.opacity = above ? "0" : "1";
-    this.#readKind.textContent = allIn ? "All in" : raiseHeading(spot);
-    this.#readValue.textContent = formatChips(
+    this.#readKind.textContent = spot.heading(paint.value);
+    this.#readValue.textContent = spot.amount(
       keyed ? paint.typed : paint.value
     );
     toggle(this.#readout, "off", keyed && (low || high));
     this.#readNote.replaceChildren(...keyNote(spot, keyed, low, high));
-    this.#chipA.textContent = above ? raiseWord(spot, allIn) : "";
-    this.#chipB.textContent = above ? formatChips(paint.value) : "";
+    this.#chipA.textContent = above ? spot.word(paint.value) : "";
+    this.#chipB.textContent = above ? spot.amount(paint.value) : "";
   }
 
   #learn(hint: Hint) {
@@ -2893,6 +3196,16 @@ export class NostakesTable extends HTMLElement {
     );
   }
 
+  #peekHintDue() {
+    return (
+      this.#holdsCards() &&
+      !this.#learned("Peek") &&
+      !this.#peekOn &&
+      !this.#hand.classList.contains("open") &&
+      !this.#hand.classList.contains("offering")
+    );
+  }
+
   #updateHints() {
     const snapshot = this.#snap;
     const geo = this.#geo;
@@ -2905,8 +3218,7 @@ export class NostakesTable extends HTMLElement {
     const betting = this.#bettingTurn();
     const busy = this.#busy();
 
-    const peekOn =
-      this.#holdsCards() && !this.#learned("Peek") && !this.#peekOn && !betting;
+    const peekOn = this.#peekHintDue() && !betting;
 
     const raiseOn = betting && legal?.raise !== null && !this.#learned("Raise");
 

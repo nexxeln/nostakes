@@ -1,12 +1,11 @@
-import { Antes, RunCountSchema, ShownCardsSchema } from "@nostakes/engine";
-import type { Card, SeatIndex } from "@nostakes/engine";
+import { Antes } from "@nostakes/engine";
+import type { SeatIndex } from "@nostakes/engine";
 import type { PlayerId } from "@nostakes/protocol";
 import { MemberCommandSchema, RoomViews } from "@nostakes/room";
 import type { MemberCommand } from "@nostakes/room";
 import { Option } from "effect";
 import type { Html, HtmlBuilder } from "foldkit/html";
 
-import { cardLabel } from "./cards.js";
 import { faceButton, soundSwitch, themeSwitch } from "./chrome.js";
 import { Messages } from "./message.js";
 import type { Message } from "./message.js";
@@ -169,145 +168,6 @@ const noticeLine = (room: InRoom, h: H): Html =>
     ]
   );
 
-const showButton = (
-  h: H,
-  room: InRoom,
-  cards: readonly Card[],
-  label: string,
-  pendingLabel: string
-): Html =>
-  Option.match(ShownCardsSchema.makeOption(cards), {
-    onNone: () => h.empty,
-    onSome: (shown) =>
-      commandButton(
-        h,
-        room,
-        Commands.ShowCards.make({ cards: shown }),
-        label,
-        pendingLabel
-      ),
-  });
-
-const handChoices = (
-  room: InRoom,
-  view: OpenView,
-  mySeat: Option.Option<SeatIndex>,
-  h: H
-): readonly Html[] => {
-  const runs = view.hand.pipe(
-    Option.flatMap(({ choosingRuns }) => choosingRuns),
-    Option.filter(({ seats }) =>
-      Option.exists(mySeat, (seat) => seats.includes(seat))
-    )
-  );
-
-  const runButtons = Option.match(runs, {
-    onNone: () => [],
-    onSome: ({ maxRuns }) => [
-      h.div(
-        [h.Class("choice-row"), h.Role("group"), h.AriaLabel("How many runs")],
-        [
-          h.span([h.Class("muted")], ["Run it"]),
-          ...Array.from({ length: maxRuns }, (_, index) =>
-            Option.match(RunCountSchema.makeOption(index + 1), {
-              onNone: () => h.empty,
-              onSome: (count) =>
-                commandButton(
-                  h,
-                  room,
-                  Commands.ChooseRuns.make({ runs: count }),
-                  index === 0 ? "Once" : `${index + 1} times`,
-                  `Choosing ${index + 1} run${index === 0 ? "" : "s"}`
-                ),
-            })
-          ),
-        ]
-      ),
-    ],
-  });
-
-  const showdownButtons = Option.match(view.showdown, {
-    onNone: () => [],
-    onSome: ({ canMuck, canTable }) => [
-      h.div(
-        [h.Class("choice-row")],
-        [
-          h.span([h.Class("muted")], ["Showdown"]),
-          canTable
-            ? commandButton(
-                h,
-                room,
-                Commands.TableHand.make({}),
-                "Show my hand",
-                "Showing",
-                "button primary"
-              )
-            : h.empty,
-          canMuck
-            ? commandButton(
-                h,
-                room,
-                Commands.MuckHand.make({}),
-                "Muck",
-                "Mucking"
-              )
-            : h.empty,
-        ]
-      ),
-    ],
-  });
-
-  const afterHand = Option.match(view.lastHand, {
-    onNone: () => [],
-    onSome: (last) => {
-      const mine =
-        last.shown.find((entry) =>
-          Option.exists(mySeat, (seat) => seat === entry.seat)
-        )?.cards ?? [];
-
-      const hidden = last.yourCards.filter((card) => !mine.includes(card));
-
-      const canRabbit =
-        view.settings.table.rabbitHunt &&
-        last.rabbit.length === 0 &&
-        last.boards.some((board) => board.length < 5);
-
-      return [
-        hidden.length > 0 || canRabbit
-          ? h.div(
-              [h.Class("choice-row")],
-              [
-                ...hidden.map((card) =>
-                  showButton(
-                    h,
-                    room,
-                    [card],
-                    `Show ${cardLabel(card)}`,
-                    `Showing ${cardLabel(card)}`
-                  )
-                ),
-                hidden.length === 2
-                  ? showButton(h, room, hidden, "Show both", "Showing both")
-                  : h.empty,
-                canRabbit
-                  ? commandButton(
-                      h,
-                      room,
-                      Commands.RabbitHunt.make({}),
-                      "Rabbit hunt",
-                      "Hunting the rabbit"
-                    )
-                  : h.empty,
-              ]
-            )
-          : h.empty,
-      ];
-    },
-  });
-
-  return [...runButtons, ...showdownButtons, ...afterHand];
-};
-
 const sitPanel = (room: InRoom, view: OpenView, h: H): Html =>
   Option.match(room.drafts.seat, {
     onNone: () => h.empty,
@@ -365,18 +225,6 @@ const sitPanel = (room: InRoom, view: OpenView, h: H): Html =>
       ),
   });
 
-const myArea = (
-  model: Model,
-  room: InRoom,
-  view: OpenView,
-  mySeat: Option.Option<SeatIndex>,
-  h: H
-): Html =>
-  h.section(
-    [h.Class("my-area")],
-    [...handChoices(room, view, mySeat, h), sitPanel(room, view, h)]
-  );
-
 const balanceOf = (view: OpenView, player: PlayerId) =>
   view.balances.find((balance) => balance.player === player);
 
@@ -430,6 +278,53 @@ const hostTools = (
     ),
   ];
 };
+
+const sheet = (h: H, title: string, body: readonly Html[]): Html =>
+  h.div(
+    [h.Class("sheet-layer")],
+    [
+      h.button(
+        [
+          h.Type("button"),
+          h.Class("sheet-scrim"),
+          h.AriaLabel("Close"),
+          h.OnClick(Messages.ClosedSheet()),
+        ],
+        []
+      ),
+      h.section(
+        [h.Class("sheet"), h.Role("dialog"), h.AriaLabel(title)],
+        [
+          h.h2([h.Class("sheet-title")], [title]),
+          ...body,
+          h.button(
+            [
+              h.Type("button"),
+              h.Class("button quiet"),
+              h.OnClick(Messages.ClosedSheet()),
+            ],
+            ["Close"]
+          ),
+        ]
+      ),
+    ]
+  );
+
+const playerSheet = (room: InRoom, view: OpenView, seen: Seen, h: H): Html =>
+  Option.match(
+    room.picked.pipe(
+      Option.flatMap((seat) => Option.fromNullishOr(view.seats[seat])),
+      Option.flatMap(({ occupant }) => occupant),
+      Option.filter(
+        ({ player }) => view.host === room.player && player !== room.player
+      )
+    ),
+    {
+      onNone: () => h.empty,
+      onSome: ({ player }) =>
+        sheet(h, seen.name(player), hostTools(room, view, player, true, h)),
+    }
+  );
 
 const membersPanel = (
   room: InRoom,
@@ -767,7 +662,8 @@ const openRoomView = (
         onSome: (draft) => settingsPanel(room, view, draft, h),
       }),
       tableView(model, room, view, presence, h),
-      myArea(model, room, view, mySeat, h),
+      sitPanel(room, view, h),
+      playerSheet(room, view, seen, h),
       h.div(
         [h.Class("panels")],
         [

@@ -94,13 +94,17 @@ const actionOf = (intent: TableIntent): Option.Option<Action> =>
       Call: () => Option.some(Actions.Call()),
       Check: () => Option.some(Actions.Check()),
       Fold: () => Option.some(Actions.Fold()),
+      HuntRabbit: () => Option.none(),
       Learned: () => Option.none(),
       Muck: () => Option.none(),
+      Pick: () => Option.none(),
       Raise: ({ to }) =>
         Schema.decodeOption(ChipsSchema)(to).pipe(
           Option.map((amount) => Actions.RaiseTo({ to: amount }))
         ),
+      Runs: () => Option.none(),
       Show: () => Option.none(),
+      ShowCards: () => Option.none(),
       Sit: () => Option.none(),
     })
   );

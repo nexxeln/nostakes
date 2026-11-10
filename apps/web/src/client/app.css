@@ -950,3 +950,58 @@ select {
     animation: none;
   }
 }
+
+.sheet-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+
+.sheet-scrim {
+  position: absolute;
+  inset: 0;
+  border: 0;
+  padding: 0;
+  background: var(--color-scrim);
+  cursor: pointer;
+}
+
+.sheet {
+  position: relative;
+  width: 100%;
+  max-width: var(--size-sheet);
+  max-height: 85dvh;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-5) var(--space-4)
+    calc(var(--space-4) + env(safe-area-inset-bottom));
+  background: var(--color-raised);
+  color: var(--color-raised-ink);
+  border-radius: var(--radius-4) var(--radius-4) 0 0;
+  box-shadow: var(--shadow-2);
+}
+
+@media (min-width: 40rem) {
+  .sheet-layer {
+    align-items: center;
+  }
+
+  .sheet {
+    border-radius: var(--radius-4);
+  }
+}
+
+.sheet-title {
+  margin: 0 0 var(--space-2);
+  font-size: var(--text-4);
+  font-weight: 600;
+}
+
+.sheet .button {
+  width: 100%;
+}

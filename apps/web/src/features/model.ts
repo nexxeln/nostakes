@@ -88,6 +88,7 @@ export const InRoomSchema = Schema.Struct({
   link: Schema.Option(LinkSchema),
   notice: Schema.Option(Schema.String),
   pending: Schema.Array(PendingSchema),
+  picked: Schema.Option(Schema.Int),
   player: PlayerIdSchema,
   settings: Schema.Option(SettingsDraftSchema),
 });

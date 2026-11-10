@@ -91,11 +91,20 @@ export const TableEventSchema = Schema.Struct({
 
 export type TableEvent = typeof TableEventSchema.Type;
 
+export const AfterHandSchema = Schema.Struct({
+  bothOnly: Schema.Boolean,
+  rabbit: Schema.Boolean,
+  showable: Schema.Array(CardTextSchema),
+});
+
+export type AfterHand = typeof AfterHandSchema.Type;
+
 export const HintSchema = Schema.Literals(["Peek", "Fold", "Raise"]);
 
 export type Hint = typeof HintSchema.Type;
 
 export const TableSnapshotSchema = Schema.Struct({
+  afterHand: AfterHandSchema,
   bigBlind: Schema.Int,
   boards: Schema.Array(Schema.Array(CardTextSchema)),
   buttonSeat: Schema.NullOr(Schema.Int),
@@ -104,9 +113,12 @@ export const TableSnapshotSchema = Schema.Struct({
   handId: Schema.Int,
   heroCards: Schema.Array(CardTextSchema),
   heroSeat: Schema.NullOr(Schema.Int),
+  hostTools: Schema.Boolean,
   learned: Schema.Array(HintSchema),
   legal: Schema.NullOr(HeroLegalSchema),
   pots: Schema.Array(Schema.Int),
+  rabbit: Schema.Array(CardTextSchema),
+  runVote: Schema.NullOr(Schema.Int),
   seats: Schema.Array(SeatSnapshotSchema),
   toAct: Schema.NullOr(Schema.Int),
   waiting: Schema.String,
@@ -118,10 +130,14 @@ export const TableIntentSchema = Schema.TaggedUnion({
   Call: {},
   Check: {},
   Fold: {},
+  HuntRabbit: {},
   Learned: { hint: HintSchema },
   Muck: {},
+  Pick: { seat: Schema.Int },
   Raise: { to: Schema.Int },
+  Runs: { runs: Schema.Int },
   Show: {},
+  ShowCards: { cards: Schema.Array(CardTextSchema) },
   Sit: { seat: Schema.Int },
 });
 

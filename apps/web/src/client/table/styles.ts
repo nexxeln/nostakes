@@ -36,7 +36,7 @@ export const tableCss = `
 .unlit .pic { color: var(--color-face-ink-unlit); }
 .folded .pic { color: var(--color-face-ink-folded); }
 .away .frame { opacity: var(--opacity-away); }
-.tile.empty { cursor: pointer; }
+.tile.empty, .tile.pickable { cursor: pointer; }
 .tile.empty .frame { background: transparent; box-shadow: inset 0 0 0 1.5px var(--color-line-strong); }
 .tile.empty .pic { color: var(--color-ink-muted); font-size: var(--text-3); font-weight: 600; }
 
@@ -54,6 +54,10 @@ export const tableCss = `
 .label .act { color: var(--color-ink); font-weight: 600; opacity: 0; transform: translate(-50%, 5px); }
 .label .act.quiet { color: var(--color-ink-muted); font-weight: 500; }
 .label .act.hot, .label .act.win { color: var(--color-accent-ink); }
+.label .note { position: absolute; left: 50%; top: 0; white-space: nowrap; color: var(--color-ink-muted); opacity: 0; transform: translate(-50%, 0); transition: opacity var(--duration-2) var(--ease); }
+.noted .label .st { opacity: 0; }
+.noted .label .note { opacity: 1; }
+.acting .label .note { opacity: 0; }
 .acting .label .st { opacity: 0; transform: translate(-50%, -5px); }
 .acting .label .act { opacity: 1; transform: translate(-50%, 0); }
 .folded .label .name { color: var(--color-ink-muted); }
@@ -81,6 +85,11 @@ export const tableCss = `
 .pot.zero { opacity: 0; }
 .slot { position: absolute; border-radius: calc(var(--cw) * 0.09); box-shadow: inset 0 0 0 1px var(--color-line); transform: translate(-50%, -50%); z-index: 1; }
 .slot .card { position: absolute; left: 1px; top: 1px; }
+.slot.hunt { cursor: pointer; box-shadow: inset 0 0 0 1.5px var(--color-line-strong); }
+.slot.hunt[data-hint]::after { content: attr(data-hint); position: absolute; inset: 0; display: grid; place-items: center; font-size: var(--text-1); font-weight: 600; color: var(--color-ink-muted); }
+.card.rabbit { opacity: 0.55; }
+.runs { position: absolute; inset: 0; pointer-events: none; z-index: 1; }
+.runs .card { position: absolute; }
 
 .card { position: relative; width: var(--w); height: calc(var(--w) * 1.4); font-size: var(--w); transform-style: preserve-3d; }
 .card .face, .card .back { position: absolute; inset: 0; border-radius: 0.09em; backface-visibility: hidden; -webkit-backface-visibility: hidden; }
@@ -117,6 +126,9 @@ export const tableCss = `
 .hand.peek .hc:nth-child(1), .hand.open .hc:nth-child(1) { transform: translate(-12px, -28px) rotate(-8deg); }
 .hand.peek .hc:nth-child(2), .hand.open .hc:nth-child(2) { transform: translate(calc(var(--spread) + 12px), -25px) rotate(7deg); }
 .hand.armed .hc .card { opacity: 0.45; }
+.hand .hc.up .card .face { transform: none; }
+.hand .hc.up .card .back { transform: rotateY(180deg); }
+.hand.offering { cursor: pointer; }
 .hand.beckon { animation: beckon 1.4s ease-in-out infinite; }
 @keyframes beckon { 0%, 100% { translate: 0 0; } 50% { translate: 0 -6px; } }
 .hand-label {

@@ -36,6 +36,7 @@ const roomWith = (
   }),
   notice: Option.none(),
   pending: acting ? [{ acting: true, key: 1, label: "Calling" }] : [],
+  picked: Option.none(),
   player: PLAYER,
   settings: Option.none(),
 });
