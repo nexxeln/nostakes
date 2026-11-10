@@ -490,6 +490,9 @@ const stillQueued = (watch: QueueWatch) =>
   watch.rules ||
   watch.close;
 
+const dealsHoleCards = (event: RoomEvent) =>
+  RoomEvents.$is("Table")(event) && Events.$is("HoleCardsDealt")(event.event);
+
 export const queueProblems = (steps: readonly Step[]): readonly string[] => {
   const watch: QueueWatch = {
     chips: [],
@@ -499,12 +502,19 @@ export const queueProblems = (steps: readonly Step[]): readonly string[] => {
   };
 
   const problems: string[] = [];
+  let runQueueOwed = false;
 
   for (const step of steps) {
-    let ended = false;
+    let ended: boolean =
+      runQueueOwed && RoomCommands.$is("RunQueue")(step.command);
+
+    let endedInDeal = false;
+    let dealt = false;
 
     for (const event of step.events) {
-      ended ||= isHandEnded(event);
+      dealt ||= dealsHoleCards(event);
+      endedInDeal ||= dealt && isHandEnded(event);
+      ended ||= !dealt && isHandEnded(event);
       noteQueued(watch, event);
       problems.push(
         ...chipsArrived(watch, event, ended),
@@ -519,6 +529,9 @@ export const queueProblems = (steps: readonly Step[]): readonly string[] => {
         `a hand ended with items still queued after ${step.command._tag}`
       );
     }
+
+    runQueueOwed =
+      (runQueueOwed && !ended) || (endedInDeal && stillQueued(watch));
   }
 
   return problems;
