@@ -109,6 +109,14 @@ export type Dealing = typeof DealingSchema.Type;
 
 export const ShuffleSchema = Schema.Literals(["Checked", "Plain"]);
 
+export const MomentCalloutsSchema = Schema.Literals([
+  "All",
+  "SkipPainful",
+  "Off",
+]);
+
+export type MomentCallouts = typeof MomentCalloutsSchema.Type;
+
 export type Shuffle = typeof ShuffleSchema.Type;
 
 const settingsFields = (shuffleWhenAbsent: Shuffle) => ({
@@ -135,6 +143,11 @@ const settingsFields = (shuffleWhenAbsent: Shuffle) => ({
     description:
       "What happens to a player who leaves their seat during a hand they are in. ActedFor: the room checks or folds for them whenever the action reaches them. PlaysOn: they play the hand out on their own clock, and stand up when it ends. A player who leaves the room is always acted for.",
     title: "Leaving during a hand",
+  }),
+  moments: setting(MomentCalloutsSchema, "All", {
+    description:
+      "Whether the table calls out a hand worth talking about once it ends: a big hand, a bluff shown, a hero call, a suckout, a split. All also calls out bad beats and coolers. SkipPainful leaves those two out, so nobody's loss gets a banner. Off calls out nothing.",
+    title: "Table moments",
   }),
   pauseWhenAwaySeconds: setting(
     wholeSeconds(0, MAX_CLOCK_SECONDS),

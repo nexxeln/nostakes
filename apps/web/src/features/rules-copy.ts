@@ -395,6 +395,19 @@ export const RULES: readonly RuleCopy[] = [
       relevant: is("table.rabbitHunt", "true"),
     }
   ),
+  rule(
+    "moments",
+    "BetweenHands",
+    "Table moments",
+    segments({ All: "All", Off: "Off", SkipPainful: "No bad beats" }),
+    {
+      brief: (draft) =>
+        draft.moments === "Off"
+          ? said("no moments")
+          : when(draft.moments === "SkipPainful", () => "no bad-beat calls"),
+      help: "Calls out big hands, bluffs, and bad beats after a hand.",
+    }
+  ),
   rule("betweenHandsSeconds", "BetweenHands", "Pause", stepper("s", 0, by(1)), {
     brief: (draft) =>
       said(`${durationText(numberAt(draft, "betweenHandsSeconds"))} between`),
@@ -588,6 +601,7 @@ export const STANDARD = new Map<string, string>(
     "approval.seats": "false",
     dealing: "Automatic",
     leavingMidHand: "ActedFor",
+    moments: "All",
     pauseWhenAwaySeconds: "120",
     peeking: "true",
     shuffle: "Checked",

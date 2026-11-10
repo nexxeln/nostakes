@@ -23,7 +23,7 @@
     "build": "tsc -p tsconfig.build.json",
     "check": "pnpm run typecheck",
     "pretest": "pnpm run --silent build",
-    "verify": "node scripts/soak.ts"
+    "verify": "node scripts/soak.ts && node scripts/moments.ts"
   },
   "dependencies": {
     "@nostakes/engine": "workspace:*",

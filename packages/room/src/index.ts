@@ -138,6 +138,7 @@ export {
   MAX_REFILL_HANDS,
   MAX_TIMEOUTS_IN_A_ROW,
   MIN_SEATS,
+  MomentCalloutsSchema,
   RequestedSettingsSchema,
   RoomSettingsSchema,
   SeatCountSchema,
@@ -149,6 +150,7 @@ export {
 
 export type {
   BuyInRange,
+  MomentCallouts,
   RoomSettings,
   Shuffle,
   TimeBankRefill,
@@ -171,6 +173,33 @@ export {
 } from "./settlement.js";
 
 export { chipsOnTable, settlement } from "./money.js";
+
+export { EQUITY_BUDGET, SHARE_UNITS, equities, percentOf } from "./equity.js";
+
+export type { Equity } from "./equity.js";
+
+export {
+  BIG_POT_BLINDS,
+  FAVOURITE_PERCENTS,
+  LONG_SHOT_PERCENTS,
+  MOMENT_KINDS,
+  MOST_MOMENTS,
+  Moments,
+  REAL_BET_BLINDS,
+  TIERS,
+  bigHandTier,
+  boardCategory,
+  favouriteTier,
+  headline,
+  isNutFlush,
+  isPainful,
+  longShotTier,
+  momentsOf,
+  nothingOfItsOwn,
+  ranked,
+} from "./moments.js";
+
+export type { Headline, Moment, MomentKind, Odds, Tier } from "./moments.js";
 
 export type { Balance, Settlement, Transfer } from "./settlement.js";
 
