@@ -15,9 +15,8 @@ import {
   ChipRequestPending,
   ChipsOverMax,
   NoChipRequest,
-  NotSeated,
 } from "./rejection.js";
-import { occupantAt, seatOf } from "./state.js";
+import { heldSeat, occupantAt } from "./state.js";
 import type { Entries, Open } from "./state.js";
 import { onTable } from "./table.js";
 import type { Millis } from "./time.js";
@@ -60,12 +59,6 @@ export const addChips = (
 export const standUp = (state: Open, seat: SeatIndex, at: Millis) =>
   onTable(state.table, Commands.StandUp({ seat }), at);
 
-const seatedSeat = (state: Open, player: PlayerId) =>
-  Option.match(seatOf(state, player), {
-    onNone: () => Result.fail(new NotSeated({ player })),
-    onSome: (seat) => Result.succeed(seat),
-  });
-
 const stackAt = (state: Open, seat: SeatIndex) =>
   Option.match(occupantAt(state.table, seat), {
     onNone: () => 0,
@@ -87,7 +80,7 @@ export const requestChips = (
   player: PlayerId,
   command: RoomCommandOf<"RequestChips">
 ) =>
-  Result.flatMap(seatedSeat(state, player), (seat): Decision => {
+  Result.flatMap(heldSeat(state, player), (seat): Decision => {
     const pending = state.requests.chips.find(
       (request) => request.player === player
     );
@@ -142,7 +135,7 @@ export const answerChips = (
     ]);
   }
 
-  return Result.flatMap(seatedSeat(state, command.player), (seat) =>
+  return Result.flatMap(heldSeat(state, command.player), (seat) =>
     Result.map(addChips(state, seat, request.amount, command.at), (added) => [
       RoomEvents.ChipsApproved({ at: command.at, player: command.player }),
       ...added,
@@ -151,7 +144,7 @@ export const answerChips = (
 };
 
 export const leaveSeat = (state: Open, player: PlayerId, at: Millis) =>
-  Result.flatMap(seatedSeat(state, player), (seat) => standUp(state, seat, at));
+  Result.flatMap(heldSeat(state, player), (seat) => standUp(state, seat, at));
 
 export const chipsOnTable = (state: Open) => {
   let total = 0;

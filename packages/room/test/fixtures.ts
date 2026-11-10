@@ -10,6 +10,8 @@ import { Result } from "effect";
 import {
   Actors,
   RoomCodeSchema,
+  RoomCommands,
+  RoomStates,
   decide,
   evolveAll,
   millis,
@@ -114,4 +116,38 @@ export const rejection = (
   }
 
   return decision.failure;
+};
+
+export const bytesFrom = (seed: number, length = 256) => {
+  const bytes = new Uint8Array(length);
+  let state = (Math.abs(Math.trunc(seed)) % 2_147_483_646) + 1;
+
+  for (let index = 0; index < length; index += 1) {
+    state = (state * 48_271) % 2_147_483_647;
+    bytes[index] = state % 256;
+  }
+
+  return bytes;
+};
+
+export const join = (who: PlayerId, at = 1) =>
+  RoomCommands.Join({ at: ms(at), avatar: "", by: as(who), name: who });
+
+export const sit = (who: PlayerId, index: number, buyIn = 200, at = 2) =>
+  RoomCommands.RequestSeat({
+    at: ms(at),
+    buyIn: chipCount(buyIn),
+    by: as(who),
+    seat: seat(index),
+  });
+
+export const dealAt = (at: number, seed = at) =>
+  RoomCommands.Deal({ at: ms(at), by: server, shuffleBytes: bytesFrom(seed) });
+
+export const openOf = (state: RoomState) => {
+  if (!RoomStates.$is("Open")(state)) {
+    throw new Error("expected an open room");
+  }
+
+  return state;
 };

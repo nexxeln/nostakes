@@ -14,9 +14,10 @@ import type {
   TableState,
 } from "@nostakes/engine";
 import type { LedgerEntry } from "@nostakes/ledger";
-import { Data, Option } from "effect";
+import { Data, Option, Result } from "effect";
 
 import type { RoomCode } from "./identity.js";
+import { NotSeated } from "./rejection.js";
 import type { RoomSettings } from "./settings.js";
 import type { Settlement } from "./settlement.js";
 import type { Millis } from "./time.js";
@@ -168,3 +169,9 @@ export const seatOf = (state: Open, player: PlayerId) =>
 
 export const handInProgress = (state: Open) =>
   TableStates.$is("InHand")(state.table);
+
+export const heldSeat = (state: Open, player: PlayerId) =>
+  Option.match(seatOf(state, player), {
+    onNone: () => Result.fail(new NotSeated({ player })),
+    onSome: (seat) => Result.succeed(seat),
+  });

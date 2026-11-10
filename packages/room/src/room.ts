@@ -2,9 +2,10 @@ import type { PlayerId } from "@nostakes/engine";
 import { PlayerIdSchema } from "@nostakes/engine";
 import { Result, Schema } from "effect";
 
-import { fromHost, fromMember, fromSomeone } from "./authority.js";
+import { fromHost, fromMember, fromServer, fromSomeone } from "./authority.js";
 import { RoomCommands } from "./commands.js";
 import type { RoomCommand } from "./commands.js";
+import { deal, pauseGame, startGame } from "./dealing.js";
 import type { Decision } from "./decision.js";
 import { RoomEvents } from "./events.js";
 import type { RoomLog } from "./evolve.js";
@@ -12,7 +13,7 @@ import { AvatarSchema, NameSchema, RoomCodeSchema } from "./identity.js";
 import { joinRoom, leaveRoom, setProfile, transferHost } from "./members.js";
 import { answerChips, leaveSeat, requestChips } from "./money.js";
 import { RoomIsClosed } from "./rejection.js";
-import { answerSeat, requestSeat } from "./seats.js";
+import { answerSeat, declareStraddle, requestSeat, sitOut } from "./seats.js";
 import { RoomSettingsSchema } from "./settings.js";
 import { RoomStates } from "./state.js";
 import type { Open, RoomState } from "./state.js";
@@ -62,6 +63,12 @@ const decideOpen = (state: Open, command: RoomCommand): Decision =>
       byHost(state, approve, () => answerChips(state, approve, true)),
     ApproveSeat: (approve) =>
       byHost(state, approve, () => answerSeat(state, approve, true)),
+    Deal: (dealing) =>
+      Result.flatMap(fromServer(dealing), () => deal(state, dealing)),
+    DeclareStraddle: (declare) =>
+      byMember(state, declare, (player) =>
+        declareStraddle(state, player, declare)
+      ),
     DenyChips: (deny) =>
       byHost(state, deny, () => answerChips(state, deny, false)),
     DenySeat: (deny) =>
@@ -74,6 +81,8 @@ const decideOpen = (state: Open, command: RoomCommand): Decision =>
       byMember(state, leave, (player) => leaveRoom(state, player, leave.at)),
     LeaveSeat: (leave) =>
       byMember(state, leave, (player) => leaveSeat(state, player, leave.at)),
+    PauseGame: (pause) =>
+      byHost(state, pause, () => pauseGame(state, pause.at)),
     RemoveFromSeat: (remove) =>
       byHost(state, remove, () => leaveSeat(state, remove.player, remove.at)),
     RequestChips: (request) =>
@@ -84,6 +93,14 @@ const decideOpen = (state: Open, command: RoomCommand): Decision =>
       byMember(state, request, (player) => requestSeat(state, player, request)),
     SetProfile: (profile) =>
       byMember(state, profile, (player) => setProfile(player, profile)),
+    SitIn: (sitIn) =>
+      byMember(state, sitIn, (player) =>
+        sitOut(state, player, false, sitIn.at)
+      ),
+    SitOut: (out) =>
+      byMember(state, out, (player) => sitOut(state, player, true, out.at)),
+    StartGame: (start) =>
+      byHost(state, start, () => startGame(state, start.at)),
     TransferHost: (transfer) =>
       byHost(state, transfer, () => transferHost(state, transfer)),
   });

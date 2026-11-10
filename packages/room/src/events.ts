@@ -23,6 +23,8 @@ export const RoomEventSchema = Schema.TaggedUnion({
   ChipsApproved: { at, player: PlayerIdSchema },
   ChipsDenied: { at, player: PlayerIdSchema },
   ChipsRequested: { amount: ChipAmountSchema, at, player: PlayerIdSchema },
+  GamePaused: { at },
+  GameStarted: { at },
   HostChanged: { at, host: PlayerIdSchema },
   MemberJoined: {
     at,
@@ -51,6 +53,7 @@ export const RoomEventSchema = Schema.TaggedUnion({
     player: PlayerIdSchema,
     seat: SeatIndexSchema,
   },
+  StraddleDeclared: { at, on: Schema.Boolean, player: PlayerIdSchema },
   Table: { at, event: EventSchema },
 });
 

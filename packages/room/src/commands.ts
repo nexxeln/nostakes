@@ -12,15 +12,21 @@ const naming = { ...envelope, player: PlayerIdSchema };
 export const RoomCommandSchema = Schema.TaggedUnion({
   ApproveChips: naming,
   ApproveSeat: naming,
+  Deal: { ...envelope, shuffleBytes: Schema.Uint8Array },
+  DeclareStraddle: { ...envelope, on: Schema.Boolean },
   DenyChips: naming,
   DenySeat: naming,
   Join: { ...envelope, avatar: AvatarSchema, name: NameSchema },
   LeaveRoom: envelope,
   LeaveSeat: envelope,
+  PauseGame: envelope,
   RemoveFromSeat: naming,
   RequestChips: { ...envelope, amount: ChipAmountSchema },
   RequestSeat: { ...envelope, buyIn: ChipAmountSchema, seat: SeatIndexSchema },
   SetProfile: { ...envelope, avatar: AvatarSchema, name: NameSchema },
+  SitIn: envelope,
+  SitOut: envelope,
+  StartGame: envelope,
   TransferHost: { ...envelope, to: PlayerIdSchema },
 });
 

@@ -27,6 +27,8 @@ export {
   BuyInOutOfRange,
   ChipRequestPending,
   ChipsOverMax,
+  DealNotDue,
+  GameAlready,
   MembersOnly,
   NoChipRequest,
   NoSeatRequest,
@@ -38,6 +40,7 @@ export {
   SeatNotFree,
   SeatRequestPending,
   ServerOnly,
+  ShuffleRanOut,
   TableRejected,
 } from "./rejection.js";
 
@@ -48,6 +51,8 @@ export { OpeningSchema, decide, openRoom } from "./room.js";
 export type { Opening } from "./room.js";
 
 export type { Decision } from "./decision.js";
+
+export { deckFromBytes } from "./dealing.js";
 
 export {
   ApprovalSchema,

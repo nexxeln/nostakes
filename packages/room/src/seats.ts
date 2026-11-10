@@ -1,3 +1,4 @@
+import { Commands } from "@nostakes/engine";
 import type { PlayerId } from "@nostakes/engine";
 import { Option, Result } from "effect";
 
@@ -11,8 +12,10 @@ import {
   SeatNotFree,
   SeatRequestPending,
 } from "./rejection.js";
-import { occupantAt, seatOf } from "./state.js";
+import { heldSeat, occupantAt, seatOf } from "./state.js";
 import type { Open } from "./state.js";
+import { onTable } from "./table.js";
+import type { Millis } from "./time.js";
 
 export const requestSeat = (
   state: Open,
@@ -88,3 +91,30 @@ export const answerSeat = (
     ]
   );
 };
+
+export const declareStraddle = (
+  state: Open,
+  player: PlayerId,
+  command: RoomCommandOf<"DeclareStraddle">
+) =>
+  Result.map(heldSeat(state, player), () =>
+    state.straddlers.includes(player) === command.on
+      ? []
+      : [
+          RoomEvents.StraddleDeclared({
+            at: command.at,
+            on: command.on,
+            player,
+          }),
+        ]
+  );
+
+export const sitOut = (
+  state: Open,
+  player: PlayerId,
+  sittingOut: boolean,
+  at: Millis
+) =>
+  Result.flatMap(heldSeat(state, player), (seat) =>
+    onTable(state.table, Commands.SetSittingOut({ seat, sittingOut }), at)
+  );
