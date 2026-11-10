@@ -24,12 +24,13 @@ To play a hand with yourself:
 
 1. Open `http://localhost:5173`, type a name, pick a face, and select **Open a room**. The page moves to the room link, `http://localhost:5173/r/<CODE>`.
 2. Open the same link in a private window, so it keeps its own pass, and join as a second player.
-3. In each window, select **Sit** on an empty seat, then **Sit down**.
-4. In the first window, select **Start the game**.
+3. In each window, tap an empty seat (a dashed **Sit**), then select **Sit down**.
+4. In the first window, select **Start the game** in the middle of the table.
+5. Play with the table itself. Hold or hover your cards to see them. Tap the chip to check or call. Drag the chip up to bet or raise. Flick your cards up to fold. On a keyboard: Space peeks, **C** checks or calls, **R** opens the raise (type an amount or use the arrows, then Enter), **F** folds.
 
-A refresh puts a player back in their seat.
+Everything else is under **Menu**: your seat, the host's controls, who is here, sound, and the light or dark theme. A refresh puts a player back in their seat.
 
-The two-window check that CI runs plays the same steps in headless, muted Chromium:
+The two-window check that CI runs plays a whole hand with those gestures and keys in headless, muted Chromium:
 
 ```sh
 pnpm --filter @nostakes/web exec playwright-core install --only-shell chromium
