@@ -111,7 +111,10 @@ const timeOut = (state: Open, seat: SeatIndex, at: Millis): Decision =>
           Commands.SetSittingOut({ seat, sittingOut: true }),
           at
         ),
-        (satOut) => [...satOut, RoomEvents.MarkedAway({ at, seat })]
+        (satOut) =>
+          acted.away.includes(seat)
+            ? satOut
+            : [...satOut, RoomEvents.MarkedAway({ at, seat })]
       )
   );
 

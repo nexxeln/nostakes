@@ -70,6 +70,8 @@ export type { Deadline } from "./clocks.js";
 
 export { deckFromBytes } from "./dealing.js";
 
+export { invariants } from "./invariants.js";
+
 export {
   ApprovalSchema,
   BuyInRangeSchema,
@@ -90,7 +92,7 @@ export { chipsOnTable, settlement } from "./money.js";
 
 export type { Balance, Settlement, Transfer } from "./settlement.js";
 
-export { RoomStates, SEATS, seatOf } from "./state.js";
+export { DecisionClocks, RoomStates, SEATS, seatOf } from "./state.js";
 
 export type { Member, Open, RoomState } from "./state.js";
 
