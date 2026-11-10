@@ -288,6 +288,12 @@ describe("ending a night whose sealed hand the room cannot deal", () => {
     ),
   };
 
+  it("says the same thing about ending the night whenever a view of one state is drawn, so a late welcome matches the log", () => {
+    expect(
+      [START, ROUND_DUE].map((at) => closingFor(sealed, at))
+    ).toStrictEqual([Option.some("Now"), Option.some("Now")]);
+  });
+
   it("queues the close while the seal binds, and once the room is stalled withdraws the seal and settles", () => {
     const { round } = Option.getOrThrow(openOf(misSealed).sealed);
 

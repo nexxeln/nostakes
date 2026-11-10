@@ -689,7 +689,7 @@ const openView = (state: Open, audience: Audience, at: Millis): RoomView => {
     attendance: state.attendance,
     balances: balances(allEntries(state.entries)),
     clocks: clocksView(state, latest(at, state.now)),
-    closing: closingOf(state, latest(at, state.now)),
+    closing: closingOf(state, state.now),
     code: state.code,
     departed: profilesOf(state.departed),
     fairness: fairnessView(state, audience),
