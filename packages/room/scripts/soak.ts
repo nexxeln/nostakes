@@ -24,6 +24,7 @@ import type {
   SeatIndex,
   TableConfig,
 } from "@nostakes/engine";
+import { ROOM_CODE_ALPHABET, ROOM_CODE_LENGTH } from "@nostakes/protocol";
 import {
   Actors,
   Audiences,
@@ -71,6 +72,16 @@ import {
   Result,
   Schema,
 } from "effect";
+
+const CODE_BASE = ROOM_CODE_ALPHABET.length;
+
+const nightCode = (night: number) =>
+  RoomCodeSchema.make(
+    Array.from(
+      night.toString(CODE_BASE).padStart(ROOM_CODE_LENGTH, "0"),
+      (digit) => ROOM_CODE_ALPHABET.charAt(Number.parseInt(digit, CODE_BASE))
+    ).join("")
+  );
 
 const DEFAULT_SEED = 20_261_110;
 
@@ -1262,7 +1273,7 @@ const playNights = (
     const opening: Opening = {
       at: millis(0),
       avatar: "host",
-      code: RoomCodeSchema.make(`night-${nights}`),
+      code: nightCode(nights),
       host: HOST,
       name: "host",
       settings: roomSettings(random),

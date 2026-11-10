@@ -1,11 +1,7 @@
 import { PlayerIdSchema } from "@nostakes/engine";
 import { Data, Schema } from "effect";
 
-export const RoomCodeSchema = Schema.NonEmptyString.check(
-  Schema.isMaxLength(64)
-).pipe(Schema.brand("RoomCode"));
-
-export type RoomCode = typeof RoomCodeSchema.Type;
+export { RoomCodeSchema, type RoomCode } from "@nostakes/protocol";
 
 export const NameSchema = Schema.NonEmptyString.check(Schema.isMaxLength(40));
 

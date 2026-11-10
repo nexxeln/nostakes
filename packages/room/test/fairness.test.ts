@@ -31,7 +31,7 @@ import type {
 import { drand } from "./fixtures.js";
 import { POOL, playSession, session } from "./sessions.js";
 
-const ROOM = "generated";
+const ROOM = "GNRTD2";
 
 const WITHOUT_A_SEALED_DEAL = (missing: MissingEvidence) =>
   MissingEvidences.$is("NoDeal")(missing) ||

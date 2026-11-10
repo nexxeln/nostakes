@@ -114,7 +114,7 @@ const startedRoom = (
       at: millis(0),
       avatar: "",
       chain: drand.chain,
-      code: RoomCodeSchema.make("liveness"),
+      code: RoomCodeSchema.make("VNSS22"),
       host,
       name: "host",
       settings,

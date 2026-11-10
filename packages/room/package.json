@@ -28,6 +28,7 @@
   "dependencies": {
     "@nostakes/engine": "workspace:*",
     "@nostakes/ledger": "workspace:*",
+    "@nostakes/protocol": "workspace:*",
     "@nostakes/shuffle": "workspace:*",
     "effect": "4.1.2"
   },

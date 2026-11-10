@@ -76,7 +76,7 @@ export const settings: RoomSettings = {
   turnSeconds: 0,
 };
 
-export const roomCode = RoomCodeSchema.make("night");
+export const roomCode = RoomCodeSchema.make("NGHT22");
 
 const signer = selfSignedChain("room tests");
 

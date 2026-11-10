@@ -460,6 +460,9 @@ importers:
       '@nostakes/ledger':
         specifier: workspace:*
         version: link:../ledger
+      '@nostakes/protocol':
+        specifier: workspace:*
+        version: link:../protocol
       '@nostakes/shuffle':
         specifier: workspace:*
         version: link:../shuffle

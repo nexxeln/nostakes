@@ -60,7 +60,7 @@ describe("settings stored before a field existed", () => {
     const stored = `{
       "_tag": "RoomOpened",
       "at": 0,
-      "code": "night",
+      "code": "NGHT22",
       "host": "ann",
       "settings": ${SETTINGS_BEFORE_SHOWDOWNS}
     }`;

@@ -847,7 +847,7 @@ export const playSession = (
       at: millis(0),
       avatar: "",
       chain: drand.chain,
-      code: RoomCodeSchema.make("generated"),
+      code: RoomCodeSchema.make("GNRTD2"),
       host,
       name: "host",
       settings,
