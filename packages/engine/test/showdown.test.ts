@@ -461,7 +461,7 @@ describe("interactive showdown", () => {
     );
     expect(showdownTurnOf(river.state)).toStrictEqual(
       PendingDecisions.Show({
-        beatenInEveryContestedPot: false,
+        beatenInEveryPot: false,
         choices: { canMuck: true, canTable: true, seat: seat(1) },
       })
     );
@@ -537,21 +537,79 @@ describe("interactive showdown", () => {
     ).toStrictEqual(new NoShowdownChoiceOwed({ seat: seat(1) }));
   });
 
-  it("asks a seat that already owns the side pot only about the main pot, and reports it beaten there once the main pot's tabled hand beats it", () => {
-    let state = toSidePotShowdown(SEATINGS.XYZ);
+  it("counts a seat beaten in every pot only when a tabled hand beats it in each pot it claims, so a seat that owns the side pot after a muck is not beaten everywhere", () => {
+    const tabled = run(
+      toSidePotShowdown(SEATINGS.XYZ),
+      Commands.TableHand({ seat: seat(1) })
+    ).state;
 
-    ({ state } = run(state, Commands.TableHand({ seat: seat(1) })));
-
-    expect(showdownTurnOf(state)?.beatenInEveryContestedPot).toBe(false);
-
-    ({ state } = run(state, Commands.MuckHand({ seat: seat(2) })));
-
-    expect(showdownTurnOf(state)).toStrictEqual(
+    expect(showdownTurnOf(tabled)?.beatenInEveryPot).toBe(false);
+    expect(
+      showdownTurnOf(run(tabled, Commands.TableHand({ seat: seat(2) })).state)
+        ?.beatenInEveryPot
+    ).toBe(true);
+    expect(
+      showdownTurnOf(run(tabled, Commands.MuckHand({ seat: seat(2) })).state)
+    ).toStrictEqual(
       PendingDecisions.Show({
-        beatenInEveryContestedPot: true,
+        beatenInEveryPot: false,
         choices: { canMuck: true, canTable: true, seat: seat(0) },
       })
     );
+  });
+
+  it("asks a seat that alone is eligible for a side pot, after the other deep seat folded the river without facing a bet, only about the main pot, and it is not beaten in every pot", () => {
+    const board = SIDE_POT_BOARD;
+
+    const river = play(
+      startHand(
+        occupiedTable(interactive, { 0: 1000, 1: 30, 2: 1000 }),
+        deckStartingWith(`As Qs Ks Ac Qc Kc ${board}`)
+      ).state,
+      [
+        [0, raisesTo(30)],
+        [1, calls],
+        [2, calls],
+        [2, raisesTo(50)],
+        [0, calls],
+        [2, checks],
+        [0, checks],
+        [2, folds],
+      ]
+    );
+
+    expect(river.events.at(-1)).toStrictEqual(
+      Events.ShowdownStarted({ order: [seat(1), seat(0)] })
+    );
+
+    const tabled = run(river.state, Commands.TableHand({ seat: seat(1) }));
+
+    expect(showdownTurnOf(tabled.state)).toStrictEqual(
+      PendingDecisions.Show({
+        beatenInEveryPot: false,
+        choices: { canMuck: true, canTable: true, seat: seat(0) },
+      })
+    );
+    expect(
+      run(tabled.state, Commands.MuckHand({ seat: seat(0) })).events
+    ).toStrictEqual([
+      Events.HandMucked({ seat: seat(0) }),
+      Events.PotAwarded({
+        amount: chipCount(90),
+        eligible: [seat(0), seat(1)],
+        pot: 1,
+        run: 1,
+        winners: [{ amount: chipCount(90), seat: seat(1) }],
+      }),
+      Events.PotAwarded({
+        amount: chipCount(100),
+        eligible: [seat(0)],
+        pot: 2,
+        run: 1,
+        winners: [{ amount: chipCount(100), seat: seat(0) }],
+      }),
+      Events.HandEnded({ handNumber: 1 }),
+    ]);
   });
 
   it("lets the only seat eligible for a side pot, built with a seat that folded on the river, muck the main pot and keep the side pot without showing", () => {

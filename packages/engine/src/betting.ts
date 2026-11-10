@@ -168,7 +168,7 @@ export type PendingDecision = Data.TaggedEnum<{
   };
   Nothing: { readonly handNumber: number };
   Show: {
-    readonly beatenInEveryContestedPot: boolean;
+    readonly beatenInEveryPot: boolean;
     readonly choices: ShowdownChoices;
   };
 }>;

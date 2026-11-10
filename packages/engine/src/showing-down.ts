@@ -75,7 +75,7 @@ const hasEntry = (entries: readonly ShowdownEntry[], seat: SeatIndex) =>
   entries.some((entry) => entry.seat === seat);
 
 export interface Standing {
-  readonly beatenInEveryContestedPot: boolean;
+  readonly beatenInEveryPot: boolean;
   readonly contested: boolean;
   readonly winsPot: Option.Option<number>;
 }
@@ -86,8 +86,8 @@ const standingAgainst = (
   seat: SeatIndex,
   rank: HandRank
 ): Standing => {
-  const contested = claims.flatMap((claimants, index) => {
-    if (claimants.length < 2 || !claimants.includes(seat)) {
+  const claimed = claims.flatMap((claimants, index) => {
+    if (!claimants.includes(seat)) {
       return [];
     }
 
@@ -100,6 +100,7 @@ const standingAgainst = (
     return [
       {
         beaten: rivals.some((rival) => rival > rank),
+        contested: claimants.length > 1,
         pot: index + 1,
         wins: rivals.length > 0 && rivals.every((rival) => rival <= rank),
       },
@@ -107,10 +108,9 @@ const standingAgainst = (
   });
 
   return {
-    beatenInEveryContestedPot:
-      contested.length > 0 && contested.every((pot) => pot.beaten),
-    contested: contested.length > 0,
-    winsPot: Option.fromUndefinedOr(contested.find((pot) => pot.wins)?.pot),
+    beatenInEveryPot: claimed.every((pot) => pot.beaten),
+    contested: claimed.some((pot) => pot.contested),
+    winsPot: Option.fromUndefinedOr(claimed.find((pot) => pot.wins)?.pot),
   };
 };
 
@@ -262,7 +262,7 @@ export const muckHand = (
   );
 
 export interface ShowdownTurn {
-  readonly beatenInEveryContestedPot: boolean;
+  readonly beatenInEveryPot: boolean;
   readonly choices: ShowdownChoices;
 }
 
@@ -276,7 +276,7 @@ export const showdownTurn = (
       const standing = standingOf(hand, phase.entries, player);
 
       return {
-        beatenInEveryContestedPot: standing.beatenInEveryContestedPot,
+        beatenInEveryPot: standing.beatenInEveryPot,
         choices: {
           canMuck: Option.isNone(standing.winsPot),
           canTable: true,

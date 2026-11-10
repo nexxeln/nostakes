@@ -27,6 +27,7 @@ import type {
   Command,
   Event,
   LegalActions,
+  PendingDecision,
   Rejection,
   TableConfig,
   TableState,
@@ -110,7 +111,7 @@ const randomConfig = (random: Random): TableConfig => {
     bigBlind: chipCount(bigBlind),
     maxRuns: runCount(1 + random.below(4)),
     rabbitHunt: random.chance(50),
-    showdown: "Automatic",
+    showdown: random.chance(50) ? "Interactive" : "Automatic",
     smallBlind: chipCount(smallBlind),
     straddle: {
       button: random.chance(50),
@@ -236,9 +237,58 @@ const answer = (state: TableState, random: Random): Option.Option<Command> =>
       Option.some(Commands.TableHand({ seat: choices.seat })),
   });
 
+type PendingShow = Extract<PendingDecision, { readonly _tag: "Show" }>;
+
+interface ShowdownChoice {
+  readonly byClock: boolean;
+  readonly command: Command;
+}
+
+const SILENT_PERCENT = 25;
+
+const MUCK_PERCENT = 45;
+
+const showdownChoice = (turn: PendingShow, random: Random): ShowdownChoice => {
+  const { seat } = turn.choices;
+
+  if (random.chance(SILENT_PERCENT)) {
+    return {
+      byClock: true,
+      command: turn.beatenInEveryPot
+        ? Commands.MuckHand({ seat })
+        : Commands.TableHand({ seat }),
+    };
+  }
+
+  return {
+    byClock: false,
+    command:
+      turn.choices.canMuck && random.chance(MUCK_PERCENT)
+        ? Commands.MuckHand({ seat })
+        : Commands.TableHand({ seat }),
+  };
+};
+
+const illegalShowdownChoice = (turn: PendingShow, random: Random) => {
+  const { canMuck, seat } = turn.choices;
+  const other = seatAt((seat + 1 + random.below(8)) % 9);
+
+  if (!canMuck) {
+    return Commands.MuckHand({ seat });
+  }
+
+  return random.chance(50)
+    ? Commands.TableHand({ seat: other })
+    : Commands.MuckHand({ seat: other });
+};
+
 const illegalInHand = (state: TableState, random: Random): Command => {
   const pending = pendingDecisions(state);
   const roll = random.below(4);
+
+  if (PendingDecisions.$is("Show")(pending) && roll < 2) {
+    return illegalShowdownChoice(pending, random);
+  }
 
   if (PendingDecisions.$is("Bet")(pending) && roll === 0) {
     return Commands.Act({
@@ -471,18 +521,24 @@ const newCounts = () => ({
   buttonStraddles: 0,
   cappedCalls: 0,
   chipLimitRejected: 0,
+  clockShowdownsLikeAutomatic: 0,
   deadDecisionsSkipped: 0,
   deepPots: 0,
   doubleStraddles: 0,
   everyPlayerAntes: 0,
+  hiddenShowdownWinners: 0,
   illegalRejected: 0,
+  interactiveShowdowns: 0,
   mucks: 0,
+  mustTableRefused: 0,
   noAntes: 0,
   oddChips: 0,
   oneRunCutShort: 0,
   rabbitHunts: 0,
   runOuts: 0,
   shortAllIns: 0,
+  showdownConcessions: 0,
+  showdownsEndedOnClock: 0,
   sidePots: 0,
   singleStraddles: 0,
   splitPots: 0,
@@ -523,6 +579,34 @@ const countFixedCases = (
   counts.deadDecisionsSkipped += seen.skippedDecision ? 1 : 0;
   counts.deepPots += hand.some(
     (event) => Events.$is("PotAwarded")(event) && event.amount > DEEP_POT
+  )
+    ? 1
+    : 0;
+};
+
+const countInteractive = (counts: Counts, hand: readonly Event[]) => {
+  if (!hand.some(Events.$is("ShowdownStarted"))) {
+    return;
+  }
+
+  const firstTabled = hand.findIndex(Events.$is("HandTabled"));
+  const firstMucked = hand.findIndex(Events.$is("HandMucked"));
+
+  const tabled = new Set(
+    hand.flatMap((event) =>
+      Events.$is("HandTabled")(event) ? [event.seat] : []
+    )
+  );
+
+  counts.interactiveShowdowns += 1;
+  counts.showdownConcessions +=
+    firstMucked !== -1 && (firstTabled === -1 || firstMucked < firstTabled)
+      ? 1
+      : 0;
+  counts.hiddenShowdownWinners += hand.some(
+    (event) =>
+      Events.$is("PotAwarded")(event) &&
+      event.winners.some((winner) => !tabled.has(winner.seat))
   )
     ? 1
     : 0;
@@ -569,13 +653,64 @@ const countHand = (counts: Counts, hand: readonly Event[], seen: Seen) => {
     awards.some((award) => award.winners[0]?.seat === started?.bigBlindSeat)
       ? 1
       : 0;
-  counts.mucks += hand
-    .filter(Events.$is("ShowdownReached"))
-    .flatMap((showdown) => showdown.order)
-    .filter(ShowdownEntries.$is("Mucked")).length;
+  counts.mucks +=
+    hand
+      .filter(Events.$is("ShowdownReached"))
+      .flatMap((showdown) => showdown.order)
+      .filter(ShowdownEntries.$is("Mucked")).length +
+    hand.filter(Events.$is("HandMucked")).length;
+  countInteractive(counts, hand);
   counts.voluntaryShows += hand.filter(Events.$is("CardsShown")).length;
   counts.rabbitHunts += hand.filter(Events.$is("RabbitHunted")).length;
 };
+
+const awardsText = (events: readonly Event[]) =>
+  JSON.stringify(events.filter(Events.$is("PotAwarded")));
+
+const seatsText = (seats: readonly number[]) =>
+  seats.toSorted((left, right) => left - right).join(",");
+
+const sameShowdown = (
+  interactive: readonly Event[],
+  automatic: readonly Event[]
+) => {
+  const order = automatic
+    .filter(Events.$is("ShowdownReached"))
+    .flatMap((showdown) => showdown.order);
+
+  const tabled = interactive.flatMap((event) =>
+    Events.$is("HandTabled")(event) ? [event.seat] : []
+  );
+
+  const mucked = interactive.flatMap((event) =>
+    Events.$is("HandMucked")(event) ? [event.seat] : []
+  );
+
+  const shown = order.flatMap((entry) =>
+    ShowdownEntries.$is("Shown")(entry) ? [entry.seat] : []
+  );
+
+  const hidden = order.flatMap((entry) =>
+    ShowdownEntries.$is("Mucked")(entry) ? [entry.seat] : []
+  );
+
+  return (
+    awardsText(interactive) === awardsText(automatic) &&
+    seatsText(tabled) === seatsText(shown) &&
+    seatsText(mucked) === seatsText(hidden)
+  );
+};
+
+const automaticOutcome = (state: TableState, command: Command) =>
+  TableStates.$is("InHand")(state)
+    ? Result.getOrElse(
+        decide(
+          { ...state, config: { ...state.config, showdown: "Automatic" } },
+          command
+        ),
+        (): readonly Event[] => []
+      )
+    : [];
 
 const countRejection = (
   counts: Counts,
@@ -583,6 +718,12 @@ const countRejection = (
   mustReject: boolean
 ) => {
   counts.illegalRejected += mustReject ? 1 : 0;
+  counts.mustTableRefused += Predicate.isTagged(
+    rejection,
+    "WinningHandMustTable"
+  )
+    ? 1
+    : 0;
   counts.chipLimitRejected += Predicate.isTagged(rejection, "ChipLimitExceeded")
     ? 1
     : 0;
@@ -638,6 +779,9 @@ const simulate = (
   let log: Command[] = [];
   let hand: Event[] = [];
   let seen: Seen = { cappedCall: false, skippedDecision: false };
+  let automaticTwin: readonly Event[] = [];
+  let everyChoiceByClock = true;
+  let lastChoiceByClock = false;
 
   const violation = (detail: string): Result.Result<boolean, Broken> =>
     Result.fail({ detail, hand: hands, log });
@@ -660,6 +804,11 @@ const simulate = (
       return violation(`accepted an illegal ${command._tag}`);
     }
 
+    if (decision.success.some(Events.$is("ShowdownStarted"))) {
+      automaticTwin = automaticOutcome(state, command);
+      everyChoiceByClock = true;
+    }
+
     for (const event of decision.success) {
       const before = state;
 
@@ -676,6 +825,21 @@ const simulate = (
 
       hand.push(event);
       seen = noticed(seen, before, event, state);
+
+      if (
+        Events.$is("HandEnded")(event) &&
+        hand.some(Events.$is("ShowdownStarted"))
+      ) {
+        counts.showdownsEndedOnClock += lastChoiceByClock ? 1 : 0;
+
+        if (everyChoiceByClock && !sameShowdown(hand, automaticTwin)) {
+          return violation(
+            "a showdown where the clock made every choice ended differently from the same hand played Automatic"
+          );
+        }
+
+        counts.clockShowdownsLikeAutomatic += everyChoiceByClock ? 1 : 0;
+      }
 
       const broken = invariants(state);
 
@@ -723,6 +887,17 @@ const simulate = (
 
       if (random.chance(2)) {
         return apply(churn(state, random, nextPlayer), false);
+      }
+
+      const pending = pendingDecisions(state);
+
+      if (PendingDecisions.$is("Show")(pending)) {
+        const choice = showdownChoice(pending, random);
+
+        everyChoiceByClock &&= choice.byClock;
+        lastChoiceByClock = choice.byClock;
+
+        return apply(choice.command, false);
       }
 
       return apply(Option.getOrThrow(answer(state, random)), false);
@@ -803,7 +978,7 @@ const program = Effect.gen(function* simulator() {
   );
 
   for (const [name, count] of Object.entries(counts)) {
-    yield* Console.log(`${name.padEnd(22)} ${String(count).padStart(9)}`);
+    yield* Console.log(`${name.padEnd(28)} ${String(count).padStart(9)}`);
   }
 
   const gaps = Object.entries(counts).filter(([, count]) => count === 0);
