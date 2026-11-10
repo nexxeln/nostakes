@@ -23,7 +23,7 @@
     "build": "tsc -p tsconfig.build.json",
     "check": "pnpm run typecheck",
     "pretest": "pnpm run --silent build",
-    "verify": "node scripts/exhaustive-evaluator.ts"
+    "verify": "node scripts/exhaustive-evaluator.ts && node scripts/simulate.ts"
   },
   "dependencies": {
     "effect": "4.1.2"

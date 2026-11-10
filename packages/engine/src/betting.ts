@@ -179,7 +179,7 @@ const actionEvents = (
   const legal = legalFor(state, betting);
   const seat = betting.toAct;
   const stack = stackOf(state, seat);
-  const illegal = Result.fail(new IllegalAction({ action, legal, seat }));
+  const illegal = () => Result.fail(new IllegalAction({ action, legal, seat }));
 
   const committed =
     state.hand.players.find((player) => player.seat === seat)
@@ -188,18 +188,18 @@ const actionEvents = (
   return Actions.$match(action, {
     Call: () =>
       Option.match(legal.call, {
-        onNone: () => illegal,
+        onNone: illegal,
         onSome: (amount) =>
           Result.succeed([
             Events.Called({ allIn: amount === stack, amount, seat }),
           ]),
       }),
     Check: () =>
-      legal.canCheck ? Result.succeed([Events.Checked({ seat })]) : illegal,
+      legal.canCheck ? Result.succeed([Events.Checked({ seat })]) : illegal(),
     Fold: () => Result.succeed([Events.Folded({ seat })]),
     RaiseTo: ({ to }) =>
       Option.match(legal.raise, {
-        onNone: () => illegal,
+        onNone: illegal,
         onSome: (range) =>
           to >= range.minTo && to <= range.maxTo
             ? Result.succeed([
@@ -211,7 +211,7 @@ const actionEvents = (
                   to,
                 }),
               ])
-            : illegal,
+            : illegal(),
       }),
   });
 };
