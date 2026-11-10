@@ -33,7 +33,7 @@ const DEFAULT_SEED = 20_261_110;
 
 const DEFAULT_HANDS = 1000;
 
-const HANDS_PER_TABLE = 300;
+const HANDS_PER_TABLE = 120;
 
 const argument = (name: string, fallback: number) => {
   const index = process.argv.indexOf(`--${name}`);
@@ -536,10 +536,25 @@ const exportHands = (seed: number, wanted: number) =>
       return true;
     };
 
+    const refill = () => {
+      for (const { index, seat } of occupied(state)) {
+        if (seat.stack === 0 && random.chance(70)) {
+          apply(
+            Commands.AddChips({
+              amount: chipCount(20 + random.below(400)),
+              seat: seatAt(index),
+            })
+          );
+        }
+      }
+    };
+
     const betweenHands = () => {
       if (random.below(HANDS_PER_TABLE) === 0) {
         openTable();
       }
+
+      refill();
 
       if (random.chance(4)) {
         apply(Commands.ChangeRules({ config: randomConfig(random) }));

@@ -1,0 +1,15 @@
+version = 1
+revision = 2
+requires-python = ">=3.14"
+
+[manifest]
+requirements = [{ name = "pokerkit", specifier = "==0.7.7" }]
+
+[[package]]
+name = "pokerkit"
+version = "0.7.7"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/57/bc/de32f9d09e89a91603cff83dce574f8b9455fda8737227e795654b9c68f2/pokerkit-0.7.7.tar.gz", hash = "sha256:5df50e9e500467f7335192debbfc4bfc038ab25f5ffdd3fbbdee1771b5814bdb", size = 111261, upload-time = "2026-10-12T08:31:56.166Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/51/dd/1ae63b3581d10239788360d023e731421d3ce476b87586da2635026455aa/pokerkit-0.7.7-py3-none-any.whl", hash = "sha256:4e946cc5c48558a9a4583f3a00f13960bd5b719144643104642031552c59ec76", size = 115559, upload-time = "2026-10-12T08:31:54.949Z" },
+]
