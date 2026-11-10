@@ -27,7 +27,8 @@
     "typecheck:fast": "turbo run typecheck:fast typecheck:fast-scripts",
     "typecheck:fast-scripts": "tsrs --noEmit -p tsconfig.json",
     "typecheck-scripts": "effect-tsrs diagnostics --project tsconfig.json --strict --type-check",
-    "verify": "turbo run verify"
+    "verify": "turbo run verify",
+    "verify:status": "node apps/room-server/scripts/verify-status.ts"
   },
   "devDependencies": {
     "@effect/tsgo": "0.67.5",
