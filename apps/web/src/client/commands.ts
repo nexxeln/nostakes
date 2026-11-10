@@ -42,6 +42,8 @@ const REFUSAL_TEXT = {
   NotFound: "No room has that code.",
   RoomFull: "That room is full.",
   RoomHalted: "That room has stopped.",
+  RoomUnavailable: "The room is not answering yet. Try again in a few seconds.",
+  ServerFault: "The room server hit a fault. Try again.",
   UpgradeRequired: "The room server wanted a live connection.",
 } satisfies Record<HttpRefusal["refusal"], string>;
 

@@ -1,6 +1,7 @@
+import type { RpcCallError } from "@alchemy.run/cloudflare";
 import { RoomCodeSchema, RoomPassSchema } from "@nostakes/protocol";
 import type { RoomCode } from "@nostakes/protocol";
-import { Effect, Layer, Option, Schema } from "effect";
+import { Cause, Effect, Layer, Option, Schema } from "effect";
 import * as HttpRouter from "effect/http/HttpRouter";
 import type { HttpServerError } from "effect/http/HttpServerError";
 import * as HttpServerRequest from "effect/http/HttpServerRequest";
@@ -10,6 +11,8 @@ import { addressOf, tooManyRequests } from "./address-limits.js";
 import type { AddressLimits, LimitedAction } from "./address-limits.js";
 import { Entropy } from "./entropy.js";
 import { refuseSocket } from "./refused-socket.js";
+import { callRoom } from "./room-call-failed.js";
+import type { RoomCallFailed } from "./room-call-failed.js";
 import {
   CODE_DRAW_BYTES,
   codeFromBytes,
@@ -17,15 +20,16 @@ import {
 } from "./room-code.js";
 import { refuse } from "./room-object.js";
 import { JoinOutcomeSchema, OpenOutcomeSchema } from "./room-rpc.js";
+import { RouteFault } from "./route-fault.js";
 
 export interface RoomStub {
   readonly open: (input: {
     readonly code: string;
     readonly request: Schema.Json;
-  }) => Effect.Effect<typeof OpenOutcomeSchema.Encoded>;
+  }) => Effect.Effect<typeof OpenOutcomeSchema.Encoded, RpcCallError>;
   readonly join: (input: {
     readonly request: Schema.Json;
-  }) => Effect.Effect<typeof JoinOutcomeSchema.Encoded>;
+  }) => Effect.Effect<typeof JoinOutcomeSchema.Encoded, RpcCallError>;
   readonly fetch: (
     request: HttpServerRequest.HttpServerRequest
   ) => Effect.Effect<HttpServerResponse.HttpServerResponse, HttpServerError>;
@@ -42,6 +46,14 @@ export interface RoomRoutesOptions<R> {
 }
 
 const CodePath = Schema.Struct({ code: Schema.String });
+
+const logged = (failure: RoomCallFailed | RouteFault) =>
+  Effect.logError(failure.message).pipe(
+    Effect.annotateLogs({ error: failure._tag })
+  );
+
+const unavailable = (failure: RoomCallFailed) =>
+  logged(failure).pipe(Effect.andThen(refuse("RoomUnavailable")));
 
 const decodeOpenOutcome = Schema.decodeEffect(OpenOutcomeSchema);
 
@@ -79,6 +91,7 @@ export const roomRoutes = <R>(
     );
 
     const guarded = (
+      route: string,
       handler: Effect.Effect<
         HttpServerResponse.HttpServerResponse,
         never,
@@ -91,7 +104,13 @@ export const roomRoutes = <R>(
         }
 
         return yield* handler;
-      });
+      }).pipe(
+        Effect.catchDefect((defect) =>
+          logged(
+            new RouteFault({ detail: Cause.pretty(Cause.die(defect)), route })
+          ).pipe(Effect.andThen(refuse("ServerFault")))
+        )
+      );
 
     const limited = (
       action: LimitedAction,
@@ -130,10 +149,14 @@ export const roomRoutes = <R>(
       for (let attempt = 0; attempt < MAX_CODE_ATTEMPTS; attempt += 1) {
         const code = yield* drawCode.pipe(Effect.eventually);
 
-        const outcome = yield* rooms
-          .getByName(code)
-          .open({ code, request: body.value })
-          .pipe(Effect.flatMap(decodeOpenOutcome), Effect.orDie);
+        const outcome = yield* callRoom(
+          code,
+          "open",
+          rooms
+            .getByName(code)
+            .open({ code, request: body.value })
+            .pipe(Effect.flatMap(decodeOpenOutcome))
+        );
 
         if (OpenOutcomeSchema.guards.Opened(outcome)) {
           return yield* created(code, outcome.player, outcome.token);
@@ -145,7 +168,7 @@ export const roomRoutes = <R>(
       }
 
       return yield* refuse("NoFreeCode");
-    });
+    }).pipe(Effect.catchTag("RoomCallFailed", unavailable));
 
     const joinRoom = Effect.gen(function* joinRoom() {
       const code = yield* roomCodeOf.pipe(Effect.orDie);
@@ -160,10 +183,14 @@ export const roomRoutes = <R>(
         return yield* refuse("BadRequest");
       }
 
-      const outcome = yield* rooms
-        .getByName(code.value)
-        .join({ request: body.value })
-        .pipe(Effect.flatMap(decodeJoinOutcome), Effect.orDie);
+      const outcome = yield* callRoom(
+        code.value,
+        "join",
+        rooms
+          .getByName(code.value)
+          .join({ request: body.value })
+          .pipe(Effect.flatMap(decodeJoinOutcome))
+      );
 
       return yield* JoinOutcomeSchema.match(outcome, {
         Invalid: () => refuse("BadRequest"),
@@ -173,7 +200,7 @@ export const roomRoutes = <R>(
         RoomFull: () => refuse("RoomFull"),
         RoomHalted: () => refuse("RoomHalted"),
       });
-    });
+    }).pipe(Effect.catchTag("RoomCallFailed", unavailable));
 
     const connect = Effect.gen(function* connect() {
       const code = yield* roomCodeOf.pipe(Effect.orDie);
@@ -187,11 +214,12 @@ export const roomRoutes = <R>(
         return yield* refuseSocket("NotFound");
       }
 
-      return yield* rooms
-        .getByName(code.value)
-        .fetch(request)
-        .pipe(Effect.orDie);
-    });
+      return yield* callRoom(
+        code.value,
+        "connect",
+        rooms.getByName(code.value).fetch(request)
+      );
+    }).pipe(Effect.catchTag("RoomCallFailed", unavailable));
 
     const connectRefusal = HttpServerRequest.HttpServerRequest.pipe(
       Effect.flatMap((request) =>
@@ -205,17 +233,23 @@ export const roomRoutes = <R>(
       HttpRouter.add(
         "POST",
         "/rooms",
-        guarded(limited("create", tooManyRequests, createRoom))
+        guarded("POST /rooms", limited("create", tooManyRequests, createRoom))
       ),
       HttpRouter.add(
         "POST",
         "/rooms/:code/members",
-        guarded(limited("join", tooManyRequests, joinRoom))
+        guarded(
+          "POST /rooms/:code/members",
+          limited("join", tooManyRequests, joinRoom)
+        )
       ),
       HttpRouter.add(
         "GET",
         "/rooms/:code/socket",
-        guarded(limited("connect", connectRefusal, connect))
+        guarded(
+          "GET /rooms/:code/socket",
+          limited("connect", connectRefusal, connect)
+        )
       ),
       HttpRouter.cors({
         allowedHeaders: ["content-type"],

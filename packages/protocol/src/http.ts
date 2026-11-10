@@ -19,6 +19,8 @@ export const HttpRefusalSchema = Schema.Struct({
     "RoomHalted",
     "NoFreeCode",
     "UpgradeRequired",
+    "RoomUnavailable",
+    "ServerFault",
   ]),
 });
 

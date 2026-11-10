@@ -71,6 +71,8 @@ const refusalStatus: Record<HttpRefusal["refusal"], number> = {
   NotFound: 404,
   RoomFull: 409,
   RoomHalted: 410,
+  RoomUnavailable: 503,
+  ServerFault: 500,
   UpgradeRequired: 426,
 };
 
