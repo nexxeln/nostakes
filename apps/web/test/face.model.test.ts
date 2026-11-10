@@ -215,17 +215,18 @@ describe("the face builder", () => {
     ({ avatar }) => {
       const wearing = update(home, Messages.PickedAvatar({ avatar })).model;
 
-      expect(checkedLabels(onPart(wearing, "Animal"))).toStrictEqual([
-        avatar.species,
+      expect(checkedLabels(onPart(wearing, "Species"))).toStrictEqual([
+        spaced(avatar.species),
       ]);
       expect(checkedLabels(onPart(wearing, "Backdrop"))).toStrictEqual([
         avatar.backdrop,
       ]);
-      expect(checkedLabels(onPart(wearing, "Extras"))).toStrictEqual(
-        avatar.accessory === "None"
-          ? ["None"]
-          : [spaced(avatar.accessory), avatar.accent]
-      );
+      expect(checkedLabels(onPart(wearing, "Extra"))).toStrictEqual([
+        spaced(avatar.extra),
+      ]);
+      expect(checkedLabels(onPart(wearing, "Tattoo"))).toStrictEqual([
+        spaced(avatar.tattoo),
+      ]);
     }
   );
 });

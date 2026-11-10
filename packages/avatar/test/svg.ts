@@ -21,3 +21,16 @@ export const unclosedTags = (svg: string) => {
 
   return open;
 };
+
+const OPEN_TAG = /<[a-z][^>]*>/gu;
+
+const ATTRIBUTE = /\s(?<name>[a-z-]+)=/gu;
+
+export const repeatedAttributes = (svg: string) =>
+  [...svg.matchAll(OPEN_TAG)].flatMap((tag) => {
+    const names = [...tag[0].matchAll(ATTRIBUTE)].map(
+      (match) => match.groups?.name ?? ""
+    );
+
+    return names.filter((name, index) => names.indexOf(name) !== index);
+  });

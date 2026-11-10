@@ -1,80 +1,112 @@
 import { Schema } from "effect";
 
 export const SPECIES = [
-  "Cat",
-  "Bear",
-  "Bunny",
-  "Fox",
-  "Frog",
-  "Mouse",
-  "Dog",
+  "GreatWhite",
+  "Hammerhead",
+  "Tiger",
+  "Goldfish",
+  "Puffer",
+  "Piranha",
+  "Betta",
+  "Angler",
+  "Whale",
+  "Octopus",
 ] as const;
 
-export const FURS = [
-  "Cream",
-  "Honey",
-  "Ginger",
-  "Cocoa",
-  "Charcoal",
-  "Cloud",
-  "Pink",
-  "Mint",
-  "Lilac",
-  "Sky",
-  "Lemon",
-  "Sage",
-] as const;
-
-export const MARKINGS = [
-  "Plain",
-  "Muzzle",
-  "Mask",
-  "Patch",
-  "Stripes",
-] as const;
-
-export const EYES = ["Dots", "Shiny", "Lashes", "Button"] as const;
-
-export const MOUTHS = ["Smile", "Kitty", "Toothy", "Blep", "Grin"] as const;
-
-export const CHEEKS = ["Rosy", "Freckles", "Bare"] as const;
-
-export const ACCESSORIES = [
-  "None",
-  "Bow",
-  "Beanie",
-  "Glasses",
-  "Flower",
-  "Visor",
-  "Headphones",
-  "Crown",
-  "PartyHat",
-] as const;
-
-export const ACCENTS = [
-  "Cherry",
+export const BODIES = [
+  "Steel",
+  "Slate",
+  "Midnight",
+  "Sand",
+  "Orange",
   "Coral",
-  "Sun",
-  "Leaf",
-  "Ocean",
-  "Grape",
+  "Lemon",
   "Bubblegum",
-  "Ink",
+  "Grape",
+  "Lagoon",
+  "Sky",
+  "Pearl",
+] as const;
+
+export const EYES = ["Round", "Sleepy", "Sharp", "Wide", "Beady"] as const;
+
+export const MOUTHS = [
+  "Smirk",
+  "Grin",
+  "Poker",
+  "Pout",
+  "Fangs",
+  "GoldTooth",
+] as const;
+
+export const HEADWEAR = [
+  "None",
+  "Cowboy",
+  "Fedora",
+  "Visor",
+  "Crown",
+  "Bandana",
+  "Headphones",
+  "Cap",
+  "Captain",
+] as const;
+
+export const EYEWEAR = [
+  "None",
+  "Shades",
+  "Aviators",
+  "Wraps",
+  "Round",
+  "Stars",
+  "Monocle",
+  "Specs",
+  "Eyepatch",
+] as const;
+
+export const NECKWEAR = [
+  "None",
+  "Chain",
+  "Medallion",
+  "Bolo",
+  "Bowtie",
+  "Hoodie",
+  "Pearls",
+] as const;
+
+export const TATTOOS = [
+  "None",
+  "Spade",
+  "Teardrop",
+  "Suits",
+  "Dice",
+  "Chip",
+  "Anchor",
+  "AllIn",
+  "NoFold",
+  "Scar",
+] as const;
+
+export const EXTRAS = [
+  "None",
+  "Toothpick",
+  "Cigar",
+  "Lollipop",
+  "Hoop",
+  "Bandaid",
+  "Ace",
 ] as const;
 
 export const BACKDROPS = [
-  "Peach",
-  "Butter",
-  "Mint",
-  "Sky",
-  "Lilac",
-  "Rose",
-  "Sage",
-  "Sand",
   "Felt",
-  "Teal",
-  "Navy",
-  "Plum",
+  "Reef",
+  "Lagoon",
+  "Deep",
+  "Velvet",
+  "Coral",
+  "Sunset",
+  "Lilac",
+  "Sand",
+  "Neon",
 ] as const;
 
 export const EXPRESSIONS = [
@@ -88,19 +120,21 @@ export const EXPRESSIONS = [
 
 export const SpeciesSchema = Schema.Literals(SPECIES);
 
-export const FurSchema = Schema.Literals(FURS);
-
-export const MarkingSchema = Schema.Literals(MARKINGS);
+export const BodySchema = Schema.Literals(BODIES);
 
 export const EyesSchema = Schema.Literals(EYES);
 
 export const MouthSchema = Schema.Literals(MOUTHS);
 
-export const CheeksSchema = Schema.Literals(CHEEKS);
+export const HeadwearSchema = Schema.Literals(HEADWEAR);
 
-export const AccessorySchema = Schema.Literals(ACCESSORIES);
+export const EyewearSchema = Schema.Literals(EYEWEAR);
 
-export const AccentSchema = Schema.Literals(ACCENTS);
+export const NeckwearSchema = Schema.Literals(NECKWEAR);
+
+export const TattooSchema = Schema.Literals(TATTOOS);
+
+export const ExtraSchema = Schema.Literals(EXTRAS);
 
 export const BackdropSchema = Schema.Literals(BACKDROPS);
 
@@ -108,46 +142,50 @@ export const ExpressionSchema = Schema.Literals(EXPRESSIONS);
 
 export type Species = typeof SpeciesSchema.Type;
 
-export type Fur = typeof FurSchema.Type;
-
-export type Marking = typeof MarkingSchema.Type;
+export type Body = typeof BodySchema.Type;
 
 export type Eyes = typeof EyesSchema.Type;
 
 export type Mouth = typeof MouthSchema.Type;
 
-export type Cheeks = typeof CheeksSchema.Type;
+export type Headwear = typeof HeadwearSchema.Type;
 
-export type Accessory = typeof AccessorySchema.Type;
+export type Eyewear = typeof EyewearSchema.Type;
 
-export type Accent = typeof AccentSchema.Type;
+export type Neckwear = typeof NeckwearSchema.Type;
+
+export type Tattoo = typeof TattooSchema.Type;
+
+export type Extra = typeof ExtraSchema.Type;
 
 export type Backdrop = typeof BackdropSchema.Type;
 
 export type Expression = typeof ExpressionSchema.Type;
 
 export const AvatarSchema = Schema.Struct({
-  accent: AccentSchema,
-  accessory: AccessorySchema,
   backdrop: BackdropSchema,
-  cheeks: CheeksSchema,
+  body: BodySchema,
+  extra: ExtraSchema,
   eyes: EyesSchema,
-  fur: FurSchema,
-  marking: MarkingSchema,
+  eyewear: EyewearSchema,
+  headwear: HeadwearSchema,
   mouth: MouthSchema,
+  neck: NeckwearSchema,
   species: SpeciesSchema,
+  tattoo: TattooSchema,
 });
 
 export type Avatar = typeof AvatarSchema.Type;
 
 export const DEFAULT_AVATAR: Avatar = {
-  accent: "Cherry",
-  accessory: "None",
-  backdrop: "Peach",
-  cheeks: "Rosy",
-  eyes: "Shiny",
-  fur: "Honey",
-  marking: "Muzzle",
-  mouth: "Kitty",
-  species: "Bear",
+  backdrop: "Felt",
+  body: "Steel",
+  extra: "None",
+  eyes: "Sleepy",
+  eyewear: "Shades",
+  headwear: "None",
+  mouth: "Smirk",
+  neck: "Chain",
+  species: "GreatWhite",
+  tattoo: "Spade",
 };

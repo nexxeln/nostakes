@@ -1,21 +1,22 @@
 import { Option, Schema, SchemaTransformation } from "effect";
 
 import {
-  ACCENTS,
-  ACCESSORIES,
   AvatarSchema,
   BACKDROPS,
-  CHEEKS,
-  DEFAULT_AVATAR,
+  BODIES,
+  EXTRAS,
   EYES,
-  FURS,
-  MARKINGS,
+  EYEWEAR,
+  HEADWEAR,
   MOUTHS,
+  NECKWEAR,
   SPECIES,
+  TATTOOS,
 } from "./avatar.js";
 import type { Avatar } from "./avatar.js";
+import { randomAvatar, seedFrom } from "./random.js";
 
-const CODE_PREFIX = "c1";
+const CODE_PREFIX = "s1";
 
 const DIGITS = "0123456789abcdefghijklmnopqrstuvwxyz";
 
@@ -27,60 +28,52 @@ const slot = <T extends string>(choices: Choices<T>) => ({
   pattern: `[${DIGITS.slice(0, choices.length)}]`,
 });
 
-const SLOTS = {
-  accent: slot(ACCENTS),
-  accessory: slot(ACCESSORIES),
-  backdrop: slot(BACKDROPS),
-  cheeks: slot(CHEEKS),
-  eyes: slot(EYES),
-  fur: slot(FURS),
-  marking: slot(MARKINGS),
-  mouth: slot(MOUTHS),
-  species: slot(SPECIES),
-};
+const SLOTS = [
+  ["species", slot(SPECIES)],
+  ["body", slot(BODIES)],
+  ["eyes", slot(EYES)],
+  ["mouth", slot(MOUTHS)],
+  ["headwear", slot(HEADWEAR)],
+  ["eyewear", slot(EYEWEAR)],
+  ["neck", slot(NECKWEAR)],
+  ["tattoo", slot(TATTOOS)],
+  ["extra", slot(EXTRAS)],
+  ["backdrop", slot(BACKDROPS)],
+] as const;
 
 const CODE_PATTERN = new RegExp(
-  `^${CODE_PREFIX}${[
-    SLOTS.species.pattern,
-    SLOTS.fur.pattern,
-    SLOTS.marking.pattern,
-    SLOTS.eyes.pattern,
-    SLOTS.mouth.pattern,
-    SLOTS.cheeks.pattern,
-    SLOTS.accessory.pattern,
-    SLOTS.accent.pattern,
-    SLOTS.backdrop.pattern,
-  ].join("")}$`,
+  `^${CODE_PREFIX}${SLOTS.map(([, part]) => part.pattern).join("")}$`,
   "u"
 );
 
+const digitAt = (code: string, index: number) =>
+  code.charAt(CODE_PREFIX.length + index);
+
 export const codeFor = (avatar: Avatar) =>
   CODE_PREFIX +
-  SLOTS.species.encode(avatar.species) +
-  SLOTS.fur.encode(avatar.fur) +
-  SLOTS.marking.encode(avatar.marking) +
-  SLOTS.eyes.encode(avatar.eyes) +
-  SLOTS.mouth.encode(avatar.mouth) +
-  SLOTS.cheeks.encode(avatar.cheeks) +
-  SLOTS.accessory.encode(avatar.accessory) +
-  SLOTS.accent.encode(avatar.accent) +
-  SLOTS.backdrop.encode(avatar.backdrop);
+  SLOTS[0][1].encode(avatar.species) +
+  SLOTS[1][1].encode(avatar.body) +
+  SLOTS[2][1].encode(avatar.eyes) +
+  SLOTS[3][1].encode(avatar.mouth) +
+  SLOTS[4][1].encode(avatar.headwear) +
+  SLOTS[5][1].encode(avatar.eyewear) +
+  SLOTS[6][1].encode(avatar.neck) +
+  SLOTS[7][1].encode(avatar.tattoo) +
+  SLOTS[8][1].encode(avatar.extra) +
+  SLOTS[9][1].encode(avatar.backdrop);
 
-const fromCode = (code: string): Avatar => {
-  const digit = (index: number) => code.charAt(CODE_PREFIX.length + index);
-
-  return {
-    accent: SLOTS.accent.decode(digit(7)),
-    accessory: SLOTS.accessory.decode(digit(6)),
-    backdrop: SLOTS.backdrop.decode(digit(8)),
-    cheeks: SLOTS.cheeks.decode(digit(5)),
-    eyes: SLOTS.eyes.decode(digit(3)),
-    fur: SLOTS.fur.decode(digit(1)),
-    marking: SLOTS.marking.decode(digit(2)),
-    mouth: SLOTS.mouth.decode(digit(4)),
-    species: SLOTS.species.decode(digit(0)),
-  };
-};
+const fromCode = (code: string): Avatar => ({
+  backdrop: SLOTS[9][1].decode(digitAt(code, 9)),
+  body: SLOTS[1][1].decode(digitAt(code, 1)),
+  extra: SLOTS[8][1].decode(digitAt(code, 8)),
+  eyes: SLOTS[2][1].decode(digitAt(code, 2)),
+  eyewear: SLOTS[5][1].decode(digitAt(code, 5)),
+  headwear: SLOTS[4][1].decode(digitAt(code, 4)),
+  mouth: SLOTS[3][1].decode(digitAt(code, 3)),
+  neck: SLOTS[6][1].decode(digitAt(code, 6)),
+  species: SLOTS[0][1].decode(digitAt(code, 0)),
+  tattoo: SLOTS[7][1].decode(digitAt(code, 7)),
+});
 
 export const AvatarFromCode = Schema.String.check(
   Schema.isPattern(CODE_PATTERN)
@@ -94,4 +87,6 @@ export const AvatarFromCode = Schema.String.check(
 export const parseAvatar = Schema.decodeUnknownOption(AvatarFromCode);
 
 export const avatarFor = (stored: string): Avatar =>
-  parseAvatar(stored).pipe(Option.getOrElse(() => DEFAULT_AVATAR));
+  parseAvatar(stored).pipe(
+    Option.getOrElse(() => randomAvatar(seedFrom(stored)))
+  );

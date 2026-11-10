@@ -1,31 +1,33 @@
 export {
-  ACCENTS,
-  ACCESSORIES,
   AvatarSchema,
   BACKDROPS,
-  CHEEKS,
+  BODIES,
   DEFAULT_AVATAR,
   EXPRESSIONS,
   ExpressionSchema,
+  EXTRAS,
   EYES,
-  FURS,
-  MARKINGS,
+  EYEWEAR,
+  HEADWEAR,
   MOUTHS,
+  NECKWEAR,
   SPECIES,
+  TATTOOS,
 } from "./avatar.js";
 
 export type {
-  Accent,
-  Accessory,
   Avatar,
   Backdrop,
-  Cheeks,
+  Body,
   Expression,
+  Extra,
   Eyes,
-  Fur,
-  Marking,
+  Eyewear,
+  Headwear,
   Mouth,
+  Neckwear,
   Species,
+  Tattoo,
 } from "./avatar.js";
 
 export { AvatarFromCode, avatarFor, codeFor, parseAvatar } from "./code.js";

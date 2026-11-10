@@ -81,7 +81,7 @@ const freshRoom = (code: InRoom["code"], player: InRoom["player"]): InRoom => ({
 export const init = (flags: Flags): Return => {
   const base = {
     faceDraft: Option.none(),
-    facePart: "Animal" as const,
+    facePart: "Species" as const,
     joinCode: "",
     learned: flags.learned,
     nextKey: 1,

@@ -12,12 +12,12 @@ import {
   parseAvatar,
   render,
 } from "../src/index.js";
-import { unclosedTags } from "./svg.js";
+import { repeatedAttributes, unclosedTags } from "./svg.js";
 
 const avatars = Arbitrary.schema(AvatarSchema);
 
 const notCodes = Arbitrary.schema(Schema.String).pipe(
-  Arbitrary.filter((text) => !text.startsWith("c1"))
+  Arbitrary.filter((text) => !text.startsWith("s1"))
 );
 
 describe("avatar codes", () => {
@@ -28,56 +28,77 @@ describe("avatar codes", () => {
       const code = codeFor(avatar);
 
       expect(Schema.is(RoomAvatarSchema)(code)).toBe(true);
-      expect(code).toMatch(/^c1[0-9a-z]{9}$/u);
+      expect(code).toMatch(/^s1[0-9a-z]{10}$/u);
       expect(parseAvatar(code)).toStrictEqual(Option.some({ ...avatar }));
     }
   );
 
   it.prop(
-    "a string that is not a code renders the default avatar",
+    "a string that is not a code always gets the same face from the cast",
     { text: notCodes },
     ({ text }) => {
-      expect(avatarFor(text)).toStrictEqual(DEFAULT_AVATAR);
+      const face = avatarFor(text);
+
+      expect(Schema.is(AvatarSchema)(face)).toBe(true);
+      expect(avatarFor(text)).toStrictEqual(face);
     }
   );
 
-  it("reads an old emoji avatar, garbage, and an out-of-range part as the default", () => {
-    expect(avatarFor("🦊")).toStrictEqual(DEFAULT_AVATAR);
-    expect(avatarFor("")).toStrictEqual(DEFAULT_AVATAR);
-    expect(avatarFor("c1zzzzzzzzz")).toStrictEqual(DEFAULT_AVATAR);
-    expect(avatarFor("c17000000000")).toStrictEqual(DEFAULT_AVATAR);
-    expect(avatarFor(" c1000000000")).toStrictEqual(DEFAULT_AVATAR);
+  it("gives old Critters codes, emoji, and garbage a face from the new cast", () => {
+    const leftovers = [
+      "c14b0320715",
+      "c10000000000",
+      "c1zzzzzzzzz",
+      "🦊",
+      "",
+      " s10010011100",
+      "s1a000000000",
+    ];
+
+    for (const leftover of leftovers) {
+      expect(parseAvatar(leftover)).toStrictEqual(Option.none());
+      expect(Schema.is(AvatarSchema)(avatarFor(leftover))).toBe(true);
+    }
+
+    expect(
+      new Set(leftovers.map((leftover) => codeFor(avatarFor(leftover)))).size
+    ).toBeGreaterThan(4);
   });
 
   it("decodes a known code to its parts", () => {
-    expect(parseAvatar("c14b0320715")).toStrictEqual(
+    expect(parseAvatar("s18225233724")).toStrictEqual(
       Option.some({
-        accent: "Coral",
-        accessory: "Crown",
-        backdrop: "Rose",
-        cheeks: "Rosy",
-        eyes: "Button",
-        fur: "Sage",
-        marking: "Plain",
-        mouth: "Toothy",
-        species: "Frog",
+        backdrop: "Velvet",
+        body: "Midnight",
+        extra: "Cigar",
+        eyes: "Sharp",
+        eyewear: "Wraps",
+        headwear: "Fedora",
+        mouth: "GoldTooth",
+        neck: "Bolo",
+        species: "Whale",
+        tattoo: "AllIn",
       })
     );
+    expect(codeFor(DEFAULT_AVATAR)).toBe("s10010011100");
   });
 });
 
 describe("render", () => {
   it.prop(
-    "draws every avatar in every expression as one closed svg, the same way twice",
+    "draws every avatar in every expression as one well-formed svg, the same way twice",
     { avatar: avatars },
     ({ avatar }) => {
       for (const expression of EXPRESSIONS) {
-        const svg = render(avatar, { expression, size: 64 });
+        for (const size of [40, 96]) {
+          const svg = render(avatar, { expression, size });
 
-        expect(svg.startsWith("<svg ")).toBe(true);
-        expect(unclosedTags(svg)).toStrictEqual([]);
-        expect(svg).not.toMatch(/undefined|NaN|\[object/u);
-        expect(render(avatar, { expression, size: 64 })).toBe(svg);
+          expect(svg.startsWith("<svg ")).toBe(true);
+          expect(unclosedTags(svg)).toStrictEqual([]);
+          expect(repeatedAttributes(svg)).toStrictEqual([]);
+          expect(svg).not.toMatch(/undefined|NaN|\[object/u);
+          expect(render(avatar, { expression, size })).toBe(svg);
+        }
       }
     }
   );
@@ -101,9 +122,9 @@ describe("render", () => {
     expect(svg).toContain('viewBox="0 0 100 100"');
   });
 
-  it("renders a bad string exactly as the default avatar", () => {
+  it("draws an old string the same way on every device", () => {
     expect(render(avatarFor("🐼"), { expression: "Happy", size: 80 })).toBe(
-      render(DEFAULT_AVATAR, { expression: "Happy", size: 80 })
+      render(avatarFor("🐼"), { expression: "Happy", size: 80 })
     );
   });
 });

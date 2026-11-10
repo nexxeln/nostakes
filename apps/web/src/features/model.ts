@@ -11,13 +11,15 @@ import { defineTaggedUnion } from "foldkit/schema";
 import { HintSchema, TableEventSchema } from "./table/snapshot.js";
 
 export const FacePartSchema = Schema.Literals([
-  "Animal",
+  "Species",
   "Colour",
-  "Markings",
   "Eyes",
   "Mouth",
-  "Cheeks",
-  "Extras",
+  "Headwear",
+  "Eyewear",
+  "Neck",
+  "Tattoo",
+  "Extra",
   "Backdrop",
 ]);
 

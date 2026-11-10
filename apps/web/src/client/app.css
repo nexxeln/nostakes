@@ -557,7 +557,7 @@ select {
 
 .is-close-up svg {
   transform: scale(var(--zoom-face-part));
-  transform-origin: 50% 64%;
+  transform-origin: 50% 60%;
 }
 
 .face-button {

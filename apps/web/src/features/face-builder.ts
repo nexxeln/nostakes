@@ -1,15 +1,16 @@
 import {
-  ACCENTS,
-  ACCESSORIES,
   BACKDROPS,
-  CHEEKS,
+  BODIES,
   codeFor,
+  EXTRAS,
   EYES,
-  FURS,
-  MARKINGS,
+  EYEWEAR,
+  HEADWEAR,
   MOUTHS,
+  NECKWEAR,
   render,
   SPECIES,
+  TATTOOS,
 } from "@nostakes/avatar";
 import type { Avatar, Expression } from "@nostakes/avatar";
 import type { Html, HtmlBuilder } from "foldkit/html";
@@ -52,48 +53,58 @@ const choicesOf =
     }));
 
 const PICKERS: Readonly<Record<FacePart, PartPicker>> = {
-  Animal: {
-    choices: choicesOf("species", SPECIES),
-    closeUp: false,
-    label: "Animal",
-  },
   Backdrop: {
     choices: choicesOf("backdrop", BACKDROPS),
     closeUp: false,
     label: "Backdrop",
   },
-  Cheeks: {
-    choices: choicesOf("cheeks", CHEEKS),
-    closeUp: true,
-    label: "Cheeks",
-  },
-  Colour: { choices: choicesOf("fur", FURS), closeUp: false, label: "Colour" },
-  Extras: {
-    choices: choicesOf("accessory", ACCESSORIES),
+  Colour: {
+    choices: choicesOf("body", BODIES),
     closeUp: false,
-    label: "Extras",
+    label: "Colour",
+  },
+  Extra: {
+    choices: choicesOf("extra", EXTRAS),
+    closeUp: false,
+    label: "Extra",
   },
   Eyes: { choices: choicesOf("eyes", EYES), closeUp: true, label: "Eyes" },
-  Markings: {
-    choices: choicesOf("marking", MARKINGS),
+  Eyewear: {
+    choices: choicesOf("eyewear", EYEWEAR),
     closeUp: true,
-    label: "Markings",
+    label: "Shades",
+  },
+  Headwear: {
+    choices: choicesOf("headwear", HEADWEAR),
+    closeUp: false,
+    label: "Hat",
   },
   Mouth: { choices: choicesOf("mouth", MOUTHS), closeUp: true, label: "Mouth" },
+  Neck: { choices: choicesOf("neck", NECKWEAR), closeUp: false, label: "Neck" },
+  Species: {
+    choices: choicesOf("species", SPECIES),
+    closeUp: false,
+    label: "Species",
+  },
+  Tattoo: {
+    choices: choicesOf("tattoo", TATTOOS),
+    closeUp: true,
+    label: "Tattoo",
+  },
 };
 
 const PART_ORDER: readonly FacePart[] = [
-  "Animal",
+  "Species",
   "Colour",
-  "Markings",
   "Eyes",
   "Mouth",
-  "Cheeks",
-  "Extras",
+  "Headwear",
+  "Eyewear",
+  "Neck",
+  "Tattoo",
+  "Extra",
   "Backdrop",
 ];
-
-const accentChoices = choicesOf("accent", ACCENTS);
 
 const STRIP: readonly { expression: Expression; label: string }[] = [
   { expression: "Resting", label: "Waiting" },
@@ -214,9 +225,6 @@ export const faceBuilder = (avatar: Avatar, part: FacePart, h: H): Html => {
       preview(avatar, h),
       tabs(part, h),
       optionGrid(picker.label, picker.choices(avatar), picker.closeUp, h),
-      part === "Extras" && avatar.accessory !== "None"
-        ? optionGrid("Extra colour", accentChoices(avatar), false, h)
-        : h.empty,
     ]
   );
 };
