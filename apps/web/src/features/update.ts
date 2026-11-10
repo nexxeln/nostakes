@@ -243,11 +243,11 @@ export const update = (model: Model, message: Message): Return =>
     ChangedName: ({ value }) => ({
       model: { ...model, profile: { ...model.profile, name: value } },
     }),
-    ChangedSetting: ({ field, value }) =>
+    ChangedSetting: ({ path, value }) =>
       editRoom(model, (room) => ({
         ...room,
         settings: room.settings.pipe(
-          Option.map((draft) => ({ ...draft, [field]: value }))
+          Option.map((draft) => ({ ...draft, [path]: value }))
         ),
       })),
     ClickedAction: ({ action }) => act(model, action),
@@ -360,13 +360,6 @@ export const update = (model: Model, message: Message): Return =>
     PickedAvatar: ({ avatar }) => ({
       model: { ...model, profile: { ...model.profile, avatar } },
     }),
-    PickedSetting: ({ field, value }) =>
-      editRoom(model, (room) => ({
-        ...room,
-        settings: room.settings.pipe(
-          Option.map((draft) => ({ ...draft, [field]: value }))
-        ),
-      })),
     ReleasedConnection: () =>
       editRoom(model, (room) => ({ ...room, connected: false })),
     SubmittedCreate: () => {
@@ -471,13 +464,6 @@ export const update = (model: Model, message: Message): Return =>
       });
     },
     Ticked: ({ now }) => ({ model: { ...model, now } }),
-    ToggledSetting: ({ field, value }) =>
-      editRoom(model, (room) => ({
-        ...room,
-        settings: room.settings.pipe(
-          Option.map((draft) => ({ ...draft, [field]: value }))
-        ),
-      })),
     WokePage: ({ visible }) =>
       inRoom(model, () =>
         visible ? { commands: [WakeRoom()], model } : { model }

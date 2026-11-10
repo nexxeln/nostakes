@@ -1,4 +1,9 @@
-import { Actions, RunCountSchema, ShownCardsSchema } from "@nostakes/engine";
+import {
+  Actions,
+  Antes,
+  RunCountSchema,
+  ShownCardsSchema,
+} from "@nostakes/engine";
 import type { Card, SeatIndex } from "@nostakes/engine";
 import type { PlayerId } from "@nostakes/protocol";
 import { MemberCommandSchema, RoomViews } from "@nostakes/room";
@@ -106,6 +111,18 @@ const connectionLine = (room: InRoom, h: H): Html =>
     },
   });
 
+const rulesText = (view: OpenView) => {
+  const { buyIn, table } = view.settings;
+
+  const ante = Antes.$match(table.ante, {
+    BigBlindPays: ({ amount }) => ` · big blind antes ${amount}`,
+    EveryPlayer: ({ amount }) => ` · ante ${amount}`,
+    NoAnte: () => "",
+  });
+
+  return `Blinds ${table.smallBlind}/${table.bigBlind}${ante} · buy-in ${buyIn.min}–${buyIn.max}`;
+};
+
 const header = (room: InRoom, view: Option.Option<OpenView>, h: H): Html =>
   h.header(
     [h.Class("room-header")],
@@ -120,6 +137,10 @@ const header = (room: InRoom, view: Option.Option<OpenView>, h: H): Html =>
         ],
         [room.copied ? "Link copied" : "Copy link"]
       ),
+      Option.match(view, {
+        onNone: () => h.empty,
+        onSome: (open) => h.span([h.Class("rules-line")], [rulesText(open)]),
+      }),
       connectionLine(room, h),
       Option.match(view, {
         onNone: () => h.empty,

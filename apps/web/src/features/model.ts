@@ -60,32 +60,7 @@ export const PendingSchema = Schema.Struct({
 
 export type Pending = typeof PendingSchema.Type;
 
-export const AnteKindSchema = Schema.Literals([
-  "NoAnte",
-  "EveryPlayer",
-  "BigBlindPays",
-]);
-
-export const SettingsDraftSchema = Schema.Struct({
-  anteAmount: Schema.String,
-  anteKind: AnteKindSchema,
-  approveChips: Schema.Boolean,
-  approveSeats: Schema.Boolean,
-  betweenHandsSeconds: Schema.String,
-  bigBlind: Schema.String,
-  buyInMax: Schema.String,
-  buyInMin: Schema.String,
-  maxRuns: Schema.String,
-  rabbitHunt: Schema.Boolean,
-  runChoiceSeconds: Schema.String,
-  showdown: Schema.Literals(["Automatic", "Interactive"]),
-  showdownSeconds: Schema.String,
-  smallBlind: Schema.String,
-  straddleButton: Schema.Boolean,
-  straddleUnderTheGun: Schema.String,
-  timeBankSeconds: Schema.String,
-  turnSeconds: Schema.String,
-});
+export const SettingsDraftSchema = Schema.Record(Schema.String, Schema.String);
 
 export type SettingsDraft = typeof SettingsDraftSchema.Type;
 
