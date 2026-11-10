@@ -5,8 +5,10 @@
       {
         "name": "@effect/language-service",
         "allowedUnstableApis": [
+          "@effect/platform-node/NodeFileSystem",
           "@effect/vitest",
           "effect/Arbitrary",
+          "effect/FileSystem",
           "effect/http/FetchHttpClient",
           "effect/http/HttpClient",
           "effect/http/HttpClientRequest",
