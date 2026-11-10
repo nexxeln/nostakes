@@ -35,6 +35,7 @@ const CARD_RATIO = CARD_HEIGHT / 100;
 
 interface Palette {
   readonly card: string;
+  readonly dimCard: string;
   readonly cardInk: string;
   readonly cardRed: string;
   readonly edge: string;
@@ -64,6 +65,7 @@ const paletteFor = (theme: Theme, deck: Deck): Palette => {
     card: light ? "#ffffff" : "#f7f3ea",
     cardInk,
     cardRed,
+    dimCard: light ? "#f7f3ec" : "#7a777a",
     edge: light ? "rgb(255 255 255 / 0.7)" : "rgb(255 255 255 / 0.14)",
     face: light ? "#fffdf8" : "#ece6da",
     felt: light ? "#efe8dc" : "#201d29",
@@ -114,11 +116,14 @@ const sheet = (
   ].join("");
 };
 
+const DIM_MARKS = 0.42;
+
 const cardArt = (
   palette: Palette,
   card: string,
   place: {
     readonly dim: boolean;
+    readonly lift?: number;
     readonly turn: number;
     readonly width: number;
     readonly x: number;
@@ -133,18 +138,58 @@ const cardArt = (
   const colour = isSuitLetter(suit) ? palette.suits[suit] : palette.cardInk;
 
   return [
-    `<g transform="rotate(${place.turn} ${number(x + width / 2)} ${number(y + height / 2)})" opacity="${place.dim ? 0.42 : 1}">`,
+    `<g transform="rotate(${place.turn} ${number(x + width / 2)} ${number(y + height / 2)})">`,
     sheet(palette, {
-      fill: palette.card,
+      fill: place.dim ? palette.dimCard : palette.card,
       height,
-      lift: width * 0.035,
+      lift: width * (place.lift ?? 0.035),
       radius: width * 0.11,
       width,
       x,
       y,
     }),
-    `<svg x="${number(x)}" y="${number(y)}" width="${number(width)}" height="${number(height)}" viewBox="0 0 100 ${CARD_HEIGHT}" fill="${colour}" font-family="DM Sans, Figtree, sans-serif" font-weight="800">${marks}</svg>`,
+    `<svg x="${number(x)}" y="${number(y)}" width="${number(width)}" height="${number(height)}" viewBox="0 0 100 ${CARD_HEIGHT}" fill="${colour}"${place.dim ? ` opacity="${DIM_MARKS}"` : ""} font-family="DM Sans, Figtree, sans-serif" font-weight="800">${marks}</svg>`,
     "</g>",
+  ].join("");
+};
+
+const NAME_WIDTH = 0.6;
+
+const nameArt = (
+  palette: Palette,
+  face: PictureFace,
+  place: {
+    readonly size: number;
+    readonly tagged: boolean;
+    readonly x: number;
+    readonly y: number;
+  }
+) => {
+  const { size, x, y } = place;
+  const font = number(Math.max(34, size * 0.12));
+  const middle = number(x + size / 2);
+  const baseline = number(y + size + size * 0.17);
+
+  const text = (fill: string) =>
+    `<text x="${middle}" y="${baseline}" text-anchor="middle" font-family="Figtree, sans-serif" font-weight="700" font-size="${font}" fill="${fill}">${escaped(face.name)}</text>`;
+
+  if (!place.tagged) {
+    return text(palette.ink);
+  }
+
+  const width = face.name.length * font * NAME_WIDTH + font * 1.1;
+
+  return [
+    sheet(palette, {
+      fill: RED,
+      height: font * 1.5,
+      lift: 3,
+      radius: font * 0.36,
+      width: number(width),
+      x: number(x + size / 2 - width / 2),
+      y: number(baseline - font * 1.08),
+    }),
+    text(ON_RED),
   ].join("");
 };
 
@@ -152,7 +197,12 @@ const faceArt = (
   palette: Palette,
   face: PictureFace,
   theme: Theme,
-  place: { readonly size: number; readonly x: number; readonly y: number }
+  place: {
+    readonly size: number;
+    readonly tagged: boolean;
+    readonly x: number;
+    readonly y: number;
+  }
 ) => {
   const { size, x, y } = place;
 
@@ -176,7 +226,7 @@ const faceArt = (
       y,
     }),
     art,
-    `<text x="${number(x + size / 2)}" y="${number(y + size + size * 0.17)}" text-anchor="middle" font-family="Figtree, sans-serif" font-weight="700" font-size="${number(Math.max(34, size * 0.12))}" fill="${palette.ink}">${escaped(face.name)}</text>`,
+    nameArt(palette, face, place),
   ].join("");
 };
 
@@ -318,30 +368,33 @@ const boardArt = (
 
 const holeArt = (
   palette: Palette,
-  picture: MomentPicture,
-  cards: readonly string[],
+  face: PictureFace,
   place: {
     readonly owner: number;
     readonly width: number;
     readonly x: number;
     readonly y: number;
   }
-) =>
-  cards
+) => {
+  const rise = face.won ? place.width * 0.1 : 0;
+
+  return face.cards
     .map((card, index) =>
       part(
         "hole",
         place.owner * 2 + index,
         cardArt(palette, card, {
-          dim: picture.lifted.length > 0 && !picture.lifted.includes(card),
+          dim: false,
+          lift: face.won ? 0.07 : 0.035,
           turn: index === 0 ? -7 : 6,
           width: place.width,
           x: place.x + index * place.width * 0.78,
-          y: place.y + (index === 0 ? 6 : 0),
+          y: place.y + (index === 0 ? 6 : 0) - rise,
         })
       )
     )
     .join("");
+};
 
 const soloBody = (palette: Palette, picture: MomentPicture, theme: Theme) => {
   const [lead] = picture.faces;
@@ -354,9 +407,14 @@ const soloBody = (palette: Palette, picture: MomentPicture, theme: Theme) => {
     part(
       "face",
       0,
-      faceArt(palette, lead, theme, { size: 360, x: 96, y: 440 })
+      faceArt(palette, lead, theme, {
+        size: 360,
+        tagged: false,
+        x: 96,
+        y: 440,
+      })
     ),
-    holeArt(palette, picture, lead.cards, {
+    holeArt(palette, lead, {
       owner: 0,
       width: 180,
       x: 560,
@@ -368,18 +426,25 @@ const soloBody = (palette: Palette, picture: MomentPicture, theme: Theme) => {
 
 const duelBody = (palette: Palette, picture: MomentPicture, theme: Theme) => {
   const columns = [96, 560];
+  const duel = picture.faces.slice(0, 2);
+  const oneWinner = duel.filter((face) => face.won).length === 1;
 
   return [
-    ...picture.faces.slice(0, 2).map((face, index) => {
+    ...duel.map((face, index) => {
       const x = columns[index] ?? 90;
 
       return [
         part(
           "face",
           index,
-          faceArt(palette, face, theme, { size: 240, x, y: 450 })
+          faceArt(palette, face, theme, {
+            size: 240,
+            tagged: oneWinner && face.won,
+            x,
+            y: 450,
+          })
         ),
-        holeArt(palette, picture, face.cards, {
+        holeArt(palette, face, {
           owner: index,
           width: 104,
           x: x + 262,

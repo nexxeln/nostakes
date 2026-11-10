@@ -7,6 +7,7 @@ export const PictureFaceSchema = Schema.Struct({
   cards: Schema.Array(Schema.String),
   expression: ExpressionSchema,
   name: Schema.String,
+  won: Schema.Boolean,
 });
 
 export type PictureFace = typeof PictureFaceSchema.Type;

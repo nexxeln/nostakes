@@ -47,9 +47,9 @@ const winnerSeat = (moment: Moment): Option.Option<SeatIndex> =>
   Moments.$match(moment, {
     BadBeat: ({ seats }) => Option.fromUndefinedOr(seats[1]),
     BigHand: ({ seats }) => Option.fromUndefinedOr(seats[0]),
-    Bluff: () => Option.none(),
+    Bluff: ({ seats }) => Option.fromUndefinedOr(seats[0]),
     Cooler: ({ seats }) => Option.fromUndefinedOr(seats[1]),
-    HeroCall: () => Option.none(),
+    HeroCall: ({ seats }) => Option.fromUndefinedOr(seats[0]),
     SameHand: () => Option.none(),
     SevenDeuce: ({ seats }) => Option.fromUndefinedOr(seats[0]),
     SplitRuns: () => Option.none(),
@@ -160,6 +160,7 @@ const facesOf = (
   moment: Moment
 ): readonly PictureFace[] => {
   const expressions = EXPRESSIONS[moment._tag];
+  const winner = winnerSeat(moment);
 
   return moment.seats.slice(0, 2).map((seat, index) => {
     const person = personAt(people, lastHand, seat);
@@ -169,6 +170,7 @@ const facesOf = (
       cards: shownAt(lastHand, seat).map(cardText),
       expression: expressions[index] ?? "Happy",
       name: person.name,
+      won: Option.contains(winner, seat),
     };
   });
 };

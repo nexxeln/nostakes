@@ -191,4 +191,45 @@ describe("the picture of a moment", () => {
       expect(svg.includes(view.code)).toBe(false);
     }
   );
+
+  it.prop(
+    "draws every shown hole card at full strength, the loser's too",
+    { kindPick: pick, seatPick: pick, view: views },
+    ({ kindPick, seatPick, view }) => {
+      const lastHand = Option.getOrUndefined(view.lastHand);
+
+      if (lastHand === undefined) {
+        return;
+      }
+
+      const { kind, tier } = everyKindAndTier[
+        kindPick % everyKindAndTier.length
+      ] ?? { kind: "BadBeat", tier: 1 };
+
+      const seats = lastHand.dealtIn.map((dealt) => dealt.seat);
+      const first = seats[seatPick % Math.max(1, seats.length)] ?? 0;
+      const second = seats[(seatPick + 1) % Math.max(1, seats.length)] ?? 1;
+
+      const picture = pictureOf([...view.members, ...view.departed], lastHand, {
+        also: Option.none(),
+        lead: momentAt(kind, tier, [first, second]),
+      });
+
+      const holeParts = pictureSvg(picture, {
+        deck: "TwoColour",
+        fonts: "",
+        frame: "Chat",
+        theme: "Dark",
+      })
+        .split('data-part="')
+        .filter((piece) => piece.startsWith("hole"));
+
+      expect(holeParts.length).toBe(
+        picture.faces.reduce((count, face) => count + face.cards.length, 0)
+      );
+      expect(
+        holeParts.filter((piece) => piece.includes("opacity"))
+      ).toStrictEqual([]);
+    }
+  );
 });

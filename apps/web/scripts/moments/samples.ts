@@ -24,6 +24,7 @@ const face = (
   cards: cards(hole),
   expression,
   name,
+  won: false,
 });
 
 const nameOf = (hole: string, board: string) =>
@@ -199,9 +200,14 @@ export const samplePicture = (name: string): MomentPicture => {
   const leadHole = lead?.cards.join(" ") ?? "";
   const otherHole = other?.cards.join(" ") ?? "";
 
-  const winnerHole =
-    sample.faces.find((each) => each.expression === "Happy")?.cards.join(" ") ??
-    leadHole;
+  const winner = {
+    hole: lead,
+    lead,
+    none: undefined,
+    winner: sample.faces.find((each) => each.expression === "Happy"),
+  }[sample.lift];
+
+  const winnerHole = winner?.cards.join(" ") ?? leadHole;
 
   const facts: CaptionFacts = {
     ...NO_FACTS,
@@ -225,7 +231,7 @@ export const samplePicture = (name: string): MomentPicture => {
   return {
     also: sample.also ?? "",
     boards: (sample.boards ?? [sample.board]).map(cards),
-    faces: sample.faces,
+    faces: sample.faces.map((each) => ({ ...each, won: each === winner })),
     kind: sample.kind,
     lifted,
     line: caption.line,
