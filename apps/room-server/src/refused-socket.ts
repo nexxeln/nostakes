@@ -1,9 +1,10 @@
 import type * as cf from "@cloudflare/workers-types";
-import { CLOSE_CODES, closingFrame } from "@nostakes/protocol";
 import type { CloseReason } from "@nostakes/protocol";
 import { Effect, Schema } from "effect";
 import * as HttpBody from "effect/http/HttpBody";
 import * as HttpServerResponse from "effect/http/HttpServerResponse";
+
+import { closeWith } from "./socket-close.js";
 
 interface WorkerdGlobals {
   readonly WebSocketPair: typeof cf.WebSocketPair;
@@ -34,8 +35,7 @@ export const refuseSocket = (reason: CloseReason) => {
     const { 0: client, 1: server } = new scope.WebSocketPair();
 
     server.accept();
-    server.send(closingFrame(reason));
-    server.close(CLOSE_CODES[reason], reason);
+    closeWith(server, reason);
 
     return HttpServerResponse.setBody(
       HttpServerResponse.empty({ status: 101 }),

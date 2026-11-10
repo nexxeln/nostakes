@@ -1,5 +1,10 @@
 import { SeqSchema, MAX_MISSED_EVENTS } from "@nostakes/protocol";
-import type { CommandId, PlayerId, RoomCode } from "@nostakes/protocol";
+import type {
+  CloseReason,
+  CommandId,
+  PlayerId,
+  RoomCode,
+} from "@nostakes/protocol";
 import { Array as Arr, Data, Inspectable, Option, Order, Result } from "effect";
 
 import { hashedCredential, matchCredential } from "./credentials.js";
@@ -17,7 +22,7 @@ export interface Viewer {
 export interface Connections {
   readonly viewers: readonly Viewer[];
   readonly helloDeadline: Option.Option<number>;
-  readonly closeAll: (frame: string) => void;
+  readonly closeAll: (reason: CloseReason) => void;
 }
 
 export type Origin = Data.TaggedEnum<{
@@ -160,10 +165,6 @@ export const hostRoom = <T extends RoomTypes>(
   const codec = roomCodec(core);
   let current = loaded;
 
-  const closingFrame = codec.encodeFrame(
-    codec.server.cases.Closing.make({ reason: "RoomHalted" })
-  );
-
   const alarmAt = (helloDeadline: Option.Option<number>) =>
     earliest([
       core.nextDeadline(current.state).pipe(Option.map(({ at }) => at)),
@@ -179,7 +180,7 @@ export const hostRoom = <T extends RoomTypes>(
     Result.try(() => {
       storage.halt(reason);
     });
-    connections.closeAll(closingFrame);
+    connections.closeAll("RoomHalted");
   };
 
   const redactAll = (

@@ -1,7 +1,6 @@
 import * as Cloudflare from "@alchemy.run/cloudflare";
 import type * as cf from "@cloudflare/workers-types";
 import {
-  CLOSE_CODES,
   HELLO_TIMEOUT_MS,
   HttpRefusalSchema,
   PLAYER_ID_BYTES,
@@ -51,6 +50,7 @@ import {
 } from "./room-rpc.js";
 import type { Inspection } from "./room-rpc.js";
 import { attach, attachmentOf, AttachmentSchema } from "./socket-attachment.js";
+import { acknowledgeClose, closeWith } from "./socket-close.js";
 import { sqliteStorage } from "./sqlite-storage.js";
 
 export interface RoomObjectOptions {
@@ -139,22 +139,6 @@ export const roomObject = <T extends RoomTypes>(
 
         const sockets = () => raw.getWebSockets();
 
-        const closeSocket = (
-          socket: cf.WebSocket,
-          room: RoomHost<T>,
-          reason: CloseReason
-        ) => {
-          send(
-            socket,
-            codecOf(room).encodeFrame(
-              codecOf(room).server.cases.Closing.make({ reason })
-            )
-          );
-          Result.try(() => {
-            socket.close(CLOSE_CODES[reason], reason);
-          });
-        };
-
         const liveSockets = (except: Option.Option<cf.WebSocket>) =>
           sockets().flatMap((socket) =>
             Option.contains(except, socket)
@@ -181,12 +165,9 @@ export const roomObject = <T extends RoomTypes>(
           room: RoomHost<T>,
           except: Option.Option<cf.WebSocket>
         ): Connections => ({
-          closeAll: (frame) => {
+          closeAll: (reason) => {
             for (const socket of sockets()) {
-              send(socket, frame);
-              Result.try(() => {
-                socket.close(CLOSE_CODES.RoomHalted, "RoomHalted");
-              });
+              closeWith(socket, reason);
             }
           },
           helloDeadline: Arr.head(
@@ -258,7 +239,7 @@ export const roomObject = <T extends RoomTypes>(
           at: number
         ) => {
           if (Option.isSome(room.snapshot().halted)) {
-            closeSocket(socket, room, "RoomHalted");
+            closeWith(socket, "RoomHalted");
 
             return;
           }
@@ -266,7 +247,7 @@ export const roomObject = <T extends RoomTypes>(
           const player = room.authenticate(hash);
 
           if (Option.isNone(player)) {
-            closeSocket(socket, room, "NotAuthorized");
+            closeWith(socket, "NotAuthorized");
 
             return;
           }
@@ -338,9 +319,7 @@ export const roomObject = <T extends RoomTypes>(
             const at = yield* Clock.currentTimeMillis;
 
             if (Option.isNone(host)) {
-              Result.try(() => {
-                socket.close(1011, "NotOpen");
-              });
+              closeWith(socket, "NotFound");
 
               return;
             }
@@ -350,7 +329,7 @@ export const roomObject = <T extends RoomTypes>(
             const refusal = admit(socket, frame, at);
 
             if (Option.isSome(refusal)) {
-              closeSocket(socket, room, refusal.value);
+              closeWith(socket, refusal.value);
 
               return;
             }
@@ -358,7 +337,7 @@ export const roomObject = <T extends RoomTypes>(
             const decoded = codec.decodeClientFrame(frame);
 
             if (Result.isFailure(decoded)) {
-              closeSocket(socket, room, "ProtocolViolation");
+              closeWith(socket, "ProtocolViolation");
 
               return;
             }
@@ -373,7 +352,7 @@ export const roomObject = <T extends RoomTypes>(
                   );
 
                   if (Option.isNone(live)) {
-                    closeSocket(socket, room, "ProtocolViolation");
+                    closeWith(socket, "ProtocolViolation");
 
                     return;
                   }
@@ -409,7 +388,7 @@ export const roomObject = <T extends RoomTypes>(
                       Option.exists(AttachmentSchema.guards.Pending)
                     )
                   ) {
-                    closeSocket(socket, room, "ProtocolViolation");
+                    closeWith(socket, "ProtocolViolation");
 
                     return;
                   }
@@ -439,9 +418,7 @@ export const roomObject = <T extends RoomTypes>(
               Option.filter(AttachmentSchema.guards.Live)
             );
 
-            Result.try(() => {
-              socket.close(1000, "closed");
-            });
+            acknowledgeClose(socket);
 
             for (const room of Option.toArray(host)) {
               const stillThere = connectedPlayers(Option.some(socket));
@@ -463,7 +440,7 @@ export const roomObject = <T extends RoomTypes>(
         const expireHellos = (room: RoomHost<T>, at: number) => {
           for (const { acceptedAt, socket } of pendingSince(Option.none())) {
             if (acceptedAt + HELLO_TIMEOUT_MS <= at) {
-              closeSocket(socket, room, "HelloTimeout");
+              closeWith(socket, "HelloTimeout");
             }
           }
         };

@@ -1,4 +1,5 @@
 import {
+  closingFrame,
   CommandIdSchema,
   PlayerIdSchema,
   RoomCodeSchema,
@@ -71,8 +72,8 @@ export const openToyHost = (
   const viewers: RecordingViewer[] = [];
 
   const connections = (): Connections => ({
-    closeAll: (frame) => {
-      closings.push(frame);
+    closeAll: (reason) => {
+      closings.push(closingFrame(reason));
     },
     helloDeadline: Option.none(),
     viewers,
