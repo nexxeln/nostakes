@@ -157,6 +157,7 @@ class Hand:
         self.river_call_for_raise = False
         self.reference = None
         self.engine_preflop = True
+        self.winner_cache = {}
         self.short_big_blind = not record["straddles"] and not any(
             e["_tag"] == "BlindPosted" and e["blind"] == "Big" and e["amount"] == self.big_blind for e in record["start"]
         )
@@ -744,7 +745,7 @@ class Hand:
             if any(given > 0 and self.order[i] not in allowed for i, given in enumerate(operation.amounts)):
                 recipients_ok = False
         if +expected_gain != +pokerkit_gain:
-            bound = len(pokerkit_pots) * boards
+            bound = sum(boards + len(eligible) for _, eligible in pokerkit_pots)
             close = all(abs(expected_gain[seat] - pokerkit_gain[seat]) <= bound for seat in self.order)
             if recipients_ok and close and sum(expected_gain.values()) == sum(pokerkit_gain.values()):
                 self.excluded.add("odd-chip-spread")
@@ -755,6 +756,12 @@ class Hand:
             self.differ("final-stacks", f"engine {self.stacks_text(engine_final)}, pokerkit {self.stacks_text(adjusted)}")
 
     def winners(self, eligible, board):
+        key = (tuple(eligible), board)
+        if key not in self.winner_cache:
+            self.winner_cache[key] = self.best_hands(eligible, board)
+        return self.winner_cache[key]
+
+    def best_hands(self, eligible, board):
         cards = list(self.state.get_board_cards(board))
         hands = {
             seat: StandardHighHand.from_game(tuple(CARDS[c] for c in self.hole[self.index[seat]]), cards)
@@ -896,7 +903,14 @@ def summarize(results, path, report):
     replay_checked = Counter()
     differences = defaultdict(list)
     for result in results:
-        outcome = "not compared" if not result["compared"] else "excluded" if result["excluded"] else "full"
+        if not result["compared"]:
+            outcome = "not compared"
+        elif result["differences"]:
+            outcome = "differ"
+        elif result["excluded"]:
+            outcome = "excluded"
+        else:
+            outcome = "full"
         for feature in result["features"] + ["all-hands"]:
             features[feature][outcome] += 1
         configured.update(result["configured"])
@@ -908,7 +922,9 @@ def summarize(results, path, report):
         f"differential: {len(results)} hands from {path}",
         f"oracle: pokerkit {POKERKIT_VERSION} on python {sys.version.split()[0]}",
         "",
-        f"{'feature':<22}{'full':>9}{'excluded':>10}{'not compared':>14}",
+        "per feature, hands compared in full, compared with a named exclusion, not compared at all,",
+        "and hands with an unexplained difference:",
+        f"{'feature':<22}{'full':>9}{'excluded':>10}{'not compared':>14}{'differ':>8}",
     ]
     order = (
         ["all-hands"]
@@ -921,14 +937,16 @@ def summarize(results, path, report):
     )
     for feature in order + sorted(set(features) - set(order)):
         counts = features.get(feature, Counter())
-        lines.append(f"{feature:<22}{counts['full']:>9}{counts['excluded']:>10}{counts['not compared']:>14}")
+        lines.append(
+            f"{feature:<22}{counts['full']:>9}{counts['excluded']:>10}{counts['not compared']:>14}{counts['differ']:>8}"
+        )
     lines += ["", "configured to match the brief (hands):"]
     for name, reason in CONFIGURATIONS.items():
         lines.append(f"  {name:<40}{configured[name]:>8}  {reason}")
     lines += ["", "named exclusions (hands):"]
     for name, reason in EXCLUSIONS.items():
         lines.append(f"  {name:<40}{excluded[name]:>8}  {reason}")
-    lines += ["", "not checked by pokerkit at all, checked by replay arithmetic only (hands):"]
+    lines += ["", "gaps: pokerkit cannot check these at all; the replay checks them with its own arithmetic (hands):"]
     for name, reason in REPLAY_ONLY.items():
         lines.append(f"  {name:<40}{replay_checked[name]:>8}  {reason}")
     total = sum(len(found) for found in differences.values())
@@ -943,6 +961,44 @@ def summarize(results, path, report):
         with open(report, "w") as handle:
             json.dump({"differences": {k: v for k, v in differences.items()}, "results": results}, handle)
     return total
+
+
+def categories(record):
+    return {category for category, _ in replay(json.dumps(record))["differences"]}
+
+
+def trimmed(record, category):
+    candidates = [
+        lambda r: {**r, "after": [], "rejectedStarts": []},
+        lambda r: {**r, "steps": [step for step in r["steps"] if step["accepted"]]},
+        lambda r: {
+            **r,
+            "seats": [seat if i in r["start"][0]["dealtIn"] else None for i, seat in enumerate(r["seats"])],
+            "final": [seat if i in r["start"][0]["dealtIn"] else None for i, seat in enumerate(r["final"])],
+        },
+    ]
+    for candidate in candidates:
+        smaller = candidate(record)
+        if category in categories(smaller):
+            record = smaller
+    return record
+
+
+def write_findings(lines, results, directory):
+    smallest = {}
+    for line, result in zip(lines, results):
+        for category, detail in result["differences"]:
+            size = (result["seats"], result["steps"], result["hand"])
+            if category not in smallest or size < smallest[category][0]:
+                smallest[category] = (size, line, detail)
+    os.makedirs(directory, exist_ok=True)
+    for category, (_, line, detail) in sorted(smallest.items()):
+        record = trimmed(json.loads(line), category)
+        path = os.path.join(directory, f"{category}.json")
+        with open(path, "w") as handle:
+            json.dump(record, handle, indent=1)
+            handle.write("\n")
+        print(f"wrote {path}: hand {record['hand']}, {detail[:200]}")
 
 
 def main(arguments):
@@ -961,7 +1017,10 @@ def main(arguments):
     else:
         with ProcessPoolExecutor(max_workers=workers) as pool:
             results = [result for chunk in pool.map(replay_chunk, chunks) for result in chunk]
-    return 1 if summarize(results, path, report) else 0
+    total = summarize(results, path, report)
+    if "--findings" in arguments:
+        write_findings(lines, results, arguments[arguments.index("--findings") + 1])
+    return 1 if total else 0
 
 
 if __name__ == "__main__":
