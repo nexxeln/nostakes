@@ -1,0 +1,57 @@
+name: Verify
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: ${{ matrix.target }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    concurrency:
+      group: verify-${{ matrix.target }}-${{ github.ref }}
+      cancel-in-progress: false
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: engine
+            run: pnpm turbo run verify --filter=@nostakes/engine
+          - target: ledger
+            run: pnpm turbo run verify --filter=@nostakes/ledger
+          - target: room
+            run: pnpm turbo run verify --filter=@nostakes/room
+          - target: room-server
+            run: pnpm turbo run verify --filter=@nostakes/room-server
+          - target: differential
+            run: pnpm --filter @nostakes/engine differential --seed 20261110 --hands 100000
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Use Node.js 24.18.0
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24.18.0
+      - name: Enable corepack pnpm
+        run: corepack enable && corepack prepare pnpm@11.3.0 --activate
+      - name: Install uv
+        if: matrix.target == 'differential'
+        uses: astral-sh/setup-uv@v5
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Verify ${{ matrix.target }}
+        run: ${{ matrix.run }}
+      - name: Upload saved logs from a failed soak
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: verify-${{ matrix.target }}-logs
+          path: |
+            /tmp/nostakes-soak-*
+            ${{ runner.temp }}/nostakes-soak-*
+          if-no-files-found: ignore
