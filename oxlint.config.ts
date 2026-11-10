@@ -1,3 +1,5 @@
+import { createRequire } from "node:module";
+
 import { defineConfig } from "oxlint";
 import core from "ultracite/oxlint/core";
 
@@ -12,6 +14,9 @@ export default defineConfig({
     "tools/oxlint/anti-slop/**",
   ],
   jsPlugins: [
+    createRequire(
+      new URL("packages/client/package.json", import.meta.url)
+    ).resolve("@xstate/effect/oxlint"),
     "./scripts/oxlint-plugin-effect-tests.ts",
     "./scripts/oxlint-plugin-no-comments.ts",
     {
@@ -95,5 +100,6 @@ export default defineConfig({
     "typescript/promise-function-async": "off",
     "unicorn/no-useless-undefined": ["error", { checkArguments: true }],
     "unicorn/throw-new-error": "off",
+    "xstate-effect/no-inline-effect": "error",
   },
 });
