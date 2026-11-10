@@ -103,6 +103,7 @@ export interface Hand {
 }
 
 export interface LastHandPlayer {
+  readonly folded: boolean;
   readonly holeCards: readonly Card[];
   readonly player: PlayerId;
   readonly publicCards: readonly Card[];

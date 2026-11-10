@@ -7,6 +7,7 @@ import type { SeatIndex } from "./primitives.js";
 import {
   CardAlreadyPublic,
   CardNotHeld,
+  FoldedSeatCannotHunt,
   NotInLastHand,
   NothingToHunt,
   RabbitAlreadyHunted,
@@ -89,7 +90,11 @@ export const rabbitHunt = (
 
   return Result.flatMap(
     dealtInLastHand(state, command.seat),
-    ({ lastHand }): Result.Result<readonly Event[], Rejection> => {
+    ({ lastHand, player }): Result.Result<readonly Event[], Rejection> => {
+      if (state.config.rabbitHunters === "StillIn" && player.folded) {
+        return Result.fail(new FoldedSeatCannotHunt({ seat: command.seat }));
+      }
+
       if (lastHand.undealt.length === 0) {
         return Result.fail(new NothingToHunt({ seat: command.seat }));
       }

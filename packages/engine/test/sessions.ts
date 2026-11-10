@@ -56,6 +56,7 @@ export const SessionSchema = Schema.Struct({
   lastAggressorShows: Schema.Boolean,
   maxRuns: between(1, 4),
   rabbitHunt: Schema.Boolean,
+  rabbitStillIn: Schema.Boolean,
   smallBlind: between(1, 10),
   stacks: Schema.Array(between(0, 300)).check(
     Schema.isMinLength(9),
@@ -87,6 +88,7 @@ export const configOf = (source: Session): TableConfig =>
     bigBlind: chipCount(source.smallBlind + source.bigBlindExtra),
     maxRuns: runCount(source.maxRuns),
     rabbitHunt: source.rabbitHunt,
+    rabbitHunters: source.rabbitStillIn ? "StillIn" : "DealtIn",
     runCount: source.fixedRuns ? "Fixed" : "Vote",
     showdown: source.interactive ? "Interactive" : "Automatic",
     showdownOrder: source.lastAggressorShows
@@ -107,6 +109,7 @@ const randomConfig = (random: SeededRandom): TableConfig => {
     bigBlind: chipCount(small + random.below(12)),
     maxRuns: runCount(1 + random.below(4)),
     rabbitHunt: random.chance(1, 2),
+    rabbitHunters: random.chance(1, 3) ? "StillIn" : "DealtIn",
     runCount: random.chance(1, 4) ? "Fixed" : "Vote",
     showdown: random.chance(1, 2) ? "Interactive" : "Automatic",
     showdownOrder: random.chance(1, 2) ? "LastAggressor" : "RiverAggressor",

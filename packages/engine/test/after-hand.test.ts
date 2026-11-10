@@ -4,6 +4,7 @@ import {
   CardAlreadyPublic,
   CardNotHeld,
   Commands,
+  FoldedSeatCannotHunt,
   Events,
   NotInLastHand,
   NothingToHunt,
@@ -153,6 +154,20 @@ describe("rabbit hunting", () => {
     expect(rejection(hunted.state, hunts(2))).toStrictEqual(
       new RabbitAlreadyHunted({ seat: seat(2) })
     );
+  });
+
+  it("lets only a seat still in at the end hunt when the table says so", () => {
+    const stillIn = foldedOnTheFlop({ ...hunting, rabbitHunters: "StillIn" });
+
+    expect(rejection(stillIn, hunts(0))).toStrictEqual(
+      new FoldedSeatCannotHunt({ seat: seat(0) })
+    );
+    expect(rejection(stillIn, hunts(2))).toStrictEqual(
+      new FoldedSeatCannotHunt({ seat: seat(2) })
+    );
+    expect(run(stillIn, hunts(1)).events).toStrictEqual([
+      Events.RabbitHunted({ cards: cards("5h 6h") }),
+    ]);
   });
 
   it("refuses a rabbit hunt when the table rule is off (TDA Rule 28 bans it outright)", () => {

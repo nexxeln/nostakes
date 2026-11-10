@@ -57,9 +57,27 @@ describe("the fold-out", () => {
     expect(lastHandOf(walk.state)).toStrictEqual({
       hunted: false,
       players: [
-        { holeCards: cards("Qc 9c"), player: "p0", publicCards: [], seat: 0 },
-        { holeCards: cards("Ac Jc"), player: "p1", publicCards: [], seat: 1 },
-        { holeCards: cards("Kc Tc"), player: "p2", publicCards: [], seat: 2 },
+        {
+          folded: true,
+          holeCards: cards("Qc 9c"),
+          player: "p0",
+          publicCards: [],
+          seat: 0,
+        },
+        {
+          folded: true,
+          holeCards: cards("Ac Jc"),
+          player: "p1",
+          publicCards: [],
+          seat: 1,
+        },
+        {
+          folded: false,
+          holeCards: cards("Kc Tc"),
+          player: "p2",
+          publicCards: [],
+          seat: 2,
+        },
       ],
       undealt: cards("2d 3d 4d 5h 6h"),
     });

@@ -235,6 +235,7 @@ export const planNight = (
       bigBlind: big,
       maxRuns: random.between(1, 3),
       rabbitHunt: random.chance(50),
+      rabbitHunters: random.chance(30) ? "StillIn" : "DealtIn",
       runCount: random.chance(25) ? "Fixed" : "Vote",
       showdown: random.chance(80) ? "Interactive" : "Automatic",
       showdownOrder: random.chance(30) ? "LastAggressor" : "RiverAggressor",

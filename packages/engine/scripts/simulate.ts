@@ -112,6 +112,7 @@ const randomConfig = (random: Random): TableConfig => {
     bigBlind: chipCount(bigBlind),
     maxRuns: runCount(1 + random.below(4)),
     rabbitHunt: random.chance(50),
+    rabbitHunters: random.chance(30) ? "StillIn" : "DealtIn",
     runCount: random.chance(25) ? "Fixed" : "Vote",
     showdown: random.chance(50) ? "Interactive" : "Automatic",
     showdownOrder: random.chance(30) ? "LastAggressor" : "RiverAggressor",
@@ -533,6 +534,7 @@ const newCounts = () => ({
   equalStraddles: 0,
   everyPlayerAntes: 0,
   fixedRunOuts: 0,
+  foldedHuntsRefused: 0,
   hiddenRunOuts: 0,
   hiddenShowdownWinners: 0,
   illegalRejected: 0,
@@ -746,6 +748,12 @@ const countRejection = (
     ? 1
     : 0;
   counts.chipLimitRejected += Predicate.isTagged(rejection, "ChipLimitExceeded")
+    ? 1
+    : 0;
+  counts.foldedHuntsRefused += Predicate.isTagged(
+    rejection,
+    "FoldedSeatCannotHunt"
+  )
     ? 1
     : 0;
   counts.partialShowsRefused += Predicate.isTagged(rejection, "ShowBothCards")

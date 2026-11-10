@@ -146,6 +146,7 @@ const tableConfig = (random: Random): TableConfig => {
     bigBlind: chips(bigBlind),
     maxRuns: RunCountSchema.make(1 + random.below(3)),
     rabbitHunt: random.chance(50),
+    rabbitHunters: random.chance(30) ? "StillIn" : "DealtIn",
     runCount: random.chance(25) ? "Fixed" : "Vote",
     showdown: random.chance(60) ? "Interactive" : "Automatic",
     showdownOrder: random.chance(30) ? "LastAggressor" : "RiverAggressor",

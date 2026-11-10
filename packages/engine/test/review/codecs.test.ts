@@ -268,6 +268,7 @@ describe("JSON codecs for phase 2 storage and transport", () => {
           "AmountNotPositive",
           "CardAlreadyPublic",
           "CardNotHeld",
+          "FoldedSeatCannotHunt",
           "HandInProgress",
           "IllegalAction",
           "NoBettingRound",

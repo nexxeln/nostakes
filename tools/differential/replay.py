@@ -166,7 +166,10 @@ REPLAY_ONLY = {
     "button-and-blinds": "Brief rules 1 and 2, recomputed from the seat snapshot. PokerKit has no table or button model.",
     "straddle-list": "Brief rule 8, recomputed for accepted and rejected straddle lists. PokerKit takes any blind list.",
     "run-cap": "Brief rule 19's cap of maxRuns and the remaining deck. PokerKit has no cap.",
-    "rabbit-hunt": "Brief rule 27, the next undealt cards from the exported deck. PokerKit has no rabbit hunt.",
+    "rabbit-hunt": (
+        "Brief rule 27, the next undealt cards from the exported deck, and with rabbitHunters "
+        "StillIn that only a seat that never folded may hunt. PokerKit has no rabbit hunt."
+    ),
     "voluntary-show": (
         "Brief rule 26, legality of after-hand shows, and with voluntaryShows BothCards that "
         "a show leaves no hole card hidden. PokerKit has no after-hand shows."
@@ -1023,6 +1026,8 @@ class Hand:
         ran_out = any(e["_tag"] == "RunsAgreed" for e in events) or any(e["_tag"] == "HandsTabled" for e in events)
         undealt = [] if ran_out else self.deck[2 * self.count + board : 2 * self.count + 5]
         hunted = False
+        folded = {e["seat"] for e in events if e["_tag"] == "Folded"}
+        still_in_only = self.config.get("rabbitHunters") == "StillIn"
         for step in self.record["after"]:
             command = step["command"]
             seat = command["seat"]
@@ -1030,6 +1035,13 @@ class Hand:
             if command["_tag"] == "RabbitHunt":
                 self.replay_checked.add("rabbit-hunt")
                 if rejection in ("RabbitHuntOff", "NotInLastHand"):
+                    continue
+                if still_in_only and seat in folded:
+                    if rejection != "FoldedSeatCannotHunt":
+                        self.differ("rabbit-hunt", f"seat {seat} folded, engine answered {rejection}, replay expects FoldedSeatCannotHunt")
+                    continue
+                if rejection == "FoldedSeatCannotHunt":
+                    self.differ("rabbit-hunt", f"engine refused seat {seat} as folded, replay finds it still in or the rule off")
                     continue
                 if step["accepted"]:
                     cards = step["events"][0]["cards"]

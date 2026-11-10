@@ -171,6 +171,7 @@ export const endHand = (state: TableState) =>
       lastHand: Option.some({
         hunted: false,
         players: inHand.hand.players.map((player) => ({
+          folded: player.status === "Folded",
           holeCards: player.holeCards,
           player: player.player,
           publicCards: player.publicCards,

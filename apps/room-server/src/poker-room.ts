@@ -79,6 +79,7 @@ export const DEFAULT_SETTINGS: RoomSettings = Schema.decodeSync(
     bigBlind: 2,
     maxRuns: 1,
     rabbitHunt: false,
+    rabbitHunters: "DealtIn",
     runCount: "Vote",
     showdown: "Interactive",
     showdownOrder: "RiverAggressor",

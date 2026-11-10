@@ -54,6 +54,10 @@ export const ShowdownOrderSchema = Schema.Literals([
 
 export type ShowdownOrder = typeof ShowdownOrderSchema.Type;
 
+export const RabbitHuntersSchema = Schema.Literals(["DealtIn", "StillIn"]);
+
+export type RabbitHunters = typeof RabbitHuntersSchema.Type;
+
 export const VoluntaryShowsSchema = Schema.Literals([
   "EitherCard",
   "BothCards",
@@ -97,6 +101,11 @@ export const TableConfigSchema = Schema.Struct({
     description:
       "After a hand ends early, a player dealt in may reveal the board cards that were never dealt.",
     title: "Rabbit hunt",
+  }),
+  rabbitHunters: setting(RabbitHuntersSchema, "DealtIn", {
+    description:
+      "Who may ask for a rabbit hunt when it is on. DealtIn: any player dealt into the last hand. StillIn: only players who had not folded when it ended.",
+    title: "Who may rabbit hunt",
   }),
   runCount: setting(RunCountRuleSchema, "Vote", {
     description:
