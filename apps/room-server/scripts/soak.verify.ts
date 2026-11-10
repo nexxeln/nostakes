@@ -4,7 +4,9 @@ import { NodeFileSystem } from "@effect/platform-node";
 import {
   Config,
   Console,
+  Duration,
   Effect,
+  Fiber,
   FileSystem,
   Option,
   Result,
@@ -74,6 +76,58 @@ const CHAOS: ClientTemper = {
 };
 
 const HAND_BUDGET_MS = 12_000;
+
+const LOOP_PROBE_MS = 100;
+
+const STALL_REPORT_MS = 500;
+
+interface Stall {
+  readonly at: number;
+  readonly ms: number;
+}
+
+const watchEventLoop = (stalls: Stall[]) =>
+  Effect.gen(function* probeEventLoop() {
+    let last = wallClock();
+
+    const step = Effect.sleep(Duration.millis(LOOP_PROBE_MS)).pipe(
+      Effect.andThen(
+        Effect.sync(() => {
+          const now = wallClock();
+          const late = now - last - LOOP_PROBE_MS;
+
+          if (late > STALL_REPORT_MS) {
+            stalls.push({ at: now - late, ms: late });
+          }
+
+          last = now;
+        })
+      )
+    );
+
+    return yield* Effect.forever(step);
+  });
+
+const describeStalls = (
+  started: number,
+  stalls: readonly Stall[],
+  results: readonly NightResult[]
+) => {
+  const at = (when: number) => `+${((when - started) / 1000).toFixed(1)} s`;
+
+  const longest = Math.max(0, ...stalls.map(({ ms }) => ms));
+
+  return [
+    `  event loop stalls over ${STALL_REPORT_MS} ms: ${stalls.length}, longest ${longest.toFixed(0)} ms${stalls.length === 0 ? "" : `: ${stalls.map((stall) => `${at(stall.at)} ${stall.ms.toFixed(0)} ms`).join(", ")}`}`,
+    `  checks after each night: ${results
+      .toSorted((left, right) => left.checkedAt - right.checkedAt)
+      .map(
+        (result) =>
+          `${result.plan.code} ${at(result.checkedAt)} ${result.checkMs.toFixed(0)} ms`
+      )
+      .join(", ")}`,
+  ];
+};
 
 const INFORMATIONAL: ReadonlySet<CountName> = new Set([
   "catchUpsSkipped",
@@ -243,6 +297,8 @@ test(
     }
 
     const started = wallClock();
+    const stalls: Stall[] = [];
+    const probe = yield* watchEventLoop(stalls).pipe(Effect.forkChild);
     const opened = [];
 
     for (const plan of plans) {
@@ -253,6 +309,8 @@ test(
       opened.map((night) => runNight(base, night).pipe(Effect.result)),
       { concurrency: "unbounded" }
     );
+
+    yield* Fiber.interrupt(probe);
 
     const elapsed = (wallClock() - started) / 1000;
     const results: NightResult[] = [];
@@ -301,7 +359,11 @@ test(
       failures
     );
 
-    yield* Console.log([...lines, ...kept].join("\n"));
+    yield* Console.log(
+      [...lines, ...describeStalls(started, stalls, results), ...kept].join(
+        "\n"
+      )
+    );
 
     const failed =
       failures.length > 0 ||

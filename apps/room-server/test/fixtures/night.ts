@@ -51,6 +51,8 @@ export interface NightPlan {
 export interface NightResult {
   readonly plan: NightPlan;
   readonly verdict: NightVerdict;
+  readonly checkedAt: number;
+  readonly checkMs: number;
   readonly events: readonly string[];
   readonly durationMs: number;
 }
@@ -607,6 +609,7 @@ export const runNight = (base: string, opened: OpenedNight) =>
     );
 
     const inspection = yield* inspect(base, plan.code);
+    const checkedAt = wallClock();
 
     const verdict = checkNight({
       bots: records,
@@ -622,7 +625,9 @@ export const runNight = (base: string, opened: OpenedNight) =>
     });
 
     const result: NightResult = {
-      durationMs: wallClock() - started,
+      checkMs: wallClock() - checkedAt,
+      checkedAt,
+      durationMs: checkedAt - started,
       events: inspection.events,
       plan,
       verdict,
