@@ -141,7 +141,7 @@ const HERO_CARDS = ["Ad", "Kd"];
 const RIVAL_CARDS = ["As", "Qs"];
 
 const opening: TableSnapshot = {
-  afterHand: { bothOnly: false, rabbit: false, showable: [] },
+  afterHand: { bothOnly: false, closes: null, rabbit: false, showable: [] },
   bigBlind: BIG_BLIND,
   boards: [BOARD],
   buttonSeat: 4,

@@ -318,6 +318,39 @@ const playHand = (pages: readonly Page[], watcher: Page) =>
     ).pipe(Effect.map((text) => text?.trim() ?? ""));
   });
 
+const SHOW_WAIT_MS = 3000;
+
+const EXPOSED_EDGE = { x: 10, y: 24 };
+
+const showsOneCardThenTheOther = (page: Page, other: Page) =>
+  Effect.gen(function* showCardByCard() {
+    const cards = page.locator(`${HAND} .hc`);
+
+    yield* shoot(page, "show-before.png");
+    yield* attempt("tap the first card to show it", () =>
+      cards.first().click({ position: EXPOSED_EDGE })
+    );
+    yield* shoot(page, "show-after-first.png");
+    yield* attempt("see the hint offer the other card", () =>
+      page
+        .locator(`${HAND} .hand-label`)
+        .filter({ hasText: "Tap your other card to show it" })
+        .waitFor({ state: "attached", timeout: SHOW_WAIT_MS })
+    );
+    yield* attempt("tap the other card to show it", () => cards.nth(1).click());
+    yield* attempt("see both cards shown", () =>
+      page
+        .locator(`${HAND}.open`)
+        .waitFor({ state: "attached", timeout: SHOW_WAIT_MS })
+    );
+    yield* attempt("see both cards on that seat from across the table", () =>
+      other
+        .locator(`${TABLE} .tile .shown .card`)
+        .nth(1)
+        .waitFor({ state: "attached", timeout: SHOW_WAIT_MS })
+    );
+  });
+
 const holds = (truth: boolean, failure: NightFailed) =>
   truth ? Effect.void : Effect.fail(failure);
 
@@ -468,6 +501,8 @@ const night = Effect.gen(function* playOneHand() {
   const result = yield* playHand([ana, ben], ana);
 
   yield* Console.log(`hand 1 played with gestures, pot: ${result}`);
+  yield* showsOneCardThenTheOther(ana, ben);
+  yield* Console.log("Ana shows one card, then the other, and Ben sees both");
 
   const deck = yield* calmDeck(ana);
 

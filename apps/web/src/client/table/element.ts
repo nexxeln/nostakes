@@ -5,6 +5,8 @@ import type { Reaction } from "@nostakes/room";
 import { Option, Schema } from "effect";
 
 import { PEEK_REFRESH_MS } from "../../features/signals.js";
+import { showdownWords, showOffer } from "../../features/table/showing.js";
+import type { ShowOffer } from "../../features/table/showing.js";
 import { raiseDetents, raiseLadder } from "../../features/table/sizing.js";
 import type { Detent, RaiseSpot } from "../../features/table/sizing.js";
 import {
@@ -439,6 +441,17 @@ const tagPile = (
 
 const BUTTON_TRAVEL_MS = 720;
 
+const SHOWS = "Shows";
+
+const PAPER_ARMS_AFTER_MS = 700;
+
+interface PaperChip {
+  readonly key: string;
+  readonly label: string;
+  readonly run: () => void;
+  readonly words: readonly [string, string];
+}
+
 const detentsFor = (spot: RaiseSpot): readonly PlacedDetent[] =>
   placeDetents(raiseDetents(spot), spot.min, spot.max);
 
@@ -856,6 +869,15 @@ export class NostakesTable extends HTMLElement {
   #entryNote!: HTMLDivElement;
   #handCards: HTMLDivElement[] = [];
   #handLabel!: HTMLDivElement;
+  #labelSay!: HTMLSpanElement;
+  #labelSub!: HTMLSpanElement;
+  #showUntil!: HTMLSpanElement;
+  readonly #sentShows = new Set<string>();
+  #paperKey = "";
+  #paperSince = 0;
+  #closesKey = "";
+  #closesAt = 0;
+  #closesTotal = 0;
   #chip!: HTMLButtonElement;
   #chipA!: HTMLDivElement;
   #chipB!: HTMLDivElement;
@@ -1273,6 +1295,10 @@ export class NostakesTable extends HTMLElement {
       el("div", "hc", this.#hand),
     ];
     this.#handLabel = el("div", "hand-label", this.#hand);
+    this.#labelSay = el("span", "say", this.#handLabel);
+    this.#labelSub = el("span", "sub gone", this.#handLabel);
+    this.#showUntil = el("span", "until gone", this.#handLabel);
+    this.#showUntil.setAttribute("aria-hidden", "true");
     this.#hand.addEventListener("pointerdown", this.#onHandDown);
     this.#hand.addEventListener("pointerenter", this.#onHandEnter);
     this.#hand.addEventListener("pointerleave", this.#onHandLeave);
@@ -1596,6 +1622,7 @@ export class NostakesTable extends HTMLElement {
     const spread = cardW * 0.5;
 
     this.#hand.style.setProperty("--spread", `${spread}px`);
+    this.#hand.style.setProperty("--cw-hand", `${cardW}px`);
     Object.assign(this.#hand.style, {
       height: `${cardW * 1.4}px`,
       left: `${geo.hand.x - (cardW + spread) / 2}px`,
@@ -1739,11 +1766,13 @@ export class NostakesTable extends HTMLElement {
     this.#winner = -1;
     this.#heroWinUntil = 0;
     this.#hand.classList.remove("open", "armed", "peek");
+    this.#sentShows.clear();
     this.#hand.style.transform = "";
     this.#handLabel.classList.remove("on");
 
     for (const tile of this.#tiles.values()) {
       tile.shown.replaceChildren();
+      delete tile.shown.dataset.cards;
       tile.status.until = 0;
       tile.root.classList.remove("acting");
       delete tile.root.dataset.awarded;
@@ -1863,33 +1892,43 @@ export class NostakesTable extends HTMLElement {
     renderNote(tile.root, tile.note, info.note);
     this.#renderPickable(tile, info);
 
-    if (info.shown.length > 0 && tile.shown.childElementCount === 0) {
+    const shownKey = info.shown.join(",");
+
+    if (shownKey !== (tile.shown.dataset.cards ?? "")) {
+      const before = (tile.shown.dataset.cards ?? "").split(",");
+
+      tile.shown.dataset.cards = shownKey;
+      tile.shown.replaceChildren();
+
       for (const [index, card] of info.shown.entries()) {
         const node = cardEl(card, Math.round(geo.tile * 0.36), true);
         const tilt = index === 0 ? -1 : 1;
 
         tile.shown.append(node);
-        node.animate(
-          [
+
+        if (before.includes(card)) {
+          node.style.transform = `rotate(${tilt * 5}deg)`;
+        } else {
+          node.animate(
+            [
+              {
+                opacity: 0,
+                transform: `translateY(30px) rotate(${tilt * 8}deg) scale(.6)`,
+              },
+              {
+                opacity: 1,
+                transform: `translateY(0) rotate(${tilt * 5}deg) scale(1)`,
+              },
+            ],
             {
-              opacity: 0,
-              transform: `translateY(30px) rotate(${tilt * 8}deg) scale(.6)`,
-            },
-            {
-              opacity: 1,
-              transform: `translateY(0) rotate(${tilt * 5}deg) scale(1)`,
-            },
-          ],
-          {
-            delay: index * 90,
-            duration: this.#reduced ? 120 : 420,
-            easing: "cubic-bezier(.2,1.3,.4,1)",
-            fill: "both",
-          }
-        );
+              delay: index * 90,
+              duration: this.#reduced ? 120 : 420,
+              easing: "cubic-bezier(.2,1.3,.4,1)",
+              fill: "both",
+            }
+          );
+        }
       }
-    } else if (info.shown.length === 0 && tile.shown.childElementCount > 0) {
-      tile.shown.replaceChildren();
     }
   }
 
@@ -1962,6 +2001,15 @@ export class NostakesTable extends HTMLElement {
       toggle(holder, "up", want !== "" && me?.shown.includes(want) === true);
     }
 
+    toggle(
+      this.#hand,
+      "open",
+      dealt > 0 &&
+        snapshot.heroCards
+          .slice(0, dealt)
+          .every((card) => me?.shown.includes(card) === true)
+    );
+
     renderNote(this.#self, this.#selfNote, me?.note ?? "");
     this.#renderAfterHand(snapshot, holding);
 
@@ -2020,37 +2068,149 @@ export class NostakesTable extends HTMLElement {
     toggle(this.#self, "folded", me.status === "Folded" || me.status === "Out");
   }
 
-  #renderAfterHand(snapshot: TableSnapshot, holding: boolean) {
+  #say(main: string, sub = "") {
+    for (const [node, text] of [
+      [this.#labelSay, main],
+      [this.#labelSub, sub],
+    ] as const) {
+      if (node.textContent !== text) {
+        node.textContent = text;
+      }
+
+      toggle(node, "gone", text === "");
+    }
+  }
+
+  #showOffer(snapshot: TableSnapshot): ShowOffer | null {
     const { bothOnly, showable } = snapshot.afterHand;
-    const offering = holding && showable.length > 0 && snapshot.legal === null;
+
+    if (showable.length === 0 || snapshot.legal !== null) {
+      return null;
+    }
+
+    return showOffer({
+      bothOnly,
+      held: snapshot.heroCards,
+      shown: snapshot.heroCards.filter(
+        (card) => !showable.includes(card) || this.#sentShows.has(card)
+      ),
+    });
+  }
+
+  #renderAfterHand(snapshot: TableSnapshot, holding: boolean) {
+    const offer = holding ? this.#showOffer(snapshot) : null;
+    const offering = offer !== null;
+    const { closes } = snapshot.afterHand;
 
     toggle(this.#hand, "offering", offering);
+    toggle(this.#showUntil, "gone", !offering || closes === null);
+
+    if (closes !== null && closes.key !== this.#closesKey) {
+      this.#closesKey = closes.key;
+      this.#closesAt = performance.now();
+      this.#closesTotal = Math.max(1, closes.remainingMs);
+    }
 
     if (offering) {
-      this.#handLabel.textContent =
-        bothOnly || showable.length === 1
-          ? "Tap to show"
-          : "Tap a card to show it";
+      this.#say(offer.hint, offer.sub);
       this.#handLabel.classList.add("on");
+    } else if (this.#hand.classList.contains("was-offering")) {
+      this.#say("");
+      this.#handLabel.classList.remove("on");
     }
+
+    toggle(this.#hand, "was-offering", offering);
+  }
+
+  #frameShowUntil(now: number) {
+    const closes = this.#snap?.afterHand.closes ?? null;
+
+    if (closes === null || this.#showUntil.classList.contains("gone")) {
+      return;
+    }
+
+    const left = closes.remainingMs - (now - this.#closesAt);
+    const fraction = clamp(left / this.#closesTotal, 0, 1);
+
+    this.#showUntil.style.setProperty("--left", fraction.toFixed(4));
   }
 
   #showAfterHand(target: EventTarget | null) {
     const snapshot = this.#snap;
+    const offer = snapshot === null ? null : this.#showOffer(snapshot);
 
-    if (snapshot === null || !this.#hand.classList.contains("offering")) {
+    if (offer === null || !this.#hand.classList.contains("offering")) {
       return false;
     }
 
-    const { bothOnly, showable } = snapshot.afterHand;
     const holder = target instanceof Element ? target.closest(".hc") : null;
 
-    const tapped =
-      holder instanceof HTMLElement ? (holder.dataset.card ?? "") : "";
+    const cards =
+      target === this.#chip
+        ? offer.bothCards
+        : offer.tap(
+            holder instanceof HTMLElement ? (holder.dataset.card ?? "") : ""
+          );
 
-    const cards = bothOnly || !showable.includes(tapped) ? showable : [tapped];
+    if (cards.length === 0) {
+      return false;
+    }
+
+    for (const card of cards) {
+      this.#sentShows.add(card);
+    }
 
     this.#emit(TableIntents.ShowCards.make({ cards }));
+    this.#sound.flip();
+    this.#render();
+
+    return true;
+  }
+
+  #paperChip(snapshot: TableSnapshot): PaperChip | null {
+    if (this.#canAct() && snapshot.legal?.show === true) {
+      return {
+        key: `table:${snapshot.handId}`,
+        label: "Show your hand",
+        run: () => {
+          this.#act(TableIntents.Show.make({}));
+        },
+        words: ["Show", "hand"],
+      };
+    }
+
+    const offer = this.#hand.classList.contains("gone")
+      ? null
+      : this.#showOffer(snapshot);
+
+    if (offer === null || offer.bothCards.length === 0) {
+      return null;
+    }
+
+    return {
+      key: `show:${snapshot.handId}:${offer.bothCards.join(",")}`,
+      label: offer.bothCards.length > 1 ? "Show both cards" : "Show your card",
+      run: () => {
+        this.#showAfterHand(this.#chip);
+      },
+      words: ["Show", offer.bothCards.length > 1 ? "both" : "it"],
+    };
+  }
+
+  #pressPaper() {
+    const snapshot = this.#snap;
+    const paper = snapshot === null ? null : this.#paperChip(snapshot);
+
+    if (paper === null) {
+      return false;
+    }
+
+    if (performance.now() - this.#paperSince >= PAPER_ARMS_AFTER_MS) {
+      this.#sound.unlock();
+      paper.run();
+    } else {
+      nudge(this.#chip);
+    }
 
     return true;
   }
@@ -2059,11 +2219,28 @@ export class NostakesTable extends HTMLElement {
     const legal = this.#canAct() ? snapshot.legal : null;
     const voting = this.#canVote();
     const live = voting || (legal !== null && !legal.show && !legal.muck);
+    const paper = live ? null : this.#paperChip(snapshot);
+
+    if (paper !== null && paper.key !== this.#paperKey) {
+      this.#paperKey = paper.key;
+      this.#paperSince = performance.now();
+    }
 
     toggle(this.#chip, "live", live);
-    toggle(this.#chip, "idle", !live);
+    toggle(this.#chip, "paper", paper !== null);
+    toggle(this.#chip, "idle", !live && paper === null);
 
     if (this.#chipG?.mode === "size" || this.#keySize !== null) {
+      return;
+    }
+
+    if (paper !== null) {
+      const [top, bottom] = paper.words;
+
+      this.#chipA.textContent = top;
+      this.#chipB.textContent = bottom;
+      this.#chip.setAttribute("aria-label", paper.label);
+
       return;
     }
 
@@ -2081,14 +2258,12 @@ export class NostakesTable extends HTMLElement {
 
   #renderShowdown(snapshot: TableSnapshot) {
     const legal = this.#canAct() ? snapshot.legal : null;
-    const showing = legal !== null && legal.show;
+    const words = legal === null ? null : showdownWords(legal);
 
-    toggle(this.#hand, "beckon", showing);
+    toggle(this.#hand, "beckon", words !== null);
 
-    if (showing) {
-      this.#handLabel.textContent = legal.muck
-        ? "Tap to show, flick to muck"
-        : "Tap to show";
+    if (words !== null) {
+      this.#say(words.hint, words.sub);
       this.#handLabel.classList.add("on");
     } else if (
       !this.#hand.classList.contains("open") &&
@@ -2545,11 +2720,10 @@ export class NostakesTable extends HTMLElement {
 
   #onShow(seat: number, label: string) {
     if (seat === this.#snap?.heroSeat) {
-      this.#hand.classList.add("open");
       this.#hand.classList.remove("peek");
 
-      if (label !== "") {
-        this.#handLabel.textContent = label;
+      if (label !== "" && label !== SHOWS) {
+        this.#say(label);
         this.#handLabel.classList.add("on");
       }
     } else if (label !== "") {
@@ -3018,13 +3192,10 @@ export class NostakesTable extends HTMLElement {
 
     this.#sound.unlock();
 
-    if (this.#canAct() && snapshot.legal?.show === true) {
-      this.#act(TableIntents.Show.make({}));
-
-      return;
-    }
-
-    if (this.#hand.classList.contains("open")) {
+    if (
+      this.#hand.classList.contains("open") &&
+      !this.#hand.classList.contains("offering")
+    ) {
       return;
     }
 
@@ -3125,7 +3296,7 @@ export class NostakesTable extends HTMLElement {
     if (away) {
       const resting = word === "fold" ? "Fold" : "Muck";
 
-      this.#handLabel.textContent = armed ? `Release to ${word}` : resting;
+      this.#say(armed ? `Release to ${word}` : resting);
       toggle(this.#handLabel, "on", gesture.dy < -30);
     }
   }
@@ -3155,11 +3326,7 @@ export class NostakesTable extends HTMLElement {
     const quick =
       gesture.mode === "press" && event.timeStamp - gesture.t0 <= 250;
 
-    if (
-      event.type === "pointerup" &&
-      quick &&
-      this.#showAfterHand(gesture.origin)
-    ) {
+    if (event.type === "pointerup" && quick && this.#tapShows(gesture)) {
       this.#pressPeek = false;
       this.#syncPeek();
 
@@ -3176,7 +3343,18 @@ export class NostakesTable extends HTMLElement {
     this.#handLabel.classList.remove("on");
     this.#hand.style.transition = "transform .45s cubic-bezier(.2,1.5,.4,1)";
     this.#hand.style.transform = "";
+    this.#render();
   };
+
+  #tapShows(gesture: HandGesture) {
+    if (this.#canAct() && this.#snap?.legal?.show === true) {
+      this.#act(TableIntents.Show.make({}));
+
+      return true;
+    }
+
+    return this.#showAfterHand(gesture.origin);
+  }
 
   #throwAway() {
     const legal = this.#snap?.legal;
@@ -3557,6 +3735,10 @@ export class NostakesTable extends HTMLElement {
   readonly #onChipDown = (event: PointerEvent) => {
     this.#sound.unlock();
 
+    if (this.#pressPaper()) {
+      return;
+    }
+
     const legal = this.#snap?.legal;
 
     const betting =
@@ -3661,6 +3843,10 @@ export class NostakesTable extends HTMLElement {
 
   #tapChip() {
     const legal = this.#snap?.legal;
+
+    if (this.#pressPaper()) {
+      return;
+    }
 
     if (this.#canVote()) {
       this.#act(TableIntents.Runs.make({ runs: 1 }));
@@ -3960,6 +4146,7 @@ export class NostakesTable extends HTMLElement {
     this.#frameTiles(snapshot, geo, dt, now, clock);
     this.#frameSelf(snapshot, dt, now, clock);
     this.#frameDealer(geo);
+    this.#frameShowUntil(now);
     expireStatus(this.#selfStatus, now);
 
     for (const tile of this.#tiles.values()) {

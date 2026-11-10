@@ -87,7 +87,19 @@ const STRADDLE_TEXT = {
   UnderTheGunOff: "This room has no straddle under the gun.",
 } as const;
 
-const tableText = (rejection: Rejection, voice: Voice): string =>
+const handRunning = (view: Option.Option<RoomView>) =>
+  Option.exists(view, (seen) =>
+    RoomViews.$match(seen, {
+      Closed: () => false,
+      Open: ({ hand }) => Option.isSome(hand),
+    })
+  );
+
+const tableText = (
+  rejection: Rejection,
+  voice: Voice,
+  nextHandDealt: boolean
+): string =>
   Match.value(rejection).pipe(
     Match.tagsExhaustive({
       AmountNotPositive: () => "Add at least one chip.",
@@ -106,7 +118,10 @@ const tableText = (rejection: Rejection, voice: Voice): string =>
       NoShowdownChoiceOwed: () => "It is not your turn to show or muck.",
       NotEnoughPlayers: () =>
         "A hand needs at least two players with chips who are not sitting out.",
-      NotInLastHand: () => "You were not dealt into the last hand.",
+      NotInLastHand: () =>
+        nextHandDealt
+          ? "The next hand is already dealt, so the last one is closed."
+          : "You were not dealt into the last hand.",
       NotYourTurn: ({ toAct }) =>
         voice.seatName(toAct) === "you"
           ? "Wait a moment, the table is catching up."
@@ -204,7 +219,8 @@ export const rejectionText = (
       ServerOnly: () => "Only the room itself can do that.",
       SettlesAfterHand: () => "The room settles up when this hand ends.",
       ShuffleRanOut: () => DEALER_BUSY,
-      TableRejected: ({ rejection: refused }) => tableText(refused, voice),
+      TableRejected: ({ rejection: refused }) =>
+        tableText(refused, voice, handRunning(view)),
       TopUpNotAllowed: ({ duringHand, holding, min, player, rule }) => {
         if (duringHand) {
           return `${voice.subject(player)} can add chips when this hand ends.`;

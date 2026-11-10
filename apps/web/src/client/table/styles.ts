@@ -199,6 +199,12 @@ export const tableCss = `
 .hand.armed .hc .card { opacity: 0.45; }
 .hand .hc.up .card .face { transform: none; }
 .hand .hc.up .card .back { transform: rotateY(180deg); }
+.hand .hc.up::before {
+  content: "Shown"; position: absolute; z-index: 3; left: 50%; top: calc(var(--cw-hand, 60px) * 1.4 - 9px); translate: -50% 0; height: 18px; padding: 0 7px;
+  display: grid; place-items: center; border-radius: 6px; background: var(--color-toast); color: var(--color-on-toast);
+  font-size: var(--text-1); font-weight: var(--weight-strong); letter-spacing: 0.02em; box-shadow: var(--shadow-sheet-1); white-space: nowrap;
+}
+.hand.open .hc.up::before { display: none; }
 .hand.offering { cursor: pointer; }
 .hand.beckon { animation: beckon 1.4s ease-in-out infinite; }
 @keyframes beckon { 0%, 100% { translate: 0 0; } 50% { translate: 0 -6px; } }
@@ -208,7 +214,13 @@ export const tableCss = `
 }
 .open .hand-label { bottom: calc(100% + 40px); }
 .hand-label.on { opacity: 1; }
-.hand-label .sub { display: block; font-size: var(--text-1); color: var(--color-ink-muted); font-weight: var(--weight-body); margin-top: 2px; }
+.hand-label .say, .hand-label .sub { display: block; }
+.hand-label:has(.sub:not(.gone)) { bottom: calc(100% + 4px); }
+.hand-label:has(.sub:not(.gone)) .until { display: none; }
+.hand-label .sub { font-size: var(--text-1); color: var(--color-ink-muted); font-weight: var(--weight-body); margin-top: 2px; }
+.hand-label .gone { display: none !important; }
+.hand-label .until { display: block; width: 72px; height: 3px; margin: 5px auto 0; border-radius: 2px; background: var(--color-ring-track); overflow: hidden; }
+.hand-label .until::after { content: ""; display: block; height: 100%; width: calc(var(--left, 1) * 100%); background: var(--color-ink-muted); border-radius: 2px; }
 .armed .hand-label { padding: var(--space-1) var(--space-3); border-radius: var(--radius-3); background: var(--color-toast); color: var(--color-on-toast); box-shadow: var(--shadow-sheet-2); }
 
 .entry {
@@ -234,6 +246,9 @@ export const tableCss = `
   transition: background-color var(--duration-2) var(--ease), box-shadow var(--duration-2) var(--ease), opacity var(--duration-2) var(--ease), translate var(--duration-1) var(--ease);
 }
 .chipctl.idle .disc { background: transparent; box-shadow: none; border: 1.5px dashed var(--color-line-strong); }
+.chipctl.paper .disc { background: var(--color-raised); box-shadow: var(--shadow-sheet-2); }
+.chipctl.paper:active .disc { translate: var(--press-2); box-shadow: var(--shadow-sheet-0); }
+.chipctl.paper .lbl { color: var(--color-raised-ink); }
 .chipctl.live .disc { box-shadow: var(--shadow-action), 0 0 0 calc(var(--c) * 0.095) var(--color-action-halo); }
 .chipctl.live:active .disc { translate: var(--press-2); box-shadow: var(--shadow-sheet-0), 0 0 0 calc(var(--c) * 0.095) var(--color-action-halo); }
 .chipctl .lbl { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; color: var(--color-on-accent); line-height: 1.15; pointer-events: none; }

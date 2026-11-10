@@ -1198,12 +1198,26 @@ export const postTagSides = (geo: Geo, width: number): readonly TagSide[] => {
   });
 };
 
+const HAND_HINT = { h: 56, w: 300 };
+
+const handHintBox = (geo: Geo): Box => {
+  const w = Math.min(HAND_HINT.w, geo.w - 16);
+
+  return {
+    h: HAND_HINT.h,
+    w,
+    x: geo.hand.x - w / 2,
+    y: geo.hand.y - (geo.handCardW * 1.4) / 2 - HAND_HINT.h,
+  };
+};
+
 const middleObstacles = (geo: Geo): readonly Box[] => {
   const handW = geo.handCardW * 2.2;
   const handH = geo.handCardW * 1.4;
 
   return [
     ...pilesOf(geo).map(pileBox),
+    handHintBox(geo),
     {
       h: handH + 30,
       w: handW,

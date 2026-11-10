@@ -102,8 +102,14 @@ export const TableEventSchema = Schema.Struct({
 
 export type TableEvent = typeof TableEventSchema.Type;
 
+export const ShowWindowSchema = Schema.Struct({
+  key: Schema.String,
+  remainingMs: Schema.Int,
+});
+
 export const AfterHandSchema = Schema.Struct({
   bothOnly: Schema.Boolean,
+  closes: Schema.NullOr(ShowWindowSchema),
   rabbit: Schema.Boolean,
   showable: Schema.Array(CardTextSchema),
 });

@@ -70,7 +70,7 @@ const seatOf = (index: number): SeatSnapshot => {
 };
 
 const showdown: TableSnapshot = {
-  afterHand: { bothOnly: false, rabbit: false, showable: [] },
+  afterHand: { bothOnly: false, closes: null, rabbit: false, showable: [] },
   bigBlind: 20,
   boards: BOARDS.slice(0, boards),
   buttonSeat: 2,
@@ -237,7 +237,54 @@ const postingIn: TableSnapshot = {
   ),
 };
 
+const AFTER_BOARD = ["3c", "9h", "7d", "Qs", "2h"];
+
+const HERO_CARDS = ["Ad", "Kh"];
+
+const afterHand = (
+  shown: readonly string[],
+  bothOnly: boolean
+): TableSnapshot => ({
+  ...mid,
+  afterHand: {
+    bothOnly,
+    closes: { key: "next-deal", remainingMs: 6000 },
+    rabbit: false,
+    showable: HERO_CARDS.filter((card) => !shown.includes(card)),
+  },
+  boards: [AFTER_BOARD],
+  clock: null,
+  heroCards: HERO_CARDS,
+  pots: [],
+  seats: mid.seats.map((seat) =>
+    seat.seat === 0 ? { ...seat, cardsHeld: 2, shown, status: "In" } : seat
+  ),
+  toAct: null,
+});
+
+const showdownTurn = (muck: boolean): TableSnapshot => ({
+  ...mid,
+  boards: [AFTER_BOARD],
+  clock: { key: "showdown", remainingMs: 9000, seat: 0, totalMs: 15_000 },
+  heroCards: HERO_CARDS,
+  legal: {
+    call: null,
+    check: false,
+    fold: false,
+    muck,
+    raise: null,
+    show: true,
+  },
+  toAct: 0,
+});
+
 const SCENES = new Map<string, TableSnapshot>([
+  ["after", afterHand([], false)],
+  ["after-one", afterHand(["Kh"], false)],
+  ["after-all", afterHand(HERO_CARDS, false)],
+  ["after-both-only", afterHand([], true)],
+  ["showdown-muck", showdownTurn(true)],
+  ["showdown-win", showdownTurn(false)],
   ["posting", postingIn],
   ["waiting", waitingForBig],
   ["dead", dead],

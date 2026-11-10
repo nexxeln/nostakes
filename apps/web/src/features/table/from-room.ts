@@ -440,7 +440,12 @@ const afterHandOf = (
   room: InRoom,
   heroSeat: Option.Option<number>
 ): AfterHand => {
-  const none: AfterHand = { bothOnly: false, rabbit: false, showable: [] };
+  const none: AfterHand = {
+    bothOnly: false,
+    closes: null,
+    rabbit: false,
+    showable: [],
+  };
 
   if (Option.isSome(view.hand)) {
     return none;
@@ -466,8 +471,18 @@ const afterHandOf = (
         )
       );
 
+      const serverNow = serverTimeAtArrival(view, room);
+
       return {
         bothOnly: table.voluntaryShows === "BothCards",
+        closes: Option.getOrNull(
+          view.clocks.nextDeal.pipe(
+            Option.map(({ deadline }) => ({
+              key: String(deadline),
+              remainingMs: Math.max(0, deadline - serverNow),
+            }))
+          )
+        ),
         rabbit:
           table.rabbitHunt &&
           mayHunt &&
