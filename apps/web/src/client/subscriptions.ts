@@ -6,7 +6,12 @@ import type { ManagedResource } from "foldkit";
 import { Messages } from "../features/message.js";
 import type { Message } from "../features/message.js";
 import type { Link, Model } from "../features/model.js";
-import { clockRunning, keepsScreenAwake, roomOf } from "../features/room.js";
+import {
+  clockRunning,
+  keepsScreenAwake,
+  roomOf,
+  waitsToClaimHost,
+} from "../features/room.js";
 import { signalsShowing } from "../features/signals.js";
 import type { PokerClientTypes } from "../features/wire.js";
 import { RoomConnection } from "./connection.js";
@@ -165,7 +170,8 @@ export const subscriptions = Subscription.make<
       modelToDependencies: (model) => ({
         ticking: Option.exists(
           roomOf(model),
-          (room) => clockRunning(room) || signalsShowing(room)
+          (room) =>
+            clockRunning(room) || signalsShowing(room) || waitsToClaimHost(room)
         ),
       }),
     }

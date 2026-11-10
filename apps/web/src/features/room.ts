@@ -99,6 +99,13 @@ export const clockRunning = (room: InRoom) =>
       Option.isSome(clocks.nextDeal)
   );
 
+export const waitsToClaimHost = (room: InRoom) =>
+  room.menu &&
+  Option.exists(
+    openViewOf(room),
+    (view) => Option.isSome(view.hostAway) && !isYou(view, view.host)
+  );
+
 export const settlementText = (view: ClosedView) => {
   const name = (player: PlayerId) => nameOf(view, player);
 
