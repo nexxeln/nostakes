@@ -8,6 +8,12 @@ import { TEST_ORIGIN } from "./toy-worker.js";
 
 export type LineMode = "Clear" | "BlackHole" | "Deaf";
 
+const DEADNESS: Readonly<Record<LineMode, number>> = {
+  BlackHole: 2,
+  Clear: 0,
+  Deaf: 1,
+};
+
 export interface Line {
   readonly number: number;
   readonly raw: WebSocket;
@@ -193,7 +199,7 @@ export const clientWire = (journal: Timeline) => {
   const setMode = (mode: LineMode) => {
     const line = lines.at(-1);
 
-    if (line !== undefined) {
+    if (line !== undefined && DEADNESS[mode] > DEADNESS[line.mode]) {
       note(`line ${line.number} turned ${mode}`);
       line.mode = mode;
     }
