@@ -12,6 +12,7 @@ import * as HttpClientRequest from "effect/http/HttpClientRequest";
 import { Command, Navigation } from "foldkit";
 
 import { Messages, ReplyOutcomes } from "../features/message.js";
+import { rejectionText } from "../features/rejections.js";
 import { roomPath } from "../features/wire.js";
 import { RoomConnection } from "./connection.js";
 import { forgetPass, storePass, storeProfile } from "./storage.js";
@@ -105,7 +106,7 @@ export const SendToRoom = Command.define("SendToRoom", {
             outcome: Match.valueTags(result, {
               Accepted: ({ seq }) => ReplyOutcomes.Accepted({ seq }),
               Rejected: ({ rejection }) =>
-                ReplyOutcomes.Rejected({ reason: rejection.message }),
+                ReplyOutcomes.Rejected({ reason: rejectionText(rejection) }),
               Unavailable: ({ reason }) =>
                 ReplyOutcomes.Lost({
                   reason: `The room is unavailable: ${reason}.`,
@@ -135,8 +136,22 @@ export const CopyRoomLink = Command.define("CopyRoomLink", {
       )
     ).pipe(
       Effect.match({
-        onFailure: () => Messages.CompletedCopy({ copied: false }),
-        onSuccess: () => Messages.CompletedCopy({ copied: true }),
+        onFailure: () => Messages.CompletedCopy({ copied: "Nothing" }),
+        onSuccess: () => Messages.CompletedCopy({ copied: "Link" }),
+      })
+    ),
+  messages: [Messages.CompletedCopy],
+});
+
+export const CopyText = Command.define("CopyText", {
+  args: { text: Schema.String },
+  execute: ({ text }) =>
+    Effect.tryPromise(() =>
+      globalThis.navigator.clipboard.writeText(text)
+    ).pipe(
+      Effect.match({
+        onFailure: () => Messages.CompletedCopy({ copied: "Nothing" }),
+        onSuccess: () => Messages.CompletedCopy({ copied: "Settlement" }),
       })
     ),
   messages: [Messages.CompletedCopy],

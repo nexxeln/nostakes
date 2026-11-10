@@ -4,5 +4,6 @@ export default defineConfig({
   cacheDir: "node_modules/.vitest",
   test: {
     include: ["test/**/*.test.ts"],
+    testTimeout: 30_000,
   },
 });

@@ -1,7 +1,11 @@
 import { Actions, SeatIndexSchema } from "@nostakes/engine";
 import type { Action } from "@nostakes/engine";
 import { RoomCodeSchema } from "@nostakes/protocol";
-import { ChipAmountSchema, MemberCommandSchema } from "@nostakes/room";
+import {
+  ChipAmountSchema,
+  MemberCommandSchema,
+  RoomViews,
+} from "@nostakes/room";
 import type { MemberCommand } from "@nostakes/room";
 import { Option, Result, Schema } from "effect";
 import type * as HttpClient from "effect/http/HttpClient";
@@ -9,6 +13,7 @@ import type { ManagedResource, Update } from "foldkit";
 
 import {
   CopyRoomLink,
+  CopyText,
   CreateRoom,
   ForgetRoom,
   JoinRoom,
@@ -28,6 +33,8 @@ import {
   legalOf,
   openViewOf,
   roomOf,
+  settlementText,
+  viewOf,
 } from "./room.js";
 import { draftOf, settingsFrom } from "./settings.js";
 import { roomPath } from "./wire.js";
@@ -43,7 +50,7 @@ const Commands = MemberCommandSchema.cases;
 const freshRoom = (code: InRoom["code"], player: InRoom["player"]): InRoom => ({
   code,
   connected: false,
-  copied: false,
+  copied: "Nothing",
   drafts: { buyIn: "", chips: "", raiseTo: "", seat: Option.none() },
   link: Option.none(),
   notice: Option.none(),
@@ -263,6 +270,19 @@ export const update = (model: Model, message: Message): Return =>
         commands: [CopyRoomLink({ code: room.code })],
         model,
       })),
+    ClickedCopySettlement: () =>
+      inRoom(model, (room) =>
+        Option.match(
+          viewOf(room).pipe(Option.filter(RoomViews.$is("Closed"))),
+          {
+            onNone: () => ({ model }),
+            onSome: (closed) => ({
+              commands: [CopyText({ text: settlementText(closed) })],
+              model,
+            }),
+          }
+        )
+      ),
     ClickedHome: () =>
       inRoom(model, (room) => ({
         commands: [ShowPath({ path: "/" }), ForgetRoom({ code: room.code })],

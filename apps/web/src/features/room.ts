@@ -108,3 +108,23 @@ export const secondsLeft = (room: InRoom, now: number, remainingMs: number) => {
 
   return Math.ceil(Math.max(0, remainingMs - elapsed) / 1000);
 };
+
+export const settlementText = (view: ClosedView) => {
+  const name = (player: string) =>
+    view.members.find((member) => member.player === player)?.name ?? "Someone";
+
+  const nets = view.settlement.balances
+    .toSorted((left, right) => right.net - left.net)
+    .map(({ net, player }) => `${name(player)} ${net > 0 ? "+" : ""}${net}`);
+
+  const transfers = view.settlement.transfers.map(
+    ({ amount, from, to }) => `${name(from)} pays ${name(to)} ${amount}`
+  );
+
+  return [
+    `nostakes ${view.code}`,
+    ...nets,
+    "",
+    ...(transfers.length === 0 ? ["Everyone is square."] : transfers),
+  ].join("\n");
+};

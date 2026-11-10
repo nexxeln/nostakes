@@ -73,10 +73,12 @@ export const DraftsSchema = Schema.Struct({
 
 export type Drafts = typeof DraftsSchema.Type;
 
+export const CopiedSchema = Schema.Literals(["Nothing", "Link", "Settlement"]);
+
 export const InRoomSchema = Schema.Struct({
   code: RoomCodeSchema,
   connected: Schema.Boolean,
-  copied: Schema.Boolean,
+  copied: CopiedSchema,
   drafts: DraftsSchema,
   link: Schema.Option(LinkSchema),
   notice: Schema.Option(Schema.String),

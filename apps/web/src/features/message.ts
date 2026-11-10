@@ -5,7 +5,7 @@ import { Schema } from "effect";
 import { defineMessageUnion } from "foldkit/message";
 import { defineTaggedUnion } from "foldkit/schema";
 
-import { LinkSchema } from "./model.js";
+import { CopiedSchema, LinkSchema } from "./model.js";
 
 export const ReplyOutcomes = defineTaggedUnion({
   Accepted: { seq: Schema.Int },
@@ -29,6 +29,7 @@ export const Messages = defineMessageUnion({
   ClickedCancelSeat: {},
   ClickedCloseSettings: {},
   ClickedCopyLink: {},
+  ClickedCopySettlement: {},
   ClickedHome: {},
   ClickedOpenSettings: {},
   ClickedRequestChips: {},
@@ -36,7 +37,7 @@ export const Messages = defineMessageUnion({
   ClickedSaveSettings: {},
   ClickedSeat: { seat: Schema.Int },
   ClickedSit: { seat: Schema.Int },
-  CompletedCopy: { copied: Schema.Boolean },
+  CompletedCopy: { copied: CopiedSchema },
   CompletedForget: { code: RoomCodeSchema },
   CompletedNavigation: { path: Schema.String },
   CompletedWake: {},

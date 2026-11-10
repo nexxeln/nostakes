@@ -21,6 +21,7 @@ import {
   isLive,
   legalOf,
   secondsLeft,
+  settlementText,
   viewOf,
 } from "./room.js";
 import type { ClosedView, OpenView } from "./room.js";
@@ -135,7 +136,7 @@ const header = (room: InRoom, view: Option.Option<OpenView>, h: H): Html =>
           h.Class("button quiet"),
           h.OnClick(Messages.ClickedCopyLink()),
         ],
-        [room.copied ? "Link copied" : "Copy link"]
+        [room.copied === "Link" ? "Link copied" : "Copy link"]
       ),
       Option.match(view, {
         onNone: () => h.empty,
@@ -1087,16 +1088,14 @@ const youPanel = (
             ]
           ),
       }),
-      view.queued.leaving.includes(room.player)
-        ? h.p([h.Class("muted")], ["Leaving after this hand."])
-        : commandButton(
-            h,
-            room,
-            Commands.LeaveRoom.make({}),
-            "Leave the room",
-            "Leaving",
-            "button quiet"
-          ),
+      commandButton(
+        h,
+        room,
+        Commands.LeaveRoom.make({}),
+        "Leave the room",
+        "Leaving",
+        "button quiet"
+      ),
     ]
   );
 };
@@ -1147,17 +1146,6 @@ const openRoomView = (
   );
 };
 
-const settlementText = (view: ClosedView) => {
-  const name = (player: PlayerId) =>
-    view.members.find((member) => member.player === player)?.name ?? "Someone";
-
-  const transfers = view.settlement.transfers.map(
-    ({ amount, from, to }) => `${name(from)} pays ${name(to)} ${amount}`
-  );
-
-  return transfers.length === 0 ? "Everyone is square." : transfers.join("\n");
-};
-
 const closedRoomView = (room: InRoom, view: ClosedView, h: H): Html => {
   const name = (player: PlayerId) =>
     view.members.find((member) => member.player === player)?.name ?? "Someone";
@@ -1191,6 +1179,14 @@ const closedRoomView = (room: InRoom, view: ClosedView, h: H): Html => {
       ),
       h.h3([h.Class("panel-title")], ["Settle up"]),
       h.pre([h.Class("transfers")], [settlementText(view)]),
+      h.button(
+        [
+          h.Type("button"),
+          h.Class("button primary"),
+          h.OnClick(Messages.ClickedCopySettlement()),
+        ],
+        [room.copied === "Settlement" ? "Copied" : "Copy for the group chat"]
+      ),
       h.button(
         [
           h.Type("button"),
