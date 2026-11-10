@@ -53,3 +53,25 @@ export {
 export { Transport, type Socket } from "./transport.js";
 
 export { webSocketTransport } from "./web-socket-transport.js";
+
+export { ClientRefused } from "./errors/client-refused.js";
+
+export { ClientStopped } from "./errors/client-stopped.js";
+
+export { CommandCancelled } from "./errors/command-cancelled.js";
+
+export { CommandInvalid } from "./errors/command-invalid.js";
+
+export { CommandTooLarge } from "./errors/command-too-large.js";
+
+export {
+  roomClient,
+  type ClientState,
+  type CommandFailure,
+  type CommandRejectedLocally,
+  type ConnectionPhase,
+  type IssuedCommand,
+  type LocalCancelOutcome,
+  type RoomClient,
+  type RoomClientOptions,
+} from "./room-client.js";
