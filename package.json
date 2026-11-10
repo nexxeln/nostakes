@@ -6,6 +6,7 @@
   "type": "module",
   "scripts": {
     "build": "turbo run build",
+    "dev": "turbo run dev --filter=@nostakes/web --filter=@nostakes/room-server",
     "check": "pnpm run lockfile:check && turbo run typecheck typecheck-scripts && ultracite check && oxfmt --check .",
     "debt": "oxlint --config scripts/oxlint-debt-ledger.config.ts -A all -D nostakes-debt/debt-ledger --ignore-pattern 'tools/oxlint/anti-slop/**' .",
     "fix": "ultracite fix && oxfmt .",

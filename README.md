@@ -12,7 +12,17 @@ nostakes needs Node `24.18.0` or later and pnpm `11.3.0`. pnpm 10 switches to `1
 pnpm install
 ```
 
+## Play locally
+
+```sh
+pnpm dev
+```
+
+This starts the room server on local workerd and the web app. Open `http://localhost:5173`, create a room, and open the room link in a second window to join as another player. Nothing is deployed and no Cloudflare account is needed.
+
 ## Commands
+
+- `pnpm dev`: run the room server and the web app locally
 
 - `pnpm check`: typecheck, lint, and format check
 - `pnpm test`: build and run every test suite

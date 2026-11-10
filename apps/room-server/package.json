@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "dev": "CLOUDFLARE_ACCOUNT_ID=00000000000000000000000000000000 ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-http://localhost:5173} alchemy dev --no-input scripts/local.run.ts",
     "typecheck": "effect-tsrs diagnostics --project tsconfig.json --strict --type-check",
     "typecheck:tsc": "tsc --noEmit -p tsconfig.json",
     "typecheck:fast": "tsrs --noEmit -p tsconfig.json",

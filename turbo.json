@@ -72,6 +72,12 @@
     "@nostakes/room-server#test": {
       "dependsOn": ["build", "^build", "^test"],
       "outputs": []
+    },
+    "dev": {
+      "dependsOn": ["^build"],
+      "cache": false,
+      "persistent": true,
+      "passThroughEnv": ["ALLOWED_ORIGINS"]
     }
   }
 }

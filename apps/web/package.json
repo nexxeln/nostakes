@@ -1,0 +1,31 @@
+{
+  "name": "@nostakes/web",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite dev",
+    "typecheck": "effect-tsrs diagnostics --project tsconfig.json --strict --type-check",
+    "typecheck:tsc": "tsc --noEmit -p tsconfig.json",
+    "typecheck:fast": "tsrs --noEmit -p tsconfig.json",
+    "test": "vitest run",
+    "build": "vite build",
+    "check": "pnpm run typecheck"
+  },
+  "dependencies": {
+    "@nostakes/client": "workspace:*",
+    "@nostakes/engine": "workspace:*",
+    "@nostakes/protocol": "workspace:*",
+    "@nostakes/room": "workspace:*",
+    "effect": "4.1.2",
+    "foldkit": "0.170.0"
+  },
+  "devDependencies": {
+    "@effect/vitest": "4.1.2",
+    "@foldkit/vite-plugin": "0.29.0",
+    "@types/node": "24.19.2",
+    "typescript": "7.0.2",
+    "vite": "8.3.6",
+    "vitest": "5.1.0"
+  }
+}
