@@ -12,8 +12,8 @@ import { face } from "./face-builder.js";
 import { fairLabel, fairParagraph, fairSymbol } from "./fairness-text.js";
 import { Messages } from "./message.js";
 import type { Message } from "./message.js";
-import { FairMarks } from "./model.js";
-import type { InRoom, Model } from "./model.js";
+import { FairMarks, pageTheme } from "./model.js";
+import type { InRoom, Model, Theme } from "./model.js";
 import { updateLine } from "./page-update.js";
 import { hasLeft, isLive, isYou, nameOf, viewOf } from "./room.js";
 import type { ClosedView, OpenView } from "./room.js";
@@ -144,6 +144,7 @@ const header = (
               faceButton(
                 open.members.find(({ player }) => isYou(open, player))
                   ?.avatar ?? model.profile.avatar,
+                pageTheme(model),
                 h
               ),
           }),
@@ -480,9 +481,9 @@ const hostSection = (room: InRoom, view: OpenView, h: H): readonly Html[] =>
     : [];
 
 const peopleSection = (
-  room: InRoom,
   view: OpenView,
   presence: readonly PlayerId[],
+  theme: Theme,
   h: H
 ): readonly Html[] => [
   h.h3([h.Class("sheet-heading")], ["At the table"]),
@@ -495,7 +496,7 @@ const peopleSection = (
           face(
             avatarFor(member.avatar),
             "Resting",
-            LIST_FACE_PX,
+            { size: LIST_FACE_PX, theme },
             presence.includes(member.player)
               ? "face-frame member-face"
               : "face-frame member-face is-away",
@@ -525,7 +526,7 @@ const menuSheet = (
     h.p([h.Class("muted")], [rulesText(view)]),
     ...youSection(room, view, h),
     ...hostSection(room, view, h),
-    ...peopleSection(room, view, presence, h),
+    ...peopleSection(view, presence, pageTheme(model), h),
     h.div(
       [h.Class("sheet-row")],
       [soundSwitch(model.sound, h), themeSwitch(h)]

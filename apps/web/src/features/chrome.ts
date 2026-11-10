@@ -4,6 +4,7 @@ import type { Html, HtmlBuilder } from "foldkit/html";
 import { face } from "./face-builder.js";
 import { Messages } from "./message.js";
 import type { Message } from "./message.js";
+import type { Theme } from "./model.js";
 
 type H = HtmlBuilder<Message>;
 
@@ -45,7 +46,7 @@ export const soundSwitch = (on: boolean, h: H): Html =>
 
 const BAR_FACE_PX = 32;
 
-export const faceButton = (avatar: string, h: H): Html =>
+export const faceButton = (avatar: string, theme: Theme, h: H): Html =>
   h.button(
     [
       h.Type("button"),
@@ -54,5 +55,13 @@ export const faceButton = (avatar: string, h: H): Html =>
       h.Title("Change your face"),
       h.OnClick(Messages.ClickedEditFace()),
     ],
-    [face(avatarFor(avatar), "Resting", BAR_FACE_PX, "face-frame", h)]
+    [
+      face(
+        avatarFor(avatar),
+        "Resting",
+        { size: BAR_FACE_PX, theme },
+        "face-frame",
+        h
+      ),
+    ]
   );

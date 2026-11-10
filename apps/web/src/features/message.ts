@@ -38,6 +38,7 @@ export const Messages = defineMessageUnion({
   ChangedJoinCode: { value: Schema.String },
   ChangedName: { value: Schema.String },
   ChangedSetting: { path: Schema.String, value: Schema.String },
+  ChangedSystemTheme: { theme: ThemeSchema },
   CheckedRoom: { code: RoomCodeSchema, gone: Schema.Boolean },
   ChoseFacePart: { part: FacePartSchema },
   ChoseTheme: { theme: ThemeSchema },

@@ -25,6 +25,11 @@ const PROFILE_KEY = "nostakes.profile";
 
 const THEME_KEY = "nostakes.theme";
 
+export const DARK_SCHEME = "(prefers-color-scheme: dark)";
+
+export const systemTheme = (): Theme =>
+  globalThis.matchMedia(DARK_SCHEME).matches ? "Dark" : "Light";
+
 const SOUND_KEY = "nostakes.sound";
 
 const SOUND_OFF = "off";
@@ -247,6 +252,7 @@ export const readFlags = Effect.gen(function* readFlags() {
     rooms,
     saved,
     sound,
+    systemTheme: systemTheme(),
     theme,
   };
 

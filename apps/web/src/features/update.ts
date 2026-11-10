@@ -128,6 +128,7 @@ export const init = (flags: Flags): Return => {
     reloadedFor: flags.reloadedFor,
     rooms: flags.rooms,
     sound: flags.sound,
+    systemTheme: flags.systemTheme,
     theme: flags.theme,
   };
 
@@ -580,6 +581,9 @@ export const update = (model: Model, message: Message): Return =>
           Option.map((draft) => ({ ...draft, [path]: value }))
         ),
       })),
+    ChangedSystemTheme: ({ theme }) => ({
+      model: { ...model, systemTheme: theme },
+    }),
     CheckedRoom: ({ code, gone }) =>
       gone
         ? { commands: [ForgetRoom({ code })], model: withoutRoom(model, code) }

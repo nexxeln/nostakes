@@ -18,7 +18,7 @@ import type { Html, HtmlBuilder } from "foldkit/html";
 
 import { Messages } from "./message.js";
 import type { Message } from "./message.js";
-import type { FacePart } from "./model.js";
+import type { FacePart, Theme } from "./model.js";
 
 type H = HtmlBuilder<Message>;
 
@@ -113,22 +113,7 @@ const STRIP: readonly { expression: Expression; label: string }[] = [
 export const face = (
   avatar: Avatar,
   expression: Expression,
-  size: number,
-  className: string,
-  h: H
-): Html =>
-  h.span(
-    [
-      h.Class(className),
-      h.AriaHidden(true),
-      h.InnerHTML(render(avatar, { expression, size })),
-    ],
-    []
-  );
-
-const stackedFace = (
-  avatar: Avatar,
-  expression: Expression,
+  look: { readonly size: number; readonly theme: Theme },
   className: string,
   h: H
 ): Html =>
@@ -137,13 +122,31 @@ const stackedFace = (
       h.Class(className),
       h.AriaHidden(true),
       h.InnerHTML(
-        render(avatar, { expression, layers: true, size: PREVIEW_PX })
+        render(avatar, { expression, size: look.size, theme: look.theme })
       ),
     ],
     []
   );
 
-const preview = (avatar: Avatar, shuffled: boolean, h: H): Html =>
+const stackedFace = (
+  avatar: Avatar,
+  expression: Expression,
+  theme: Theme,
+  className: string,
+  h: H
+): Html =>
+  h.span(
+    [
+      h.Class(className),
+      h.AriaHidden(true),
+      h.InnerHTML(
+        render(avatar, { expression, layers: true, size: PREVIEW_PX, theme })
+      ),
+    ],
+    []
+  );
+
+const preview = (avatar: Avatar, shuffled: boolean, theme: Theme, h: H): Html =>
   h.div(
     [h.Class("face-stage")],
     [
@@ -153,8 +156,8 @@ const preview = (avatar: Avatar, shuffled: boolean, h: H): Html =>
           h.Class(shuffled ? "face-preview is-shuffled" : "face-preview"),
         ],
         [
-          stackedFace(avatar, "Resting", "face-frame is-resting", h),
-          stackedFace(avatar, "Happy", "face-frame is-happy", h),
+          stackedFace(avatar, "Resting", theme, "face-frame is-resting", h),
+          stackedFace(avatar, "Happy", theme, "face-frame is-happy", h),
         ]
       ),
       h.button(
@@ -173,7 +176,15 @@ const preview = (avatar: Avatar, shuffled: boolean, h: H): Html =>
         STRIP.map(({ expression, label }) =>
           h.li(
             [h.Key(expression), h.Title(label)],
-            [face(avatar, expression, STRIP_PX, "face-frame", h)]
+            [
+              face(
+                avatar,
+                expression,
+                { size: STRIP_PX, theme },
+                "face-frame",
+                h
+              ),
+            ]
           )
         )
       ),
@@ -202,6 +213,7 @@ const optionGrid = (
   label: string,
   choices: readonly Choice[],
   closeUp: boolean,
+  theme: Theme,
   h: H
 ): Html =>
   h.div(
@@ -222,7 +234,7 @@ const optionGrid = (
           face(
             choice.avatar,
             "Resting",
-            OPTION_PX,
+            { size: OPTION_PX, theme },
             closeUp ? "face-frame is-close-up" : "face-frame",
             h
           ),
@@ -235,6 +247,7 @@ export const faceBuilder = (
   avatar: Avatar,
   part: FacePart,
   shuffled: boolean,
+  theme: Theme,
   h: H
 ): Html => {
   const picker = PICKERS[part];
@@ -242,9 +255,15 @@ export const faceBuilder = (
   return h.div(
     [h.Class("face-builder")],
     [
-      preview(avatar, shuffled, h),
+      preview(avatar, shuffled, theme, h),
       tabs(part, h),
-      optionGrid(picker.label, picker.choices(avatar), picker.closeUp, h),
+      optionGrid(
+        picker.label,
+        picker.choices(avatar),
+        picker.closeUp,
+        theme,
+        h
+      ),
     ]
   );
 };
@@ -253,6 +272,7 @@ export const faceSheet = (
   draft: Avatar,
   part: FacePart,
   shuffled: boolean,
+  theme: Theme,
   h: H
 ): Html =>
   h.div(
@@ -267,7 +287,7 @@ export const faceSheet = (
         ],
         [
           h.h2([h.Class("panel-title")], ["Your face"]),
-          faceBuilder(draft, part, shuffled, h),
+          faceBuilder(draft, part, shuffled, theme, h),
           h.div(
             [h.Class("choice-row")],
             [

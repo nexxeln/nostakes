@@ -10,6 +10,7 @@ import { clockRunning, keepsScreenAwake, roomOf } from "../features/room.js";
 import { signalsShowing } from "../features/signals.js";
 import type { PokerClientTypes } from "../features/wire.js";
 import { RoomConnection } from "./connection.js";
+import { DARK_SCHEME, systemTheme } from "./storage.js";
 
 const TICK = "250 millis";
 
@@ -98,6 +99,10 @@ const ticks = Stream.tick(TICK).pipe(
   Stream.mapEffect(() => Clock.currentTimeMillis),
   Stream.map((now) => Messages.Ticked({ now }))
 );
+
+const schemeChanges = Stream.suspend(() =>
+  Stream.fromEventListener(globalThis.matchMedia(DARK_SCHEME), "change")
+).pipe(Stream.map(() => Messages.ChangedSystemTheme({ theme: systemTheme() })));
 
 const pageVisible = () => globalThis.document.visibilityState === "visible";
 
@@ -191,6 +196,16 @@ export const subscriptions = Subscription.make<
           Option.filter(({ connected }) => connected),
           Option.map(({ code }) => code)
         ),
+      }),
+    }
+  ),
+  scheme: entry(
+    { following: Schema.Boolean },
+    {
+      dependenciesToStream: ({ following }) =>
+        following ? schemeChanges : Stream.empty,
+      modelToDependencies: (model) => ({
+        following: Option.isNone(model.theme),
       }),
     }
   ),

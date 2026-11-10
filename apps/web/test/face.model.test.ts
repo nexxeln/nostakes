@@ -39,6 +39,7 @@ const home = init({
   rooms: [],
   saved: Option.none(),
   sound: false,
+  systemTheme: "Light",
   theme: Option.none(),
 }).model;
 
@@ -53,6 +54,7 @@ const inRoom = (worn: Avatar, table: OpenView): Model =>
         rooms: [],
         saved: Option.some({ code: CODE, player: PLAYER }),
         sound: false,
+        systemTheme: "Light",
         theme: Option.none(),
       }).model,
       Messages.GotLink({

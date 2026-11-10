@@ -6,7 +6,7 @@ import { themeSwitch } from "./chrome.js";
 import { face, faceSheet } from "./face-builder.js";
 import { Messages } from "./message.js";
 import type { Message } from "./message.js";
-import { Screens } from "./model.js";
+import { pageTheme, Screens } from "./model.js";
 import type { Model, RoomRecord } from "./model.js";
 import { roomView } from "./room-view.js";
 
@@ -23,7 +23,8 @@ const FACE_ROW_PX = 56;
 const faceSheetOf = (model: Model, h: H): Html =>
   Option.match(model.faceDraft, {
     onNone: () => h.empty,
-    onSome: (draft) => faceSheet(draft, model.facePart, model.faceShuffled, h),
+    onSome: (draft) =>
+      faceSheet(draft, model.facePart, model.faceShuffled, pageTheme(model), h),
   });
 
 const profileFields = (model: Model, h: H): readonly Html[] => [
@@ -51,7 +52,7 @@ const profileFields = (model: Model, h: H): readonly Html[] => [
       face(
         avatarFor(model.profile.avatar),
         "Resting",
-        FACE_ROW_PX,
+        { size: FACE_ROW_PX, theme: pageTheme(model) },
         "face-frame",
         h
       ),

@@ -47,6 +47,7 @@ const opened = (reloadedFor: Option.Option<ReloadTarget>) =>
     rooms: [],
     saved: Option.some({ code: CODE, player: PLAYER }),
     sound: false,
+    systemTheme: "Light",
     theme: Option.none(),
   }).model;
 

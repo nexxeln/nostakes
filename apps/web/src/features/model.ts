@@ -7,7 +7,7 @@ import {
   RoomCodeSchema,
 } from "@nostakes/protocol";
 import { ReactionSchema, RoomViewSchema } from "@nostakes/room";
-import { Schema } from "effect";
+import { Option, Schema } from "effect";
 import { defineTaggedUnion } from "foldkit/schema";
 
 import { HintSchema, TableEventSchema } from "./table/snapshot.js";
@@ -215,10 +215,14 @@ export const ModelSchema = Schema.Struct({
   rooms: Schema.Array(KnownRoomSchema),
   screen: Screens,
   sound: Schema.Boolean,
+  systemTheme: ThemeSchema,
   theme: Schema.Option(ThemeSchema),
 });
 
 export type Model = typeof ModelSchema.Type;
+
+export const pageTheme = (model: Model): Theme =>
+  Option.getOrElse(model.theme, () => model.systemTheme);
 
 export const SavedPassSchema = Schema.Struct({
   code: RoomCodeSchema,
@@ -235,6 +239,7 @@ export const FlagsSchema = Schema.Struct({
   rooms: Schema.Array(KnownRoomSchema),
   saved: Schema.Option(SavedPassSchema),
   sound: Schema.Boolean,
+  systemTheme: ThemeSchema,
   theme: Schema.Option(ThemeSchema),
 });
 

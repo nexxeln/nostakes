@@ -29,6 +29,7 @@ const flags = {
   reloadedFor: Option.none(),
   saved: Option.none(),
   sound: false,
+  systemTheme: "Light" as const,
   theme: Option.none(),
 };
 

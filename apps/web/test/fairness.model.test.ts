@@ -23,6 +23,7 @@ const room = init({
   rooms: [],
   saved: Option.some({ code: CODE, player: PLAYER }),
   sound: false,
+  systemTheme: "Light",
   theme: Option.none(),
 }).model;
 
