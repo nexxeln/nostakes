@@ -1,6 +1,6 @@
 import * as Cloudflare from "@alchemy.run/cloudflare";
 
-import { serveRooms } from "./serve-rooms.js";
+import { configuredOrigins, serveRooms } from "./serve-rooms.js";
 
 export default class RoomWorker extends Cloudflare.Worker<RoomWorker>()(
   "RoomWorker",
@@ -8,5 +8,5 @@ export default class RoomWorker extends Cloudflare.Worker<RoomWorker>()(
     compatibility: { date: "2026-05-28" },
     main: import.meta.url,
   },
-  serveRooms
+  serveRooms(configuredOrigins)
 ) {}

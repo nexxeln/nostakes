@@ -15,16 +15,23 @@ export const allowedOrigins = Config.Array(OriginSchema, "ALLOWED_ORIGINS", {
   separator: ",",
 });
 
-export const serveRooms = Effect.gen(function* serveRooms() {
-  const rooms = yield* PokerRoom;
+export const configuredOrigins = Effect.gen(function* configuredOrigins() {
+  return yield* allowedOrigins;
+});
 
-  const routes = yield* roomRoutes(rooms, {
-    allowedOrigins: yield* allowedOrigins,
-    entropy: liveEntropy,
-    limits: yield* cloudflareAddressLimits,
-  });
+export const serveRooms = <R>(
+  origins: Effect.Effect<readonly string[], Config.ConfigError, R>
+) =>
+  Effect.gen(function* buildRoomService() {
+    const rooms = yield* PokerRoom;
 
-  return {
-    fetch: yield* HttpRouter.toHttpEffect(routes).pipe(Effect.orDie),
-  };
-}).pipe(Effect.provide(Cloudflare.Workers.RateLimitBinding));
+    const routes = yield* roomRoutes(rooms, {
+      allowedOrigins: yield* origins,
+      entropy: liveEntropy,
+      limits: yield* cloudflareAddressLimits,
+    });
+
+    return {
+      fetch: yield* HttpRouter.toHttpEffect(routes).pipe(Effect.orDie),
+    };
+  }).pipe(Effect.provide(Cloudflare.Workers.RateLimitBinding));
