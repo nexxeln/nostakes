@@ -3,6 +3,7 @@ import { Option } from "effect";
 
 import {
   Actions,
+  Antes,
   Commands,
   Events,
   ShowdownEntries,
@@ -150,6 +151,55 @@ describe("pot edges (rules 15 to 17)", () => {
     ]);
     expect(stacksOf(hand.state).slice(0, 4)).toStrictEqual([
       700, 1230, 990, 230,
+    ]);
+  });
+
+  it("Rule 15: when a big blind all in for 7 of a 10-chip ante is the last seat in, each folder gets back what it never matched, and a big-blind ante stays in the pot", () => {
+    const shortAnte = play(
+      startHand(
+        occupiedTable(
+          { ...baseConfig, ante: Antes.EveryPlayer({ amount: chipCount(10) }) },
+          { 0: 1000, 1: 1000, 2: 7 }
+        ),
+        deckStartingWith("Ac Kc Qc Jc Tc 9c")
+      ).state,
+      [
+        [0, folds],
+        [1, folds],
+      ]
+    );
+
+    const bigBlindAnte = play(
+      startHand(
+        occupiedTable(
+          {
+            ...baseConfig,
+            ante: Antes.BigBlindPays({ amount: chipCount(20) }),
+          },
+          { 0: 1000, 1: 1000, 2: 15 }
+        ),
+        deckStartingWith("Ac Kc Qc Jc Tc 9c")
+      ).state,
+      [
+        [0, folds],
+        [1, folds],
+      ]
+    );
+
+    expect(shortAnte.events.slice(2)).toStrictEqual([
+      Events.UncalledBetReturned({ amount: chipCount(8), seat: seat(1) }),
+      Events.UncalledBetReturned({ amount: chipCount(3), seat: seat(0) }),
+      pot(21, [2], 1, [[2, 21]]),
+      Events.HandEnded({ handNumber: 1 }),
+    ]);
+    expect(stacksOf(shortAnte.state).slice(0, 3)).toStrictEqual([993, 993, 21]);
+    expect(bigBlindAnte.events.slice(2)).toStrictEqual([
+      Events.UncalledBetReturned({ amount: chipCount(5), seat: seat(2) }),
+      pot(15, [2], 1, [[2, 15]]),
+      Events.HandEnded({ handNumber: 1 }),
+    ]);
+    expect(stacksOf(bigBlindAnte.state).slice(0, 3)).toStrictEqual([
+      1000, 995, 20,
     ]);
   });
 
