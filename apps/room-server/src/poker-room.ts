@@ -53,7 +53,7 @@ export const DEFAULT_SETTINGS: RoomSettings = Schema.decodeSync(
     bigBlind: 2,
     maxRuns: 1,
     rabbitHunt: false,
-    showdown: "Automatic",
+    showdown: "Interactive",
     smallBlind: 1,
     straddle: { button: false, underTheGun: 0 },
   },
@@ -77,6 +77,7 @@ export const MemberCommandSchema = Schema.TaggedUnion({
   Join: { avatar: cases.Join.fields.avatar, name: cases.Join.fields.name },
   LeaveRoom: {},
   LeaveSeat: {},
+  MuckHand: {},
   PauseGame: {},
   RabbitHunt: {},
   RemoveFromSeat: { player: cases.RemoveFromSeat.fields.player },
@@ -93,6 +94,7 @@ export const MemberCommandSchema = Schema.TaggedUnion({
   SitIn: {},
   SitOut: {},
   StartGame: {},
+  TableHand: {},
   TransferHost: { to: cases.TransferHost.fields.to },
 });
 

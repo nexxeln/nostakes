@@ -4,7 +4,12 @@ import {
   ChipsSchema,
   ShownCardsSchema,
 } from "@nostakes/engine";
-import type { Action, Card, LegalActions } from "@nostakes/engine";
+import type {
+  Action,
+  Card,
+  LegalActions,
+  ShowdownChoices,
+} from "@nostakes/engine";
 import { CommandIdSchema, SeqSchema } from "@nostakes/protocol";
 import type { PlayerId, RoomPass } from "@nostakes/protocol";
 import {
@@ -70,6 +75,7 @@ export const randomSource = (seed: number): Random => {
 export interface Temper {
   readonly silencePercent: number;
   readonly voteSilencePercent: number;
+  readonly showdownSilencePercent: number;
   readonly illegalPercent: number;
   readonly duplicatePercent: number;
   readonly dropPercent: number;
@@ -111,6 +117,7 @@ export interface BotStats {
   commands: number;
   rejected: number;
   illegal: number;
+  illegalMucks: number;
   duplicates: number;
   resent: number;
   reconnects: number;
@@ -380,6 +387,37 @@ export const plannerFor = (setup: PlannerSetup) => {
     );
   };
 
+  const showIntent = (open: OpenView, choices: ShowdownChoices) => {
+    const key = `${handNumberOf(open)}/show/${choices.seat}`;
+
+    if (decided !== key) {
+      decided = key;
+
+      if (random.chance(temper.showdownSilencePercent)) {
+        stats.silences += 1;
+        silent = Option.some({ bank: false, key });
+      }
+    }
+
+    if (silent.pipe(Option.exists((quiet) => quiet.key === key))) {
+      return Option.none();
+    }
+
+    if (
+      !choices.canMuck &&
+      random.chance(Math.min(50, temper.illegalPercent * 5))
+    ) {
+      return illegal(Commands.MuckHand.make({}));
+    }
+
+    return intent(
+      choices.canMuck && random.chance(45)
+        ? Commands.MuckHand.make({})
+        : Commands.TableHand.make({}),
+      random.between(40, 200)
+    );
+  };
+
   const hostIntent = (open: OpenView): Option.Option<Intent> => {
     const [seatRequest] = open.requests.seats;
     const [chipRequest] = open.requests.chips;
@@ -630,7 +668,11 @@ export const plannerFor = (setup: PlannerSetup) => {
     }
 
     if (roll === 3) {
-      return illegal(Commands.ChooseRuns.make({ runs: decodeRuns(2) }));
+      return illegal(
+        random.chance(50)
+          ? Commands.ChooseRuns.make({ runs: decodeRuns(2) })
+          : Commands.TableHand.make({})
+      );
     }
 
     if (roll === 4) {
@@ -657,6 +699,10 @@ export const plannerFor = (setup: PlannerSetup) => {
 
     if (Option.isSome(open.legal)) {
       return turnIntent(open, open.legal.value);
+    }
+
+    if (Option.isSome(open.showdown)) {
+      return showIntent(open, open.showdown.value);
     }
 
     if (
@@ -709,6 +755,7 @@ export const startBot = (setup: BotSetup) => {
     drops: 0,
     duplicates: 0,
     illegal: 0,
+    illegalMucks: 0,
     protocolViolations: 0,
     reconnects: 0,
     rejected: 0,
@@ -891,6 +938,10 @@ export const startBot = (setup: BotSetup) => {
 
       stats.commands += 1;
       stats.illegal += planned.illegal ? 1 : 0;
+      stats.illegalMucks +=
+        planned.illegal && MemberCommandSchema.guards.MuckHand(planned.command)
+          ? 1
+          : 0;
 
       yield* sendCounted(socket, id, text);
 

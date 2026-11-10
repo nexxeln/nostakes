@@ -95,6 +95,8 @@ export const COUNT_NAMES = [
   "handsWithApproval",
   "handsWithoutApproval",
   "illegal",
+  "illegalMucks",
+  "lateShowdownChoices",
   "multiRunHands",
   "noAnteHands",
   "protocolViolations",
@@ -108,12 +110,15 @@ export const COUNT_NAMES = [
   "runChoices",
   "secondDevices",
   "settingsChanged",
+  "showdownMucks",
+  "showdownTables",
   "shows",
   "silences",
   "straddles",
   "timeouts",
   "transfers",
   "unclockedVotesTimedOut",
+  "unshownWinners",
   "viewsChecked",
   "voteRestarts",
   "welcomeClockChecks",
@@ -162,6 +167,8 @@ export const emptyCounts = (): NightCounts => ({
   handsWithApproval: 0,
   handsWithoutApproval: 0,
   illegal: 0,
+  illegalMucks: 0,
+  lateShowdownChoices: 0,
   multiRunHands: 0,
   noAnteHands: 0,
   protocolViolations: 0,
@@ -175,12 +182,15 @@ export const emptyCounts = (): NightCounts => ({
   runChoices: 0,
   secondDevices: 0,
   settingsChanged: 0,
+  showdownMucks: 0,
+  showdownTables: 0,
   shows: 0,
   silences: 0,
   straddles: 0,
   timeouts: 0,
   transfers: 0,
   unclockedVotesTimedOut: 0,
+  unshownWinners: 0,
   viewsChecked: 0,
   voteRestarts: 0,
   welcomeClockChecks: 0,
@@ -265,6 +275,8 @@ interface Ledger {
   cashed: number;
   deadline: number;
   runDeadline: Option.Option<number>;
+  showdownDeadline: Option.Option<number>;
+  showdown: Option.Option<Set<SeatIndex>>;
   viewMs: number;
   views: number;
   known: Knowledge;
@@ -335,6 +347,7 @@ const publicCards = (event: Event): readonly Card[] => {
   if (
     Events.$is("StreetDealt")(event) ||
     Events.$is("CardsShown")(event) ||
+    Events.$is("HandTabled")(event) ||
     Events.$is("RabbitHunted")(event)
   ) {
     return event.cards;
@@ -411,6 +424,7 @@ const addBotStats = (checker: Checker, bot: BotRecord) => {
   counts.commands += stats.commands;
   counts.rejected += stats.rejected;
   counts.illegal += stats.illegal;
+  counts.illegalMucks += stats.illegalMucks;
   counts.duplicates += stats.duplicates;
   counts.resent += stats.resent;
   counts.reconnects += stats.reconnects;
@@ -977,6 +991,62 @@ const observeRunVote = (
   ledger.runDeadline = Option.none();
 };
 
+const observeShowdown = (
+  checker: Checker,
+  ledger: Ledger,
+  event: RoomEvent
+) => {
+  const { counts } = checker;
+
+  if (RoomEvents.$is("ShowdownClockStarted")(event)) {
+    ledger.showdownDeadline = Option.some(event.deadline);
+  }
+
+  if (!RoomEvents.$is("Table")(event)) {
+    return;
+  }
+
+  const table = event.event;
+
+  if (Events.$is("ShowdownStarted")(table)) {
+    ledger.showdown = Option.some(new Set());
+  }
+
+  if (Events.$is("HandTabled")(table) || Events.$is("HandMucked")(table)) {
+    counts.showdownTables += Events.$is("HandTabled")(table) ? 1 : 0;
+    counts.showdownMucks += Events.$is("HandMucked")(table) ? 1 : 0;
+    counts.lateShowdownChoices += ledger.showdownDeadline.pipe(
+      Option.exists((deadline) => event.at >= deadline)
+    )
+      ? 1
+      : 0;
+    ledger.showdownDeadline = Option.none();
+  }
+
+  if (Events.$is("HandTabled")(table)) {
+    for (const tabled of Option.toArray(ledger.showdown)) {
+      tabled.add(table.seat);
+    }
+  }
+
+  if (Events.$is("HandEnded")(table)) {
+    ledger.showdown = Option.none();
+    ledger.showdownDeadline = Option.none();
+  }
+
+  if (
+    Events.$is("PotAwarded")(table) &&
+    ledger.showdown.pipe(
+      Option.exists((tabled) =>
+        table.winners.some((winner) => !tabled.has(winner.seat))
+      )
+    )
+  ) {
+    counts.unshownWinners += 1;
+    ledger.showdown = Option.none();
+  }
+};
+
 const observeClocks = (checker: Checker, ledger: Ledger, event: RoomEvent) => {
   if (RoomEvents.$is("TurnClockStarted")(event)) {
     ledger.deadline = event.deadline;
@@ -1396,6 +1466,8 @@ export const checkNight = (evidence: NightEvidence): NightVerdict => {
     known: { holes: new Map(), shown: new Set() },
     net: new Map(),
     runDeadline: Option.none(),
+    showdown: Option.none(),
+    showdownDeadline: Option.none(),
     viewMs: 0,
     views: 0,
   };
@@ -1422,6 +1494,7 @@ export const checkNight = (evidence: NightEvidence): NightVerdict => {
     observeMoney(ledger, event);
     observeClocks(checker, ledger, event);
     observeRunVote(checker, ledger, state, event);
+    observeShowdown(checker, ledger, event);
     countRoomEvent(checker, event);
     checkReceivedEvents(
       checker,

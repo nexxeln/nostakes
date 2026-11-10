@@ -28,6 +28,7 @@ const TEMPER: Temper = {
   duplicatePercent: 8,
   illegalPercent: 3,
   secondDevicePercent: 1.5,
+  showdownSilencePercent: 5,
   silencePercent: 0,
   thinkMs: 30,
   voteSilencePercent: 0,

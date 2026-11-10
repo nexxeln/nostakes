@@ -145,6 +145,17 @@ export const RULES: readonly RuleChange[] = [
       }),
     label: "no ante, two runs, one straddle",
   },
+  {
+    atHand: 0,
+    change: (settings) =>
+      withTable(settings, {
+        showdown:
+          settings.table.showdown === "Interactive"
+            ? "Automatic"
+            : "Interactive",
+      }),
+    label: "showdowns flip between interactive and automatic",
+  },
 ];
 
 export interface NightRecipe {
@@ -201,7 +212,7 @@ export const planNight = (
       bigBlind: big,
       maxRuns: random.between(1, 3),
       rabbitHunt: random.chance(50),
-      showdown: "Automatic",
+      showdown: random.chance(80) ? "Interactive" : "Automatic",
       smallBlind: small,
       straddle: { button: random.chance(50), underTheGun: random.below(3) },
     },
