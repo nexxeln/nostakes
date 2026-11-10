@@ -145,8 +145,9 @@
   --color-card-back: var(--house-ink);
   --color-card-back-line: rgb(255 255 255 / 0.28);
   --inset-card-pattern: 0.09em;
-  --color-dealer: var(--house-ink);
-  --color-dealer-ink: #f6f1e8;
+  --color-dealer: #fffdf8;
+  --color-dealer-ink: var(--house-ink);
+  --color-dealer-rule: rgb(31 28 49 / 0.32);
   --color-toast: var(--house-ink);
   --color-on-toast: #f6f1e8;
   --color-win: var(--house-red);
@@ -220,8 +221,9 @@
     --color-face-ink-folded: #6c6578;
     --color-card: #f7f3ea;
     --color-card-back: #2b2738;
-    --color-dealer: #f4efe6;
+    --color-dealer: #ece6da;
     --color-dealer-ink: #16141d;
+    --color-dealer-rule: rgb(22 20 29 / 0.32);
     --color-toast: #f4efe6;
     --color-on-toast: #16141d;
   }
@@ -262,8 +264,9 @@
   --color-face-ink-folded: #6c6578;
   --color-card: #f7f3ea;
   --color-card-back: #2b2738;
-  --color-dealer: #f4efe6;
+  --color-dealer: #ece6da;
   --color-dealer-ink: #16141d;
+  --color-dealer-rule: rgb(22 20 29 / 0.32);
   --color-toast: #f4efe6;
   --color-on-toast: #16141d;
 }

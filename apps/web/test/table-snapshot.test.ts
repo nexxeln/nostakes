@@ -1,17 +1,19 @@
 import { describe, expect, it } from "@effect/vitest";
 import { ChipsSchema, SeatIndexSchema } from "@nostakes/engine";
 import { PlayerIdSchema, RoomCodeSchema } from "@nostakes/protocol";
-import { MillisSchema, RoomViewSchema } from "@nostakes/room";
+import { HandViewSchema, MillisSchema, RoomViewSchema } from "@nostakes/room";
 import { Option, Schema } from "effect";
 import * as Arbitrary from "effect/Arbitrary";
 
 import type { InRoom } from "../src/features/model.js";
-import { tableSnapshot } from "../src/features/table/from-room.js";
+import { postsOf, tableSnapshot } from "../src/features/table/from-room.js";
 import {
   halfRoundedDown,
   raiseDetents,
   raiseLadder,
 } from "../src/features/table/sizing.js";
+import { Happenings } from "../src/features/table/snapshot.js";
+import type { Happening } from "../src/features/table/snapshot.js";
 
 const PLAYER = PlayerIdSchema.make("player-0000000ab");
 
@@ -433,5 +435,117 @@ describe("raise sizing", () => {
 
       expect(left === 0 || left === 1).toBe(true);
     }
+  );
+});
+
+const hands = Arbitrary.schema(HandViewSchema);
+
+const seatAt = (index: number) => SeatIndexSchema.make(index);
+
+const SMALL = 1;
+
+const BIG = 2;
+
+const STRADDLE = 3;
+
+const COMING_IN = 5;
+
+const eventsOf = (happenings: readonly Happening[]) =>
+  happenings.map((happening, id) => ({ happening, id }));
+
+const opening = (hand: number): readonly Happening[] => [
+  Happenings.Start.make({ hand }),
+  Happenings.Post.make({ amount: 1, kind: "SmallBlind", seat: SMALL }),
+  Happenings.Post.make({ amount: 2, kind: "BigBlind", seat: BIG }),
+  Happenings.Post.make({ amount: 4, kind: "Straddle", seat: STRADDLE }),
+  Happenings.Post.make({ amount: 2, kind: "BigBlind", seat: COMING_IN }),
+  Happenings.Post.make({ amount: 1, kind: "DeadSmallBlind", seat: COMING_IN }),
+];
+
+const posted = (settled: boolean) => [
+  { posted: "SmallBlind", seat: SMALL, settled },
+  { posted: "BigBlind", seat: BIG, settled },
+  { posted: "Straddle", seat: STRADDLE, settled },
+  { posted: "ToComeIn", seat: COMING_IN, settled },
+];
+
+describe("the blinds on the table", () => {
+  it.prop(
+    "name each seat by what it posted, a big blind posted to come in included, loud until the action starts, quiet after, gone from a seat that acts and from every seat once the bets are collected",
+    { hand: hands, view: views },
+    ({ hand: generated, view: table }) => {
+      const hand = {
+        ...generated,
+        bigBlindSeat: seatAt(BIG),
+        smallBlindSeat: seatAt(SMALL),
+      };
+
+      const view = { ...table, hand: Option.some(hand) };
+      const start = opening(hand.handNumber);
+
+      expect(postsOf(view, eventsOf(start))).toEqual(
+        posted(true).map((post) => ({ ...post, settled: false }))
+      );
+      expect(
+        postsOf(
+          view,
+          eventsOf([...start, Happenings.Fold.make({ seat: COMING_IN + 1 })])
+        )
+      ).toEqual(posted(true));
+      expect(
+        postsOf(
+          view,
+          eventsOf([
+            ...start,
+            Happenings.Call.make({ added: 3, allIn: false, seat: SMALL }),
+          ])
+        )
+      ).toEqual(posted(true).filter(({ seat }) => seat !== SMALL));
+      expect(
+        postsOf(
+          view,
+          eventsOf([...start, Happenings.Collect.make({ street: "Flop" })])
+        )
+      ).toEqual([]);
+      expect(
+        postsOf(
+          view,
+          eventsOf([
+            ...opening(hand.handNumber + 1),
+            Happenings.Start.make({ hand: hand.handNumber }),
+          ])
+        )
+      ).toEqual([]);
+    },
+    { arbitrary: { runs: 50 } }
+  );
+
+  it.prop(
+    "fall back to the view's small and big blind before the flop when the page missed the hand's start",
+    { hand: hands, view: views },
+    ({ hand: generated, view: table }) => {
+      const hand = {
+        ...generated,
+        bigBlindSeat: seatAt(BIG),
+        smallBlindSeat: seatAt(SMALL),
+      };
+
+      const committed = hand.players
+        .filter(({ committedThisStreet }) => committedThisStreet > 0)
+        .map(({ seat }) => seat);
+
+      const expected =
+        hand.street === "Preflop"
+          ? [
+              { posted: "SmallBlind", seat: SMALL, settled: true },
+              { posted: "BigBlind", seat: BIG, settled: true },
+            ].filter(({ seat }) => committed.some((at) => at === seat))
+          : [];
+
+      expect(
+        postsOf({ ...table, hand: Option.some(hand) }, eventsOf([]))
+      ).toEqual(expected);
+    },
+    { arbitrary: { runs: 100 } }
   );
 });

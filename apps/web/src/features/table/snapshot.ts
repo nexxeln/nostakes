@@ -56,6 +56,16 @@ export const ActionClockSchema = Schema.Struct({
 
 export type ActionClock = typeof ActionClockSchema.Type;
 
+export const PostKindSchema = Schema.Literals([
+  "Ante",
+  "SmallBlind",
+  "BigBlind",
+  "DeadSmallBlind",
+  "Straddle",
+]);
+
+export type PostKind = typeof PostKindSchema.Type;
+
 export const HappeningSchema = Schema.TaggedUnion({
   Bet: {
     added: Schema.Int,
@@ -69,7 +79,7 @@ export const HappeningSchema = Schema.TaggedUnion({
   Deal: { cards: Schema.Int, seat: Schema.Int },
   Fold: { seat: Schema.Int },
   Muck: { seat: Schema.Int },
-  Post: { amount: Schema.Int, label: Schema.String, seat: Schema.Int },
+  Post: { amount: Schema.Int, kind: PostKindSchema, seat: Schema.Int },
   Return: { amount: Schema.Int, seat: Schema.Int },
   Say: { seat: Schema.Int, text: Schema.String },
   Show: {
@@ -100,6 +110,23 @@ export const AfterHandSchema = Schema.Struct({
 
 export type AfterHand = typeof AfterHandSchema.Type;
 
+export const PostedSchema = Schema.Literals([
+  "SmallBlind",
+  "BigBlind",
+  "Straddle",
+  "ToComeIn",
+]);
+
+export type Posted = typeof PostedSchema.Type;
+
+export const SeatPostSchema = Schema.Struct({
+  posted: PostedSchema,
+  seat: Schema.Int,
+  settled: Schema.Boolean,
+});
+
+export type SeatPost = typeof SeatPostSchema.Type;
+
 export const ShownReactionSchema = Schema.Struct({
   id: Schema.Int,
   reaction: ReactionSchema,
@@ -125,6 +152,7 @@ export const TableSnapshotSchema = Schema.Struct({
   hostTools: Schema.Boolean,
   learned: Schema.Array(HintSchema),
   legal: Schema.NullOr(HeroLegalSchema),
+  posts: Schema.Array(SeatPostSchema),
   pots: Schema.Array(Schema.Int),
   rabbit: Schema.Array(CardTextSchema),
   reactions: Schema.Array(ShownReactionSchema),

@@ -9,13 +9,16 @@ import type { InRoom } from "../model.js";
 import { isActing, isLive, isYou } from "../room.js";
 import type { OpenView } from "../room.js";
 import { isPeeking } from "../signals.js";
-import { Happenings } from "./snapshot.js";
+import { HappeningSchema, Happenings } from "./snapshot.js";
 import type {
   ActionClock,
   AfterHand,
   Happening,
   HeroLegal,
   Hint,
+  PostKind,
+  Posted,
+  SeatPost,
   SeatSnapshot,
   SeatStatus,
   TableEvent,
@@ -51,16 +54,24 @@ const runWord = (runs: number) => {
   return runs === 2 ? "Twice" : `${runs} times`;
 };
 
+const blindKind = (blind: "Small" | "Big", dead: boolean): PostKind => {
+  if (dead) {
+    return "DeadSmallBlind";
+  }
+
+  return blind === "Small" ? "SmallBlind" : "BigBlind";
+};
+
 const tableHappenings = (event: SeenTableEvent): readonly Happening[] =>
   Match.value(event).pipe(
     Match.tagsExhaustive({
       AntePosted: ({ amount, seat }) => [
-        Happenings.Post.make({ amount, label: `Ante ${amount}`, seat }),
+        Happenings.Post.make({ amount, kind: "Ante", seat }),
       ],
-      BlindPosted: ({ amount, blind, seat }) => [
+      BlindPosted: ({ amount, blind, dead, seat }) => [
         Happenings.Post.make({
           amount,
-          label: `${blind === "Small" ? "Small" : "Big"} blind ${amount}`,
+          kind: blindKind(blind, dead === true),
           seat,
         }),
       ],
@@ -124,7 +135,7 @@ const tableHappenings = (event: SeenTableEvent): readonly Happening[] =>
       ShowdownStarted: () => [],
       SittingOutChanged: () => [],
       StraddlePosted: ({ amount, seat }) => [
-        Happenings.Post.make({ amount, label: `Straddle ${amount}`, seat }),
+        Happenings.Post.make({ amount, kind: "Straddle", seat }),
       ],
       StreetDealt: ({ street }) => [Happenings.Collect.make({ street })],
       UncalledBetReturned: ({ amount, seat }) => [
@@ -477,6 +488,90 @@ const runVoteOf = (view: OpenView, heroSeat: Option.Option<number>) =>
     Option.getOrNull
   );
 
+type HandView = Option.Option.Value<OpenView["hand"]>;
+
+const POSTED_AS: Record<
+  PostKind,
+  (seat: number, hand: HandView) => Posted | null
+> = {
+  Ante: () => null,
+  BigBlind: (seat, hand) =>
+    seat === hand.bigBlindSeat ? "BigBlind" : "ToComeIn",
+  DeadSmallBlind: () => "ToComeIn",
+  SmallBlind: (seat, hand) =>
+    seat === hand.smallBlindSeat ? "SmallBlind" : "ToComeIn",
+  Straddle: () => "Straddle",
+};
+
+const isVoluntary = HappeningSchema.isAnyOf(["Bet", "Call", "Check", "Fold"]);
+
+const postsSeen = (
+  hand: HandView,
+  seen: readonly Happening[]
+): readonly SeatPost[] => {
+  if (seen.some(HappeningSchema.guards.Collect)) {
+    return [];
+  }
+
+  const acted = new Set(
+    seen.flatMap((happening) =>
+      isVoluntary(happening) ? [happening.seat] : []
+    )
+  );
+
+  return seen
+    .filter(HappeningSchema.guards.Post)
+    .flatMap(({ kind, seat }) => {
+      const posted = POSTED_AS[kind](seat, hand);
+
+      return posted === null || acted.has(seat)
+        ? []
+        : [{ posted, seat, settled: acted.size > 0 }];
+    })
+    .filter(
+      (post, index, all) =>
+        all.findIndex(({ seat }) => seat === post.seat) === index
+    );
+};
+
+const postsInView = (hand: HandView): readonly SeatPost[] =>
+  hand.street === "Preflop"
+    ? (
+        [
+          [hand.smallBlindSeat, "SmallBlind"],
+          [hand.bigBlindSeat, "BigBlind"],
+        ] as const
+      ).flatMap(([seat, posted]) =>
+        hand.players.some(
+          (player) => player.seat === seat && player.committedThisStreet > 0
+        )
+          ? [{ posted, seat, settled: true }]
+          : []
+      )
+    : [];
+
+export const postsOf = (
+  view: OpenView,
+  events: readonly TableEvent[]
+): readonly SeatPost[] =>
+  Option.match(view.hand, {
+    onNone: () => [],
+    onSome: (hand) => {
+      const start = events.findLastIndex(
+        ({ happening }) =>
+          HappeningSchema.guards.Start(happening) &&
+          happening.hand === hand.handNumber
+      );
+
+      return start === -1
+        ? postsInView(hand)
+        : postsSeen(
+            hand,
+            events.slice(start + 1).map(({ happening }) => happening)
+          );
+    },
+  });
+
 const handFields = (view: OpenView) =>
   Option.match(view.hand, {
     onNone: () => {
@@ -534,6 +629,7 @@ export const tableSnapshot = (
     hostTools: isYou(view, view.host),
     learned,
     legal: free ? legalOfView(view) : null,
+    posts: postsOf(view, room.events),
     reactions: room.reactions.map(({ id, player, reaction }) => ({
       id,
       reaction,

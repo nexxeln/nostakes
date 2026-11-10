@@ -477,12 +477,28 @@ const ovalMiddle = (w: number, inside: Solved, cardW: number): Middle => {
   };
 };
 
-const tallSeat = (p: TrackPoint, cx: number, tile: number): SeatGeo => {
+const BET_ABOVE_BOARD = 16;
+
+const tallSeat = (
+  p: TrackPoint,
+  cx: number,
+  tile: number,
+  board: Box
+): SeatGeo => {
   const side = sideOf(p, cx);
 
   const bet =
     side === "top"
-      ? { x: p.x, y: p.y + tile * 0.8 + CAPTION + 28 }
+      ? {
+          x: p.x,
+          y: Math.min(
+            p.y + tile * 0.8 + CAPTION + 36,
+            Math.max(
+              p.y + tile / 2 + CAPTION + BET_ABOVE_BOARD,
+              board.y - BET_ABOVE_BOARD
+            )
+          ),
+        }
       : { x: p.x + p.nx * (tile * 0.5 + 24), y: p.y + tile * 0.2 + p.ny * 26 };
 
   return { bet, nx: p.nx, ny: p.ny, side, x: p.x, y: p.y };
@@ -559,7 +575,7 @@ const tallGeo = (w: number, h: number, count: number): Geo => {
           y: TOP + (middle.strip.y - TOP) * READOUT_DEPTH,
         }
       : { align: "right", x: chip.x - 170, y: (railTop + chip.y) / 2 - 40 },
-    seats: middle.pts.map((p) => tallSeat(p, cx, middle.tile)),
+    seats: middle.pts.map((p) => tallSeat(p, cx, middle.tile, middle.strip)),
     self,
     strip: middle.strip,
     table: {
@@ -948,4 +964,496 @@ export const runLanes = (geo: Geo, rows: number): readonly RunLane[] => {
   }
 
   return insideTable(geo, best?.lanes ?? []);
+};
+
+const coveredBy = (box: Box, boxes: readonly Box[]) => {
+  let total = 0;
+
+  for (const other of boxes) {
+    total += overlap(box, other);
+  }
+
+  return total;
+};
+
+const leastBy = <T>(items: readonly T[], cost: (item: T) => number) => {
+  let best: { readonly item: T; readonly cost: number } | undefined;
+
+  for (const item of items) {
+    const next = cost(item);
+
+    if (best === undefined || next < best.cost) {
+      best = { cost: next, item };
+    }
+  }
+
+  return best?.item;
+};
+
+const RING_REACH = 10;
+
+const FACE_RISE = 0.15;
+
+const CAPTION_DEPTH = CAPTION + 6;
+
+const PILE_BOX = { h: 22, w: 44 };
+
+const BUTTON_CLEARANCE = 2;
+
+const BUTTON_STEP = 2;
+
+const BUTTON_ANGLES = 72;
+
+const OWNERSHIP_MARGIN = 6;
+
+export interface ButtonSpot extends Pt {
+  readonly r: number;
+}
+
+export interface ButtonSpots {
+  readonly seats: readonly ButtonSpot[];
+  readonly self: ButtonSpot;
+}
+
+interface Footprint {
+  readonly centre: Pt;
+  readonly boxes: readonly Box[];
+  readonly seat: readonly Box[];
+}
+
+const footprintOf = (centre: Pt, size: number): Footprint => {
+  const half = size / 2;
+  const reach = half + RING_REACH;
+  const captionHalf = Math.max(size * 0.65, half);
+
+  const caption = {
+    h: CAPTION_DEPTH,
+    w: captionHalf * 2,
+    x: centre.x - captionHalf,
+    y: centre.y + half,
+  };
+
+  return {
+    boxes: [
+      {
+        h: reach + half + size * FACE_RISE + RING_REACH,
+        w: reach * 2,
+        x: centre.x - reach,
+        y: centre.y - half - size * FACE_RISE - RING_REACH,
+      },
+      caption,
+    ],
+    centre,
+    seat: [
+      { h: size, w: size, x: centre.x - half, y: centre.y - half },
+      caption,
+    ],
+  };
+};
+
+const pileBox = (point: Pt): Box => ({
+  h: PILE_BOX.h,
+  w: PILE_BOX.w,
+  x: point.x - PILE_BOX.w / 2,
+  y: point.y - PILE_BOX.h / 2,
+});
+
+const gapTo = (point: Pt, box: Box) =>
+  Math.hypot(
+    Math.max(box.x - point.x, 0, point.x - box.x - box.w),
+    Math.max(box.y - point.y, 0, point.y - box.y - box.h)
+  );
+
+const gapToSeat = (point: Pt, footprint: Footprint) =>
+  Math.min(...footprint.seat.map((box) => gapTo(point, box)));
+
+export const ownedBy = (own: number, other: number) =>
+  other - own >= Math.max(OWNERSHIP_MARGIN, own / 2);
+
+export const buttonRadius = (size: number) => clamp(size * 0.22, 14, 18);
+
+interface Owner {
+  readonly footprint: Footprint;
+  readonly size: number;
+  readonly inward: Pt;
+}
+
+const ownersOf = (geo: Geo): readonly Owner[] => [
+  ...geo.seats.map(({ nx, ny, x, y }) => ({
+    footprint: footprintOf({ x, y }, geo.tile),
+    inward: { x: nx, y: ny },
+    size: geo.tile,
+  })),
+  {
+    footprint: footprintOf(geo.self, geo.self.size),
+    inward: { x: 0.5, y: -Math.sqrt(3) / 2 },
+    size: geo.self.size,
+  },
+];
+
+const onTable = (geo: Geo, box: Box) =>
+  box.x >= 0 &&
+  box.y >= geo.top &&
+  box.x + box.w <= geo.w &&
+  box.y + box.h <= geo.h;
+
+export type TagSide = "Before" | "After" | "Below" | "Above";
+
+export const POST_TAG_HEIGHT = 20;
+
+export const POST_TAG_WIDTHS = { narrow: 34, wide: 64 } as const;
+
+const TAG_GAP = 4;
+
+const PILE_HALF = { h: 11, w: 24 };
+
+export const postTagBox = (pile: Pt, side: TagSide, width: number): Box => {
+  const across = {
+    Above: {
+      x: pile.x - width / 2,
+      y: pile.y - PILE_HALF.h - TAG_GAP - POST_TAG_HEIGHT,
+    },
+    After: {
+      x: pile.x + PILE_HALF.w + TAG_GAP,
+      y: pile.y - POST_TAG_HEIGHT / 2,
+    },
+    Before: {
+      x: pile.x - PILE_HALF.w - TAG_GAP - width,
+      y: pile.y - POST_TAG_HEIGHT / 2,
+    },
+    Below: { x: pile.x - width / 2, y: pile.y + PILE_HALF.h + TAG_GAP },
+  }[side];
+
+  return { ...across, h: POST_TAG_HEIGHT, w: width };
+};
+
+const TAG_PREFERENCES: Record<Side | "self", readonly TagSide[]> = {
+  left: ["After", "Below", "Above", "Before"],
+  right: ["Before", "Below", "Above", "After"],
+  self: ["Before", "After", "Above", "Below"],
+  top: ["Before", "After", "Below", "Above"],
+};
+
+const pilesOf = (geo: Geo) => [...geo.seats.map(({ bet }) => bet), geo.heroBet];
+
+export interface PostTagGround {
+  readonly own: readonly Box[];
+  readonly others: readonly Box[];
+}
+
+export const postTagGround = (geo: Geo): readonly PostTagGround[] => {
+  const piles = pilesOf(geo);
+  const owners = ownersOf(geo);
+  const handW = geo.handCardW * 2.2;
+  const handH = geo.handCardW * 1.4;
+
+  const middle = [
+    {
+      h: handH,
+      w: handW,
+      x: geo.hand.x - handW / 2,
+      y: geo.hand.y - handH / 2,
+    },
+    {
+      h: geo.chip.size,
+      w: geo.chip.size,
+      x: geo.chip.x - geo.chip.size / 2,
+      y: geo.chip.y - geo.chip.size / 2,
+    },
+    geo.strip,
+  ];
+
+  return piles.map((_, index) => ({
+    others: [
+      ...middle,
+      ...owners
+        .filter((__, other) => other !== index)
+        .flatMap(({ footprint }) => footprint.seat),
+      ...piles.filter((__, other) => other !== index).map(pileBox),
+    ],
+    own: owners[index]?.footprint.seat ?? [],
+  }));
+};
+
+const OTHERS_WEIGH = 4;
+
+export const postTagSides = (geo: Geo, width: number): readonly TagSide[] => {
+  const grounds = postTagGround(geo);
+
+  return pilesOf(geo).map((pile, index) => {
+    const preferred = TAG_PREFERENCES[geo.seats[index]?.side ?? "self"];
+    const ground = grounds[index] ?? { others: [], own: [] };
+
+    const crowding = (side: TagSide) => {
+      const box = postTagBox(pile, side, width);
+      const offTable = onTable(geo, box) ? 0 : box.w * box.h;
+
+      return (
+        (coveredBy(box, ground.others) + offTable) * OTHERS_WEIGH +
+        coveredBy(box, ground.own)
+      );
+    };
+
+    return leastBy(preferred, crowding) ?? "Before";
+  });
+};
+
+const middleObstacles = (geo: Geo): readonly Box[] => {
+  const handW = geo.handCardW * 2.2;
+  const handH = geo.handCardW * 1.4;
+
+  return [
+    ...pilesOf(geo).map(pileBox),
+    {
+      h: handH + 30,
+      w: handW,
+      x: geo.hand.x - handW / 2,
+      y: geo.hand.y - handH / 2 - 30,
+    },
+    {
+      h: geo.chip.size,
+      w: geo.chip.size,
+      x: geo.chip.x - geo.chip.size / 2,
+      y: geo.chip.y - geo.chip.size / 2,
+    },
+    geo.strip,
+  ];
+};
+
+const tagObstacles = (geo: Geo): readonly Box[] => {
+  const sides = postTagSides(geo, POST_TAG_WIDTHS.narrow);
+
+  return pilesOf(geo).map((pile, index) =>
+    postTagBox(pile, sides[index] ?? "Before", POST_TAG_WIDTHS.narrow)
+  );
+};
+
+const sharedObstacles = (geo: Geo): readonly Box[] => [
+  ...middleObstacles(geo),
+  ...tagObstacles(geo),
+];
+
+export interface ButtonGround {
+  readonly own: readonly Box[];
+  readonly ownSeat: readonly Box[];
+  readonly others: readonly Box[];
+  readonly tags: readonly Box[];
+  readonly untouchable: readonly Box[];
+}
+
+export const buttonGround = (geo: Geo): readonly ButtonGround[] => {
+  const middle = middleObstacles(geo);
+  const tags = tagObstacles(geo);
+  const owners = ownersOf(geo);
+
+  return owners.map((owner) => {
+    const rivals = owners.filter((other) => other !== owner);
+
+    return {
+      others: [
+        ...middle,
+        ...rivals.flatMap(({ footprint }) => footprint.boxes),
+      ],
+      own: owner.footprint.boxes,
+      ownSeat: owner.footprint.seat,
+      tags,
+      untouchable: [
+        ...middle,
+        ...rivals.flatMap(({ footprint }) => footprint.seat),
+      ].filter((box) =>
+        owner.footprint.seat.every((mine) => overlap(box, mine) === 0)
+      ),
+    };
+  });
+};
+
+export const buttonBox = (spot: ButtonSpot): Box => ({
+  h: 2 * (spot.r + BUTTON_CLEARANCE),
+  w: 2 * (spot.r + BUTTON_CLEARANCE),
+  x: spot.x - spot.r - BUTTON_CLEARANCE,
+  y: spot.y - spot.r - BUTTON_CLEARANCE,
+});
+
+const crowdingOf = (geo: Geo, blocked: readonly Box[], spot: ButtonSpot) => {
+  const box = buttonBox(spot);
+  const offTable = onTable(geo, box) ? 0 : box.w * box.h;
+
+  return coveredBy(box, blocked) + offTable;
+};
+
+const around = (centre: Pt, reach: number, angle: number): Pt => ({
+  x: centre.x + Math.cos(angle) * reach,
+  y: centre.y + Math.sin(angle) * reach,
+});
+
+const MIN_BUTTON_RADIUS = 11;
+
+const onTheFelt = (
+  geo: Geo,
+  owner: Owner,
+  rivals: readonly Footprint[],
+  blocked: readonly Box[],
+  r: number
+): ButtonSpot | undefined => {
+  const { centre } = owner.footprint;
+  const nearest = owner.size / 2 + RING_REACH + r;
+  const farthest = owner.size / 2 + CAPTION + r * 4 + 40;
+  const facing = Math.atan2(owner.inward.y, owner.inward.x);
+  let best: { readonly spot: ButtonSpot; readonly cost: number } | undefined;
+
+  for (let reach = nearest; reach <= farthest; reach += BUTTON_STEP) {
+    for (let step = 0; step < BUTTON_ANGLES; step += 1) {
+      const turn = (step / BUTTON_ANGLES) * 2 * Math.PI;
+      const spot = { ...around(centre, reach, facing + turn), r };
+      const own = gapToSeat(spot, owner.footprint);
+      const bend = Math.min(turn, 2 * Math.PI - turn);
+      const cost = own + bend * owner.size * 0.35;
+
+      if (
+        (best === undefined || cost < best.cost) &&
+        crowdingOf(geo, blocked, spot) === 0 &&
+        rivals.every((rival) => ownedBy(own, gapToSeat(spot, rival)))
+      ) {
+        best = { cost, spot };
+      }
+    }
+  }
+
+  return best?.spot;
+};
+
+const CORNER_INSETS = [0.25, 0.9] as const;
+
+const onTheTile = (
+  geo: Geo,
+  owner: Owner,
+  ground: ButtonGround
+): ButtonSpot => {
+  const r = MIN_BUTTON_RADIUS;
+  const { centre } = owner.footprint;
+  const toward = owner.inward.x < 0 ? -1 : 1;
+  const edge = r + BUTTON_CLEARANCE;
+
+  const corners = CORNER_INSETS.flatMap((inset) =>
+    [-1, 1].flatMap((up) =>
+      [toward, -toward].map((side) => {
+        const half = owner.size / 2 - r * inset;
+
+        return {
+          r,
+          x: clamp(centre.x + side * half, edge, geo.w - edge),
+          y: clamp(centre.y + up * half, geo.top + edge, geo.h - edge),
+        };
+      })
+    )
+  );
+
+  const crowding = (spot: ButtonSpot) =>
+    crowdingOf(geo, ground.untouchable, spot) * geo.w * geo.h +
+    crowdingOf(geo, ground.others, spot);
+
+  return (
+    leastBy(corners, crowding) ?? {
+      r,
+      x: clamp(centre.x, edge, geo.w - edge),
+      y: clamp(centre.y, geo.top + edge, geo.h - edge),
+    }
+  );
+};
+
+const feltSpotsAt = (
+  geo: Geo,
+  owners: readonly Owner[],
+  grounds: readonly ButtonGround[],
+  r: number
+): readonly (ButtonSpot | undefined)[] =>
+  owners.map((owner, index) => {
+    const ground = grounds[index];
+    const firm = [...(ground?.others ?? []), ...(ground?.own ?? [])];
+
+    const rivals = owners.flatMap((other) =>
+      other === owner ? [] : [other.footprint]
+    );
+
+    const loose = [...(ground?.others ?? []), ...owner.footprint.seat];
+
+    return (
+      onTheFelt(geo, owner, rivals, [...firm, ...(ground?.tags ?? [])], r) ??
+      onTheFelt(geo, owner, rivals, firm, r) ??
+      onTheFelt(geo, owner, rivals, loose, r)
+    );
+  });
+
+const missing = (spots: readonly (ButtonSpot | undefined)[]) =>
+  spots.filter((spot) => spot === undefined).length;
+
+export const buttonSpots = (geo: Geo): ButtonSpots => {
+  const owners = ownersOf(geo);
+  const grounds = buttonGround(geo);
+  const smallest = feltSpotsAt(geo, owners, grounds, MIN_BUTTON_RADIUS);
+  let felt = smallest;
+
+  for (let r = buttonRadius(geo.tile); r > MIN_BUTTON_RADIUS; r -= 1) {
+    const tried = feltSpotsAt(geo, owners, grounds, r);
+
+    if (missing(tried) <= missing(smallest)) {
+      felt = tried;
+      break;
+    }
+  }
+
+  const spots = owners.map(
+    (owner, index) =>
+      felt[index] ??
+      onTheTile(
+        geo,
+        owner,
+        grounds[index] ?? {
+          others: [],
+          own: [],
+          ownSeat: [],
+          tags: [],
+          untouchable: [],
+        }
+      )
+  );
+
+  return {
+    seats: spots.slice(0, -1),
+    self: spots.at(-1) ?? { ...geo.self, r: MIN_BUTTON_RADIUS },
+  };
+};
+
+export const deadButtonSpot = (
+  geo: Geo,
+  before: ButtonSpot,
+  after: ButtonSpot
+): ButtonSpot => {
+  const r = Math.min(before.r, after.r);
+  const seats = ownersOf(geo).map(({ footprint }) => footprint);
+
+  const blocked = [
+    ...sharedObstacles(geo),
+    ...seats.flatMap(({ boxes }) => boxes),
+  ];
+
+  const middle = { x: (before.x + after.x) / 2, y: (before.y + after.y) / 2 };
+
+  for (let reach = 0; reach <= geo.tile * 2; reach += BUTTON_STEP) {
+    for (let step = 0; step < BUTTON_ANGLES; step += 1) {
+      const spot = {
+        ...around(middle, reach, (step / BUTTON_ANGLES) * 2 * Math.PI),
+        r,
+      };
+
+      if (
+        crowdingOf(geo, blocked, spot) === 0 &&
+        seats.every((seat) => gapToSeat(spot, seat) >= r * 2)
+      ) {
+        return spot;
+      }
+    }
+  }
+
+  return { ...middle, r };
 };

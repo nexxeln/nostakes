@@ -5,6 +5,7 @@ import "../../src/client/app.css";
 import { defineTable } from "../../src/client/table/element.js";
 import { TABLE_TAG } from "../../src/features/table/snapshot.js";
 import type {
+  SeatPost,
   SeatSnapshot,
   TableSnapshot,
 } from "../../src/features/table/snapshot.js";
@@ -81,6 +82,7 @@ const showdown: TableSnapshot = {
   hostTools: false,
   learned: ["Peek", "Fold", "Raise", "Keys"],
   legal: null,
+  posts: [],
   pots: [3600],
   rabbit: [],
   reactions: [],
@@ -122,7 +124,98 @@ const turn: TableSnapshot = {
   toAct: 0,
 };
 
-const snapshot = params.get("scene") === "turn" ? turn : showdown;
+const BUTTON_AT = Math.max(1, players - 4);
+
+const around = (step: number) => (BUTTON_AT + step) % players;
+
+const STRADDLE_FROM = 4;
+
+const postsAtStart: readonly SeatPost[] = [
+  { posted: "SmallBlind", seat: around(1), settled: false },
+  { posted: "BigBlind", seat: around(2), settled: false },
+  ...(players >= STRADDLE_FROM
+    ? [{ posted: "Straddle" as const, seat: around(3), settled: false }]
+    : []),
+];
+
+const POSTED_CHIPS = { BigBlind: 2, SmallBlind: 1, Straddle: 4, ToComeIn: 2 };
+
+const firstToAct = around(postsAtStart.length + 1);
+
+const start: TableSnapshot = {
+  ...turn,
+  boards: [[]],
+  buttonSeat: BUTTON_AT,
+  clock: {
+    key: "start",
+    remainingMs: 21_000,
+    seat: firstToAct,
+    totalMs: 30_000,
+  },
+  handId: 8,
+  legal: firstToAct === 0 ? turn.legal : null,
+  posts: postsAtStart,
+  pots: [],
+  seats: turn.seats.map((seat) => {
+    const post = postsAtStart.find(({ seat: at }) => at === seat.seat);
+    const bet = post === undefined ? 0 : POSTED_CHIPS[post.posted];
+
+    return { ...seat, bet, stack: seat.stack - bet };
+  }),
+  toAct: firstToAct,
+};
+
+const RAISER = 2;
+
+const mid: TableSnapshot = {
+  ...start,
+  boards: [["3c", "9h", "7d"]],
+  clock: { key: "mid", remainingMs: 14_000, seat: 1, totalMs: 30_000 },
+  handId: 8,
+  legal: null,
+  posts: [],
+  pots: [26],
+  seats: start.seats.map((seat) => {
+    if (seat.seat === RAISER) {
+      return { ...seat, bet: 12, stack: seat.stack - 12 };
+    }
+
+    return players > 4 && seat.seat === players - 1
+      ? { ...seat, bet: 0, cardsHeld: 0, status: "Folded" }
+      : { ...seat, bet: 0 };
+  }),
+  toAct: 1,
+};
+
+const EMPTY_AT = BUTTON_AT;
+
+const dead: TableSnapshot = {
+  ...start,
+  seats: start.seats.filter(({ seat }) => seat !== EMPTY_AT),
+};
+
+const SCENES = new Map<string, TableSnapshot>([
+  ["dead", dead],
+  ["mid", mid],
+  ["start", start],
+  ["turn", turn],
+]);
+
+const snapshot = SCENES.get(params.get("scene") ?? "") ?? showdown;
+
+const before: TableSnapshot = {
+  ...start,
+  buttonSeat: (BUTTON_AT - 1 + players) % players,
+  handId: 7,
+  posts: [],
+  seats: start.seats.map((seat) => ({ ...seat, bet: 0 })),
+};
+
+const theme = params.get("theme");
+
+if (theme === "dark" || theme === "light") {
+  document.documentElement.dataset.theme = theme;
+}
 
 interface TableHost extends HTMLElement {
   snapshot: TableSnapshot | null;
@@ -142,6 +235,8 @@ const element = (tag: string, className: string, text = "") => {
 };
 
 const definedLate = params.get("late") === "1";
+
+const NEXT_HAND_EVENT = "stage:next-hand";
 
 if (params.get("deck") === "four") {
   document.documentElement.dataset.deck = "four";
@@ -182,7 +277,19 @@ const mount = () => {
   body.append(stage);
   page.append(header, body);
   root.append(page);
-  table.snapshot = snapshot;
+  const travel = params.get("travel") === "1";
+
+  table.snapshot = travel ? before : snapshot;
+
+  if (travel) {
+    document.addEventListener(
+      NEXT_HAND_EVENT,
+      () => {
+        table.snapshot = snapshot;
+      },
+      { once: true }
+    );
+  }
 
   if (definedLate) {
     defineTable();

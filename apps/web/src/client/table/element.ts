@@ -17,6 +17,8 @@ import type {
   Happening,
   HeroLegal,
   Hint,
+  Posted,
+  SeatPost,
   SeatSnapshot,
   TableEvent,
   TableIntent,
@@ -24,8 +26,16 @@ import type {
 } from "../../features/table/snapshot.js";
 import { Counter, formatChips } from "./counter.js";
 import { cardEl, el, svgEl, toggle } from "./dom.js";
-import { clamp, computeGeo, runLanes } from "./layout.js";
-import type { Geo, Pt } from "./layout.js";
+import {
+  buttonSpots,
+  clamp,
+  computeGeo,
+  deadButtonSpot,
+  POST_TAG_WIDTHS,
+  postTagSides,
+  runLanes,
+} from "./layout.js";
+import type { ButtonSpot, ButtonSpots, Geo, Pt, TagSide } from "./layout.js";
 import { TableSound } from "./sound.js";
 import { Spring } from "./spring.js";
 import { tableCss } from "./styles.js";
@@ -78,6 +88,7 @@ interface Tile {
 
 interface Pile {
   readonly root: HTMLDivElement;
+  readonly tag: HTMLDivElement;
   readonly amount: HTMLDivElement;
   shown: number;
 }
@@ -382,6 +393,51 @@ const setPile = (pile: Pile, amount: number) => {
     pile.amount.textContent = formatChips(amount);
   }
 };
+
+const POSTED_TAGS: Record<Posted, string> = {
+  BigBlind: "BB",
+  SmallBlind: "SB",
+  Straddle: "Straddle",
+  ToComeIn: "Post",
+};
+
+const POSTED_NAMES: Record<Posted, string> = {
+  BigBlind: "Big blind",
+  SmallBlind: "Small blind",
+  Straddle: "Straddle",
+  ToComeIn: "Posted to come in",
+};
+
+interface TagSides {
+  readonly narrow: readonly TagSide[];
+  readonly wide: readonly TagSide[];
+}
+
+const TAG_SIDES: readonly TagSide[] = ["Before", "After", "Below", "Above"];
+
+const tagPile = (
+  pile: Pile,
+  post: SeatPost | undefined,
+  sides: { readonly narrow: TagSide; readonly wide: TagSide }
+) => {
+  const text = post === undefined ? "" : POSTED_TAGS[post.posted];
+
+  if (pile.tag.textContent !== text) {
+    pile.tag.textContent = text;
+    pile.tag.title = post === undefined ? "" : POSTED_NAMES[post.posted];
+  }
+
+  const side = post?.posted === "Straddle" ? sides.wide : sides.narrow;
+
+  for (const each of TAG_SIDES) {
+    toggle(pile.tag, each.toLowerCase(), each === side);
+  }
+
+  toggle(pile.root, "posted", post !== undefined);
+  toggle(pile.tag, "settled", post?.settled === true);
+};
+
+const BUTTON_TRAVEL_MS = 720;
 
 const detentsFor = (spot: RaiseSpot): readonly PlacedDetent[] =>
   placeDetents(raiseDetents(spot), spot.min, spot.max);
@@ -786,6 +842,13 @@ export class NostakesTable extends HTMLElement {
   #selfTab!: HTMLDivElement;
   readonly #selfScale = new Spring(1, 160, 0.6);
   #dealer!: HTMLDivElement;
+  #spots: ButtonSpots | null = null;
+  #tagSides: TagSides = { narrow: [], wide: [] };
+  #dealerSeat: number | null = null;
+  #dealerAt: ButtonSpot | null = null;
+  #dealerDrawn: Pt | null = null;
+  #dealerTransform = "";
+  #dealerFlight: Animation | null = null;
   #hand!: HTMLDivElement;
   #handCards: HTMLDivElement[] = [];
   #handLabel!: HTMLDivElement;
@@ -1048,6 +1111,7 @@ export class NostakesTable extends HTMLElement {
     this.#selfTab = el("div", "tab", this.#self);
     this.#selfRing = ringIn(this.#selfRingSvg);
     this.#dealer = el("div", "dealer gone", this.#room, "D");
+    this.#dealer.setAttribute("role", "img");
   }
 
   #buildPicker() {
@@ -1301,11 +1365,15 @@ export class NostakesTable extends HTMLElement {
       const root = el("div", "pile empty");
 
       this.#room.insertBefore(root, this.#fx);
+
+      const tag = el("div", "posted-tag", root);
+
       el("div", `dot ${chipClass(info.seat)}`, root);
       this.#piles.set(info.seat, {
         amount: el("div", "amt", root, "0"),
         root,
         shown: 0,
+        tag,
       });
     }
 
@@ -1403,6 +1471,11 @@ export class NostakesTable extends HTMLElement {
     const geo = computeGeo(w, h, count);
 
     this.#geo = geo;
+    this.#spots = buttonSpots(geo);
+    this.#tagSides = {
+      narrow: postTagSides(geo, POST_TAG_WIDTHS.narrow),
+      wide: postTagSides(geo, POST_TAG_WIDTHS.wide),
+    };
     this.#theme = pageTheme();
     this.#room.style.setProperty("--t", `${geo.tile}px`);
     this.#room.style.setProperty("--cw", `${geo.cardW}px`);
@@ -1420,7 +1493,6 @@ export class NostakesTable extends HTMLElement {
 
     for (const [seat, pile] of this.#piles) {
       const point = this.#pilePoint(seat);
-
       pile.root.style.transform = `translate(${point.x}px, ${point.y}px) translate(-50%, -50%)`;
     }
 
@@ -1727,6 +1799,11 @@ export class NostakesTable extends HTMLElement {
 
       if (pile !== undefined && !this.#held(`bet:${info.seat}`)) {
         setPile(pile, info.bet);
+        tagPile(
+          pile,
+          snapshot.posts.find(({ seat }) => seat === info.seat),
+          this.#tagSidesOf(info.seat, geo)
+        );
       }
 
       const tile = this.#tiles.get(info.seat);
@@ -1966,40 +2043,147 @@ export class NostakesTable extends HTMLElement {
     }
   }
 
-  #renderDealer(snapshot: TableSnapshot, geo: Geo) {
-    const button = snapshot.buttonSeat;
+  #tagSidesOf(seat: number, geo: Geo) {
+    const tile = this.#tiles.get(seat);
 
-    toggle(this.#dealer, "gone", button === null);
-    toggle(this.#self, "has-button", button === snapshot.heroSeat);
+    const index =
+      seat === this.#snap?.heroSeat || tile === undefined
+        ? geo.seats.length
+        : tile.index;
 
-    for (const tile of this.#tiles.values()) {
-      toggle(tile.root, "has-button", tile.seat === button);
+    return {
+      narrow: this.#tagSides.narrow[index] ?? "Before",
+      wide: this.#tagSides.wide[index] ?? "Before",
+    };
+  }
+
+  #buttonSpotOf(seat: number, snapshot: TableSnapshot, geo: Geo) {
+    const spots = this.#spots;
+
+    if (spots === null) {
+      return null;
     }
 
-    if (button === null) {
+    if (seat === snapshot.heroSeat) {
+      return spots.self;
+    }
+
+    const tile = this.#tiles.get(seat);
+
+    if (tile !== undefined) {
+      return spots.seats[tile.index] ?? null;
+    }
+
+    const taken = [
+      ...[...this.#tiles.values()].map(({ index, seat: at }) => ({
+        at,
+        spot: spots.seats[index],
+      })),
+      ...(snapshot.heroSeat === null
+        ? []
+        : [{ at: snapshot.heroSeat, spot: spots.self }]),
+    ].toSorted((left, right) => left.at - right.at);
+
+    const after = taken.find(({ at }) => at > seat) ?? taken[0];
+    const before = taken.findLast(({ at }) => at < seat) ?? taken.at(-1);
+
+    if (before?.spot === undefined || after?.spot === undefined) {
+      return null;
+    }
+
+    return deadButtonSpot(geo, before.spot, after.spot);
+  }
+
+  #renderDealer(snapshot: TableSnapshot, geo: Geo) {
+    const seat = snapshot.buttonSeat ?? this.#dealerSeat;
+    const spot = seat === null ? null : this.#buttonSpotOf(seat, snapshot, geo);
+
+    toggle(this.#dealer, "gone", spot === null);
+
+    if (seat === null || spot === null) {
       return;
     }
 
-    const heroButton = button === snapshot.heroSeat;
-    const size = heroButton ? geo.self.size : geo.tile;
-    const frame = heroButton ? this.#selfFrame : this.#tiles.get(button)?.frame;
+    const owner = this.#seat(seat);
+    const dead = owner === undefined || owner.status === "Empty";
 
-    const reach =
-      frame !== undefined && ringRadius(frame, size) >= size / 2 - 1
-        ? 0.36
-        : 0.42;
+    toggle(this.#dealer, "dead", dead);
+    this.#dealer.setAttribute(
+      "aria-label",
+      dead ? "Dealer button, at an empty seat" : `Dealer: ${owner.name}`
+    );
 
-    const tile = this.#tiles.get(button);
+    const from = this.#dealerDrawn;
 
-    const seatSpot = tile === undefined ? undefined : geo.seats[tile.index];
-    const centre = heroButton ? this.#heroPoint() : seatSpot;
+    const travels =
+      from !== null && this.#dealerSeat !== seat && !this.#reduced;
 
-    const point =
-      centre === undefined
-        ? { x: -40, y: -40 }
-        : { x: centre.x + size * reach, y: centre.y - size * reach };
+    const to = this.#dealerLive(seat, spot, geo);
 
-    this.#dealer.style.transform = `translate(${point.x - 11}px, ${point.y - 11}px)`;
+    this.#dealerSeat = seat;
+    this.#dealerAt = spot;
+    this.#dealer.style.setProperty("--b", `${spot.r * 2}px`);
+    this.#placeDealer(to);
+
+    if (travels) {
+      this.#dealerFlight?.cancel();
+      this.#dealerFlight = this.#dealer.animate(
+        [
+          { transform: `translate(${from.x}px, ${from.y}px)` },
+          {
+            offset: 0.5,
+            scale: "1.16",
+            transform: `translate(${(from.x + to.x) / 2}px, ${(from.y + to.y) / 2 - spot.r}px)`,
+          },
+          { transform: `translate(${to.x}px, ${to.y}px)` },
+        ],
+        { duration: BUTTON_TRAVEL_MS, easing: "cubic-bezier(.45,0,.2,1)" }
+      );
+      this.#sound.knock();
+    }
+  }
+
+  #dealerLive(seat: number, spot: ButtonSpot, geo: Geo): Pt {
+    if (seat === this.#snap?.heroSeat) {
+      const grown = this.#selfScale.x;
+
+      return {
+        x: geo.self.x + (spot.x - geo.self.x) * grown,
+        y: geo.self.y + (spot.y - geo.self.y) * grown,
+      };
+    }
+
+    const tile = this.#tiles.get(seat);
+    const home = tile === undefined ? undefined : geo.seats[tile.index];
+
+    if (tile === undefined || home === undefined) {
+      return spot;
+    }
+
+    return {
+      x: tile.x.x + (spot.x - home.x) * tile.scale.x,
+      y: tile.y.x + (spot.y - home.y) * tile.scale.x,
+    };
+  }
+
+  #placeDealer(at: Pt) {
+    const transform = `translate(${at.x.toFixed(2)}px, ${at.y.toFixed(2)}px)`;
+
+    this.#dealerDrawn = at;
+
+    if (transform !== this.#dealerTransform) {
+      this.#dealerTransform = transform;
+      this.#dealer.style.transform = transform;
+    }
+  }
+
+  #frameDealer(geo: Geo) {
+    const seat = this.#dealerSeat;
+    const spot = this.#dealerAt;
+
+    if (seat !== null && spot !== null) {
+      this.#placeDealer(this.#dealerLive(seat, spot, geo));
+    }
   }
 
   #renderBoard(animate: boolean) {
@@ -2226,9 +2410,12 @@ export class NostakesTable extends HTMLElement {
         this.#tag(seat, "Muck", "quiet");
         this.#throwCards(seat, geo);
       },
-      Post: ({ amount, label, seat }) => {
+      Post: ({ amount, kind, seat }) => {
         this.#betFlight(seat, amount, 2);
-        this.#tag(seat, label, "quiet");
+
+        if (kind === "Ante") {
+          this.#tag(seat, `Ante ${formatChips(amount)}`, "quiet");
+        }
       },
       Return: ({ amount, seat }) => {
         this.#returnFlight(seat, amount);
@@ -3716,6 +3903,7 @@ export class NostakesTable extends HTMLElement {
 
     this.#frameTiles(snapshot, geo, dt, now, clock);
     this.#frameSelf(snapshot, dt, now, clock);
+    this.#frameDealer(geo);
     expireStatus(this.#selfStatus, now);
 
     for (const tile of this.#tiles.values()) {

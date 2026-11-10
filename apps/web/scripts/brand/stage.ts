@@ -163,6 +163,7 @@ const opening: TableSnapshot = {
     raise: { isBet: false, max: HERO.stack, min: OPENING_BET * 2 },
     show: false,
   },
+  posts: [],
   pots: [OPENING_POT],
   rabbit: [],
   reactions: [],
