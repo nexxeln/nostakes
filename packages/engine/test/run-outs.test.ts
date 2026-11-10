@@ -205,16 +205,27 @@ describe("running the board", () => {
     ]);
   });
 
-  it("lets any one seat insist on running once", () => {
-    const once = runAll(headsUpAllIn(3, 100).state, [
-      choose(0, 1),
-      choose(1, 3),
-    ]);
+  it("Rule 19 amended: a seat that chooses one run settles the count at once, so the board runs once without waiting for the other seat", () => {
+    const once = run(headsUpAllIn(3, 100).state, choose(0, 1));
 
-    expect(once.events.filter(Events.$is("RunsAgreed"))).toStrictEqual([
+    expect(once.events.map((event) => event._tag)).toStrictEqual([
+      "RunsChosen",
+      "RunsAgreed",
+      "HandsTabled",
+      "StreetDealt",
+      "StreetDealt",
+      "StreetDealt",
+      "ShowdownReached",
+      "PotAwarded",
+      "HandEnded",
+    ]);
+    expect(once.events.slice(0, 2)).toStrictEqual([
+      Events.RunsChosen({ runs: runCount(1), seat: seat(0) }),
       Events.RunsAgreed({ runs: runCount(1) }),
     ]);
-    expect(once.events.filter(Events.$is("StreetDealt"))).toHaveLength(3);
+    expect(rejection(once.state, choose(1, 3))).toStrictEqual(
+      new NoRunChoiceOwed({ seat: seat(1) })
+    );
   });
 
   it("refuses a run count above the cap, a second choice from the same seat, and a choice when none is owed", () => {

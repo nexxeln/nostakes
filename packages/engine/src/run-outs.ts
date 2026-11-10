@@ -7,7 +7,7 @@ import type { Event, EventOf } from "./events.js";
 import { buildPots, handEnded, uncalledExcess } from "./pots.js";
 import { chips, splitEvenly } from "./primitives.js";
 import { NoRunChoiceOwed, RunsOutOfRange } from "./rejection.js";
-import { RunCountSchema } from "./rules.js";
+import { ONE_RUN, RunCountSchema } from "./rules.js";
 import type { RunCount, TableConfig } from "./rules.js";
 import { ShowdownEntries, awardPart, rankOnBoard } from "./showdown.js";
 import {
@@ -201,8 +201,14 @@ const fewestChosen = (choosing: ChoosingRuns) => {
 export const agreedRuns = (state: InHand): Option.Option<RunCount> => {
   const { phase } = state.hand;
 
-  return Phases.$is("ChoosingRuns")(phase) && phase.pending.length === 0
-    ? Option.some(fewestChosen(phase))
+  if (!Phases.$is("ChoosingRuns")(phase)) {
+    return Option.none();
+  }
+
+  const fewest = fewestChosen(phase);
+
+  return phase.pending.length === 0 || fewest === ONE_RUN
+    ? Option.some(fewest)
     : Option.none();
 };
 

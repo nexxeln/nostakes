@@ -3,6 +3,7 @@ import { describe, expect, it } from "@effect/vitest";
 import {
   Commands,
   Events,
+  NoRunChoiceOwed,
   PendingDecisions,
   RunsOutOfRange,
   pendingDecisions,
@@ -240,5 +241,49 @@ describe("run-out edges (rules 18 to 22)", () => {
       { amount: 700, pot: 2, run: 2, winners: [[2, 700]] },
     ]);
     expect(stacksOf(ran.state).slice(0, 3)).toStrictEqual([1150, 450, 700]);
+  });
+
+  it("Rule 19 amended: when the second of three seats chooses one run, the board runs once at once and the third seat is never asked", () => {
+    const allIn = play(
+      startHand(
+        occupiedTable(runs(3), { 0: 1000, 1: 300, 2: 1000 }),
+        deckStartingWith("Ah Ad Kh Kd Qh Qd 2c 7d 9s Jc Tc 3h 4h")
+      ).state,
+      [
+        [0, calls],
+        [1, calls],
+        [2, checks],
+        [1, raisesTo(290)],
+        [2, calls],
+        [0, raisesTo(990)],
+        [2, calls],
+      ]
+    ).state;
+
+    const first = everyoneChooses(allIn, [[0, 3]]);
+
+    expect(pendingDecisions(first.state)).toStrictEqual(
+      PendingDecisions.ChooseRuns({
+        maxRuns: runCount(3),
+        seats: [seat(1), seat(2)],
+      })
+    );
+
+    const once = everyoneChooses(first.state, [[1, 1]]);
+
+    expect(
+      once.events.filter((event) => Events.$is("RunsAgreed")(event))
+    ).toStrictEqual([Events.RunsAgreed({ runs: runCount(1) })]);
+    expect(awardedParts(once.events)).toStrictEqual([
+      { amount: 900, pot: 1, run: 1, winners: [[0, 900]] },
+      { amount: 1400, pot: 2, run: 1, winners: [[0, 1400]] },
+    ]);
+    expect(stacksOf(once.state).slice(0, 3)).toStrictEqual([2300, 0, 0]);
+    expect(
+      rejection(
+        once.state,
+        Commands.ChooseRuns({ runs: runCount(3), seat: seat(2) })
+      )
+    ).toStrictEqual(new NoRunChoiceOwed({ seat: seat(2) }));
   });
 });

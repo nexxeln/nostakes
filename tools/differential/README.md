@@ -40,6 +40,7 @@ PokerKit can follow these engine rules when the replay sets it up a certain way.
 - `straddle-sizes-preflop-raise`: the pre-flop minimum raise is the last straddle.
 - `big-blind-ante-blind-first`: a short big blind pays its blind before the big-blind ante.
 - `runs-agreed-smallest`: every run selector gets the smallest number anyone chose.
+- `one-run-ends-choice`: as soon as one seat chooses one run the engine runs the board once (amended rule 19). The replay answers the seats the engine never asked with one run.
 - `one-run-no-choice`: with `maxRuns` 1 the replay answers PokerKit's run question with no preference.
 - `complete-board-show-or-muck`: at a complete-board showdown each seat shows only if PokerKit's `can_win_now` says it might win, even when someone is all in.
 - `pokerkit-dead-check`: when PokerKit gives a seat a turn that the engine skips because no other seat can act, the replay checks for it.

@@ -61,6 +61,11 @@ CONFIGURATIONS = {
         "Brief rule 19 runs the board the smallest number anyone chose. PokerKit runs "
         "once unless every choice agrees, so the replay gives every selector the agreed number."
     ),
+    "one-run-ends-choice": (
+        "Brief rule 19 as amended runs the board once as soon as any seat chooses one run, "
+        "without waiting for the rest. PokerKit waits for every selector, so the replay "
+        "answers the seats the engine never asked with one run."
+    ),
     "one-run-no-choice": (
         "With maxRuns 1 the brief skips the run choice. PokerKit cash games still ask, "
         "so the replay answers no preference, which is one run."
@@ -647,7 +652,10 @@ class Hand:
                 if agreed[0] != self.agreed:
                     self.differ("runs-agreed", f"engine runs {agreed[0]}, smallest choice {self.agreed}")
                 if set(self.choices) != self.selectors:
-                    self.differ("run-choice", f"choices from {sorted(self.choices)}, pokerkit selectors {sorted(self.selectors)}")
+                    if self.agreed == 1 and set(self.choices) < self.selectors:
+                        self.configured.add("one-run-ends-choice")
+                    else:
+                        self.differ("run-choice", f"choices from {sorted(self.choices)}, pokerkit selectors {sorted(self.selectors)}")
         else:
             rejection = step["rejection"]["tag"]
             if rejection == "NoRunChoiceOwed" and owed:
