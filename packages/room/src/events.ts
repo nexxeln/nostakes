@@ -1,13 +1,28 @@
-import { PlayerIdSchema } from "@nostakes/engine";
+import { EventSchema, PlayerIdSchema, SeatIndexSchema } from "@nostakes/engine";
 import { Data, Schema } from "effect";
 
 import { AvatarSchema, NameSchema, RoomCodeSchema } from "./identity.js";
-import { RoomSettingsSchema } from "./settings.js";
+import { ChipAmountSchema, RoomSettingsSchema } from "./settings.js";
 import { MillisSchema } from "./time.js";
 
 const at = MillisSchema;
 
 export const RoomEventSchema = Schema.TaggedUnion({
+  BoughtIn: {
+    amount: ChipAmountSchema,
+    at,
+    player: PlayerIdSchema,
+    seat: SeatIndexSchema,
+  },
+  CashedOut: {
+    amount: ChipAmountSchema,
+    at,
+    player: PlayerIdSchema,
+    seat: SeatIndexSchema,
+  },
+  ChipsApproved: { at, player: PlayerIdSchema },
+  ChipsDenied: { at, player: PlayerIdSchema },
+  ChipsRequested: { amount: ChipAmountSchema, at, player: PlayerIdSchema },
   HostChanged: { at, host: PlayerIdSchema },
   MemberJoined: {
     at,
@@ -28,6 +43,15 @@ export const RoomEventSchema = Schema.TaggedUnion({
     host: PlayerIdSchema,
     settings: RoomSettingsSchema,
   },
+  SeatApproved: { at, player: PlayerIdSchema },
+  SeatDenied: { at, player: PlayerIdSchema },
+  SeatRequested: {
+    at,
+    buyIn: ChipAmountSchema,
+    player: PlayerIdSchema,
+    seat: SeatIndexSchema,
+  },
+  Table: { at, event: EventSchema },
 });
 
 export type RoomEvent = typeof RoomEventSchema.Type;

@@ -4,8 +4,9 @@ import { Option, Result } from "effect";
 import type { RoomCommandOf } from "./commands.js";
 import { RoomEvents } from "./events.js";
 import type { RoomEvent } from "./events.js";
+import { leaveSeat } from "./money.js";
 import { AlreadyAMember, AlreadyTheHost, NotAMember } from "./rejection.js";
-import { SEATS, isMember, occupantAt } from "./state.js";
+import { SEATS, isMember, occupantAt, seatOf } from "./state.js";
 import type { Open } from "./state.js";
 import type { Millis } from "./time.js";
 
@@ -75,10 +76,22 @@ export const handOffHost = (
       })
     : [];
 
-export const departure = (state: Open, player: PlayerId, at: Millis) => [
-  ...handOffHost(state, player, at),
-  RoomEvents.MemberLeft({ at, player }),
-];
+const standIfSeated = (state: Open, player: PlayerId, at: Millis) =>
+  Option.isSome(seatOf(state, player))
+    ? leaveSeat(state, player, at)
+    : Result.succeed([]);
+
+export const leaveRoom = (state: Open, player: PlayerId, at: Millis) => {
+  const departing: readonly RoomEvent[] = [
+    ...handOffHost(state, player, at),
+    RoomEvents.MemberLeft({ at, player }),
+  ];
+
+  return Result.map(standIfSeated(state, player, at), (stood) => [
+    ...stood,
+    ...departing,
+  ]);
+};
 
 export const transferHost = (
   state: Open,

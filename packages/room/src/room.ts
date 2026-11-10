@@ -5,19 +5,18 @@ import { Result, Schema } from "effect";
 import { fromHost, fromMember, fromSomeone } from "./authority.js";
 import { RoomCommands } from "./commands.js";
 import type { RoomCommand } from "./commands.js";
+import type { Decision } from "./decision.js";
 import { RoomEvents } from "./events.js";
-import type { RoomEvent } from "./events.js";
 import type { RoomLog } from "./evolve.js";
 import { AvatarSchema, NameSchema, RoomCodeSchema } from "./identity.js";
-import { departure, joinRoom, setProfile, transferHost } from "./members.js";
+import { joinRoom, leaveRoom, setProfile, transferHost } from "./members.js";
+import { answerChips, leaveSeat, requestChips } from "./money.js";
 import { RoomIsClosed } from "./rejection.js";
-import type { RoomRejection } from "./rejection.js";
+import { answerSeat, requestSeat } from "./seats.js";
 import { RoomSettingsSchema } from "./settings.js";
 import { RoomStates } from "./state.js";
 import type { Open, RoomState } from "./state.js";
 import { MillisSchema, latest } from "./time.js";
-
-export type Decision = Result.Result<readonly RoomEvent[], RoomRejection>;
 
 export const OpeningSchema = Schema.Struct({
   at: MillisSchema,
@@ -59,14 +58,30 @@ const byHost = (
 
 const decideOpen = (state: Open, command: RoomCommand): Decision =>
   RoomCommands.$match(command, {
+    ApproveChips: (approve) =>
+      byHost(state, approve, () => answerChips(state, approve, true)),
+    ApproveSeat: (approve) =>
+      byHost(state, approve, () => answerSeat(state, approve, true)),
+    DenyChips: (deny) =>
+      byHost(state, deny, () => answerChips(state, deny, false)),
+    DenySeat: (deny) =>
+      byHost(state, deny, () => answerSeat(state, deny, false)),
     Join: (join) =>
       Result.flatMap(fromSomeone(join), (player) =>
         joinRoom(state, player, join)
       ),
     LeaveRoom: (leave) =>
-      byMember(state, leave, (player) =>
-        Result.succeed(departure(state, player, leave.at))
+      byMember(state, leave, (player) => leaveRoom(state, player, leave.at)),
+    LeaveSeat: (leave) =>
+      byMember(state, leave, (player) => leaveSeat(state, player, leave.at)),
+    RemoveFromSeat: (remove) =>
+      byHost(state, remove, () => leaveSeat(state, remove.player, remove.at)),
+    RequestChips: (request) =>
+      byMember(state, request, (player) =>
+        requestChips(state, player, request)
       ),
+    RequestSeat: (request) =>
+      byMember(state, request, (player) => requestSeat(state, player, request)),
     SetProfile: (profile) =>
       byMember(state, profile, (player) => setProfile(player, profile)),
     TransferHost: (transfer) =>

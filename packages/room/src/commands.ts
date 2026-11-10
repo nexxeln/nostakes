@@ -1,14 +1,25 @@
-import { PlayerIdSchema } from "@nostakes/engine";
+import { PlayerIdSchema, SeatIndexSchema } from "@nostakes/engine";
 import { Data, Schema } from "effect";
 
 import { ActorSchema, AvatarSchema, NameSchema } from "./identity.js";
+import { ChipAmountSchema } from "./settings.js";
 import { MillisSchema } from "./time.js";
 
 const envelope = { at: MillisSchema, by: ActorSchema };
 
+const naming = { ...envelope, player: PlayerIdSchema };
+
 export const RoomCommandSchema = Schema.TaggedUnion({
+  ApproveChips: naming,
+  ApproveSeat: naming,
+  DenyChips: naming,
+  DenySeat: naming,
   Join: { ...envelope, avatar: AvatarSchema, name: NameSchema },
   LeaveRoom: envelope,
+  LeaveSeat: envelope,
+  RemoveFromSeat: naming,
+  RequestChips: { ...envelope, amount: ChipAmountSchema },
+  RequestSeat: { ...envelope, buyIn: ChipAmountSchema, seat: SeatIndexSchema },
   SetProfile: { ...envelope, avatar: AvatarSchema, name: NameSchema },
   TransferHost: { ...envelope, to: PlayerIdSchema },
 });

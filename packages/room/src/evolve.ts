@@ -1,9 +1,11 @@
-import { initialTable } from "@nostakes/engine";
+import { Events, evolve as evolveTable, initialTable } from "@nostakes/engine";
+import type { Event, PlayerId, SeatIndex } from "@nostakes/engine";
 import { Option } from "effect";
 
 import { RoomEvents } from "./events.js";
 import type { RoomEvent, RoomEventOf } from "./events.js";
-import { EMPTY_QUEUE, RoomStates } from "./state.js";
+import { boughtIn, cashedOut, withEntry } from "./money.js";
+import { EMPTY_QUEUE, RoomStates, occupantAt } from "./state.js";
 import type { Open, RoomState } from "./state.js";
 import { latest } from "./time.js";
 
@@ -29,8 +31,73 @@ export const opened = (event: RoomEventOf<"RoomOpened">): Open =>
     table: initialTable(event.settings.table),
   });
 
+const vacated = (state: Open, player: PlayerId, seat: SeatIndex): Open => ({
+  ...state,
+  away: state.away.filter((awaySeat) => awaySeat !== seat),
+  queued: {
+    ...state.queued,
+    leaving: state.queued.leaving.filter((leaving) => leaving !== player),
+  },
+  requests: {
+    ...state.requests,
+    chips: state.requests.chips.filter((request) => request.player !== player),
+  },
+  straddlers: state.straddlers.filter((straddler) => straddler !== player),
+});
+
+const onTable = (state: Open, event: Event): Open => {
+  const next = { ...state, table: evolveTable(state.table, event) };
+
+  return Events.$is("PlayerStood")(event)
+    ? vacated(next, event.player, event.seat)
+    : next;
+};
+
+const withoutSeatRequest = (state: Open, player: PlayerId): Open => ({
+  ...state,
+  requests: {
+    ...state.requests,
+    seats: state.requests.seats.filter((request) => request.player !== player),
+  },
+});
+
+const withoutChipRequest = (state: Open, player: PlayerId): Open => ({
+  ...state,
+  requests: {
+    ...state.requests,
+    chips: state.requests.chips.filter((request) => request.player !== player),
+  },
+});
+
 const evolveOpen = (state: Open, event: RoomEvent): RoomState =>
   RoomEvents.$match(event, {
+    BoughtIn: ({ amount, player, seat }) => ({
+      ...state,
+      entries: withEntry(state.entries, boughtIn(player, amount)),
+      table: evolveTable(
+        state.table,
+        Option.isSome(occupantAt(state.table, seat))
+          ? Events.ChipsAdded({ amount, seat })
+          : Events.PlayerSat({ buyIn: amount, player, seat })
+      ),
+    }),
+    CashedOut: ({ amount, player, seat }) =>
+      onTable(
+        {
+          ...state,
+          entries: withEntry(state.entries, cashedOut(player, amount)),
+        },
+        Events.PlayerStood({ player, seat, stack: amount })
+      ),
+    ChipsApproved: ({ player }) => withoutChipRequest(state, player),
+    ChipsDenied: ({ player }) => withoutChipRequest(state, player),
+    ChipsRequested: ({ amount, player }) => ({
+      ...state,
+      requests: {
+        ...state.requests,
+        chips: [...state.requests.chips, { amount, player }],
+      },
+    }),
     HostChanged: ({ host }) => ({ ...state, host }),
     MemberJoined: ({ at, avatar, name, player }) => ({
       ...state,
@@ -55,6 +122,16 @@ const evolveOpen = (state: Open, event: RoomEvent): RoomState =>
       ),
     }),
     RoomOpened: (opening) => opened(opening),
+    SeatApproved: ({ player }) => withoutSeatRequest(state, player),
+    SeatDenied: ({ player }) => withoutSeatRequest(state, player),
+    SeatRequested: ({ buyIn, player, seat }) => ({
+      ...state,
+      requests: {
+        ...state.requests,
+        seats: [...state.requests.seats, { buyIn, player, seat }],
+      },
+    }),
+    Table: ({ event: tableEvent }) => onTable(state, tableEvent),
   });
 
 export const evolve = (state: RoomState, event: RoomEvent): RoomState =>

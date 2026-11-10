@@ -22,20 +22,32 @@ export type { Actor, RoomCode } from "./identity.js";
 
 export {
   AlreadyAMember,
+  AlreadySeated,
   AlreadyTheHost,
+  BuyInOutOfRange,
+  ChipRequestPending,
+  ChipsOverMax,
   MembersOnly,
+  NoChipRequest,
+  NoSeatRequest,
   NotAMember,
+  NotSeated,
   NotTheHost,
   RoomIsClosed,
   RoomRejectionSchema,
+  SeatNotFree,
+  SeatRequestPending,
   ServerOnly,
+  TableRejected,
 } from "./rejection.js";
 
 export type { RoomRejection } from "./rejection.js";
 
 export { OpeningSchema, decide, openRoom } from "./room.js";
 
-export type { Decision, Opening } from "./room.js";
+export type { Opening } from "./room.js";
+
+export type { Decision } from "./decision.js";
 
 export {
   ApprovalSchema,
