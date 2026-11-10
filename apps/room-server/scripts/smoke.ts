@@ -1,7 +1,7 @@
 import { clientCodec, roomClient, webSocketTransport } from "@nostakes/client";
 import type { ClientSchemas, ClientState, RoomClient } from "@nostakes/client";
 import { ActionSchema, SeatIndexSchema } from "@nostakes/engine";
-import { RoomPassSchema } from "@nostakes/protocol";
+import { HttpRefusalSchema, RoomPassSchema } from "@nostakes/protocol";
 import type { RoomPass } from "@nostakes/protocol";
 import {
   ChipAmountSchema,
@@ -25,6 +25,7 @@ import {
   Effect,
   Exit,
   Option,
+  Schedule,
   Schema,
   Stream,
 } from "effect";
@@ -53,6 +54,10 @@ const Commands = MemberCommandSchema.cases;
 const STEP_SECONDS = 60;
 
 const BUY_IN = ChipAmountSchema.make(100);
+
+const READY_WAIT_SECONDS = 5;
+
+const READY_ATTEMPTS = 36;
 
 const USAGE =
   "usage: pnpm smoke <base-url> [--origin=<origin>], for example pnpm smoke https://nostakes.club";
@@ -120,28 +125,59 @@ const fetchPage = (step: string, url: URL) =>
     )
   );
 
-const passFrom = (step: string, url: URL, origin: string, body: Schema.Json) =>
+const AnswerSchema = Schema.Union([RoomPassSchema, HttpRefusalSchema]);
+
+type Answer = typeof AnswerSchema.Type;
+
+interface Answered {
+  readonly answer: Answer;
+  readonly status: number;
+}
+
+const isPass = Schema.is(RoomPassSchema);
+
+const isRefusal = Schema.is(HttpRefusalSchema);
+
+const roomUnavailable = ({ answer }: Answered) =>
+  isRefusal(answer) && answer.refusal === "RoomUnavailable";
+
+const answerFrom = (
+  step: string,
+  url: URL,
+  origin: string,
+  body: Schema.Json
+) =>
   HttpClientRequest.post(url).pipe(
     HttpClientRequest.setHeader("origin", origin),
     HttpClientRequest.bodyJsonUnsafe(body),
     HttpClient.execute,
-    Effect.mapError((cause) => failed(step, String(cause))),
     Effect.flatMap((response) =>
       response.json.pipe(
-        Effect.mapError((cause) => failed(step, String(cause))),
-        Effect.flatMap((json) =>
-          Schema.decodeUnknownEffect(RoomPassSchema)(json).pipe(
-            Effect.mapError(() =>
-              failed(
-                step,
-                `answered ${response.status} ${JSON.stringify(json)}`
-              )
-            )
-          )
+        Effect.map((json) => ({ json, status: response.status }))
+      )
+    ),
+    Effect.mapError((cause) => failed(step, String(cause))),
+    Effect.flatMap(({ json, status }) =>
+      Schema.decodeUnknownEffect(AnswerSchema)(json).pipe(
+        Effect.map((answer): Answered => ({ answer, status })),
+        Effect.mapError(() =>
+          failed(step, `answered ${status} ${JSON.stringify(json)}`)
         )
       )
     )
   );
+
+const passOf =
+  (step: string) =>
+  ({ answer, status }: Answered) =>
+    isPass(answer)
+      ? Effect.succeed(answer)
+      : Effect.fail(
+          failed(step, `answered ${status} ${JSON.stringify(answer)}`)
+        );
+
+const passFrom = (step: string, url: URL, origin: string, body: Schema.Json) =>
+  answerFrom(step, url, origin, body).pipe(Effect.flatMap(passOf(step)));
 
 const openClient = (base: URL, origin: string, pass: RoomPass) =>
   roomClient(schemas, {
@@ -209,11 +245,25 @@ const smoke = Effect.gen(function* smoke() {
   yield* fetchPage("load the home page", base);
   yield* note("the home page loads");
 
-  const anaPass = yield* passFrom(
+  const anaPass = yield* answerFrom(
     "open a room",
     new URL("/rooms", base),
     origin,
     encodeOpen({ avatar: "fox", name: "Ana" })
+  ).pipe(
+    Effect.tap((answered) =>
+      roomUnavailable(answered)
+        ? note(
+            `the server answered RoomUnavailable, so no room is reachable yet; asking again in ${READY_WAIT_SECONDS} s`
+          )
+        : Effect.void
+    ),
+    Effect.repeat({
+      schedule: Schedule.spaced(Duration.seconds(READY_WAIT_SECONDS)),
+      times: READY_ATTEMPTS - 1,
+      while: roomUnavailable,
+    }),
+    Effect.flatMap(passOf("open a room"))
   );
 
   yield* note(`Ana opened room ${anaPass.code}`);
