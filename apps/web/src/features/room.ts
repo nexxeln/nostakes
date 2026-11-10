@@ -79,6 +79,7 @@ export const bettingControls = (room: InRoom): Option.Option<BettingControls> =>
       check: legal.canCheck,
       fold: true,
       raise: legal.raise.pipe(
+        Option.filter(({ maxTo, minTo }) => minTo <= maxTo),
         Option.map(({ maxTo, minTo }) => ({
           maxTo,
           minTo,
