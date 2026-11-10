@@ -141,6 +141,12 @@ const yourRooms = (model: Model, h: H): Html =>
         ]
       );
 
+const readingLinks = (h: H): Html =>
+  h.footer(
+    [h.Class("reading-links")],
+    [h.a([h.Href("/privacy")], ["Privacy"]), h.a([h.Href("/terms")], ["Terms"])]
+  );
+
 const homeView = (
   model: Model,
   busy: boolean,
@@ -201,6 +207,7 @@ const homeView = (
         ]
       ),
       problemLine(problem, h),
+      readingLinks(h),
     ]
   );
 
@@ -236,6 +243,7 @@ const invitedView = (
         ]
       ),
       problemLine(problem, h),
+      readingLinks(h),
     ]
   );
 

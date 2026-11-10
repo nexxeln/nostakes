@@ -111,9 +111,14 @@ const PURE_MODULES = [
   { sideEffects: false, test: /[\\/]node_modules[\\/].*@noble[\\/]/u },
 ];
 
+export const READING_PAGES = ["privacy.html", "terms.html"];
+
 export default defineConfig({
   build: {
-    rolldownOptions: { treeshake: { moduleSideEffects: PURE_MODULES } },
+    rolldownOptions: {
+      input: [HOME_PAGE, ...READING_PAGES],
+      treeshake: { moduleSideEffects: PURE_MODULES },
+    },
   },
   plugins: [foldkit({ devToolsMcpPort: false }), buildStamp(), linkPreviews()],
   server: {

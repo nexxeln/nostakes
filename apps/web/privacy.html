@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, viewport-fit=cover"
+    />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="robots" content="noindex" />
+    <title>Privacy · nostakes</title>
+    <link rel="icon" href="/favicon.ico" sizes="48x48" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+  </head>
+  <body>
+    <main class="reading">
+      <header class="reading-bar">
+        <a class="brand" href="/">nostakes</a>
+      </header>
+      <h1>What nostakes keeps, and what it counts</h1>
+      <p class="lede">Last changed 11 November 2026.</p>
+
+      <section class="sheet">
+        <h2>What a room keeps</h2>
+        <ul>
+          <li>
+            A room keeps the night: who joined, the names and faces you chose,
+            every hand, and the chip counts. That is how the game carries on
+            after a dropped phone and how it settles up. Only the people in the
+            room see it.
+          </li>
+          <li>
+            A room deletes itself 30 days after the last thing that happened in
+            it.
+          </li>
+        </ul>
+      </section>
+
+      <section class="sheet">
+        <h2>What we count</h2>
+        <p>
+          To see whether nostakes works, the server counts things as they
+          happen:
+        </p>
+        <ul>
+          <li>
+            a home page or invite link opened, a room opened, someone joining, a
+            seat taken, a hand finished, a night settled up;
+          </li>
+          <li>
+            how many players a hand was dealt to, whether its deck was checked,
+            whether it went to a showdown, how long a night lasted, and how many
+            payments settle it, but never how much;
+          </li>
+          <li>
+            which house rules were changed, such as the ante, never to what;
+          </li>
+          <li>
+            when something goes wrong: a dropped connection, an error on a page,
+            a deck check that failed.
+          </li>
+        </ul>
+        <p>
+          Each count is filed under a random key for its room, not the room's
+          code. Counts are kept for three months.
+        </p>
+      </section>
+
+      <section class="sheet">
+        <h2>The random number on your device</h2>
+        <ul>
+          <li>
+            With counts on, your browser makes a random number the first time
+            you open or join a room and keeps it on this device. It is not your
+            name and is tied to nothing else.
+          </li>
+          <li>
+            The server never stores it with a room and never shows it to anyone.
+            It keeps only a scrambled, one-way version in the counts, so we can
+            tell when the same group comes back to play again.
+          </li>
+          <li>
+            With counts on, the page also loads Cloudflare Web Analytics, which
+            counts visits, where they came from, and how fast pages load. It
+            sets no cookies and stores nothing in your browser.
+          </li>
+        </ul>
+      </section>
+
+      <section class="sheet">
+        <h2>What we never record</h2>
+        <ul>
+          <li>
+            Anyone's cards, names, or faces, a room's code, anything you type,
+            or how many chips anyone won or lost.
+          </li>
+          <li>
+            No ads, no cookies, no tracking scripts from other companies, no
+            screen recordings. Nothing is sold or shared. Everything stays in
+            nostakes's own Cloudflare account, which runs the servers.
+          </li>
+        </ul>
+      </section>
+
+      <section class="sheet state">
+        <h2>Turning counts off</h2>
+        <p data-counting-state>Counts are on for this device.</p>
+        <button class="button" type="button" data-counting-switch>
+          Turn counts off
+        </button>
+        <p class="muted" data-privacy-signal hidden>
+          Your browser sends the Global Privacy Control signal, so counts start
+          off here unless you turn them on.
+        </p>
+        <p class="muted">
+          You can also use the bar chart button in the menu at the table. With
+          counts off, this device sends no random number and no error reports,
+          forgets the number it had, and does not load the page counter from the
+          next page you open.
+        </p>
+      </section>
+
+      <section class="sheet">
+        <h2>Questions</h2>
+        <p>
+          Write to
+          <span class="placeholder"
+            >[contact address to be added before launch]</span
+          >.
+        </p>
+      </section>
+
+      <footer class="reading-foot">
+        <a href="/">Home</a>
+        <a href="/terms">Terms</a>
+      </footer>
+    </main>
+    <script type="module" src="/src/client/reading-page.ts"></script>
+  </body>
+</html>

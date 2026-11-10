@@ -1693,3 +1693,16 @@ button.person {
   background: var(--color-ink);
   color: var(--color-page);
 }
+
+.reading-links {
+  display: flex;
+  justify-content: center;
+  gap: var(--space-3);
+  padding-top: var(--space-2);
+  color: var(--color-ink-muted);
+  font-size: var(--text-1);
+}
+
+.reading-links a {
+  color: inherit;
+}
