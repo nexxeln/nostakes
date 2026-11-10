@@ -1,0 +1,28 @@
+{
+  "name": "@nostakes/room-server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "effect-tsrs diagnostics --project tsconfig.json --strict --type-check",
+    "typecheck:tsc": "tsc --noEmit -p tsconfig.json",
+    "typecheck:fast": "tsrs --noEmit -p tsconfig.json",
+    "test": "vitest run",
+    "check": "pnpm run typecheck"
+  },
+  "dependencies": {
+    "@alchemy.run/cloudflare": "2.0.0-beta.85",
+    "@nostakes/protocol": "workspace:*",
+    "alchemy": "2.0.0-beta.85",
+    "effect": "4.1.2"
+  },
+  "devDependencies": {
+    "@alchemy.run/test": "2.0.0-beta.85",
+    "@cloudflare/workers-types": "5.20261108.1",
+    "@effect/platform-node": "4.1.2",
+    "@effect/vitest": "4.1.2",
+    "@types/node": "24.19.2",
+    "typescript": "7.0.2",
+    "vitest": "5.1.0"
+  }
+}
