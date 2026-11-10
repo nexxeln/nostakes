@@ -1,14 +1,14 @@
 import { foldkit } from "@foldkit/vite-plugin";
 import { defineConfig } from "vite";
 
-const LOCAL_ROOM_SERVER = "http://localhost:1337";
+const roomServer = process.env.ROOM_SERVER_URL ?? "http://localhost:1337";
 
 export default defineConfig({
   plugins: [foldkit({ devToolsMcpPort: false })],
   server: {
     port: 5173,
     proxy: {
-      "/rooms": { target: LOCAL_ROOM_SERVER, ws: true },
+      "/rooms": { target: roomServer, ws: true },
     },
     strictPort: true,
   },

@@ -9,7 +9,7 @@ nostakes is a web app where groups of friends play poker online, at most 9 playe
 Workspace `package.json` files declare the pinned stack. Keep every dependency exact. Record drift instead of migrating silently.
 
 - pnpm workspaces and Turborepo `2.11.10`: `packages/*`, `tools/fence`, and `apps/*`
-- Foldkit `0.170.0`, `@foldkit/vite-plugin` `0.29.0`, and Vite `8.3.6` for `apps/web`, at rat-stack's pins
+- Foldkit `0.170.0`, `@foldkit/vite-plugin` `0.29.0`, and Vite `8.3.6` for `apps/web`, at rat-stack's pins. `playwright-core` `1.64.0` drives its end-to-end check, and `@effect/platform-node` `4.1.2` starts the servers that check needs.
 - Node `>=24.18.0` (`.nvmrc` holds `24.18.0`) and pnpm `11.3.0`. Do not install with npm or Bun.
 - Effect `4.1.2` and `@effect/vitest` `4.1.2`. Every package resolves the same Effect runtime.
 - TypeScript `7.0.2` in strict mode, patched by `@effect/tsgo` `0.67.5` in `prepare` so the Effect diagnostics fail `tsc` too
@@ -60,6 +60,7 @@ A long-running check, such as an exhaustive enumeration or a simulator, is a scr
 - Print with Effect `Console`, run the program with `Effect.runPromise`, and fail the Effect on a counterexample. A failed Effect exits non-zero.
 - `verify` is not part of `check` or `test`, and turbo never caches it. Run `pnpm verify` before you commit a change to the rules a script covers.
 - `apps/room-server` is the exception. Its probes need a deployed Worker, and only the `@alchemy.run/test` harness deploys one to local workerd, so its `verify` runs `scripts/*.verify.ts` through `vitest.verify.config.ts`. Each probe fails its Effect with a tagged error on a counterexample. `scripts/soak.verify.ts` plays at least 1,000 hands across at least 10 rooms. Set `SOAK_SEED`, `SOAK_HANDS`, and `SOAK_ROOMS` to replay or resize it. A failed room prints its seed and code and saves its stored log to a temporary directory, with a timeline beside it: the night's own steps and, for each client bot, its connection phases, its lines, every frame it sent, swallowed, or got, and each command with its outcome. Set `SOAK_KEEP_LOGS=true` to save every room's log and timeline. `scripts/hibernation.verify.ts` pings through a 30-second idle and checks the room still hibernates. `scripts/silence.verify.ts` waits about 60 seconds for a quiet socket to be closed as `Unresponsive` while a pinging one stays.
+- `apps/web` runs `scripts/two-players.ts` as its `verify`. It starts the room server through `alchemy dev` and the web app through Vite on port 5199, then two headless Chromium windows launched with `--mute-audio` open a room, join, sit, start, and play a hand until a pot is awarded. CI installs the headless shell first with `playwright-core install --with-deps --only-shell chromium`. Every automated browser in this repo is headless and muted.
 - Integration tests that start workerd cost seconds on every commit through the hook. Keep `pnpm test` for the room server under about 30 seconds: one `beforeAll(deploy(ToyStack))` per file, files in parallel workers, and slow probes such as the hibernation idle and the 60-second silence limit in `verify`.
 
 ## Fence

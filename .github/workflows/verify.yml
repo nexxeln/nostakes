@@ -30,6 +30,8 @@ jobs:
             run: pnpm turbo run verify --filter=@nostakes/room-server
           - target: shuffle
             run: pnpm turbo run verify --filter=@nostakes/shuffle
+          - target: web
+            run: pnpm turbo run verify --filter=@nostakes/web
           - target: differential
             run: pnpm --filter @nostakes/engine differential --seed 20261110 --hands 100000
     steps:
@@ -46,6 +48,9 @@ jobs:
         uses: astral-sh/setup-uv@v5
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+      - name: Install a headless Chromium
+        if: matrix.target == 'web'
+        run: pnpm --filter @nostakes/web exec playwright-core install --with-deps --only-shell chromium
       - name: Verify ${{ matrix.target }}
         run: ${{ matrix.run }}
       - name: Upload saved logs from a failed soak
