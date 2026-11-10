@@ -12,6 +12,7 @@ import type { RoomLog } from "./evolve.js";
 import { AvatarSchema, NameSchema, RoomCodeSchema } from "./identity.js";
 import { joinRoom, leaveRoom, setProfile, transferHost } from "./members.js";
 import { answerChips, leaveSeat, requestChips } from "./money.js";
+import { play } from "./play.js";
 import { RoomIsClosed } from "./rejection.js";
 import { answerSeat, declareStraddle, requestSeat, sitOut } from "./seats.js";
 import { RoomSettingsSchema } from "./settings.js";
@@ -59,10 +60,13 @@ const byHost = (
 
 const decideOpen = (state: Open, command: RoomCommand): Decision =>
   RoomCommands.$match(command, {
+    Act: (act) => byMember(state, act, (player) => play(state, player, act)),
     ApproveChips: (approve) =>
       byHost(state, approve, () => answerChips(state, approve, true)),
     ApproveSeat: (approve) =>
       byHost(state, approve, () => answerSeat(state, approve, true)),
+    ChooseRuns: (choose) =>
+      byMember(state, choose, (player) => play(state, player, choose)),
     Deal: (dealing) =>
       Result.flatMap(fromServer(dealing), () => deal(state, dealing)),
     DeclareStraddle: (declare) =>
@@ -83,6 +87,8 @@ const decideOpen = (state: Open, command: RoomCommand): Decision =>
       byMember(state, leave, (player) => leaveSeat(state, player, leave.at)),
     PauseGame: (pause) =>
       byHost(state, pause, () => pauseGame(state, pause.at)),
+    RabbitHunt: (hunt) =>
+      byMember(state, hunt, (player) => play(state, player, hunt)),
     RemoveFromSeat: (remove) =>
       byHost(state, remove, () => leaveSeat(state, remove.player, remove.at)),
     RequestChips: (request) =>
@@ -93,6 +99,8 @@ const decideOpen = (state: Open, command: RoomCommand): Decision =>
       byMember(state, request, (player) => requestSeat(state, player, request)),
     SetProfile: (profile) =>
       byMember(state, profile, (player) => setProfile(player, profile)),
+    ShowCards: (show) =>
+      byMember(state, show, (player) => play(state, player, show)),
     SitIn: (sitIn) =>
       byMember(state, sitIn, (player) =>
         sitOut(state, player, false, sitIn.at)
