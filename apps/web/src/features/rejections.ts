@@ -184,6 +184,7 @@ export const rejectionText = (
         `Only the host, ${voice.name(host)}, can do that.`,
       NothingSealed: () => DEALER_BUSY,
       QueueNotDue: () => DEALER_BUSY,
+      QuietNotDue: () => DEALER_BUSY,
       RoomIsClosed: () => "This room is closed.",
       SaltSecretSize: () => DEALER_BUSY,
       SealNotDue: () => DEALER_BUSY,

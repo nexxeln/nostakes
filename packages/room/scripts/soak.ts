@@ -181,6 +181,7 @@ const roomSettings = (random: Random): RoomSettings => {
     buyIn: { max: chips(min * (3 + random.below(5))), min: chips(min) },
     dealing: random.chance(30) ? "Host" : "Automatic",
     leavingMidHand: random.chance(40) ? "PlaysOn" : "ActedFor",
+    pauseWhenAwaySeconds: random.pick([0, 5, 120]) ?? 120,
     peeking: random.chance(75),
     runChoiceSeconds: 2 + random.below(10),
     seats: random.chance(50) ? 9 : 2 + random.below(8),

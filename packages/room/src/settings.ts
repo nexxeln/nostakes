@@ -70,6 +70,8 @@ export const TimeBankRefills = Data.taggedEnum<TimeBankRefill>();
 
 export const MAX_TIMEOUTS_IN_A_ROW = 20;
 
+export const DEFAULT_PAUSE_WHEN_AWAY_SECONDS = 120;
+
 export const MIN_SEATS = 2;
 
 export const SeatCountSchema = Schema.Int.check(
@@ -134,6 +136,15 @@ const settingsFields = (shuffleWhenAbsent: Shuffle) => ({
       "What happens to a player who leaves their seat during a hand they are in. ActedFor: the room checks or folds for them whenever the action reaches them. PlaysOn: they play the hand out on their own clock, and stand up when it ends. A player who leaves the room is always acted for.",
     title: "Leaving during a hand",
   }),
+  pauseWhenAwaySeconds: setting(
+    wholeSeconds(0, MAX_CLOCK_SECONDS),
+    DEFAULT_PAUSE_WHEN_AWAY_SECONDS,
+    {
+      description:
+        "Seconds the game keeps dealing once no seated player is connected. Then it pauses: the hand in play finishes on its clocks and no new hand is dealt until a seated player is back.",
+      title: "Pause when everyone is away",
+    }
+  ),
   peeking: setting(Schema.Boolean, true, {
     description:
       "Whether the table sees when a player looks at their cards. While a player peeks, everyone else sees their face look down, as they would at a real table. Off keeps peeks to the player's own screen.",

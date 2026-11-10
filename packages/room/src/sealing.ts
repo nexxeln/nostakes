@@ -61,7 +61,7 @@ import {
   stillWithdrawable,
   withdrawal,
 } from "./sealed-hand.js";
-import { handInProgress, occupantAt } from "./state.js";
+import { Attendances, handInProgress, occupantAt } from "./state.js";
 import type { Open, Sealed } from "./state.js";
 import { onTable } from "./table.js";
 import { latest, millis } from "./time.js";
@@ -358,7 +358,7 @@ const withdrawalReason = (
   state: Open,
   sealed: Sealed
 ): Option.Option<WithdrawalReason> => {
-  if (state.game === "Waiting") {
+  if (state.game === "Waiting" || Attendances.$is("Quiet")(state.attendance)) {
     return Option.some("GamePaused");
   }
 

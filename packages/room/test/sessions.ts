@@ -131,6 +131,8 @@ const TOP_UPS: readonly TopUpRule[] = [
   "WhenBust",
 ];
 
+const AWAY_SECONDS = [0, 1, 30, 120];
+
 export const settingsFrom = (random: SeededRandom): RoomSettings => ({
   approval: { chips: random.chance(1, 2), seats: random.chance(1, 2) },
   betweenHandsSeconds: random.below(3),
@@ -140,6 +142,7 @@ export const settingsFrom = (random: SeededRandom): RoomSettings => ({
   },
   dealing: random.chance(1, 3) ? "Host" : "Automatic",
   leavingMidHand: random.chance(1, 2) ? "PlaysOn" : "ActedFor",
+  pauseWhenAwaySeconds: AWAY_SECONDS[random.below(AWAY_SECONDS.length)] ?? 0,
   peeking: random.chance(3, 4),
   runChoiceSeconds: 1 + random.below(10),
   seats: random.chance(1, 2) ? 9 : 2 + random.below(8),
@@ -421,12 +424,30 @@ const playOrDeal = (
     })
   );
 
+const attendanceNote = (
+  state: Open,
+  random: SeededRandom,
+  at: number,
+  by: Actor
+): RoomCommand =>
+  RoomCommands.NoteAttendance({
+    at: millis(at),
+    by,
+    connected: random.chance(1, 3)
+      ? []
+      : members(state).filter(() => random.chance(1, 2)),
+  });
+
 const serverCommand = (
   state: Open,
   random: SeededRandom,
   at: number
 ): RoomCommand => {
   const by = random.chance(1, 12) ? someone(state, random) : server;
+
+  if (random.chance(1, 5)) {
+    return attendanceNote(state, random, at, by);
+  }
 
   return Option.match(nextDeadline(state), {
     onNone: () =>
@@ -453,6 +474,10 @@ const serverCommand = (
 
       if (Deadlines.$is("QueueDue")(deadline)) {
         return RoomCommands.RunQueue({ at: sent, by });
+      }
+
+      if (Deadlines.$is("QuietDue")(deadline)) {
+        return RoomCommands.QuietTable({ at: sent, by });
       }
 
       if (Deadlines.$is("SealDue")(deadline)) {

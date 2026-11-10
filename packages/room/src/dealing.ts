@@ -18,7 +18,7 @@ import {
   GameAlready,
   ShuffleRanOut,
 } from "./rejection.js";
-import { SEATS, handInProgress, occupantAt } from "./state.js";
+import { Attendances, SEATS, handInProgress, occupantAt } from "./state.js";
 import type { Open } from "./state.js";
 import { onTable } from "./table.js";
 import { secondsAfter } from "./time.js";
@@ -80,8 +80,11 @@ export const betweenHandsDue = (state: Open): Millis =>
 const waitingForHost = (state: Open) =>
   state.settings.dealing === "Host" && !state.dealCalled;
 
+const gameWaits = (state: Open) =>
+  state.game === "Waiting" || Attendances.$is("Quiet")(state.attendance);
+
 export const dealDue = (state: Open) =>
-  state.game === "Running" &&
+  !gameWaits(state) &&
   !handInProgress(state) &&
   !waitingForHost(state) &&
   dealableSeats(state.table).length >= 2
@@ -89,7 +92,7 @@ export const dealDue = (state: Open) =>
     : Option.none();
 
 const cannotDeal = (state: Open) => {
-  if (state.game === "Waiting") {
+  if (gameWaits(state)) {
     return Option.some(
       new DealNotDue({ due: Option.none(), reason: "Waiting" })
     );

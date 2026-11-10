@@ -148,6 +148,13 @@ export const roomEventFields = {
   SettingsChanged: { at, settings: RoomSettingsSchema },
   ShowdownClockStarted: { at, deadline: MillisSchema, seat: SeatIndexSchema },
   StraddleDeclared: { at, on: Schema.Boolean, player: PlayerIdSchema },
+  TableAttended: {
+    at,
+    player: PlayerIdSchema,
+    quietSince: Schema.Option(MillisSchema),
+  },
+  TableUnattended: { at },
+  TableWentQuiet: { at },
   TimeBankRefilled: {
     at,
     player: PlayerIdSchema,

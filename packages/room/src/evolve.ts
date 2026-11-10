@@ -8,6 +8,7 @@ import { boughtIn, cashedOut, withEntry } from "./money.js";
 import { recorded } from "./record.js";
 import { beaconOf, planOf } from "./sealed-hand.js";
 import {
+  Attendances,
   DecisionClocks,
   EMPTY_QUEUE,
   ProofDeals,
@@ -27,6 +28,7 @@ import type { Millis } from "./time.js";
 
 export const opened = (event: RoomEventOf<"RoomOpened">): Open =>
   RoomStates.Open({
+    attendance: Attendances.Attended({ since: event.at }),
     away: [],
     chain: event.chain,
     clocks: {
@@ -372,6 +374,23 @@ const evolveOpen = (state: Open, event: RoomEvent): RoomState =>
         : state.straddlers.filter((straddler) => straddler !== player),
     }),
     Table: ({ at, event: tableEvent }) => onTable(state, tableEvent, at),
+    TableAttended: ({ at }): Open => ({
+      ...state,
+      attendance: Attendances.Attended({ since: at }),
+    }),
+    TableUnattended: ({ at }): Open => ({
+      ...state,
+      attendance: Attendances.Unattended({ since: at }),
+    }),
+    TableWentQuiet: ({ at }): Open => ({
+      ...state,
+      attendance: Attendances.Quiet({
+        pausedAt: at,
+        since: Attendances.$is("Unattended")(state.attendance)
+          ? state.attendance.since
+          : at,
+      }),
+    }),
     TimeBankRefilled: ({ player, seconds }) => ({
       ...state,
       clocks: {

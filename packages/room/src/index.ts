@@ -40,6 +40,8 @@ export type {
   WithdrawalReason,
 } from "./events.js";
 
+export { attendanceCommand, quietDueAt, seatedPlayers } from "./attendance.js";
+
 export { evolve, evolveAll, replay } from "./evolve.js";
 
 export type { RoomLog } from "./evolve.js";
@@ -79,6 +81,7 @@ export {
   NotTheHost,
   NothingSealed,
   QueueNotDue,
+  QuietNotDue,
   RoomIsClosed,
   RoomRejectionSchema,
   SaltSecretSize,
@@ -122,6 +125,7 @@ export {
   ApprovalSchema,
   BuyInRangeSchema,
   ChipAmountSchema,
+  DEFAULT_PAUSE_WHEN_AWAY_SECONDS,
   DealingSchema,
   LeavingMidHandSchema,
   MAX_CHIP_AMOUNT,
@@ -165,6 +169,7 @@ export { chipsOnTable, settlement } from "./money.js";
 export type { Balance, Settlement, Transfer } from "./settlement.js";
 
 export {
+  Attendances,
   DecisionClocks,
   ProofDeals,
   RoomStates,
@@ -172,7 +177,7 @@ export {
   seatOf,
 } from "./state.js";
 
-export type { Member, Open, RoomState } from "./state.js";
+export type { Attendance, Member, Open, RoomState } from "./state.js";
 
 export { MillisSchema, millis } from "./time.js";
 
@@ -197,6 +202,7 @@ export type {
 } from "./witness.js";
 
 export {
+  AttendanceViewSchema,
   AudienceSchema,
   Audiences,
   AwardSchema,

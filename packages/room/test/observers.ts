@@ -216,6 +216,8 @@ const SERVER_ONLY = new Set<RoomCommand["_tag"]>([
   "Deal",
   "DealSealed",
   "ExpireClock",
+  "NoteAttendance",
+  "QuietTable",
   "RunQueue",
   "SealHand",
 ]);
@@ -238,6 +240,9 @@ const SERVER_EVENTS = new Set<RoomEvent["_tag"]>([
   "DealtWithoutBeacon",
   "HandSealed",
   "MarkedAway",
+  "TableAttended",
+  "TableUnattended",
+  "TableWentQuiet",
   "TimeBankStarted",
 ]);
 

@@ -451,6 +451,12 @@ test(
       `{"_tag":"Hello","after":null,"token":"${token}"}`
     );
 
+    const older = yield* closeAfterHello(
+      base,
+      pass,
+      `{"_tag":"Hello","after":null,"protocol":${PROTOCOL_VERSION - 1},"token":"${token}"}`
+    );
+
     const newer = yield* closeAfterHello(
       base,
       pass,
@@ -464,6 +470,13 @@ test(
         reason: "ProtocolViolation",
       }),
       frames: ['{"_tag":"Closing","reason":"ProtocolViolation"}'],
+    });
+    expect(older).toEqual({
+      closed: Option.some({
+        code: CLOSE_CODES.ClientOutdated,
+        reason: "ClientOutdated",
+      }),
+      frames: ['{"_tag":"Closing","reason":"ClientOutdated"}'],
     });
     expect(newer).toEqual({
       closed: Option.some({

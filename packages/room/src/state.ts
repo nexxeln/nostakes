@@ -143,6 +143,14 @@ export interface Proof {
 
 export type Game = "Running" | "Waiting";
 
+export type Attendance = Data.TaggedEnum<{
+  Attended: { readonly since: Millis };
+  Unattended: { readonly since: Millis };
+  Quiet: { readonly since: Millis; readonly pausedAt: Millis };
+}>;
+
+export const Attendances = Data.taggedEnum<Attendance>();
+
 export type Entries = ReadonlyMap<PlayerId, readonly LedgerEntry<PlayerId>[]>;
 
 export type RoomState = Data.TaggedEnum<{
@@ -155,6 +163,7 @@ export type RoomState = Data.TaggedEnum<{
     readonly settlement: Settlement;
   };
   Open: {
+    readonly attendance: Attendance;
     readonly away: readonly SeatIndex[];
     readonly chain: DrandChain;
     readonly clocks: Clocks;

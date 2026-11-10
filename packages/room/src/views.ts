@@ -327,6 +327,17 @@ const MemberViewSchema = Schema.Struct({
 
 const youField = absentAs(Schema.Option(PlayerIdSchema), Option.none());
 
+export const AttendanceViewSchema = Schema.TaggedUnion({
+  Attended: { since: MillisSchema },
+  Quiet: { pausedAt: MillisSchema, since: MillisSchema },
+  Unattended: { since: MillisSchema },
+});
+
+const attendanceField = absentAs(
+  AttendanceViewSchema,
+  AttendanceViewSchema.cases.Attended.make({ since: millis(0) })
+);
+
 const departedField = absentAs(Schema.Array(MemberViewSchema), []);
 
 export const RoomViewSchema = Schema.TaggedUnion({
@@ -338,6 +349,7 @@ export const RoomViewSchema = Schema.TaggedUnion({
     you: youField,
   },
   Open: {
+    attendance: attendanceField,
     balances: Schema.Array(BalanceSchema),
     clocks: ClocksViewSchema,
     code: RoomCodeSchema,
@@ -655,6 +667,7 @@ const openView = (state: Open, audience: Audience, at: Millis): RoomView => {
   const { table } = state;
 
   return RoomViews.Open({
+    attendance: state.attendance,
     balances: balances(allEntries(state.entries)),
     clocks: clocksView(state, latest(at, state.now)),
     code: state.code,

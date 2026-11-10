@@ -1,6 +1,7 @@
 import { Antes } from "@nostakes/engine";
 import {
   Actors,
+  DEFAULT_PAUSE_WHEN_AWAY_SECONDS,
   Deadlines,
   JoinRequestSchema,
   MemberCommandSchema,
@@ -73,6 +74,7 @@ export const DEFAULT_SETTINGS: RoomSettings = Schema.decodeSync(
   buyIn: { max: 400, min: 40 },
   dealing: "Automatic",
   leavingMidHand: "ActedFor",
+  pauseWhenAwaySeconds: DEFAULT_PAUSE_WHEN_AWAY_SECONDS,
   peeking: true,
   runChoiceSeconds: 15,
   seats: 9,
@@ -146,6 +148,7 @@ export const pokerRoomOn = (chain: DrandChain): HostedRoom<PokerTypes> => ({
     Deadlines.$match(due, {
       DealDue: () => DEAL_SHUFFLE_BYTES,
       QueueDue: () => 0,
+      QuietDue: () => 0,
       RunChoiceClock: () => 0,
       SealDue: () => SEAL_BYTES,
       SealedDealDue: () => DEAL_SHUFFLE_BYTES,
@@ -190,6 +193,8 @@ export const pokerRoomOn = (chain: DrandChain): HostedRoom<PokerTypes> => ({
         }),
       QueueDue: () =>
         RoomCommands.RunQueue({ at: millis(at), by: Actors.Server() }),
+      QuietDue: () =>
+        RoomCommands.QuietTable({ at: millis(at), by: Actors.Server() }),
       RunChoiceClock: (clock) =>
         RoomCommands.ExpireClock({
           at: millis(at),

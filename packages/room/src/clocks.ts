@@ -12,6 +12,7 @@ import type { Command, Event, PlayerId, SeatIndex } from "@nostakes/engine";
 import { BeaconRoundSchema } from "@nostakes/shuffle";
 import { Data, Option, Result, Schema } from "effect";
 
+import { quietDueAt } from "./attendance.js";
 import { andThen } from "./batch.js";
 import type { RoomCommandOf } from "./commands.js";
 import { dealDue } from "./dealing.js";
@@ -19,6 +20,7 @@ import type { Decision } from "./decision.js";
 import { RoomEvents } from "./events.js";
 import type { RoomEvent } from "./events.js";
 import { ActionNotOnSeat, ClockNotDue, NoSuchDeadline } from "./rejection.js";
+import { stillWithdrawable } from "./sealed-hand.js";
 import { sealDue, sealedDealDue } from "./sealing.js";
 import { TimeBankRefills, turnClockRuns } from "./settings.js";
 import {
@@ -41,6 +43,7 @@ import type { Millis } from "./time.js";
 export const DeadlineSchema = Schema.TaggedUnion({
   DealDue: { at: MillisSchema },
   QueueDue: { at: MillisSchema },
+  QuietDue: { at: MillisSchema },
   RunChoiceClock: { at: MillisSchema },
   SealDue: { at: MillisSchema },
   SealedDealDue: { at: MillisSchema, round: BeaconRoundSchema },
@@ -68,6 +71,21 @@ const dealingDeadline = (state: Open): Option.Option<Deadline> =>
     )
   );
 
+const sealBindsBy = (state: Open, at: Millis) =>
+  Option.exists(
+    state.sealed,
+    (sealed) => !stillWithdrawable(state, sealed, at)
+  );
+
+const pausingFirst = (state: Open, dealing: Deadline): Deadline =>
+  Option.match(quietDueAt(state), {
+    onNone: () => dealing,
+    onSome: (at) =>
+      dealing.at >= at && !sealBindsBy(state, at)
+        ? Deadlines.QuietDue({ at })
+        : dealing,
+  });
+
 export const nextDealAt = (state: Open): Option.Option<Millis> =>
   sealedDealDue(state).pipe(
     Option.map(({ at }) => at),
@@ -82,7 +100,9 @@ export const nextDeadline = (state: RoomState): Option.Option<Deadline> =>
         onNone: () =>
           queueWaiting(open)
             ? Option.some(Deadlines.QueueDue({ at: open.now }))
-            : dealingDeadline(open),
+            : dealingDeadline(open).pipe(
+                Option.map((dealing) => pausingFirst(open, dealing))
+              ),
         onSome: (clock) =>
           Option.some(
             DecisionClocks.$match(clock, {

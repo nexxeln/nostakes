@@ -3,6 +3,7 @@ import { Events, PlayerIdSchema } from "@nostakes/engine";
 import { DrandChainSchema, QUICKNET } from "@nostakes/shuffle";
 import { Option, Result, Schema } from "effect";
 
+import { noteAttendance, quietTable } from "./attendance.js";
 import { fromHost, fromMember, fromServer, fromSomeone } from "./authority.js";
 import {
   actForSeat,
@@ -125,8 +126,12 @@ const decideOpen = (state: Open, command: RoomCommand): Decision =>
       byMember(state, leave, (player) => leaveSeat(state, player, leave.at)),
     MuckHand: (muck) =>
       byMember(state, muck, (player) => play(state, player, muck)),
+    NoteAttendance: (note) =>
+      Result.flatMap(fromServer(note), () => noteAttendance(state, note)),
     PauseGame: (pause) =>
       byHost(state, pause, () => pauseGame(state, pause.at)),
+    QuietTable: (quiet) =>
+      Result.flatMap(fromServer(quiet), () => quietTable(state, quiet.at)),
     RabbitHunt: (hunt) =>
       byMember(state, hunt, (player) => play(state, player, hunt)),
     RemoveFromSeat: (remove) =>
