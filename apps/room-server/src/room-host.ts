@@ -1,5 +1,6 @@
 import { SeqSchema, MAX_MISSED_EVENTS } from "@nostakes/protocol";
 import type {
+  BuildId,
   CloseReason,
   CommandId,
   PlayerId,
@@ -527,7 +528,8 @@ export const hostRoom = <T extends RoomTypes>(
     player: PlayerId,
     after: Option.Option<number>,
     at: number,
-    connections: Connections
+    connections: Connections,
+    build: Option.Option<BuildId> = Option.none()
   ) => {
     const audience = core.audienceOf(current.state, player);
 
@@ -536,6 +538,7 @@ export const hostRoom = <T extends RoomTypes>(
         Result.map((caughtUp) =>
           codec.encodeFrame(
             codec.server.cases.Welcome.make({
+              build,
               catchUp: caughtUp,
               seq: SeqSchema.make(current.headSeq),
               view: core.viewFor(current.state, audience, at),

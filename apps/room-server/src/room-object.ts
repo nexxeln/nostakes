@@ -11,6 +11,7 @@ import {
   RoomCodeSchema,
   TOKEN_BYTES,
   TokenTextSchema,
+  versionMismatch,
 } from "@nostakes/protocol";
 import type { CloseReason, PlainRefusal } from "@nostakes/protocol";
 import {
@@ -53,6 +54,7 @@ import {
   OpenOutcomeSchema,
 } from "./room-rpc.js";
 import type { Inspection } from "./room-rpc.js";
+import { servedBuildOrNone } from "./served-build.js";
 import { attach, attachmentOf, AttachmentSchema } from "./socket-attachment.js";
 import { acknowledgeClose, closeWith } from "./socket-close.js";
 import { sqliteStorage } from "./sqlite-storage.js";
@@ -149,6 +151,7 @@ export const roomObject = <T extends RoomTypes>(
         });
 
         const instance = Hex.encode(yield* liveBytes(8));
+        const served = yield* servedBuildOrNone;
         const alarmRuns: { at: number; outcome: string }[] = [];
         const buckets = new WeakMap<cf.WebSocket, FrameBucket>();
 
@@ -341,7 +344,8 @@ export const roomObject = <T extends RoomTypes>(
             player.value,
             after,
             at,
-            connectionsOf(room, Option.none())
+            connectionsOf(room, Option.none()),
+            served
           );
 
           if (Result.isFailure(welcome)) {
@@ -474,7 +478,7 @@ export const roomObject = <T extends RoomTypes>(
 
                   yield* logCommit(result, stamped);
                 }),
-              Hello: ({ after, token }) =>
+              Hello: ({ after, protocol, token }) =>
                 Effect.gen(function* greet() {
                   if (
                     !attachment.pipe(
@@ -482,6 +486,14 @@ export const roomObject = <T extends RoomTypes>(
                     )
                   ) {
                     closeSocket(socket, "ProtocolViolation");
+
+                    return;
+                  }
+
+                  const mismatch = versionMismatch(protocol);
+
+                  if (Option.isSome(mismatch)) {
+                    closeSocket(socket, mismatch.value);
 
                     return;
                   }

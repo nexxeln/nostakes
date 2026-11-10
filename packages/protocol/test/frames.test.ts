@@ -3,6 +3,7 @@ import { Inspectable, Option, Redacted, Result, Schema } from "effect";
 import * as Arbitrary from "effect/Arbitrary";
 
 import {
+  BEFORE_VERSIONS,
   CLOSE_CODES,
   CloseReasonSchema,
   clientFrame,
@@ -10,11 +11,13 @@ import {
   closingFrame,
   PING_FRAME,
   PONG_FRAME,
+  PROTOCOL_VERSION,
   ROOM_CODE_ALPHABET,
   RoomCodeSchema,
   serverFrame,
   serverMessage,
   TokenTextSchema,
+  versionMismatch,
 } from "../src/index.js";
 
 const SampleCommand = Schema.TaggedUnion({
@@ -101,7 +104,29 @@ describe("frames", () => {
           token: hello.token,
         })
       )
-    ).toBe(`{"_tag":"Hello","after":null,"token":"${tokenText}"}`);
+    ).toBe(
+      `{"_tag":"Hello","after":null,"protocol":${PROTOCOL_VERSION},"token":"${tokenText}"}`
+    );
+  });
+
+  it("reads a hello that names no protocol as one from before versions", () => {
+    const hello = Schema.decodeSync(ClientFrames)(
+      `{"_tag":"Hello","after":null,"token":"${tokenText}"}`
+    );
+
+    expect(ClientMessages.guards.Hello(hello) && hello.protocol).toBe(
+      BEFORE_VERSIONS
+    );
+  });
+
+  it("reads a welcome that names no build as one from a server without a build", () => {
+    const welcome = Schema.decodeSync(ServerFrames)(
+      '{"_tag":"Welcome","catchUp":{"_tag":"UpToDate"},"seq":3,"view":{"count":1,"mine":null},"you":"aaaaaaaaaaaaaaaa"}'
+    );
+
+    expect(
+      ServerMessages.guards.Welcome(welcome) && Option.isNone(welcome.build)
+    ).toBe(true);
   });
 
   it("refuses a hello whose token is not 32 bytes of base64url", () => {
@@ -169,6 +194,38 @@ describe("closing frames", () => {
     expect(
       codes.every((code) => code === 1009 || (code >= 4000 && code <= 4999))
     ).toBe(true);
+  });
+});
+
+describe("protocol versions", () => {
+  it("serve only a client on the same protocol, and say which side is behind", () => {
+    expect(versionMismatch(PROTOCOL_VERSION)).toEqual(Option.none());
+    expect(versionMismatch(PROTOCOL_VERSION + 1)).toEqual(
+      Option.some("ServerOutdated")
+    );
+    expect(versionMismatch(BEFORE_VERSIONS)).toEqual(
+      Option.some("ProtocolViolation")
+    );
+  });
+
+  it("call a client outdated when it names an older version, and refuse one from before versions", () => {
+    expect(versionMismatch(2, 3)).toEqual(Option.some("ClientOutdated"));
+    expect(versionMismatch(1, 3)).toEqual(Option.some("ClientOutdated"));
+    expect(versionMismatch(4, 3)).toEqual(Option.some("ServerOutdated"));
+    expect(versionMismatch(BEFORE_VERSIONS, 3)).toEqual(
+      Option.some("ProtocolViolation")
+    );
+  });
+
+  it("send the closing frames that tell a peer of another version to update in a form every version reads", () => {
+    expect(closingFrame("ClientOutdated")).toBe(
+      '{"_tag":"Closing","reason":"ClientOutdated"}'
+    );
+    expect(closingFrame("ServerOutdated")).toBe(
+      '{"_tag":"Closing","reason":"ServerOutdated"}'
+    );
+    expect(CLOSE_CODES.ClientOutdated).toBe(4011);
+    expect(CLOSE_CODES.ServerOutdated).toBe(4012);
   });
 });
 

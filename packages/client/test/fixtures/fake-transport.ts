@@ -1,10 +1,17 @@
 import { serverFrame, PlayerIdSchema, SeqSchema } from "@nostakes/protocol";
-import type { CloseReason, CommandId, PlayerId, Seq } from "@nostakes/protocol";
+import type {
+  BuildId,
+  CloseReason,
+  CommandId,
+  PlayerId,
+  Seq,
+} from "@nostakes/protocol";
 import {
   Array as Arr,
   Clock,
   Effect,
   Layer,
+  Option,
   Queue,
   Schema,
   Stream,
@@ -82,9 +89,14 @@ export const serverText = {
         you: YOU,
       })
     ),
-  welcome: (head: number, missedTotals: readonly number[] = []) =>
+  welcome: (
+    head: number,
+    missedTotals: readonly number[] = [],
+    build: Option.Option<BuildId> = Option.none()
+  ) =>
     encodeServerFrame(
       toyCodec.server.cases.Welcome.make({
+        build,
         catchUp: Arr.match(missedTotals.map(addedEvent), {
           onEmpty: () => toyCodec.catchUp.cases.UpToDate.make({}),
           onNonEmpty: (events) =>

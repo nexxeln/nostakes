@@ -58,3 +58,13 @@ export {
   type Token,
   type TokenText,
 } from "./primitives.js";
+
+export {
+  BEFORE_VERSIONS,
+  BuildIdSchema,
+  PROTOCOL_VERSION,
+  ProtocolVersionSchema,
+  versionMismatch,
+  type BuildId,
+  type VersionMismatch,
+} from "./version.js";

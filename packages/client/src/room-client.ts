@@ -1,5 +1,6 @@
 import { CommandIdSchema, MAX_FRAME_BYTES } from "@nostakes/protocol";
 import type {
+  BuildId,
   CloseReason,
   CommandId,
   PlayerId,
@@ -45,6 +46,7 @@ export type ConnectionPhase =
   | "Live"
   | "Waiting"
   | "Refused"
+  | "Outdated"
   | "Stopped";
 
 export interface ClientState<T extends RoomTypes> {
@@ -59,6 +61,7 @@ export interface ClientState<T extends RoomTypes> {
   readonly retryDelayMs: Option.Option<number>;
   readonly drop: Option.Option<DropReason>;
   readonly refusal: Option.Option<CloseReason>;
+  readonly newBuild: Option.Option<BuildId>;
 }
 
 export type LocalCancelOutcome =
@@ -98,6 +101,7 @@ export interface RoomClient<T extends RoomTypes> {
 export interface RoomClientOptions {
   readonly url: string;
   readonly token: Token;
+  readonly build?: BuildId;
 }
 
 const PHASES = {
@@ -105,6 +109,7 @@ const PHASES = {
   "Online.Connecting": "Connecting",
   "Online.Greeting": "Greeting",
   "Online.Live": "Live",
+  Outdated: "Outdated",
   Refused: "Refused",
   Stopped: "Stopped",
   "Waiting.Drawing": "Waiting",
@@ -143,7 +148,11 @@ export const roomClient = <T extends RoomTypes>(
     >();
 
     const actor = yield* createEffectActor(machine, {
-      input: { token: options.token, url: options.url },
+      input: {
+        build: Option.fromUndefinedOr(options.build),
+        token: options.token,
+        url: options.url,
+      },
     });
 
     const stateOf = (
@@ -156,6 +165,7 @@ export const roomClient = <T extends RoomTypes>(
         connection,
         drop: context.drop,
         failures: context.failures,
+        newBuild: context.newBuild,
         pending: context.pending.map(({ id }) => id),
         presence: context.presence,
         refusal: context.refusal,
@@ -170,11 +180,19 @@ export const roomClient = <T extends RoomTypes>(
       };
     };
 
-    const ending = (id: CommandId) =>
-      Option.match(actor.getSnapshot().context.refusal, {
-        onNone: () => new ClientStopped({ id }),
-        onSome: (reason) => new ClientRefused({ id, reason }),
-      });
+    const ending = (id: CommandId) => {
+      const snapshot = actor.getSnapshot();
+
+      return Option.match(
+        stateOf(snapshot).connection === "Outdated"
+          ? Option.some<CloseReason>("ClientOutdated")
+          : snapshot.context.refusal,
+        {
+          onNone: () => new ClientStopped({ id }),
+          onSome: (reason) => new ClientRefused({ id, reason }),
+        }
+      );
+    };
 
     const settle = (
       id: CommandId,

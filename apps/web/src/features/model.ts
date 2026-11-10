@@ -43,6 +43,7 @@ export const ConnectionPhaseSchema = Schema.Literals([
   "Live",
   "Waiting",
   "Refused",
+  "Outdated",
   "Stopped",
 ]);
 

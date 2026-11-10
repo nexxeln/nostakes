@@ -6,10 +6,11 @@ import {
   CLOSE_CODES,
   CommandIdSchema,
   HttpRefusalSchema,
+  PROTOCOL_VERSION,
 } from "@nostakes/protocol";
 import type { RoomPass } from "@nostakes/protocol";
 import { ChipAmountSchema, RoomViews, SeenEvents } from "@nostakes/room";
-import { Deferred, Effect, Option, Schema } from "effect";
+import { Deferred, Effect, Option, Queue, Redacted, Schema } from "effect";
 import * as FetchHttpClient from "effect/http/FetchHttpClient";
 import * as HttpClient from "effect/http/HttpClient";
 import * as HttpClientRequest from "effect/http/HttpClientRequest";
@@ -31,7 +32,7 @@ import type {
   PokerServerMessage,
   PokerSocket,
 } from "./fixtures/poker-socket.js";
-import { ProductionStack } from "./fixtures/production-stack.js";
+import { ProductionStack, TEST_BUILD } from "./fixtures/production-stack.js";
 import { socketUrl } from "./fixtures/room-client.js";
 import { TEST_ORIGIN } from "./fixtures/toy-worker.js";
 
@@ -186,6 +187,65 @@ test(
 
     yield* ana.socket.disconnect;
     yield* ben.socket.disconnect;
+  }).pipe(Effect.provide(FetchHttpClient.layer)),
+  { timeout: 60_000 }
+);
+
+const closeAfterHello = (base: string, pass: RoomPass, hello: string) =>
+  Effect.gen(function* helloThenClose() {
+    const socket = yield* openSocket(base, pass.code, "outdated");
+
+    yield* socket.sendText(hello);
+
+    while (Option.isNone(socket.closed())) {
+      yield* Queue.take(socket.signal);
+    }
+
+    return {
+      closed: socket.closed(),
+      frames: socket.arrivals.map(({ text }) => text),
+    };
+  });
+
+test(
+  "the production Worker names the web build it serves in each welcome, and turns away a client on another protocol with a reason it can read",
+  Effect.gen(function* versions() {
+    const { url } = yield* deployed;
+    const base = yield* Effect.fromNullishOr(url).pipe(Effect.orDie);
+
+    const pass = yield* createPokerRoom(base, { avatar: "fox", name: "Ana" });
+    const ana = yield* greet(base, pass, "ana");
+    const token = Redacted.value(pass.token);
+
+    const unversioned = yield* closeAfterHello(
+      base,
+      pass,
+      `{"_tag":"Hello","after":null,"token":"${token}"}`
+    );
+
+    const newer = yield* closeAfterHello(
+      base,
+      pass,
+      `{"_tag":"Hello","after":null,"protocol":${PROTOCOL_VERSION + 1},"token":"${token}"}`
+    );
+
+    expect(ana.welcome.build).toEqual(Option.some(TEST_BUILD));
+    expect(unversioned).toEqual({
+      closed: Option.some({
+        code: CLOSE_CODES.ProtocolViolation,
+        reason: "ProtocolViolation",
+      }),
+      frames: ['{"_tag":"Closing","reason":"ProtocolViolation"}'],
+    });
+    expect(newer).toEqual({
+      closed: Option.some({
+        code: CLOSE_CODES.ServerOutdated,
+        reason: "ServerOutdated",
+      }),
+      frames: ['{"_tag":"Closing","reason":"ServerOutdated"}'],
+    });
+
+    yield* ana.socket.disconnect;
   }).pipe(Effect.provide(FetchHttpClient.layer)),
   { timeout: 60_000 }
 );

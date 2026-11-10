@@ -1,4 +1,5 @@
 import type {
+  BuildId,
   CloseReason,
   CommandId,
   PlayerId,
@@ -64,6 +65,7 @@ export interface Owed {
 export interface ClientInput {
   readonly url: string;
   readonly token: Token;
+  readonly build: Option.Option<BuildId>;
 }
 
 export interface ClientContext<T extends RoomTypes> extends ClientInput {
@@ -78,11 +80,13 @@ export interface ClientContext<T extends RoomTypes> extends ClientInput {
   readonly link: Option.Option<Link<T>>;
   readonly drop: Option.Option<DropReason>;
   readonly refusal: Option.Option<CloseReason>;
+  readonly newBuild: Option.Option<BuildId>;
 }
 
 export interface ConnectionPayloads<T extends RoomTypes> {
   readonly Opened: { readonly link: Link<T> };
   readonly Welcome: {
+    readonly build: Option.Option<BuildId>;
     readonly catchUp: CatchUp<T>;
     readonly seq: Seq;
     readonly view: T["View"];

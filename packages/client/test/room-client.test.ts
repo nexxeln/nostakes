@@ -1,17 +1,20 @@
 import { describe, expect, it } from "@effect/vitest";
 import {
+  BuildIdSchema,
   FRAME_BURST,
   FRAMES_PER_SECOND,
   MAX_FRAME_BYTES,
   CommandIdSchema,
+  PROTOCOL_VERSION,
 } from "@nostakes/protocol";
-import type { CloseReason } from "@nostakes/protocol";
+import type { BuildId, CloseReason } from "@nostakes/protocol";
 import { Clock, Effect, Option, pipe, Random, Schema, Stream } from "effect";
 import * as TestClock from "effect/testing/TestClock";
 
 import {
   Activities,
   ANSWER_LIMIT_MS,
+  ClientRefused,
   CommandCancelled,
   CommandTooLarge,
   GREETING_TIMEOUT_MS,
@@ -94,73 +97,86 @@ const UNANSWERED_AFTER_MS = ANSWER_LIMIT_MS + OVERDUE_GRACE_MS;
 
 const COMMAND_UNHEARD_AFTER_MS = ANSWER_LIMIT_MS + UNANSWERED_AFTER_MS;
 
-const harness = Effect.gen(function* harness() {
-  const fake = yield* fakeTransport;
-  const seen: Activity<ToyTypes["Event"]>[] = [];
-  const updates: RoomUpdate<ToyTypes>[] = [];
+const PAGE_BUILD = BuildIdSchema.make("page-build-1");
 
-  const client: RoomClient<ToyTypes> = yield* roomClient(toySchemas, {
-    token: TOKEN,
-    url: ROOM_URL,
-  }).pipe(Effect.provide(fake.layer));
+const harnessFor = (build: Option.Option<BuildId>) =>
+  Effect.gen(function* harness() {
+    const fake = yield* fakeTransport;
+    const seen: Activity<ToyTypes["Event"]>[] = [];
+    const updates: RoomUpdate<ToyTypes>[] = [];
 
-  yield* client.activity.pipe(
-    Stream.runForEach((item) => Effect.sync(() => seen.push(item))),
-    Effect.forkScoped
-  );
+    const client: RoomClient<ToyTypes> = yield* roomClient(toySchemas, {
+      token: TOKEN,
+      url: ROOM_URL,
+      ...Option.match(build, {
+        onNone: () => ({}),
+        onSome: (page) => ({ build: page }),
+      }),
+    }).pipe(Effect.provide(fake.layer));
 
-  yield* client.updates.pipe(
-    Stream.runForEach((update) => Effect.sync(() => updates.push(update))),
-    Effect.forkScoped
-  );
-
-  const socket = (index: number) =>
-    Effect.sync(() => fake.sockets[index]).pipe(
-      Effect.flatMap(Effect.fromNullishOr),
-      Effect.orDie
+    yield* client.activity.pipe(
+      Stream.runForEach((item) => Effect.sync(() => seen.push(item))),
+      Effect.forkScoped
     );
 
-  const accept = (index: number) =>
-    socket(index).pipe(
-      Effect.tap((open) => open.accept),
-      Effect.tap(settle)
+    yield* client.updates.pipe(
+      Stream.runForEach((update) => Effect.sync(() => updates.push(update))),
+      Effect.forkScoped
     );
 
-  const greet = (index: number, head: number, missed: readonly number[] = []) =>
-    accept(index).pipe(
-      Effect.tap((open) => open.push(serverText.welcome(head, missed))),
-      Effect.tap(settle)
-    );
+    const socket = (index: number) =>
+      Effect.sync(() => fake.sockets[index]).pipe(
+        Effect.flatMap(Effect.fromNullishOr),
+        Effect.orDie
+      );
 
-  const live = (head: number) =>
-    client.start.pipe(Effect.andThen(settle), Effect.andThen(greet(0, head)));
+    const accept = (index: number) =>
+      socket(index).pipe(
+        Effect.tap((open) => open.accept),
+        Effect.tap(settle)
+      );
 
-  const liveWithStalledSends = (head: number) =>
-    client.start.pipe(
-      Effect.andThen(settle),
-      Effect.andThen(socket(0)),
-      Effect.tap((open) => open.stall),
-      Effect.tap((open) => open.accept),
-      Effect.tap(settle),
-      Effect.tap((open) => open.push(serverText.welcome(head))),
-      Effect.tap(settle)
-    );
+    const greet = (
+      index: number,
+      head: number,
+      missed: readonly number[] = []
+    ) =>
+      accept(index).pipe(
+        Effect.tap((open) => open.push(serverText.welcome(head, missed))),
+        Effect.tap(settle)
+      );
 
-  const phase = client.state.pipe(Effect.map(({ connection }) => connection));
+    const live = (head: number) =>
+      client.start.pipe(Effect.andThen(settle), Effect.andThen(greet(0, head)));
 
-  return {
-    accept,
-    client,
-    fake,
-    greet,
-    live,
-    liveWithStalledSends,
-    phase,
-    seen,
-    socket,
-    updates,
-  };
-});
+    const liveWithStalledSends = (head: number) =>
+      client.start.pipe(
+        Effect.andThen(settle),
+        Effect.andThen(socket(0)),
+        Effect.tap((open) => open.stall),
+        Effect.tap((open) => open.accept),
+        Effect.tap(settle),
+        Effect.tap((open) => open.push(serverText.welcome(head))),
+        Effect.tap(settle)
+      );
+
+    const phase = client.state.pipe(Effect.map(({ connection }) => connection));
+
+    return {
+      accept,
+      client,
+      fake,
+      greet,
+      live,
+      liveWithStalledSends,
+      phase,
+      seen,
+      socket,
+      updates,
+    };
+  });
+
+const harness = harnessFor(Option.none());
 
 const tagsSent = (socket: FakeSocket) =>
   socket.sent.map(({ message }) => message._tag);
@@ -1247,6 +1263,8 @@ describe("room client against a fake socket", () => {
         "NotFound",
         "TooManySockets",
         "Unresponsive",
+        "ClientOutdated",
+        "ServerOutdated",
       ];
 
       for (const reason of reasons) {
@@ -1266,15 +1284,141 @@ describe("room client against a fake socket", () => {
       }
 
       expect(outcomes).toEqual({
+        ClientOutdated: "Outdated none",
         HelloTimeout: "Waiting HelloTimeout",
         NotFound: "Refused NotFound",
         ProtocolViolation: "Refused ProtocolViolation",
         RoomHalted: "Refused RoomHalted",
+        ServerOutdated: "Waiting ServerOutdated",
         TooManyFrames: "Waiting TooManyFrames",
         TooManySockets: "Waiting TooManySockets",
         Unresponsive: "Waiting Unresponsive",
       });
     }).pipe(Effect.scoped, lowestJitter)
+  );
+
+  it.effect("a hello names the protocol this client speaks", () =>
+    Effect.gen(function* helloNamesProtocol() {
+      const { live, socket } = yield* harness;
+
+      yield* live(1);
+
+      const protocols = (yield* socket(0)).sent.flatMap(({ message }) =>
+        Sent.Hello(message) ? [message.protocol] : []
+      );
+
+      expect(protocols).toEqual([PROTOCOL_VERSION]);
+    }).pipe(Effect.scoped, lowestJitter)
+  );
+
+  it.effect(
+    "a client the server calls outdated stops for good, fails pending commands, and is not refused, whichever way the server says it",
+    () =>
+      Effect.gen(function* outdatedForGood() {
+        const byFrame = yield* harness;
+
+        yield* byFrame.live(1);
+
+        const issued = yield* byFrame.client.issue(add(1));
+
+        yield* settle;
+        yield* (yield* byFrame.socket(0)).push(
+          serverText.closing("ClientOutdated")
+        );
+        yield* advance(300_000);
+
+        const failure = yield* Effect.flip(issued.reply);
+        const late = yield* Effect.flip(byFrame.client.issue(add(2)));
+        const state = yield* byFrame.client.state;
+
+        const byClose = yield* harness;
+
+        yield* byClose.client.start;
+        yield* settle;
+        yield* (yield* byClose.accept(0)).drop(4011, "ClientOutdated");
+        yield* advance(300_000);
+
+        expect({
+          byClose: (yield* byClose.client.state).connection,
+          connection: state.connection,
+          failure: Schema.is(ClientRefused)(failure) && failure.reason,
+          late: Schema.is(ClientRefused)(late) && late.reason,
+          refusal: state.refusal,
+          sockets: [byFrame.fake.sockets.length, byClose.fake.sockets.length],
+        }).toEqual({
+          byClose: "Outdated",
+          connection: "Outdated",
+          failure: "ClientOutdated",
+          late: "ClientOutdated",
+          refusal: Option.none(),
+          sockets: [1, 1],
+        });
+      }).pipe(Effect.scoped, lowestJitter)
+  );
+
+  it.effect(
+    "a server still on an older protocol is waited out like a dropped line, and the client greets it again",
+    () =>
+      Effect.gen(function* serverBehind() {
+        const { accept, client, fake } = yield* harness;
+
+        yield* client.start;
+        yield* settle;
+        yield* (yield* accept(0)).drop(4012, "ServerOutdated");
+        yield* settle;
+
+        const waiting = yield* client.state;
+
+        yield* advance(300_000);
+
+        expect({
+          drop: waiting.drop,
+          phase: waiting.connection,
+          reconnected: fake.sockets.length > 1,
+        }).toEqual({
+          drop: Option.some("SocketClosed"),
+          phase: "Waiting",
+          reconnected: true,
+        });
+      }).pipe(Effect.scoped, lowestJitter)
+  );
+
+  it.effect(
+    "a welcome from a server that serves another build marks the new build, and stays live",
+    () =>
+      Effect.gen(function* seesNewBuild() {
+        const served = BuildIdSchema.make("page-build-2");
+        const outcomes: string[] = [];
+
+        for (const [page, welcomeBuild] of [
+          [Option.some(PAGE_BUILD), Option.some(served)],
+          [Option.some(PAGE_BUILD), Option.some(PAGE_BUILD)],
+          [Option.some(PAGE_BUILD), Option.none()],
+          [Option.none(), Option.some(served)],
+        ] as const) {
+          const { accept, client } = yield* harnessFor(page);
+
+          yield* client.start;
+          yield* settle;
+          yield* (yield* accept(0)).push(
+            serverText.welcome(3, [], welcomeBuild)
+          );
+          yield* settle;
+
+          const state = yield* client.state;
+
+          outcomes.push(
+            `${state.connection} ${Option.getOrElse(state.newBuild, () => "same")}`
+          );
+        }
+
+        expect(outcomes).toEqual([
+          "Live page-build-2",
+          "Live same",
+          "Live same",
+          "Live same",
+        ]);
+      }).pipe(Effect.scoped, lowestJitter)
   );
 
   it.effect(

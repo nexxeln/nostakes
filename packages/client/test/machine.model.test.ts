@@ -1,5 +1,5 @@
 import { describe, expect, it } from "@effect/vitest";
-import { CommandIdSchema } from "@nostakes/protocol";
+import { BuildIdSchema, CommandIdSchema } from "@nostakes/protocol";
 import type { CommandId } from "@nostakes/protocol";
 import { Option, Schema } from "effect";
 import * as Arbitrary from "effect/Arbitrary";
@@ -44,7 +44,13 @@ type MachineEvent = EventFromLogic<Machine>;
 
 type Effects = ReturnType<typeof transition<Machine>>[1];
 
-const input = { token: TOKEN, url: ROOM_URL };
+const input = {
+  build: Option.some(BuildIdSchema.make("page-build-1")),
+  token: TOKEN,
+  url: ROOM_URL,
+};
+
+const SERVED_BUILD = Option.some(BuildIdSchema.make("page-build-2"));
 
 const link: Link<ToyTypes> = {
   transmit: () => {
@@ -72,6 +78,8 @@ const StepSchema = Schema.Literals([
   "ClosingRetry",
   "ClosingRefuse",
   "ClosedRefuseReason",
+  "ClosingOutdated",
+  "ClosedOutdatedReason",
   "Closed",
   "Garbled",
   "Timer",
@@ -181,9 +189,13 @@ const STEP_EVENTS: Record<Step, (step: StepInput) => readonly MachineEvent[]> =
       { id: snapshot.context.pending[pick]?.id ?? stranger, type: "Cancel" },
     ],
     Closed: () => [{ code: 1006, reason: "", type: "Closed" }],
+    ClosedOutdatedReason: () => [
+      { code: 4011, reason: "ClientOutdated", type: "Closed" },
+    ],
     ClosedRefuseReason: () => [
       { code: 4010, reason: "RoomHalted", type: "Closed" },
     ],
+    ClosingOutdated: () => [{ reason: "ClientOutdated", type: "Closing" }],
     ClosingRefuse: () => [{ reason: "NotAuthorized", type: "Closing" }],
     ClosingRetry: () => [{ reason: "HelloTimeout", type: "Closing" }],
     CommandSent: ({ pick, snapshot }) => [
@@ -224,6 +236,7 @@ const STEP_EVENTS: Record<Step, (step: StepInput) => readonly MachineEvent[]> =
 
       return [
         {
+          build: SERVED_BUILD,
           catchUp: toyCodec.catchUp.cases.Missed.make({
             events: [added(applied + 1), added(applied + 2)],
             from: seq(applied + 1),
@@ -377,7 +390,7 @@ const checkStep = (
   if (after.status === "done") {
     expect(stored.timers).toEqual([]);
     expect(stored.children).toEqual({});
-    expect(["Refused", "Stopped"]).toContain(after.value);
+    expect(["Outdated", "Refused", "Stopped"]).toContain(after.value);
   }
 
   if (before.status === "done") {
@@ -529,6 +542,7 @@ const LEAVES = [
   { Online: "Live" },
   { Waiting: "Drawing" },
   { Waiting: "Sleeping" },
+  "Outdated",
   "Refused",
   "Stopped",
 ].map((leaf) => JSON.stringify(leaf));
@@ -669,7 +683,7 @@ describe("answer deadlines", () => {
 });
 
 describe("connection lifecycle model", () => {
-  it("reaches every state, and only Refused and Stopped are final", () => {
+  it("reaches every state, and only Outdated, Refused, and Stopped are final", () => {
     const paths = reachable();
 
     const values = new Set(
@@ -679,7 +693,10 @@ describe("connection lifecycle model", () => {
     expect([...values].toSorted()).toEqual(LEAVES.toSorted());
 
     for (const { state } of paths) {
-      const final = state.value === "Refused" || state.value === "Stopped";
+      const final =
+        state.matches("Outdated") ||
+        state.matches("Refused") ||
+        state.matches("Stopped");
 
       expect(state.status).toBe(final ? "done" : "active");
     }

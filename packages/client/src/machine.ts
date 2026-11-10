@@ -1,5 +1,5 @@
 import { SeqSchema } from "@nostakes/protocol";
-import type { CloseReason, CommandId, Seq } from "@nostakes/protocol";
+import type { BuildId, CloseReason, CommandId, Seq } from "@nostakes/protocol";
 import { createEffectEventStreamLogic, setupEffect } from "@xstate/effect";
 import { Effect, Option, Schema, Stream } from "effect";
 import { types } from "xstate";
@@ -111,15 +111,44 @@ const withoutCommand = <T extends RoomTypes>(
   id: CommandId
 ) => pending.filter((entry) => entry.id !== id);
 
-const refusalFor = (reason: string): Option.Option<CloseReason> =>
-  closeReasonIn(reason).pipe(
-    Option.filter((known) => CLOSE_VERDICTS[known] === "Refuse")
-  );
-
 const dropped = (reason: DropReason) => ({
   context: { drop: Option.some(reason) },
   target: "#roomClient.Waiting",
 });
+
+const refused = (reason: CloseReason) => ({
+  context: { refusal: Option.some(reason) },
+  target: "#roomClient.Refused",
+});
+
+const OUTDATED = { target: "#roomClient.Outdated" } as const;
+
+const closedBy = (reason: CloseReason) => {
+  const verdict = CLOSE_VERDICTS[reason];
+
+  if (verdict === "Outdated") {
+    return OUTDATED;
+  }
+
+  return verdict === "Refuse" ? refused(reason) : dropped(reason);
+};
+
+const socketClosedWith = (text: string) =>
+  closeReasonIn(text).pipe(
+    Option.filter((reason) => CLOSE_VERDICTS[reason] !== "Retry"),
+    Option.match({
+      onNone: () => dropped("SocketClosed"),
+      onSome: closedBy,
+    })
+  );
+
+const differentBuild = (
+  page: Option.Option<BuildId>,
+  served: Option.Option<BuildId>
+): Option.Option<BuildId> =>
+  Option.isSome(page)
+    ? served.pipe(Option.filter((build) => !Option.contains(page, build)))
+    : Option.none();
 
 const drawn = (attempt: number) =>
   Stream.fromEffect(
@@ -201,9 +230,11 @@ export const roomClientMachine = <T extends RoomTypes>(
   }).createMachine({
     context: ({ input }) => ({
       applied: Option.none(),
+      build: input.build,
       drop: Option.none(),
       failures: 0,
       link: Option.none(),
+      newBuild: Option.none(),
       owed: NOTHING_OWED,
       pending: [],
       presence: [],
@@ -254,21 +285,8 @@ export const roomClientMachine = <T extends RoomTypes>(
           src: "connection",
         },
         on: {
-          Closed: ({ event }) =>
-            Option.match(refusalFor(event.reason), {
-              onNone: () => dropped("SocketClosed"),
-              onSome: (reason) => ({
-                context: { refusal: Option.some(reason) },
-                target: "#roomClient.Refused",
-              }),
-            }),
-          Closing: ({ event }) =>
-            CLOSE_VERDICTS[event.reason] === "Refuse"
-              ? {
-                  context: { refusal: Option.some(event.reason) },
-                  target: "#roomClient.Refused",
-                }
-              : dropped(event.reason),
+          Closed: ({ event }) => socketClosedWith(event.reason),
+          Closing: ({ event }) => closedBy(event.reason),
           Garbled: dropped("Garbled"),
         },
         states: {
@@ -386,6 +404,7 @@ export const roomClientMachine = <T extends RoomTypes>(
                           applied: Option.some(event.seq),
                           drop: Option.none(),
                           failures: 0,
+                          newBuild: differentBuild(context.build, event.build),
                           pending: context.pending.map((entry) => ({
                             ...entry,
                             sent: true,
@@ -671,6 +690,7 @@ export const roomClientMachine = <T extends RoomTypes>(
           },
         },
       },
+      Outdated: { type: "final" },
       Refused: { type: "final" },
       Stopped: { type: "final" },
       Waiting: {
