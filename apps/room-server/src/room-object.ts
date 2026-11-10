@@ -45,6 +45,8 @@ import { Beacon } from "./beacon.js";
 import { Entropy, liveEntropy } from "./entropy.js";
 import { oversized } from "./frame-limits.js";
 import type { HostedRoom, RoomTypes } from "./hosted-room.js";
+import { RETRY_POLICY } from "./refused-deadline.js";
+import type { RefusedDeadline, RetryPolicy } from "./refused-deadline.js";
 import { refuseSocket } from "./refused-socket.js";
 import {
   CommitNotes,
@@ -72,6 +74,7 @@ export interface RoomObjectOptions {
   readonly entropy: Layer.Layer<Entropy>;
   readonly beacon: Layer.Layer<Beacon>;
   readonly retainFor: number;
+  readonly retries?: RetryPolicy;
 }
 
 const refusalStatus: Record<PlainRefusal["refusal"], number> = {
@@ -161,13 +164,20 @@ export const roomObject = <T extends RoomTypes>(
         const instance = Hex.encode(yield* liveBytes(8));
         const served = yield* servedBuildOrNone;
         const alarmRuns: { at: number; outcome: string }[] = [];
+        const faults: string[] = [];
         const buckets = new WeakMap<cf.WebSocket, Bucket>();
         const signalBuckets = new Map<PlayerId, Bucket>();
 
         const hosted = () =>
           loadRoom(core, storage).pipe(
             Option.map((loaded) =>
-              hostRoom(core, storage, loaded, options.retainFor)
+              hostRoom(
+                core,
+                storage,
+                loaded,
+                options.retainFor,
+                options.retries ?? RETRY_POLICY
+              )
             )
           );
 
@@ -286,6 +296,17 @@ export const roomObject = <T extends RoomTypes>(
                 command,
               }),
           });
+
+        const logRefusal = (refused: RefusedDeadline) =>
+          Effect.sync(() => {
+            faults.push(refused.message);
+          }).pipe(
+            Effect.andThen(
+              Effect.logError(refused.message).pipe(
+                Effect.annotateLogs({ error: refused._tag })
+              )
+            )
+          );
 
         const armAlarm = (room: RoomHost<T>) => {
           room.armAlarm(connectionsOf(room, Option.none()).socketDeadline);
@@ -660,9 +681,7 @@ export const roomObject = <T extends RoomTypes>(
           dropSilent(at);
           yield* attend(Option.none());
 
-          const due = room
-            .nextDeadline()
-            .pipe(Option.filter((deadline) => deadline.at <= at));
+          const due = room.dueAt(at);
 
           if (Option.isNone(due)) {
             alarmRuns.push({ at, outcome: "NothingDue" });
@@ -690,13 +709,10 @@ export const roomObject = <T extends RoomTypes>(
             signature
           );
 
-          const result = room.commit(
-            {
-              at: sentAt,
-              command,
-              grant: Option.none(),
-              origin: Origins.Server({ trigger: "Alarm" }),
-            },
+          const { refused, result, stall } = room.answerDeadline(
+            due.value,
+            command,
+            sentAt,
             connectionsOf(room, Option.none())
           );
 
@@ -704,6 +720,14 @@ export const roomObject = <T extends RoomTypes>(
           armAlarm(room);
 
           yield* logCommit(result, command);
+
+          for (const refusal of Option.toArray(refused)) {
+            yield* logRefusal(refusal);
+          }
+
+          for (const stalled of Option.toArray(stall)) {
+            yield* logCommit(stalled.result, stalled.command);
+          }
         });
 
         const open = (input: typeof OpenCall.Encoded) =>
@@ -833,6 +857,7 @@ export const roomObject = <T extends RoomTypes>(
               alarmRuns,
               code: snapshot.pipe(Option.map(({ code }) => code)),
               events: rows.map(({ event }) => event),
+              faults,
               halted: snapshot.pipe(Option.flatMap(({ halted }) => halted)),
               headSeq: snapshot.pipe(
                 Option.match({

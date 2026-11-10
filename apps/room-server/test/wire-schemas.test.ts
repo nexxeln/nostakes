@@ -22,6 +22,7 @@ const view: ToyView = {
   members: [],
   round: 0,
   secret: Option.none(),
+  stalled: Option.none(),
   turn: Option.none(),
   you: Option.none(),
 };

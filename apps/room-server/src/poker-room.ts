@@ -27,6 +27,7 @@ import {
   redact,
   replay,
   signalAllowed,
+  stallCommand,
   viewFor,
 } from "@nostakes/room";
 import type {
@@ -147,6 +148,7 @@ export const pokerRoomOn = (chain: DrandChain): HostedRoom<PokerTypes> => ({
       ? Option.some(due.round)
       : Option.none(),
   decide,
+  dueKind: (due) => due._tag,
   entropyFor: (due) =>
     Deadlines.$match(due, {
       DealDue: () => DEAL_SHUFFLE_BYTES,
@@ -240,6 +242,7 @@ export const pokerRoomOn = (chain: DrandChain): HostedRoom<PokerTypes> => ({
         }),
     }),
   signalAllowed,
+  stalled: (state, due, at) => stallCommand(state, due, millis(at)),
   stamp: (player, at, command) => ({
     ...command,
     at: millis(at),

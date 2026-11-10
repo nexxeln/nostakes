@@ -32,6 +32,21 @@ const createTables = [
    )`,
 ];
 
+const refusalsTable = `create table if not exists refusals (
+   id integer primary key check (id = 1),
+   deadline text not null,
+   count integer not null,
+   retry_at integer not null
+ )`;
+
+const RefusalRows = Schema.Array(
+  Schema.Struct({
+    count: Schema.Int,
+    deadline: Schema.String,
+    retry_at: Schema.Int,
+  })
+);
+
 const MetaRows = Schema.Array(
   Schema.Struct({
     code: RoomCodeSchema,
@@ -65,6 +80,8 @@ const decodeCount = Schema.decodeUnknownSync(CountRow);
 const decodeCredentials = Schema.decodeUnknownSync(CredentialRows);
 
 const decodeTables = Schema.decodeUnknownSync(TableRows);
+
+const decodeRefusals = Schema.decodeUnknownSync(RefusalRows);
 
 export const sqliteStorage = (
   storage: cf.DurableObjectStorage,
@@ -158,6 +175,34 @@ export const sqliteStorage = (
             )[0]
           ).pipe(Option.map(({ code, halted }) => ({ code, halted })))
         : Option.none(),
+    noteRefusals: (refusals) => {
+      sql.exec(refusalsTable);
+      sql.exec("delete from refusals");
+
+      for (const { count, deadline, retryAt } of Option.toArray(refusals)) {
+        sql.exec(
+          "insert into refusals (id, deadline, count, retry_at) values (1, ?, ?, ?)",
+          deadline,
+          count,
+          retryAt
+        );
+      }
+    },
+    refusals: () => {
+      sql.exec(refusalsTable);
+
+      return Option.fromUndefinedOr(
+        decodeRefusals(
+          sql.exec("select deadline, count, retry_at from refusals").toArray()
+        )[0]
+      ).pipe(
+        Option.map(({ count, deadline, retry_at: retryAt }) => ({
+          count,
+          deadline,
+          retryAt,
+        }))
+      );
+    },
     setAlarm: (at) => {
       keepAlive(
         Option.match(at, {

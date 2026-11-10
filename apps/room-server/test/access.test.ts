@@ -27,6 +27,7 @@ import * as Hex from "effect/encoding/Hex";
 import * as FetchHttpClient from "effect/http/FetchHttpClient";
 import type * as HttpClientResponse from "effect/http/HttpClientResponse";
 
+import { retryDelay } from "../src/refused-deadline.js";
 import { MAX_MEMBERS, MAX_SOCKETS } from "../src/room-rpc.js";
 import {
   codec,
@@ -43,15 +44,23 @@ import {
   post,
   replyTo,
 } from "./fixtures/room-client.js";
-import type { RoomClient } from "./fixtures/room-client.js";
-import { inspect, queueCodes, ToyStack, wakeAt } from "./fixtures/stack.js";
+import type { RoomClient, ToyServerMessage } from "./fixtures/room-client.js";
+import {
+  inspect,
+  queueCodes,
+  restart,
+  ToyStack,
+  wakeAt,
+} from "./fixtures/stack.js";
 import { DEAL_SEED, seededBytes } from "./fixtures/test-entropy.js";
 import {
   DEAL_ENTROPY_BYTES,
   SECRET_BYTES,
+  TOY_RETRIES,
   ToyMemberCommandSchema,
   ToyRedactedSchema,
 } from "./fixtures/toy-room.js";
+import type { ToyRedacted } from "./fixtures/toy-room.js";
 
 const { afterAll, beforeAll, deploy, destroy, test } = Test.make({
   dev: true,
@@ -490,5 +499,91 @@ test(
       sockets,
       Effect.forEach((socket) => socket.disconnect)
     );
+  }).pipe(Effect.provide(FetchHttpClient.layer))
+);
+
+type ToyEvents = typeof codec.server.cases.Events.Type;
+
+const eventsWith =
+  (holds: (event: ToyRedacted) => boolean) =>
+  (message: ToyServerMessage): message is ToyEvents =>
+    isEvents(message) && message.events.some(holds);
+
+test(
+  "12. a deadline the room refuses: the server waits longer before each answer, logs every refusal, marks the room stalled for every player, and clears the mark when the room accepts the deadline again",
+  Effect.gen(function* refusedDeadline() {
+    const base = yield* baseUrl;
+    const [anaPass, benPass] = yield* openRoomWith(base, ["Ana", "Ben"]);
+
+    if (anaPass === undefined || benPass === undefined) {
+      return;
+    }
+
+    const ana = yield* joinAs(base, anaPass, "ana");
+    const ben = yield* joinAs(base, benPass, "ben");
+
+    yield* ana.client.send(command("jam", Commands.Jam.make({ on: true })));
+    yield* ana.client.next("reply jam", replyTo("jam"));
+    yield* ana.client.send(command("deal", Commands.RequestDeal.make({})));
+    yield* ana.client.next("reply deal", replyTo("deal"));
+
+    const marked = yield* ben.client.next(
+      "the stall",
+      eventsWith(isEvent.Stalled)
+    );
+
+    const stalled = yield* inspect(base, anaPass.code);
+
+    const refused = stalled.alarmRuns.filter(
+      ({ outcome }) => outcome === "Rejected"
+    );
+
+    const gaps = refused
+      .slice(1)
+      .map(({ at }, index) => at - (refused[index]?.at ?? at));
+
+    expect(Option.isSome(marked.view.stalled)).toBe(true);
+    expect(refused.length).toBe(TOY_RETRIES.stallAfter);
+    expect(
+      gaps.map((gap, index) => gap >= retryDelay(TOY_RETRIES, index + 1))
+    ).toStrictEqual([true, true]);
+    expect(stalled.faults).toStrictEqual(
+      [1, 2, 3].map(
+        (count) =>
+          `Room ${anaPass.code} refused the server's answer to its Deal deadline, ${count} in a row: {"_tag":"ToyRefusal","reason":"Jammed"}. The server asks again in ${retryDelay(TOY_RETRIES, count)} ms.${count === TOY_RETRIES.stallAfter ? " The room is marked stalled, so its players see that the table is stuck and can end the night." : ""} This is a bug in the room core.`
+      )
+    );
+
+    yield* restart(base, anaPass.code);
+
+    const again = yield* inspect(base, anaPass.code).pipe(
+      Effect.repeat({
+        schedule: Schedule.spaced("100 millis"),
+        times: 40,
+        until: (inspection) => inspection.faults.length > 0,
+      })
+    );
+
+    expect(again.faults[0]).toContain(
+      `Deal deadline, ${TOY_RETRIES.stallAfter + 1} in a row`
+    );
+
+    const back = yield* joinAs(base, anaPass, "ana again");
+
+    expect(Option.isSome(back.welcome.view.stalled)).toBe(true);
+
+    yield* back.client.send(command("free", Commands.Jam.make({ on: false })));
+    yield* back.client.next("reply free", replyTo("free"));
+
+    const dealt = yield* back.client.next(
+      "the deal",
+      eventsWith(isEvent.SecretDealt)
+    );
+
+    const settled = yield* inspect(base, anaPass.code);
+
+    expect(dealt.events[0]?._tag).toBe("StallCleared");
+    expect(dealt.view.stalled).toStrictEqual(Option.none());
+    expect(settled.alarmRuns.at(-1)?.outcome).toBe("Committed");
   }).pipe(Effect.provide(FetchHttpClient.layer))
 );

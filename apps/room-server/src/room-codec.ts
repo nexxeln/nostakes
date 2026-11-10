@@ -30,6 +30,9 @@ export const roomCodec = <T extends RoomTypes>(core: HostedRoom<T>) => {
     decodeReply: Schema.decodeSync(Schema.fromJsonString(reply)),
     encodeEvent: Schema.encodeSync(Schema.fromJsonString(core.schemas.event)),
     encodeFrame: Schema.encodeSync(Schema.fromJsonString(server)),
+    encodeRejection: Schema.encodeSync(
+      Schema.fromJsonString(core.schemas.rejection)
+    ),
     encodeReply: Schema.encodeSync(Schema.fromJsonString(reply)),
     reply,
     server,

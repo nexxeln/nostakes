@@ -4,6 +4,7 @@ import { Effect, Option } from "effect";
 import { REPLIES_KEPT_PER_PLAYER } from "../../src/room-storage.js";
 import type {
   Credential,
+  Refusals,
   RoomMeta,
   RoomStorage,
   StoredEvent,
@@ -20,12 +21,14 @@ interface Tables {
   readonly events: readonly StoredEvent[];
   readonly replies: readonly StoredReply[];
   readonly credentials: readonly Credential[];
+  readonly refusals: Option.Option<Refusals>;
 }
 
 const emptyTables: Tables = {
   credentials: [],
   events: [],
   meta: Option.none(),
+  refusals: Option.none(),
   replies: [],
 };
 
@@ -85,6 +88,10 @@ export const memoryStorage = () => {
       }));
     },
     meta: () => tables.meta,
+    noteRefusals: (refusals) => {
+      write((current) => ({ ...current, refusals }));
+    },
+    refusals: () => tables.refusals,
     setAlarm: (at) => {
       alarm = at;
     },

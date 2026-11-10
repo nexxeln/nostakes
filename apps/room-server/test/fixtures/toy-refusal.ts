@@ -12,6 +12,7 @@ export class ToyRefusal extends Schema.TaggedError<
     "StaleDeadline",
     "NoDealDue",
     "NotEnoughEntropy",
+    "Jammed",
   ]),
 }) {
   override get message() {

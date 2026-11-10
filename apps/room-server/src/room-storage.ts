@@ -21,6 +21,12 @@ export interface RoomMeta {
   readonly halted: Option.Option<string>;
 }
 
+export interface Refusals {
+  readonly deadline: string;
+  readonly count: number;
+  readonly retryAt: number;
+}
+
 export interface RoomStorage {
   readonly transaction: <A>(write: () => A) => A;
   readonly create: (code: RoomCode) => void;
@@ -37,6 +43,8 @@ export interface RoomStorage {
   readonly countReplies: () => number;
   readonly grant: (credential: Credential) => void;
   readonly credentials: () => readonly Credential[];
+  readonly refusals: () => Option.Option<Refusals>;
+  readonly noteRefusals: (refusals: Option.Option<Refusals>) => void;
   readonly setAlarm: (at: Option.Option<number>) => void;
   readonly forget: Effect.Effect<void>;
 }

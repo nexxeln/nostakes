@@ -8,6 +8,8 @@ import type { PlayerId } from "@nostakes/protocol";
 import { Option, Schema } from "effect";
 
 import type { HostedRoom } from "../../src/hosted-room.js";
+import { RETRY_POLICY } from "../../src/refused-deadline.js";
+import type { RetryPolicy } from "../../src/refused-deadline.js";
 import {
   loadRoom,
   hostRoom,
@@ -43,9 +45,13 @@ export const recordingViewer = (player: PlayerId): RecordingViewer => {
   };
 };
 
+const entropyFor = (at: number, size: number) =>
+  Uint8Array.from({ length: size }, (_, index) => (index * 7 + at) % 256);
+
 export const openToyHost = (
   core: HostedRoom<ToyTypes> = toyRoom,
-  wrap: (storage: RoomStorage) => RoomStorage = (storage) => storage
+  wrap: (storage: RoomStorage) => RoomStorage = (storage) => storage,
+  policy: RetryPolicy = RETRY_POLICY
 ) => {
   const memory = memoryStorage();
   const storage = wrap(memory.storage);
@@ -66,7 +72,8 @@ export const openToyHost = (
     core,
     storage,
     Option.getOrThrow(loadRoom(core, storage)),
-    ROOM_RETENTION_MS
+    ROOM_RETENTION_MS,
+    policy
   );
 
   const closings: string[] = [];
@@ -140,6 +147,27 @@ export const openToyHost = (
       )
     );
 
+  const answerDue = (at: number) =>
+    host.dueAt(at).pipe(
+      Option.map((deadline) => {
+        const answer = host.answerDeadline(
+          deadline,
+          core.serverCommand(
+            deadline.due,
+            at,
+            entropyFor(at, core.entropyFor(deadline.due)),
+            Option.none()
+          ),
+          at,
+          connections()
+        );
+
+        host.armAlarm(Option.none());
+
+        return answer;
+      })
+    );
+
   const watch = (player: PlayerId) => {
     const viewer = recordingViewer(player);
 
@@ -149,6 +177,7 @@ export const openToyHost = (
   };
 
   return {
+    answerDue,
     closings,
     connections,
     decodeFrame,

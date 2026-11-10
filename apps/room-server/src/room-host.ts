@@ -18,10 +18,26 @@ import {
 
 import { hashedCredential, matchCredential } from "./credentials.js";
 import type { HashedCredential } from "./credentials.js";
-import type { HostedRoom, OpenInput, RoomTypes } from "./hosted-room.js";
+import type {
+  Deadline,
+  HostedRoom,
+  OpenInput,
+  RoomTypes,
+} from "./hosted-room.js";
+import {
+  RETRY_POLICY,
+  RefusedDeadline,
+  retryDelay,
+} from "./refused-deadline.js";
+import type { RetryPolicy } from "./refused-deadline.js";
 import { roomCodec } from "./room-codec.js";
 import type { CatchUp, Reply } from "./room-codec.js";
-import type { Credential, RoomStorage, StoredEvent } from "./room-storage.js";
+import type {
+  Credential,
+  Refusals,
+  RoomStorage,
+  StoredEvent,
+} from "./room-storage.js";
 
 export interface Viewer {
   readonly player: PlayerId;
@@ -36,7 +52,7 @@ export interface Connections {
 
 export type Origin = Data.TaggedEnum<{
   Member: { readonly player: PlayerId; readonly id: CommandId };
-  Server: { readonly trigger: "Alarm" | "Attendance" | "Join" };
+  Server: { readonly trigger: "Alarm" | "Attendance" | "Join" | "Stall" };
 }>;
 
 export const Origins = Data.taggedEnum<Origin>();
@@ -64,6 +80,15 @@ export interface CommitResult<T extends RoomTypes> {
   readonly note: CommitNote;
 }
 
+export interface DeadlineAnswer<T extends RoomTypes> {
+  readonly result: CommitResult<T>;
+  readonly refused: Option.Option<RefusedDeadline>;
+  readonly stall: Option.Option<{
+    readonly command: T["Command"];
+    readonly result: CommitResult<T>;
+  }>;
+}
+
 export interface RecentStates<State> {
   readonly from: number;
   readonly states: readonly State[];
@@ -79,6 +104,7 @@ export interface HostState<T extends RoomTypes> {
   readonly halted: Option.Option<string>;
   readonly credentials: readonly HashedCredential[];
   readonly recent: RecentStates<T["State"]>;
+  readonly refusals: Option.Option<Refusals>;
 }
 
 export const STATES_KEPT = MAX_MISSED_EVENTS + 1;
@@ -130,6 +156,7 @@ export const loadRoom = <T extends RoomTypes>(
         headSeq: rows.at(-1)?.seq ?? 0,
         lastEventAt: rows.at(-1)?.at ?? 0,
         recent: { from: rows[split - 1]?.seq ?? 0, states },
+        refusals: storage.refusals(),
         state,
       };
     })
@@ -174,16 +201,41 @@ export const hostRoom = <T extends RoomTypes>(
   core: HostedRoom<T>,
   storage: RoomStorage,
   loaded: HostState<T>,
-  retainFor: number
+  retainFor: number,
+  policy: RetryPolicy = RETRY_POLICY
 ) => {
   const codec = roomCodec(core);
   let current = loaded;
 
   const expiresAt = () => current.lastEventAt + retainFor;
 
+  const keyOf = (deadline: Deadline<T["Due"]>) =>
+    `${core.dueKind(deadline.due)}@${deadline.at}`;
+
+  const refusalsOf = (deadline: Deadline<T["Due"]>) =>
+    current.refusals.pipe(
+      Option.filter((refusals) => refusals.deadline === keyOf(deadline))
+    );
+
+  const retryAt = (deadline: Deadline<T["Due"]>) =>
+    Option.match(refusalsOf(deadline), {
+      onNone: () => deadline.at,
+      onSome: (refusals) => Math.max(deadline.at, refusals.retryAt),
+    });
+
+  const nextDeadline = () =>
+    core
+      .nextDeadline(current.state)
+      .pipe(Option.map((deadline) => ({ ...deadline, at: retryAt(deadline) })));
+
+  const dueAt = (at: number) =>
+    core
+      .nextDeadline(current.state)
+      .pipe(Option.filter((deadline) => retryAt(deadline) <= at));
+
   const alarmAt = (socketDeadline: Option.Option<number>) =>
     earliest([
-      core.nextDeadline(current.state).pipe(Option.map(({ at }) => at)),
+      nextDeadline().pipe(Option.map(({ at }) => at)),
       socketDeadline,
       Option.some(expiresAt()),
     ]);
@@ -556,6 +608,97 @@ export const hostRoom = <T extends RoomTypes>(
     return frame;
   };
 
+  const keepRefusals = (refusals: Option.Option<Refusals>) => {
+    current = { ...current, refusals };
+    Result.try(() => {
+      storage.noteRefusals(refusals);
+    });
+  };
+
+  const refusalOf = (
+    deadline: Deadline<T["Due"]>,
+    rejection: T["Rejection"],
+    at: number,
+    connections: Connections
+  ): Pick<DeadlineAnswer<T>, "refused" | "stall"> => {
+    const count = Option.match(refusalsOf(deadline), {
+      onNone: () => 1,
+      onSome: (refusals) => refusals.count + 1,
+    });
+
+    const retryInMs = retryDelay(policy, count);
+    const stalled = count >= policy.stallAfter;
+
+    keepRefusals(
+      Option.some({ count, deadline: keyOf(deadline), retryAt: at + retryInMs })
+    );
+
+    return {
+      refused: Option.some(
+        new RefusedDeadline({
+          code: current.code,
+          deadline: core.dueKind(deadline.due),
+          refusals: count,
+          rejection: codec.encodeRejection(rejection),
+          retryInMs,
+          stalled,
+        })
+      ),
+      stall: stalled
+        ? core.stalled(current.state, deadline.due, at).pipe(
+            Option.map((command) => ({
+              command,
+              result: commit(
+                {
+                  at,
+                  command,
+                  grant: Option.none(),
+                  origin: Origins.Server({ trigger: "Stall" }),
+                },
+                connections
+              ),
+            }))
+          )
+        : Option.none(),
+    };
+  };
+
+  const answerDeadline = (
+    deadline: Deadline<T["Due"]>,
+    command: T["Command"],
+    at: number,
+    connections: Connections
+  ): DeadlineAnswer<T> => {
+    const stillDue = Option.exists(
+      core.nextDeadline(current.state),
+      (now) => keyOf(now) === keyOf(deadline)
+    );
+
+    const result = commit(
+      {
+        at,
+        command,
+        grant: Option.none(),
+        origin: Origins.Server({ trigger: "Alarm" }),
+      },
+      connections
+    );
+
+    if (
+      CommitNotes.$is("Committed")(result.note) &&
+      Option.isSome(current.refusals)
+    ) {
+      keepRefusals(Option.none());
+    }
+
+    const refused =
+      stillDue && codec.reply.guards.Rejected(result.reply)
+        ? refusalOf(deadline, result.reply.rejection, at, connections)
+        : { refused: Option.none(), stall: Option.none() };
+
+    return { result, ...refused };
+  };
+
   const noteAttendance = (
     connected: readonly PlayerId[],
     at: number,
@@ -579,13 +722,15 @@ export const hostRoom = <T extends RoomTypes>(
         );
 
   return {
+    answerDeadline,
     armAlarm,
     authenticate: (hash: Uint8Array) =>
       matchCredential(current.credentials, hash),
     codec,
     commit,
+    dueAt,
     expiresAt,
-    nextDeadline: () => core.nextDeadline(current.state),
+    nextDeadline,
     noteAttendance,
     snapshot: () => current,
     welcome,

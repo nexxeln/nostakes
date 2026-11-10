@@ -55,6 +55,12 @@ export interface HostedRoom<T extends RoomTypes> {
     at: number
   ) => Option.Option<T["Command"]>;
   readonly beaconRoundFor: (due: T["Due"]) => Option.Option<number>;
+  readonly dueKind: (due: T["Due"]) => string;
+  readonly stalled: (
+    state: T["State"],
+    due: T["Due"],
+    at: number
+  ) => Option.Option<T["Command"]>;
   readonly serverCommand: (
     due: T["Due"],
     at: number,

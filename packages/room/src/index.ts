@@ -42,6 +42,8 @@ export type {
 
 export { attendanceCommand, quietDueAt, seatedPlayers } from "./attendance.js";
 
+export { stallCommand } from "./stalls.js";
+
 export { evolve, evolveAll, replay } from "./evolve.js";
 
 export type { RoomLog } from "./evolve.js";

@@ -4,6 +4,7 @@ import { Array as Arr, Option, Order, Result, Schema } from "effect";
 import * as Hex from "effect/encoding/Hex";
 
 import type { Deadline, HostedRoom } from "../../src/hosted-room.js";
+import type { RetryPolicy } from "../../src/refused-deadline.js";
 import { ToyRefusal } from "./toy-refusal.js";
 
 export const SECRET_BYTES = 8;
@@ -11,6 +12,12 @@ export const SECRET_BYTES = 8;
 export const TOY_MAX_MEMBERS = 64;
 
 export const DEAL_ENTROPY_BYTES = SECRET_BYTES * TOY_MAX_MEMBERS;
+
+export const TOY_RETRIES: RetryPolicy = {
+  capMs: 800,
+  firstMs: 200,
+  stallAfter: 3,
+};
 
 const Millis = Schema.Int.check(Schema.isGreaterThanOrEqualTo(0));
 
@@ -33,6 +40,7 @@ export const ToyMemberCommandSchema = Schema.TaggedUnion({
   Increment: {
     times: Schema.Int.check(Schema.isBetween({ maximum: 8, minimum: 1 })),
   },
+  Jam: { on: Schema.Boolean },
   Join: { avatar: Avatar, name: Name },
   RequestDeal: {},
   StartTurn: {
@@ -45,6 +53,7 @@ export type ToyMemberCommand = typeof ToyMemberCommandSchema.Type;
 export const ToyServerCommandSchema = Schema.TaggedUnion({
   Deal: { entropy: Schema.Uint8Array },
   ExpireTurn: { deadline: Millis },
+  MarkStalled: {},
 });
 
 export type ToyServerCommand = typeof ToyServerCommandSchema.Type;
@@ -63,9 +72,12 @@ export const ToyEventSchema = Schema.TaggedUnion({
   DealRequested: { by: PlayerIdSchema, due: Millis },
   Exploded: { fuse: NegativeFuse },
   Incremented: { by: PlayerIdSchema, count: Schema.Int },
+  Jammed: { on: Schema.Boolean },
   Joined: { avatar: Avatar, name: Name, player: PlayerIdSchema },
   Opened: { at: Millis, code: RoomCodeSchema, host: PlayerIdSchema },
   SecretDealt: { round: Schema.Int, secret: SecretSchema, to: PlayerIdSchema },
+  StallCleared: { at: Millis },
+  Stalled: { at: Millis },
   TurnExpired: { deadline: Millis, player: PlayerIdSchema },
   TurnStarted: { deadline: Millis, player: PlayerIdSchema },
 });
@@ -77,6 +89,7 @@ export const ToyRedactedSchema = Schema.TaggedUnion({
   DealRequested: { by: PlayerIdSchema, due: Millis },
   Exploded: { fuse: Schema.Int },
   Incremented: { by: PlayerIdSchema, count: Schema.Int },
+  Jammed: { on: Schema.Boolean },
   Joined: { avatar: Avatar, name: Name, player: PlayerIdSchema },
   Opened: { at: Millis, code: RoomCodeSchema, host: PlayerIdSchema },
   SecretDealt: {
@@ -84,6 +97,8 @@ export const ToyRedactedSchema = Schema.TaggedUnion({
     secret: Schema.OptionFromNullOr(SecretSchema),
     to: PlayerIdSchema,
   },
+  StallCleared: { at: Millis },
+  Stalled: { at: Millis },
   TurnExpired: { deadline: Millis, player: PlayerIdSchema },
   TurnStarted: { deadline: Millis, player: PlayerIdSchema },
 });
@@ -127,6 +142,7 @@ export const ToyViewSchema = Schema.Struct({
   members: Schema.Array(MemberViewSchema),
   round: Schema.Int,
   secret: Schema.OptionFromNullOr(SecretSchema),
+  stalled: Schema.OptionFromNullOr(Millis),
   turn: Schema.OptionFromNullOr(
     Schema.Struct({ player: PlayerIdSchema, remainingMs: Schema.Int })
   ),
@@ -150,8 +166,10 @@ export interface ToyState {
   readonly members: readonly (Profile & { readonly player: PlayerId })[];
   readonly count: number;
   readonly increments: number;
+  readonly jammed: boolean;
   readonly round: number;
   readonly secrets: ReadonlyMap<PlayerId, string>;
+  readonly stalled: Option.Option<number>;
   readonly turn: Option.Option<Turn>;
   readonly dealDue: Option.Option<number>;
   readonly latest: number;
@@ -176,11 +194,13 @@ const emptyRoom: ToyState = {
   count: 0,
   dealDue: Option.none(),
   increments: 0,
+  jammed: false,
   latest: 0,
   members: [],
   opening: Option.none(),
   round: 0,
   secrets: new Map(),
+  stalled: Option.none(),
   turn: Option.none(),
 };
 
@@ -229,6 +249,8 @@ const decideMember = (
               incremented(by, state.count + index + 1)
             )
           ),
+        Jam: ({ on }) =>
+          Result.succeed([ToyEventSchema.cases.Jammed.make({ on })]),
         Join: ({ avatar, name }) =>
           Result.succeed([
             ToyEventSchema.cases.Joined.make({ avatar, name, player: by }),
@@ -256,56 +278,81 @@ const secretFor = (entropy: Uint8Array, index: number) =>
     entropy.subarray(index * SECRET_BYTES, (index + 1) * SECRET_BYTES)
   );
 
+const answersDeadline = (command: ToyServerCommand) =>
+  !ToyServerCommandSchema.guards.MarkStalled(command);
+
 const decideServer = (
   state: ToyState,
   at: number,
   command: ToyServerCommand
 ): Decision =>
-  ToyServerCommandSchema.match(command, {
-    Deal: ({ entropy }): Decision =>
-      Option.match(state.dealDue, {
-        onNone: () => refuse("NoDealDue"),
-        onSome: (due) => {
-          if (at < due) {
-            return refuse("NoDealDue");
-          }
+  state.jammed && answersDeadline(command)
+    ? refuse("Jammed")
+    : ToyServerCommandSchema.match(command, {
+        Deal: ({ entropy }): Decision =>
+          Option.match(state.dealDue, {
+            onNone: () => refuse("NoDealDue"),
+            onSome: (due) => {
+              if (at < due) {
+                return refuse("NoDealDue");
+              }
 
-          if (entropy.length < state.members.length * SECRET_BYTES) {
-            return refuse("NotEnoughEntropy");
-          }
+              if (entropy.length < state.members.length * SECRET_BYTES) {
+                return refuse("NotEnoughEntropy");
+              }
 
-          return Result.succeed(
-            state.members.map(({ player }, index) =>
-              ToyEventSchema.cases.SecretDealt.make({
-                round: state.round + 1,
-                secret: secretFor(entropy, index),
-                to: player,
-              })
-            )
-          );
-        },
-      }),
-    ExpireTurn: ({ deadline }): Decision =>
-      Option.match(state.turn, {
-        onNone: () => refuse("StaleDeadline"),
-        onSome: (turn) =>
-          turn.deadline === deadline && at >= deadline
-            ? Result.succeed([
-                ToyEventSchema.cases.TurnExpired.make({
-                  deadline,
-                  player: turn.player,
-                }),
-              ])
-            : refuse("StaleDeadline"),
-      }),
-  });
+              return Result.succeed(
+                state.members.map(({ player }, index) =>
+                  ToyEventSchema.cases.SecretDealt.make({
+                    round: state.round + 1,
+                    secret: secretFor(entropy, index),
+                    to: player,
+                  })
+                )
+              );
+            },
+          }),
+        ExpireTurn: ({ deadline }): Decision =>
+          Option.match(state.turn, {
+            onNone: () => refuse("StaleDeadline"),
+            onSome: (turn) =>
+              turn.deadline === deadline && at >= deadline
+                ? Result.succeed([
+                    ToyEventSchema.cases.TurnExpired.make({
+                      deadline,
+                      player: turn.player,
+                    }),
+                  ])
+                : refuse("StaleDeadline"),
+          }),
+        MarkStalled: (): Decision =>
+          Result.succeed(
+            Option.isSome(state.stalled)
+              ? []
+              : [ToyEventSchema.cases.Stalled.make({ at })]
+          ),
+      });
+
+const clearingStall = (
+  state: ToyState,
+  at: number,
+  command: ToyServerCommand,
+  events: readonly ToyEvent[]
+): readonly ToyEvent[] =>
+  Option.isSome(state.stalled) && answersDeadline(command)
+    ? [ToyEventSchema.cases.StallCleared.make({ at }), ...events]
+    : events;
 
 const decide = (state: ToyState, command: ToyCommand): Decision =>
   ToyCommandSchema.match(command, {
     Member: ({ at, by, command: member }) =>
       decideMember(state, by, Math.max(at, state.latest), member),
     Server: ({ at, command: server }) =>
-      decideServer(state, Math.max(at, state.latest), server),
+      Result.map(
+        decideServer(state, Math.max(at, state.latest), server),
+        (events) =>
+          clearingStall(state, Math.max(at, state.latest), server, events)
+      ),
   });
 
 const evolve = (state: ToyState, event: ToyEvent): ToyState =>
@@ -322,6 +369,7 @@ const evolve = (state: ToyState, event: ToyEvent): ToyState =>
       count,
       increments: state.increments + 1,
     }),
+    Jammed: ({ on }) => ({ ...state, jammed: on }),
     Joined: ({ avatar, name, player }) => ({
       ...state,
       members: [...state.members, { avatar, name, player }],
@@ -337,6 +385,8 @@ const evolve = (state: ToyState, event: ToyEvent): ToyState =>
       round,
       secrets: new Map([...state.secrets, [to, secret]]),
     }),
+    StallCleared: () => ({ ...state, stalled: Option.none() }),
+    Stalled: ({ at }) => ({ ...state, stalled: Option.some(at) }),
     TurnExpired: ({ deadline }) => ({
       ...state,
       latest: Math.max(state.latest, deadline),
@@ -406,6 +456,7 @@ const redact = (event: ToyEvent, audience: ToyAudience) =>
       DealRequested: (requested): ToyRedacted => requested,
       Exploded: (exploded): ToyRedacted => exploded,
       Incremented: (incrementedEvent): ToyRedacted => incrementedEvent,
+      Jammed: (jammed): ToyRedacted => jammed,
       Joined: (joined): ToyRedacted => joined,
       Opened: (opened): ToyRedacted => opened,
       SecretDealt: ({ round, secret, to }): ToyRedacted =>
@@ -416,6 +467,8 @@ const redact = (event: ToyEvent, audience: ToyAudience) =>
             : Option.none(),
           to,
         }),
+      StallCleared: (cleared): ToyRedacted => cleared,
+      Stalled: (stalled): ToyRedacted => stalled,
       TurnExpired: (expired): ToyRedacted => expired,
       TurnStarted: (started): ToyRedacted => started,
     })
@@ -440,6 +493,7 @@ const viewFor = (
         Option.fromUndefinedOr(state.secrets.get(player))
       )
     ),
+    stalled: state.stalled,
     turn: state.turn.pipe(
       Option.map(({ deadline, player }) => ({
         player,
@@ -474,6 +528,7 @@ export const toyRoom: HostedRoom<ToyTypes> = {
   audienceOf,
   beaconRoundFor: () => Option.none(),
   decide,
+  dueKind: (due) => due._tag,
   entropyFor: (due) =>
     ToyDueSchema.match(due, {
       Deal: () => DEAL_ENTROPY_BYTES,
@@ -514,6 +569,15 @@ export const toyRoom: HostedRoom<ToyTypes> = {
       }),
     }),
   signalAllowed,
+  stalled: (state, _due, at) =>
+    Option.isSome(state.stalled)
+      ? Option.none()
+      : Option.some(
+          ToyCommandSchema.cases.Server.make({
+            at,
+            command: ToyServerCommandSchema.cases.MarkStalled.make({}),
+          })
+        ),
   stamp: (by, at, command) =>
     ToyCommandSchema.cases.Member.make({ at, by, command }),
   viewFor,
