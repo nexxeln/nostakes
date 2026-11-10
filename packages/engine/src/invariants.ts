@@ -3,7 +3,8 @@ import { Option } from "effect";
 import { DECK_SIZE } from "./cards.js";
 import type { Card } from "./cards.js";
 import { buildPots, uncalledExcess } from "./pots.js";
-import { SEAT_COUNT, chips } from "./primitives.js";
+import { CHIP_LIMIT, SEAT_COUNT, chips } from "./primitives.js";
+import { chipsOnTable } from "./seating.js";
 import {
   Phases,
   activePlayers,
@@ -239,6 +240,14 @@ const handViolations = (state: InHand) => [
 
 export const invariants = (state: TableState): readonly Violation[] => [
   ...seatViolations(state),
+  ...(chipsOnTable(state) <= CHIP_LIMIT
+    ? []
+    : [
+        violation(
+          "ChipsWithinLimit",
+          `${chipsOnTable(state)} chips on the table`
+        ),
+      ]),
   ...(Number.isSafeInteger(state.handNumber) && state.handNumber >= 0
     ? []
     : [violation("HandNumber", `${state.handNumber}`)]),

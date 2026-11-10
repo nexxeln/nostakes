@@ -3,20 +3,23 @@ import { Option, Result } from "effect";
 import type { CommandOf } from "./commands.js";
 import { Events } from "./events.js";
 import type { Event, EventOf } from "./events.js";
-import { SEAT_INDEXES, chips } from "./primitives.js";
-import type { SeatIndex } from "./primitives.js";
+import { CHIP_LIMIT, SEAT_INDEXES, chips } from "./primitives.js";
+import type { Chips, SeatIndex } from "./primitives.js";
 import {
   AmountNotPositive,
+  ChipLimitExceeded,
   HandInProgress,
   PlayerAlreadySeated,
   SeatEmpty,
   SeatInHand,
   SeatTaken,
 } from "./rejection.js";
+import type { Rejection } from "./rejection.js";
 import {
   EMPTY_SEAT,
   Seats,
   isInHand,
+  isOccupied,
   occupantOf,
   replaceSeat,
 } from "./state.js";
@@ -40,6 +43,39 @@ const idleSeatedPlayer = (state: TableState, seat: SeatIndex) =>
       : Result.succeed(occupant)
   );
 
+const chipsInPot = (state: TableState) =>
+  isInHand(state)
+    ? state.hand.players.reduce<number>(
+        (total, player) => total + player.committedTotal - player.won,
+        state.hand.deadMoney
+      )
+    : 0;
+
+export const chipsOnTable = (state: TableState) =>
+  state.seats.reduce<number>(
+    (total, occupant) => total + (isOccupied(occupant) ? occupant.stack : 0),
+    chipsInPot(state)
+  );
+
+const bringChips = (
+  state: TableState,
+  seat: SeatIndex,
+  amount: Chips,
+  event: Event
+): Result.Result<readonly Event[], Rejection> => {
+  const available = CHIP_LIMIT - chipsOnTable(state);
+
+  if (amount <= 0) {
+    return Result.fail(new AmountNotPositive({ amount }));
+  }
+
+  return amount > available
+    ? Result.fail(
+        new ChipLimitExceeded({ amount, available: chips(available), seat })
+      )
+    : accept(event);
+};
+
 export const sitDown = (state: TableState, command: CommandOf<"SitDown">) => {
   const occupant = occupantOf(state, command.seat);
 
@@ -62,11 +98,10 @@ export const sitDown = (state: TableState, command: CommandOf<"SitDown">) => {
     );
   }
 
-  if (command.buyIn <= 0) {
-    return Result.fail(new AmountNotPositive({ amount: command.buyIn }));
-  }
-
-  return accept(
+  return bringChips(
+    state,
+    command.seat,
+    command.buyIn,
     Events.PlayerSat({
       buyIn: command.buyIn,
       player: command.player,
@@ -86,11 +121,12 @@ export const standUp = (state: TableState, command: CommandOf<"StandUp">) =>
 
 export const addChips = (state: TableState, command: CommandOf<"AddChips">) =>
   Result.flatMap(idleSeatedPlayer(state, command.seat), () =>
-    command.amount > 0
-      ? accept(
-          Events.ChipsAdded({ amount: command.amount, seat: command.seat })
-        )
-      : Result.fail(new AmountNotPositive({ amount: command.amount }))
+    bringChips(
+      state,
+      command.seat,
+      command.amount,
+      Events.ChipsAdded({ amount: command.amount, seat: command.seat })
+    )
   );
 
 export const setSittingOut = (

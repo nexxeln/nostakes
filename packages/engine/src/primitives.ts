@@ -12,6 +12,8 @@ export const chips = (amount: number) => ChipsSchema.make(amount);
 
 export const NO_CHIPS = chips(0);
 
+export const CHIP_LIMIT = chips(Number.MAX_SAFE_INTEGER);
+
 export const SEAT_COUNT = 9;
 
 export const SeatIndexSchema = Schema.Int.check(

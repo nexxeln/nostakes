@@ -61,6 +61,7 @@ export { buildPots, type Pot } from "./pots.js";
 export { ShowdownEntries, type ShowdownEntry } from "./showdown.js";
 
 export {
+  CHIP_LIMIT,
   ChipsSchema,
   PlayerIdSchema,
   PositiveChipsSchema,
@@ -77,6 +78,7 @@ export {
   AmountNotPositive,
   CardAlreadyPublic,
   CardNotHeld,
+  ChipLimitExceeded,
   HandInProgress,
   IllegalAction,
   NoBettingRound,
