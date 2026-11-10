@@ -28,6 +28,8 @@ jobs:
             run: pnpm turbo run verify --filter=@nostakes/room
           - target: room-server
             run: pnpm turbo run verify --filter=@nostakes/room-server
+          - target: shuffle
+            run: pnpm turbo run verify --filter=@nostakes/shuffle
           - target: differential
             run: pnpm --filter @nostakes/engine differential --seed 20261110 --hands 100000
     steps:
