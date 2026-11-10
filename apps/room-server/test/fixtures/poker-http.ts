@@ -19,6 +19,15 @@ export const postJson = (url: URL, body: Schema.Json, origin = TEST_ORIGIN) =>
     HttpClient.execute
   );
 
+export class PassRefused extends Schema.TaggedError<
+  PassRefused,
+  { readonly brand: unique symbol }
+>()("PassRefused", { body: Schema.String, status: Schema.Int }) {
+  override get message() {
+    return `The server answered ${this.status} ${this.body} instead of a room pass. Read the refusal and the server's log.`;
+  }
+}
+
 const passFrom = <E, R>(
   response: Effect.Effect<
     { readonly status: number; readonly json: Effect.Effect<unknown, E> },
@@ -27,9 +36,23 @@ const passFrom = <E, R>(
   >
 ) =>
   response.pipe(
-    Effect.flatMap((reply) => reply.json),
-    Effect.flatMap(Schema.decodeUnknownEffect(RoomPassSchema)),
-    Effect.orDie
+    Effect.orDie,
+    Effect.flatMap((reply) =>
+      reply.json.pipe(
+        Effect.orDie,
+        Effect.flatMap((json) =>
+          Schema.decodeUnknownEffect(RoomPassSchema)(json).pipe(
+            Effect.mapError(
+              () =>
+                new PassRefused({
+                  body: JSON.stringify(json),
+                  status: reply.status,
+                })
+            )
+          )
+        )
+      )
+    )
   );
 
 export const createPokerRoom = (base: string, request: OpenRequest) =>

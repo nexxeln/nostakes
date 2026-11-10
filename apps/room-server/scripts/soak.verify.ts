@@ -1,7 +1,15 @@
 import * as Cloudflare from "@alchemy.run/cloudflare";
 import * as Test from "@alchemy.run/test/Vitest";
 import { NodeFileSystem } from "@effect/platform-node";
-import { Config, Console, Effect, FileSystem, Result, Schema } from "effect";
+import {
+  Config,
+  Console,
+  Effect,
+  FileSystem,
+  Option,
+  Result,
+  Schema,
+} from "effect";
 import * as FetchHttpClient from "effect/http/FetchHttpClient";
 
 import type { Temper } from "../test/fixtures/bot.js";
@@ -197,7 +205,7 @@ test(
         const path = yield* saveLog(seed, plan, stored.events);
 
         failures.push(
-          `${plan.code} (seed ${plan.seed}): ${outcome.failure.message} log ${path}`
+          `${plan.code} (seed ${plan.seed}): ${outcome.failure.message} The room halted: ${Option.getOrElse(stored.halted, () => "no")}. log ${path}`
         );
         continue;
       }

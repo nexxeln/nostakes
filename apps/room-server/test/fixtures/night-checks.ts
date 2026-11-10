@@ -4,6 +4,9 @@ import { MAX_MISSED_EVENTS } from "@nostakes/protocol";
 import type { RoomCode } from "@nostakes/protocol";
 import {
   Audiences,
+  RoomEventSchema,
+  RoomViewSchema,
+  SeenEventSchema,
   RoomEvents,
   RoomStates,
   RoomViews,
@@ -15,24 +18,30 @@ import {
   viewFor,
 } from "@nostakes/room";
 import type { RoomEvent, RoomState, RoomView } from "@nostakes/room";
-import { Option, Predicate, Schema } from "effect";
+import { Option, Predicate, Result, Schema } from "effect";
 
-import { pokerRoom } from "../../src/poker-room.js";
 import type { BotRecord, SocketRecord } from "./bot.js";
 import { pokerCodec, wallClock } from "./poker-socket.js";
 import type { Arrival } from "./poker-socket.js";
 
 const decodeEvent = Schema.decodeSync(
-  Schema.fromJsonString(pokerRoom.schemas.event)
+  Schema.fromJsonString(Schema.toCodecJson(RoomEventSchema))
 );
 
-const encodeSeen = Schema.encodeSync(
-  Schema.fromJsonString(pokerRoom.schemas.redacted)
-);
+const seenCodec = Schema.fromJsonString(Schema.toCodecJson(SeenEventSchema));
 
-const encodeView = Schema.encodeSync(
-  Schema.fromJsonString(pokerRoom.schemas.view)
-);
+const viewCodec = Schema.fromJsonString(Schema.toCodecJson(RoomViewSchema));
+
+const encodeSeen = Schema.encodeSync(seenCodec);
+
+const encodeView = Schema.encodeSync(viewCodec);
+
+const encodeSeenResult = Schema.encodeResult(seenCodec);
+
+const encodeViewResult = Schema.encodeResult(viewCodec);
+
+const textOf = (encoded: Result.Result<string, Schema.SchemaError>) =>
+  Result.getOrElse(encoded, (failure) => `unencodable: ${failure.message}`);
 
 const decodeJson = Schema.decodeUnknownSync(Schema.fromJsonString(Schema.Json));
 
@@ -154,12 +163,14 @@ export interface NightVerdict {
 interface Seen {
   readonly player: PlayerId;
   readonly text: string;
+  readonly raw: Schema.Json;
   readonly where: string;
 }
 
 interface WelcomeSeen {
   readonly player: PlayerId;
   readonly view: RoomView;
+  readonly raw: Schema.Json;
   readonly helloAt: number;
   readonly arrivedAt: number;
   readonly where: string;
@@ -232,6 +243,12 @@ const isJsonArray = (value: Schema.Json): value is Schema.JsonArray =>
 
 const isJsonObject = (value: Schema.Json): value is Schema.JsonObject =>
   Predicate.isObject(value) && !Array.isArray(value);
+
+const fieldOf = (json: Schema.Json, key: string): Schema.Json =>
+  isJsonObject(json) ? (json[key] ?? null) : null;
+
+const itemsOf = (json: Schema.Json): readonly Schema.Json[] =>
+  isJsonArray(json) ? json : [];
 
 const cardsIn = (value: Schema.Json, holding: boolean): readonly number[] => {
   if (Predicate.isNumber(value)) {
@@ -394,10 +411,14 @@ const welcomeArrived = (
     }
   }
 
+  const raw = decodeJson(arrival.text);
+  const rawMissed = itemsOf(fieldOf(raw, "missed"));
+
   for (const [offset, event] of message.missed.entries()) {
     pushTo(received.events, first + offset, {
       player,
-      text: encodeSeen(event),
+      raw: rawMissed[offset] ?? null,
+      text: textOf(encodeSeenResult(event)),
       where,
     });
   }
@@ -406,6 +427,7 @@ const welcomeArrived = (
     arrivedAt: arrival.at,
     helloAt: record.helloAt,
     player,
+    raw: fieldOf(raw, "view"),
     view: message.view,
     where,
   });
@@ -446,17 +468,22 @@ const eventsArrived = (
     );
   }
 
+  const raw = decodeJson(arrival.text);
+  const rawEvents = itemsOf(fieldOf(raw, "events"));
+
   for (const [offset, event] of message.events.entries()) {
     pushTo(received.events, message.from + offset, {
       player,
-      text: encodeSeen(event),
+      raw: rawEvents[offset] ?? null,
+      text: textOf(encodeSeenResult(event)),
       where,
     });
   }
 
   pushTo(received.views, message.to, {
     player,
-    text: encodeView(message.view),
+    raw: fieldOf(raw, "view"),
+    text: textOf(encodeViewResult(message.view)),
     where,
   });
   lineage.next = Option.some(message.to + 1);
@@ -691,9 +718,7 @@ const checkCards = (
 ) => {
   const allowed = allowedFor(ledger.known, state, seen.player);
 
-  const leaked = cardsIn(decodeJson(seen.text), false).filter(
-    (card) => !allowed.has(card)
-  );
+  const leaked = cardsIn(seen.raw, false).filter((card) => !allowed.has(card));
 
   if (leaked.length > 0) {
     report(
@@ -782,7 +807,8 @@ const checkWelcomes = (
       state,
       {
         player: welcome.player,
-        text: encodeView(welcome.view),
+        raw: welcome.raw,
+        text: "",
         where: welcome.where,
       },
       seq
