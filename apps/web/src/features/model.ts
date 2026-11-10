@@ -7,6 +7,8 @@ import { RoomViewSchema } from "@nostakes/room";
 import { Schema } from "effect";
 import { defineTaggedUnion } from "foldkit/schema";
 
+import { HintSchema, TableEventSchema } from "./table/snapshot.js";
+
 export const AVATARS = [
   "🦊",
   "🐻",
@@ -84,6 +86,7 @@ export const InRoomSchema = Schema.Struct({
   connected: Schema.Boolean,
   copied: CopiedSchema,
   drafts: DraftsSchema,
+  events: Schema.Array(TableEventSchema),
   link: Schema.Option(LinkSchema),
   notice: Schema.Option(Schema.String),
   pending: Schema.Array(PendingSchema),
@@ -110,6 +113,7 @@ export type Screen = typeof Screens.Type;
 
 export const ModelSchema = Schema.Struct({
   joinCode: Schema.String,
+  learned: Schema.Array(HintSchema),
   nextKey: Schema.Int,
   now: Schema.Int,
   profile: ProfileSchema,
@@ -129,6 +133,7 @@ export type SavedPass = typeof SavedPassSchema.Type;
 
 export const FlagsSchema = Schema.Struct({
   invite: Schema.Option(RoomCodeSchema),
+  learned: Schema.Array(HintSchema),
   profile: ProfileSchema,
   saved: Schema.Option(SavedPassSchema),
   sound: Schema.Boolean,

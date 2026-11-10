@@ -8,6 +8,8 @@ import {
   ThemeSchema,
 } from "../features/model.js";
 import type { Flags, Profile, Theme } from "../features/model.js";
+import { HintSchema } from "../features/table/snapshot.js";
+import type { Hint } from "../features/table/snapshot.js";
 
 const PROFILE_KEY = "nostakes.profile";
 
@@ -16,6 +18,10 @@ const THEME_KEY = "nostakes.theme";
 const SOUND_KEY = "nostakes.sound";
 
 const SOUND_OFF = "off";
+
+const LEARNED_KEY = "nostakes.learned";
+
+const learnedJson = Schema.fromJsonString(Schema.Array(HintSchema));
 
 const passKey = (code: string) => `nostakes.pass.${code}`;
 
@@ -69,6 +75,9 @@ export const storeTheme = (theme: Option.Option<Theme>) =>
 export const storeSound = (on: boolean) =>
   writeItem(SOUND_KEY, on ? "on" : SOUND_OFF);
 
+export const storeLearned = (learned: readonly Hint[]) =>
+  writeItem(LEARNED_KEY, Schema.encodeSync(learnedJson)(learned));
+
 export const forgetPass = (code: string) =>
   Effect.sync(() => {
     globalThis.localStorage.removeItem(passKey(code));
@@ -110,7 +119,12 @@ export const readFlags = Effect.gen(function* readFlags() {
   const sound =
     !mutedHere && !Option.contains(yield* readItem(SOUND_KEY), SOUND_OFF);
 
-  const flags: Flags = { invite, profile, saved, sound, theme };
+  const learned = (yield* readItem(LEARNED_KEY)).pipe(
+    Option.flatMap(Schema.decodeOption(learnedJson)),
+    Option.getOrElse((): readonly Hint[] => [])
+  );
+
+  const flags: Flags = { invite, learned, profile, saved, sound, theme };
 
   return flags;
 });

@@ -1,3 +1,4 @@
+import { Activities } from "@nostakes/client";
 import type { ClientState } from "@nostakes/client";
 import { Clock, Effect, Option, Schema, Stream } from "effect";
 import { Subscription } from "foldkit";
@@ -38,6 +39,22 @@ const roomLinks = RoomConnection.get.pipe(
   Stream.unwrap
 );
 
+const roomActivity = RoomConnection.get.pipe(
+  Effect.map((client) =>
+    client.activity.pipe(
+      Stream.flatMap(
+        Activities.$match({
+          Applied: ({ event, seq }) =>
+            Stream.make(Messages.AppliedEvent({ event, seq })),
+          Skipped: () => Stream.empty,
+        })
+      )
+    )
+  ),
+  Effect.catchTag("ResourceNotAvailable", () => Effect.succeed(Stream.empty)),
+  Stream.unwrap
+);
+
 const ticks = Stream.tick(TICK).pipe(
   Stream.mapEffect(() => Clock.currentTimeMillis),
   Stream.map((now) => Messages.Ticked({ now }))
@@ -59,6 +76,19 @@ export const subscriptions = Subscription.make<
   Message,
   ManagedResource.ServiceOf<typeof RoomConnection>
 >()((entry) => ({
+  activity: entry(
+    { connected: Schema.Option(Schema.String) },
+    {
+      dependenciesToStream: ({ connected }) =>
+        Option.isSome(connected) ? roomActivity : Stream.empty,
+      modelToDependencies: (model) => ({
+        connected: roomOf(model).pipe(
+          Option.filter(({ connected }) => connected),
+          Option.map(({ code }) => code)
+        ),
+      }),
+    }
+  ),
   clock: entry(
     { ticking: Schema.Boolean },
     {

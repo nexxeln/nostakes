@@ -11,7 +11,7 @@ import type { MemberCommand } from "@nostakes/room";
 import { Option } from "effect";
 import type { Html, HtmlBuilder } from "foldkit/html";
 
-import { cardBack, cardLabel, cardSlot, cardView } from "./cards.js";
+import { cardLabel, cardView } from "./cards.js";
 import { soundSwitch, themeSwitch } from "./chrome.js";
 import { Messages } from "./message.js";
 import type { Message } from "./message.js";
@@ -21,25 +21,17 @@ import {
   isActing,
   isLive,
   legalOf,
-  secondsLeft,
   settlementText,
   viewOf,
 } from "./room.js";
 import type { ClosedView, OpenView } from "./room.js";
 import { settingsPanel } from "./settings-view.js";
+import { tableSnapshot } from "./table/from-room.js";
+import { tableElement } from "./table/snapshot.js";
 
 type H = HtmlBuilder<Message>;
 
 const Commands = MemberCommandSchema.cases;
-
-const SEAT_COUNT = 9;
-
-const STREETS = {
-  Flop: "Flop",
-  Preflop: "Preflop",
-  River: "River",
-  Turn: "Turn",
-} as const;
 
 interface Seen {
   readonly name: (player: PlayerId) => string;
@@ -77,16 +69,6 @@ const mySeatOf = (view: OpenView, room: InRoom): Option.Option<SeatIndex> =>
       Option.exists(occupant, ({ player }) => player === room.player)
     )?.seat
   );
-
-const seatPosition = (seat: number, anchor: number) => {
-  const offset = (seat - anchor + SEAT_COUNT) % SEAT_COUNT;
-  const angle = Math.PI / 2 + (offset * 2 * Math.PI) / SEAT_COUNT;
-
-  return {
-    left: `${(50 + 41 * Math.cos(angle)).toFixed(2)}%`,
-    top: `${(50 + 40 * Math.sin(angle)).toFixed(2)}%`,
-  };
-};
 
 const connectionLine = (room: InRoom, h: H): Html =>
   Option.match(room.link, {
@@ -189,293 +171,6 @@ const noticeLine = (room: InRoom, h: H): Html =>
       }),
     ]
   );
-
-const handPlayer = (view: OpenView, seat: number) =>
-  view.hand.pipe(
-    Option.flatMap((hand) =>
-      Option.fromNullishOr(hand.players.find((player) => player.seat === seat))
-    )
-  );
-
-const seatCards = (view: OpenView, seat: number, mine: boolean, h: H): Html => {
-  const inHand = handPlayer(view, seat);
-
-  if (Option.isSome(inHand)) {
-    const player = inHand.value;
-
-    if (player.shown.length > 0) {
-      return h.div(
-        [h.Class("seat-cards")],
-        player.shown.map((card) => cardView(card, h, "is-small"))
-      );
-    }
-
-    if (player.status === "Folded" || player.mucked || mine) {
-      return h.empty;
-    }
-
-    return h.div(
-      [h.Class("seat-cards")],
-      [cardBack(h, "b1", "is-small"), cardBack(h, "b2", "is-small")]
-    );
-  }
-
-  return Option.match(view.lastHand, {
-    onNone: () => h.empty,
-    onSome: (last) => {
-      const shown = last.shown.find((entry) => entry.seat === seat);
-
-      return shown === undefined || mine
-        ? h.empty
-        : h.div(
-            [h.Class("seat-cards")],
-            shown.cards.map((card) => cardView(card, h, "is-small"))
-          );
-    },
-  });
-};
-
-const badgesFor = (view: OpenView, seat: number): readonly string[] =>
-  Option.match(view.hand, {
-    onNone: () => [],
-    onSome: (hand) => [
-      ...(hand.button === seat ? ["D"] : []),
-      ...(hand.smallBlindSeat === seat ? ["SB"] : []),
-      ...(hand.bigBlindSeat === seat ? ["BB"] : []),
-    ],
-  });
-
-const clockFor = (
-  model: Model,
-  room: InRoom,
-  view: OpenView,
-  seat: number,
-  h: H
-): Html => {
-  const turn = view.clocks.turn.pipe(
-    Option.filter((clock) => clock.seat === seat)
-  );
-
-  const showdown = view.clocks.showdown.pipe(
-    Option.filter((clock) => clock.seat === seat)
-  );
-
-  return Option.match(
-    Option.orElse(turn, () => showdown),
-    {
-      onNone: () => h.empty,
-      onSome: ({ remainingMs }) =>
-        h.span(
-          [h.Class("seat-clock")],
-          [`${secondsLeft(room, model.now, remainingMs)}s`]
-        ),
-    }
-  );
-};
-
-const seatView = (
-  model: Model,
-  room: InRoom,
-  view: OpenView,
-  seen: Seen,
-  presence: readonly PlayerId[],
-  seat: OpenView["seats"][number],
-  anchor: number,
-  canSit: boolean,
-  h: H
-): Html => {
-  const position = seatPosition(seat.seat, anchor);
-
-  return Option.match(seat.occupant, {
-    onNone: () =>
-      h.div(
-        [
-          h.Key(`seat-${seat.seat}`),
-          h.Class("seat is-empty"),
-          h.Style(position),
-        ],
-        [
-          canSit
-            ? h.button(
-                [
-                  h.Type("button"),
-                  h.Class("seat-sit"),
-                  h.OnClick(Messages.ClickedSeat({ seat: seat.seat })),
-                ],
-                ["Sit"]
-              )
-            : h.span([h.Class("seat-empty-label")], [""]),
-        ]
-      ),
-    onSome: (occupant) => {
-      const inHand = handPlayer(view, seat.seat);
-      const folded = Option.exists(inHand, ({ status }) => status === "Folded");
-      const allIn = Option.exists(inHand, ({ status }) => status === "AllIn");
-
-      const toAct = view.hand.pipe(
-        Option.flatMap(({ toAct: next }) => next),
-        Option.exists((next) => next === seat.seat)
-      );
-
-      const mine = occupant.player === room.player;
-      const connected = presence.includes(occupant.player);
-
-      const committed = Option.match(inHand, {
-        onNone: () => 0,
-        onSome: ({ committedThisStreet }) => committedThisStreet,
-      });
-
-      const notes = [
-        ...badgesFor(view, seat.seat),
-        ...(allIn ? ["All in"] : []),
-        ...(occupant.sittingOut ? ["Sitting out"] : []),
-        ...(occupant.straddling ? ["Straddle"] : []),
-        ...(occupant.leaving ? ["Leaving"] : []),
-        ...(occupant.away || !connected ? ["Away"] : []),
-      ];
-
-      return h.div(
-        [
-          h.Key(`seat-${seat.seat}`),
-          h.Class(
-            [
-              "seat",
-              toAct ? "is-turn" : "",
-              folded ? "is-folded" : "",
-              mine ? "is-mine" : "",
-              occupant.sittingOut ? "is-out" : "",
-            ].join(" ")
-          ),
-          h.Style(position),
-        ],
-        [
-          h.div(
-            [h.Class("seat-face")],
-            [
-              h.span([h.Class("seat-avatar")], [seen.avatar(occupant.player)]),
-              h.span(
-                [h.Class(connected ? "presence is-here" : "presence")],
-                [""]
-              ),
-            ]
-          ),
-          h.span(
-            [h.Class("seat-name")],
-            [mine ? "You" : seen.name(occupant.player)]
-          ),
-          h.span([h.Class("seat-stack")], [String(occupant.stack)]),
-          notes.length > 0
-            ? h.span([h.Class("seat-notes")], [notes.join(" · ")])
-            : h.empty,
-          committed > 0
-            ? h.span([h.Class("seat-bet")], [String(committed)])
-            : h.empty,
-          seatCards(view, seat.seat, mine, h),
-          clockFor(model, room, view, seat.seat, h),
-        ]
-      );
-    },
-  });
-};
-
-const boardView = (cards: readonly Card[], key: string, h: H): Html =>
-  h.div(
-    [h.Key(key), h.Class("board")],
-    Array.from({ length: 5 }, (_, index) => {
-      const card = cards[index];
-
-      return card === undefined
-        ? cardSlot(h, `${key}-slot-${index}`)
-        : cardView(card, h);
-    })
-  );
-
-const middleView = (
-  model: Model,
-  room: InRoom,
-  view: OpenView,
-  seen: Seen,
-  h: H
-): Html =>
-  Option.match(view.hand, {
-    onNone: () =>
-      h.div(
-        [h.Class("table-middle")],
-        [
-          ...Option.match(view.lastHand, {
-            onNone: () => [],
-            onSome: (last) => [
-              ...last.boards.map((board, index) =>
-                boardView(board, `last-${index}`, h)
-              ),
-              last.rabbit.length > 0
-                ? h.div(
-                    [h.Class("rabbit")],
-                    [
-                      h.span([h.Class("muted")], ["Rabbit: "]),
-                      ...last.rabbit.map((card) =>
-                        cardView(card, h, "is-small")
-                      ),
-                    ]
-                  )
-                : h.empty,
-              h.ul(
-                [h.Class("awards")],
-                last.awards.flatMap((award) =>
-                  award.winners.map((winner) =>
-                    h.li(
-                      [h.Key(`award-${award.run}-${award.pot}-${winner.seat}`)],
-                      [
-                        `${seen.name(
-                          view.seats[winner.seat]?.occupant.pipe(
-                            Option.map(({ player }) => player),
-                            Option.getOrElse(() => room.player)
-                          ) ?? room.player
-                        )} wins ${winner.amount}`,
-                      ]
-                    )
-                  )
-                )
-              ),
-            ],
-          }),
-          h.p(
-            [h.Class("muted")],
-            [
-              view.game === "Waiting"
-                ? "Waiting for the host to start."
-                : Option.match(view.clocks.nextDeal, {
-                    onNone: () => "Waiting for players.",
-                    onSome: ({ remainingMs }) =>
-                      `Next hand in ${secondsLeft(room, model.now, remainingMs)}s`,
-                  }),
-            ]
-          ),
-        ]
-      ),
-    onSome: (hand) =>
-      h.div(
-        [h.Class("table-middle")],
-        [
-          h.span(
-            [h.Class("street")],
-            [`${STREETS[hand.street]} · hand ${hand.handNumber}`]
-          ),
-          ...hand.boards.map((board, index) =>
-            boardView(board, `board-${index}`, h)
-          ),
-          h.div(
-            [h.Class("pots")],
-            hand.pots.map((pot, index) =>
-              h.span(
-                [h.Key(`pot-${index}`), h.Class("pot")],
-                [index === 0 ? `Pot ${pot.amount}` : `Side pot ${pot.amount}`]
-              )
-            )
-          ),
-        ]
-      ),
-  });
 
 const raiseLabel = (allIn: boolean, opens: boolean) => {
   if (allIn) {
@@ -1176,6 +871,27 @@ const youPanel = (
   );
 };
 
+const tableView = (
+  model: Model,
+  room: InRoom,
+  view: OpenView,
+  presence: readonly PlayerId[],
+  h: H
+): Html => {
+  const table = tableElement.withMessage(h);
+
+  return table(
+    [
+      h.Class("table-host"),
+      h.AriaLabel("Table"),
+      table.Snapshot(tableSnapshot(room, view, presence, model.learned)),
+      table.Sound(model.sound),
+      table.OnIntent((intent) => Messages.GotTableIntent({ intent })),
+    ],
+    []
+  );
+};
+
 const openRoomView = (
   model: Model,
   room: InRoom,
@@ -1185,12 +901,6 @@ const openRoomView = (
 ): Html => {
   const seen = seenFrom(view.members);
   const mySeat = mySeatOf(view, room);
-  const anchor = Option.getOrElse(mySeat, () => 0);
-
-  const canSit =
-    Option.isNone(mySeat) &&
-    !view.requests.seats.some((request) => request.player === room.player) &&
-    Option.isNone(room.drafts.seat);
 
   return h.div(
     [h.Class("room-body")],
@@ -1199,16 +909,7 @@ const openRoomView = (
         onNone: () => h.empty,
         onSome: (draft) => settingsPanel(room, view, draft, h),
       }),
-      h.section(
-        [h.Class("table"), h.AriaLabel("Table")],
-        [
-          h.div([h.Class("felt")], []),
-          middleView(model, room, view, seen, h),
-          ...view.seats.map((seat) =>
-            seatView(model, room, view, seen, presence, seat, anchor, canSit, h)
-          ),
-        ]
-      ),
+      tableView(model, room, view, presence, h),
       myArea(model, room, view, mySeat, h),
       h.div(
         [h.Class("panels")],

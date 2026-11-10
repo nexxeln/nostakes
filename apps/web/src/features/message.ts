@@ -1,11 +1,12 @@
 import { ActionSchema } from "@nostakes/engine";
 import { PlayerIdSchema, RoomCodeSchema } from "@nostakes/protocol";
-import { MemberCommandSchema } from "@nostakes/room";
+import { MemberCommandSchema, SeenEventSchema } from "@nostakes/room";
 import { Schema } from "effect";
 import { defineMessageUnion } from "foldkit/message";
 import { defineTaggedUnion } from "foldkit/schema";
 
 import { CopiedSchema, LinkSchema, ThemeSchema } from "./model.js";
+import { TableIntentSchema } from "./table/snapshot.js";
 
 export const ReplyOutcomes = defineTaggedUnion({
   Accepted: { seq: Schema.Int },
@@ -21,6 +22,7 @@ export type DraftField = typeof DraftFieldSchema.Type;
 
 export const Messages = defineMessageUnion({
   AcquiredConnection: {},
+  AppliedEvent: { event: SeenEventSchema, seq: Schema.Int },
   ChangedDraft: { field: DraftFieldSchema, value: Schema.String },
   ChangedJoinCode: { value: Schema.String },
   ChangedName: { value: Schema.String },
@@ -48,6 +50,7 @@ export const Messages = defineMessageUnion({
   FailedEntry: { problem: Schema.String },
   GotLink: { link: LinkSchema },
   GotReply: { key: Schema.Int, outcome: ReplyOutcomes },
+  GotTableIntent: { intent: TableIntentSchema },
   PickedAvatar: { avatar: Schema.String },
   ReleasedConnection: {},
   SubmittedCreate: {},

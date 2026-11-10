@@ -27,6 +27,7 @@ const PLAYER = PlayerIdSchema.make("player-0000000ab");
 
 const start = init({
   invite: Option.some(CODE),
+  learned: [],
   profile: { avatar: "🦊", name: "Ana" },
   saved: Option.some({ code: CODE, player: PLAYER }),
   sound: false,

@@ -6,9 +6,12 @@ import { view } from "../features/view.js";
 import { managedResources } from "./connection.js";
 import { readFlags } from "./storage.js";
 import { subscriptions } from "./subscriptions.js";
+import { defineTable } from "./table/element.js";
 
 import "./tokens.css";
 import "./app.css";
+
+defineTable();
 
 const application = Runtime.makeApplication({
   Flags: FlagsSchema,

@@ -73,6 +73,9 @@
   --color-face: #e7e1d5;
   --color-face-ink: #5b544a;
   --shadow-face: inset 0 0 0 1px rgb(28 26 23 / 0.07);
+  --color-face-ink-unlit: #5b544a;
+  --color-face-ink-folded: #a39b8e;
+  --opacity-away: 0.55;
   --color-card: #ffffff;
   --color-card-ink: #1c1a17;
   --color-card-red: #c63f27;
@@ -135,6 +138,8 @@
     --color-face: #25272c;
     --color-face-ink: #cfcbc4;
     --shadow-face: inset 0 0 0 1px rgb(255 255 255 / 0.06);
+    --color-face-ink-unlit: #6f6d6a;
+    --color-face-ink-folded: #6f6d6a;
     --color-card: #f2f0eb;
     --color-card-ink: #18191c;
     --color-card-red: #c63b2c;
@@ -191,6 +196,8 @@
   --color-face: #25272c;
   --color-face-ink: #cfcbc4;
   --shadow-face: inset 0 0 0 1px rgb(255 255 255 / 0.06);
+  --color-face-ink-unlit: #6f6d6a;
+  --color-face-ink-folded: #6f6d6a;
   --color-card: #f2f0eb;
   --color-card-ink: #18191c;
   --color-card-red: #c63b2c;

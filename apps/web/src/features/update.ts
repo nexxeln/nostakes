@@ -1,4 +1,4 @@
-import { Actions, SeatIndexSchema } from "@nostakes/engine";
+import { Actions, ChipsSchema, SeatIndexSchema } from "@nostakes/engine";
 import type { Action } from "@nostakes/engine";
 import { RoomCodeSchema } from "@nostakes/protocol";
 import {
@@ -6,8 +6,8 @@ import {
   MemberCommandSchema,
   RoomViews,
 } from "@nostakes/room";
-import type { MemberCommand } from "@nostakes/room";
-import { Option, Result, Schema } from "effect";
+import type { MemberCommand, SeenEvent } from "@nostakes/room";
+import { Match, Option, Result, Schema } from "effect";
 import type * as HttpClient from "effect/http/HttpClient";
 import type { ManagedResource, Update } from "foldkit";
 
@@ -18,6 +18,7 @@ import {
   CreateRoom,
   ForgetRoom,
   JoinRoom,
+  SaveLearned,
   SaveSound,
   SendToRoom,
   ShowPath,
@@ -39,6 +40,8 @@ import {
   viewOf,
 } from "./room.js";
 import { draftOf, settingsFrom } from "./settings.js";
+import { KEPT_EVENTS, happeningsOf } from "./table/from-room.js";
+import type { Hint, TableIntent } from "./table/snapshot.js";
 import { roomPath } from "./wire.js";
 
 type Services =
@@ -54,6 +57,7 @@ const freshRoom = (code: InRoom["code"], player: InRoom["player"]): InRoom => ({
   connected: false,
   copied: "Nothing",
   drafts: { buyIn: "", chips: "", raiseTo: "", seat: Option.none() },
+  events: [],
   link: Option.none(),
   notice: Option.none(),
   pending: [],
@@ -64,6 +68,7 @@ const freshRoom = (code: InRoom["code"], player: InRoom["player"]): InRoom => ({
 export const init = (flags: Flags): Return => {
   const base = {
     joinCode: "",
+    learned: flags.learned,
     nextKey: 1,
     now: 0,
     profile: flags.profile,
@@ -123,7 +128,11 @@ const send = (
   label: string
 ): Return => {
   const key = model.nextKey;
-  const acting = MemberCommandSchema.guards.Act(command);
+
+  const acting =
+    MemberCommandSchema.guards.Act(command) ||
+    MemberCommandSchema.guards.TableHand(command) ||
+    MemberCommandSchema.guards.MuckHand(command);
 
   return {
     commands: [SendToRoom({ command, key })],
@@ -217,6 +226,69 @@ const requestChips = (model: Model): Return =>
     )
   );
 
+const pickSeat = (model: Model, seat: number): Return =>
+  editRoom(model, (room) => ({
+    ...room,
+    drafts: {
+      ...room.drafts,
+      buyIn:
+        room.drafts.buyIn === ""
+          ? Option.match(openViewOf(room), {
+              onNone: () => "",
+              onSome: ({ settings }) => String(settings.buyIn.max),
+            })
+          : room.drafts.buyIn,
+      seat: Option.some(seat),
+    },
+  }));
+
+const showdownChoice = (
+  model: Model,
+  command: MemberCommand,
+  label: string
+): Return =>
+  inRoom(model, (room) =>
+    isLive(room) && !isActing(room)
+      ? send(model, room, command, label)
+      : { model }
+  );
+
+const learn = (model: Model, hint: Hint): Return => {
+  if (model.learned.includes(hint)) {
+    return { model };
+  }
+
+  const learned = [...model.learned, hint];
+
+  return { commands: [SaveLearned({ learned })], model: { ...model, learned } };
+};
+
+const fromTable = (model: Model, intent: TableIntent): Return =>
+  Match.value(intent).pipe(
+    Match.tagsExhaustive({
+      Call: () => act(model, Actions.Call()),
+      Check: () => act(model, Actions.Check()),
+      Fold: () => act(model, Actions.Fold()),
+      Learned: ({ hint }) => learn(model, hint),
+      Muck: () => showdownChoice(model, Commands.MuckHand.make({}), "Mucking"),
+      Raise: ({ to }) =>
+        Option.match(Schema.decodeOption(ChipsSchema)(to), {
+          onNone: () => ({ model }),
+          onSome: (amount) => act(model, Actions.RaiseTo({ to: amount })),
+        }),
+      Show: () => showdownChoice(model, Commands.TableHand.make({}), "Showing"),
+      Sit: ({ seat }) => pickSeat(model, seat),
+    })
+  );
+
+const remember = (room: InRoom, seq: number, event: SeenEvent): InRoom => {
+  const fresh = happeningsOf(seq, event);
+
+  return fresh.length === 0
+    ? room
+    : { ...room, events: [...room.events, ...fresh].slice(-KEPT_EVENTS) };
+};
+
 const settle = (room: InRoom, key: number, outcome: ReplyOutcome): InRoom => {
   const sent = room.pending.find((pending) => pending.key === key);
 
@@ -245,6 +317,8 @@ export const update = (model: Model, message: Message): Return =>
   Messages.match(message, {
     AcquiredConnection: () =>
       editRoom(model, (room) => ({ ...room, connected: true })),
+    AppliedEvent: ({ event, seq }) =>
+      editRoom(model, (room) => remember(room, seq, event)),
     ChangedDraft: ({ field, value }) =>
       editRoom(model, (room) => ({
         ...room,
@@ -334,21 +408,7 @@ export const update = (model: Model, message: Message): Return =>
             }),
         })
       ),
-    ClickedSeat: ({ seat }) =>
-      editRoom(model, (room) => ({
-        ...room,
-        drafts: {
-          ...room.drafts,
-          buyIn:
-            room.drafts.buyIn === ""
-              ? Option.match(openViewOf(room), {
-                  onNone: () => "",
-                  onSome: ({ settings }) => String(settings.buyIn.max),
-                })
-              : room.drafts.buyIn,
-          seat: Option.some(seat),
-        },
-      })),
+    ClickedSeat: ({ seat }) => pickSeat(model, seat),
     ClickedSit: ({ seat }) => sit(model, seat),
     CompletedCopy: ({ copied }) =>
       editRoom(model, (room) => ({ ...room, copied })),
@@ -388,6 +448,7 @@ export const update = (model: Model, message: Message): Return =>
       }),
     GotReply: ({ key, outcome }) =>
       editRoom(model, (room) => settle(room, key, outcome)),
+    GotTableIntent: ({ intent }) => fromTable(model, intent),
     PickedAvatar: ({ avatar }) => ({
       model: { ...model, profile: { ...model.profile, avatar } },
     }),
