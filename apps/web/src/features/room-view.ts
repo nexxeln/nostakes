@@ -1211,6 +1211,28 @@ const closedRoomView = (room: InRoom, view: ClosedView, h: H): Html => {
   );
 };
 
+const leftRoomView = (h: H): Html =>
+  h.section(
+    [h.Class("card-panel")],
+    [
+      h.h2([h.Class("panel-title")], ["You left this room"]),
+      h.p(
+        [h.Class("muted")],
+        [
+          "Go back home. To play again, open the room link and join as a new player.",
+        ]
+      ),
+      h.button(
+        [
+          h.Type("button"),
+          h.Class("button"),
+          h.OnClick(Messages.ClickedHome()),
+        ],
+        ["Back home"]
+      ),
+    ]
+  );
+
 export const roomView = (model: Model, room: InRoom, h: H): Html => {
   const view = viewOf(room);
   const open = view.pipe(Option.filter(RoomViews.$is("Open")));
@@ -1248,7 +1270,10 @@ export const roomView = (model: Model, room: InRoom, h: H): Html => {
         onSome: (current) =>
           RoomViews.$match(current, {
             Closed: (closed) => closedRoomView(room, closed, h),
-            Open: (live) => openRoomView(model, room, live, presence, h),
+            Open: (live) =>
+              live.members.some(({ player }) => player === room.player)
+                ? openRoomView(model, room, live, presence, h)
+                : leftRoomView(h),
           }),
       }),
     ]
