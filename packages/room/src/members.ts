@@ -2,13 +2,45 @@ import type { PlayerId } from "@nostakes/engine";
 import { Option, Result } from "effect";
 
 import type { RoomCommandOf } from "./commands.js";
+import type { Decision } from "./decision.js";
 import { RoomEvents } from "./events.js";
 import type { RoomEvent } from "./events.js";
 import { leaveSeat } from "./money.js";
-import { AlreadyAMember, AlreadyTheHost, NotAMember } from "./rejection.js";
+import {
+  AlreadyAMember,
+  AlreadyTheHost,
+  HostStillHere,
+  NotAMember,
+} from "./rejection.js";
 import { SEATS, isMember, occupantAt, seatOf } from "./state.js";
 import type { Open } from "./state.js";
+import { secondsAfter } from "./time.js";
 import type { Millis } from "./time.js";
+
+export const HOST_CLAIM_AFTER_SECONDS = 120;
+
+export const hostClaimableAt = (state: Open): Option.Option<Millis> =>
+  state.hostAway.pipe(
+    Option.map((since) => secondsAfter(since, HOST_CLAIM_AFTER_SECONDS))
+  );
+
+export const claimHost = (
+  state: Open,
+  player: PlayerId,
+  at: Millis
+): Decision => {
+  if (player === state.host) {
+    return Result.fail(new AlreadyTheHost({ player }));
+  }
+
+  const claimable = hostClaimableAt(state);
+
+  return Option.exists(claimable, (from) => at >= from)
+    ? Result.succeed([RoomEvents.HostChanged({ at, host: player })])
+    : Result.fail(
+        new HostStillHere({ claimableAt: claimable, host: state.host })
+      );
+};
 
 export const joinRoom = (
   state: Open,

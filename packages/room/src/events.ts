@@ -113,6 +113,8 @@ export const roomEventFields = {
       })
     ),
   },
+  HostAway: { at },
+  HostBack: { at },
   HostChanged: { at, host: PlayerIdSchema },
   LeaveQueued: { at, player: PlayerIdSchema },
   MarkedAway: { at, seat: SeatIndexSchema },

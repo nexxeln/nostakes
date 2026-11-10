@@ -22,7 +22,13 @@ import type { RoomEvent } from "./events.js";
 import { evolveAll } from "./evolve.js";
 import type { RoomLog } from "./evolve.js";
 import { AvatarSchema, NameSchema, RoomCodeSchema } from "./identity.js";
-import { joinRoom, leaveRoom, setProfile, transferHost } from "./members.js";
+import {
+  claimHost,
+  joinRoom,
+  leaveRoom,
+  setProfile,
+  transferHost,
+} from "./members.js";
 import { answerChips, leaveSeat, requestChips } from "./money.js";
 import { withOpenings } from "./openings.js";
 import { play } from "./play.js";
@@ -100,6 +106,8 @@ const decideOpen = (state: Open, command: RoomCommand): Decision =>
       byMember(state, choose, (player) => choosePosting(state, player, choose)),
     ChooseRuns: (choose) =>
       byMember(state, choose, (player) => play(state, player, choose)),
+    ClaimHost: (claim) =>
+      byMember(state, claim, (player) => claimHost(state, player, claim.at)),
     CloseRoom: (close) =>
       byMember(state, close, (player) =>
         player === state.host || isStalled(state)

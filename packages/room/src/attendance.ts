@@ -8,7 +8,13 @@ import { RoomEvents } from "./events.js";
 import type { RoomEvent } from "./events.js";
 import { Actors } from "./identity.js";
 import { QuietNotDue } from "./rejection.js";
-import { Attendances, RoomStates, SEATS, occupantAt } from "./state.js";
+import {
+  Attendances,
+  RoomStates,
+  SEATS,
+  isMember,
+  occupantAt,
+} from "./state.js";
 import type { Open, RoomState } from "./state.js";
 import { latest, secondsAfter } from "./time.js";
 import type { Millis } from "./time.js";
@@ -18,7 +24,20 @@ export const seatedPlayers = (state: Open): readonly PlayerId[] =>
     Option.toArray(occupantAt(state.table, seat)).map(({ player }) => player)
   );
 
-export const attendanceEvents = (
+const hostEvents = (
+  state: Open,
+  connected: readonly PlayerId[],
+  at: Millis
+): readonly RoomEvent[] => {
+  const here = connected.includes(state.host) || !isMember(state, state.host);
+
+  return Option.match(state.hostAway, {
+    onNone: () => (here ? [] : [RoomEvents.HostAway({ at })]),
+    onSome: () => (here ? [RoomEvents.HostBack({ at })] : []),
+  });
+};
+
+const tableEvents = (
   state: Open,
   connected: readonly PlayerId[],
   at: Millis
@@ -48,6 +67,15 @@ export const attendanceEvents = (
       ),
   });
 };
+
+export const attendanceEvents = (
+  state: Open,
+  connected: readonly PlayerId[],
+  at: Millis
+): readonly RoomEvent[] => [
+  ...tableEvents(state, connected, at),
+  ...hostEvents(state, connected, at),
+];
 
 export const noteAttendance = (
   state: Open,

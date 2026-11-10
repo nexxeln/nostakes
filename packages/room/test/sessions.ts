@@ -561,6 +561,10 @@ const membership = (
     return RoomCommands.LeaveRoom({ at: millis(at), by });
   }
 
+  if (roll < 7 && random.chance(1, 2)) {
+    return RoomCommands.ClaimHost({ at: millis(at), by });
+  }
+
   if (roll < 8) {
     return RoomCommands.SetProfile({
       at: millis(at),

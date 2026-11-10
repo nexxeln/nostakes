@@ -14,6 +14,7 @@ import {
   Audiences,
   DeadlineSchema,
   DecisionClocks,
+  HOST_CLAIM_AFTER_SECONDS,
   RoomCommands,
   RoomCommandSchema,
   RoomEventSchema,
@@ -242,6 +243,8 @@ const SERVER_EVENTS = new Set<RoomEvent["_tag"]>([
   "DealtFromBeacon",
   "DealtWithoutBeacon",
   "HandSealed",
+  "HostAway",
+  "HostBack",
   "MarkedAway",
   "StallCleared",
   "TableAttended",
@@ -327,7 +330,17 @@ export const authorityProblems = (step: Step): readonly string[] => {
 
       const hostLeft = tag === "LeaveRoom" && member === before.host;
 
-      return joinedEmptyRoom || hostLeft
+      const claimed =
+        tag === "ClaimHost" &&
+        event.host === member &&
+        Option.exists(
+          before.hostAway,
+          (since) =>
+            Math.max(command.at, before.now) >=
+            since + HOST_CLAIM_AFTER_SECONDS * 1000
+        );
+
+      return joinedEmptyRoom || hostLeft || claimed
         ? []
         : [`${tag} by ${member} changed the host`];
     }

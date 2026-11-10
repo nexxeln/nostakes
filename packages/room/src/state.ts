@@ -181,6 +181,7 @@ export type RoomState = Data.TaggedEnum<{
     readonly game: Game;
     readonly handStacks: ReadonlyMap<SeatIndex, Chips>;
     readonly host: PlayerId;
+    readonly hostAway: Option.Option<Millis>;
     readonly members: readonly Member[];
     readonly now: Millis;
     readonly posters: readonly PlayerId[];

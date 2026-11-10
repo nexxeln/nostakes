@@ -62,6 +62,12 @@ const host = POOL[0] ?? PlayerIdSchema.make("p0");
 
 const spectator = POOL[9] ?? PlayerIdSchema.make("p9");
 
+const tableNotes = (events: readonly RoomEvent[]) =>
+  events.filter(
+    (event) =>
+      !RoomEvents.$is("HostAway")(event) && !RoomEvents.$is("HostBack")(event)
+  );
+
 const isHandStarted = (event: RoomEvent) =>
   RoomEvents.$is("Table")(event) && Events.$is("HandStarted")(event.event);
 
@@ -249,11 +255,11 @@ describe("a table nobody is at", () => {
         deadlineWhileAway: Option.isNone(nextDeadline(quiet)),
         handInPlayWhileAway: inHand(quiet),
         lateStarts: lateStarts <= (settings.shuffle === "Checked" ? 1 : 0),
-        left: left.map(({ _tag }) => _tag),
+        left: tableNotes(left).map(({ _tag }) => _tag),
         refused: table.refused,
-        returned: returned.map(({ _tag }) => _tag),
+        returned: tableNotes(returned).map(({ _tag }) => _tag),
         stepsFinished: steps < STEP_LIMIT,
-        stillAway,
+        stillAway: tableNotes(stillAway),
         view: shownAttendance(
           viewFor(quiet, audienceOf(quiet, spectator), millis(later))
         ),
@@ -278,19 +284,17 @@ describe("a table nobody is at", () => {
     const table = night(quietSettings(7, 0), 2, 7);
     const seated = seatedIn(table.state());
 
-    expect(table.note(10, [spectator]).map(({ _tag }) => _tag)).toStrictEqual([
-      "TableUnattended",
-    ]);
     expect(
-      table
-        .note(20, [spectator, ...seated.slice(0, 1)])
-        .map(
-          (event) =>
-            RoomEvents.$is("TableAttended")(event) &&
-            `${event.player} ${Option.isNone(event.quietSince)}`
-        )
+      tableNotes(table.note(10, [spectator])).map(({ _tag }) => _tag)
+    ).toStrictEqual(["TableUnattended"]);
+    expect(
+      tableNotes(table.note(20, [spectator, ...seated.slice(0, 1)])).map(
+        (event) =>
+          RoomEvents.$is("TableAttended")(event) &&
+          `${event.player} ${Option.isNone(event.quietSince)}`
+      )
     ).toStrictEqual([`${seated[0]} true`]);
-    expect(table.note(30, seated)).toStrictEqual([]);
+    expect(tableNotes(table.note(30, seated))).toStrictEqual([]);
     expect(attendanceOf(table.state())).toBe("Attended");
   });
 });

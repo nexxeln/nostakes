@@ -31,6 +31,7 @@ import {
 } from "./events.js";
 import type { Holder, RoomEvent } from "./events.js";
 import { AvatarSchema, NameSchema, RoomCodeSchema } from "./identity.js";
+import { hostClaimableAt } from "./members.js";
 import { allEntries } from "./money.js";
 import { ChipAmountSchema, RoomSettingsSchema } from "./settings.js";
 import { BalanceSchema, SettlementSchema } from "./settlement.js";
@@ -343,6 +344,16 @@ const departedField = absentAs(Schema.Array(MemberViewSchema), []);
 
 export const StallViewSchema = Schema.Struct({ since: MillisSchema });
 
+export const HostAwayViewSchema = Schema.Struct({
+  claimableAt: MillisSchema,
+  since: MillisSchema,
+});
+
+const hostAwayField = absentAs(
+  Schema.Option(HostAwayViewSchema),
+  Option.none()
+);
+
 const stalledField = absentAs(Schema.Option(StallViewSchema), Option.none());
 
 export const RoomViewSchema = Schema.TaggedUnion({
@@ -365,6 +376,7 @@ export const RoomViewSchema = Schema.TaggedUnion({
     hand: Schema.Option(HandViewSchema),
     holeCards: cards,
     host: PlayerIdSchema,
+    hostAway: hostAwayField,
     lastHand: Schema.Option(LastHandViewSchema),
     legal: Schema.Option(LegalActionsSchema),
     members: Schema.Array(MemberViewSchema),
@@ -687,6 +699,10 @@ const openView = (state: Open, audience: Audience, at: Millis): RoomView => {
       ? ownCards(table.hand.players, viewer)
       : [],
     host: state.host,
+    hostAway: Option.all({
+      claimableAt: hostClaimableAt(state),
+      since: state.hostAway,
+    }),
     lastHand: lastHandView(state, audience),
     legal: legalFor(state, viewer),
     members: membersView(state),

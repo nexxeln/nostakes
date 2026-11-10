@@ -2,6 +2,7 @@ import { describe, expect, it } from "@effect/vitest";
 import {
   Events,
   PendingDecisions,
+  PlayerIdSchema,
   Seats,
   TableStates,
   pendingDecisions,
@@ -12,6 +13,7 @@ import { Option, Result } from "effect";
 import {
   Actors,
   Deadlines,
+  HOST_CLAIM_AFTER_SECONDS,
   RoomCommands,
   RoomEvents,
   SealedSeatsMoved,
@@ -47,7 +49,7 @@ const server = Actors.Server();
 
 const member = (player: PlayerId) => Actors.Member({ player });
 
-const closer = POOL.at(-1) ?? POOL[0];
+const closer = POOL.at(-1) ?? PlayerIdSchema.make("closer");
 
 type Decide = (state: RoomState, command: RoomCommand) => Decision;
 
@@ -101,7 +103,7 @@ const answer = (deadline: Deadline, now: number, seed: number): RoomCommand => {
 const nextStep = (state: Open, now: number, seed: number): RoomCommand => {
   const at = millis(now);
 
-  if (state.members.length === 0 && closer !== undefined) {
+  if (state.members.length === 0) {
     return RoomCommands.Join({
       at,
       avatar: "",
@@ -169,6 +171,69 @@ const endNight = (start: Night, decideWith: Decide): Ended => {
   }
 
   return { log, problems, state };
+};
+
+const applied = (night: Night, command: RoomCommand): Night => {
+  const events = Result.getOrElse(decide(night.state, command), () => []);
+
+  return {
+    log: [...night.log, ...events],
+    state: evolveAll(night.state, events),
+  };
+};
+
+interface TakenOver {
+  readonly night: Night;
+  readonly standIn: PlayerId;
+}
+
+const hostVanishes = (night: Night): Option.Option<TakenOver> => {
+  const { state } = night;
+
+  if (!isOpen(state)) {
+    return Option.none();
+  }
+
+  const at = state.now;
+  const others = state.members.filter(({ player }) => player !== state.host);
+  const standIn = others[0]?.player ?? closer;
+
+  const joined =
+    others.length === 0
+      ? applied(
+          night,
+          RoomCommands.Join({
+            at,
+            avatar: "",
+            by: member(standIn),
+            name: "stand-in",
+          })
+        )
+      : night;
+
+  const stayed = joined.log
+    .filter(RoomEvents.$is("MemberJoined"))
+    .map(({ player }) => player)
+    .filter((player) => player !== state.host);
+
+  const away = applied(
+    joined,
+    RoomCommands.NoteAttendance({ at, by: server, connected: stayed })
+  );
+
+  return Option.some({
+    night:
+      isOpen(away.state) && away.state.host !== standIn
+        ? applied(
+            away,
+            RoomCommands.ClaimHost({
+              at: millis(at + HOST_CLAIM_AFTER_SECONDS * 1000),
+              by: member(standIn),
+            })
+          )
+        : away,
+    standIn,
+  });
 };
 
 const sumBy = <A>(items: readonly A[], amount: (item: A) => number) => {
@@ -371,6 +436,30 @@ describe("ending the night from any state a night reaches", () => {
     ({ source }) => {
       expect(
         endingProblems(sampledNights(playSession(source)), decide)
+      ).toStrictEqual([]);
+    }
+  );
+
+  it.prop(
+    "when the host has vanished, another member takes over as host two minutes later and ends the night the same way",
+    { source: session },
+    ({ source }) => {
+      const takeovers = sampledNights(playSession(source)).flatMap((night) =>
+        Option.toArray(hostVanishes(night))
+      );
+
+      expect(
+        takeovers.flatMap(({ night, standIn }) =>
+          isOpen(night.state) && night.state.host !== standIn
+            ? [`${standIn} could not take over from ${night.state.host}`]
+            : []
+        )
+      ).toStrictEqual([]);
+      expect(
+        endingProblems(
+          takeovers.map(({ night }) => night),
+          decide
+        )
       ).toStrictEqual([]);
     }
   );

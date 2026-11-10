@@ -46,6 +46,8 @@ export { stallCommand } from "./stalls.js";
 
 export { ClosingSchema } from "./closing.js";
 
+export { HOST_CLAIM_AFTER_SECONDS } from "./members.js";
+
 export type { Closing } from "./closing.js";
 
 export { evolve, evolveAll, replay } from "./evolve.js";
@@ -78,6 +80,7 @@ export {
   DealNotDue,
   DealingIsAutomatic,
   GameAlready,
+  HostStillHere,
   MembersOnly,
   NoChipRequest,
   NoSeatRequest,
@@ -213,6 +216,7 @@ export {
   DealtViewSchema,
   FairnessViewSchema,
   HandViewSchema,
+  HostAwayViewSchema,
   LastHandViewSchema,
   PublicHandStartedSchema,
   RoomViewSchema,

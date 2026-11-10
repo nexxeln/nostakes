@@ -53,6 +53,7 @@ export const opened = (event: RoomEventOf<"RoomOpened">): Open =>
     game: "Waiting",
     handStacks: new Map(),
     host: event.host,
+    hostAway: Option.none(),
     members: [],
     now: event.at,
     posters: [],
@@ -353,7 +354,13 @@ const evolveOpen = (state: Open, event: RoomEvent): RoomState =>
         secret,
       }),
     }),
-    HostChanged: ({ host }) => ({ ...state, host }),
+    HostAway: ({ at }): Open => ({ ...state, hostAway: Option.some(at) }),
+    HostBack: (): Open => ({ ...state, hostAway: Option.none() }),
+    HostChanged: ({ host }): Open => ({
+      ...state,
+      host,
+      hostAway: Option.none(),
+    }),
     LeaveQueued: ({ player }) => ({
       ...state,
       queued: {

@@ -168,6 +168,10 @@ export const rejectionText = (
         status === "Running"
           ? "The game is already running."
           : "The game is already paused.",
+      HostStillHere: ({ claimableAt, host }) =>
+        Option.isSome(claimableAt)
+          ? `${voice.subject(host)} left less than two minutes ago. Anyone can take over as host once two minutes have passed.`
+          : `${voice.subject(host)} ${voice.isYou(host) ? "are" : "is"} still here, so the host stays the same.`,
       MembersOnly: () => "Only players in the room can do that.",
       NoChipRequest: ({ player }) =>
         `${voice.subject(player)} ${voice.isYou(player) ? "have" : "has"} no chip request waiting.`,
