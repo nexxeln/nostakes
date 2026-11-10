@@ -28,6 +28,7 @@ export const opened = (event: RoomEventOf<"RoomOpened">): Open =>
       timeoutsInARow: new Map(),
     },
     code: event.code,
+    dealCalled: false,
     entries: new Map(),
     game: "Waiting",
     host: event.host,
@@ -86,7 +87,7 @@ const dealtInto = (state: Open, seats: readonly SeatIndex[]): Open => {
 const onTable = (state: Open, event: Event, at: Millis): Open => {
   const next = {
     ...(Events.$is("HandStarted")(event)
-      ? dealtInto(state, event.dealtIn)
+      ? { ...dealtInto(state, event.dealtIn), dealCalled: false }
       : state),
     record: recorded(state.record, event),
     table: evolveTable(state.table, event),
@@ -214,7 +215,7 @@ const evolveOpen = (state: Open, event: RoomEvent): RoomState =>
       ...state,
       queued: { ...state.queued, close: true },
     }),
-    GamePaused: (): Open => ({ ...state, game: "Waiting" }),
+    GamePaused: (): Open => ({ ...state, dealCalled: false, game: "Waiting" }),
     GameStarted: (): Open => ({ ...state, game: "Running" }),
     HostChanged: ({ host }) => ({ ...state, host }),
     LeaveQueued: ({ player }) => ({
@@ -248,6 +249,7 @@ const evolveOpen = (state: Open, event: RoomEvent): RoomState =>
         ),
       },
     }),
+    NextHandCalled: (): Open => ({ ...state, dealCalled: true }),
     ProfileChanged: ({ avatar, name, player }) => ({
       ...state,
       members: state.members.map((member) =>

@@ -12,6 +12,7 @@ import { ChipsOverMax } from "./rejections/chips-over-max.js";
 import { ClockNotDue } from "./rejections/clock-not-due.js";
 import { CloseAlreadyQueued } from "./rejections/close-already-queued.js";
 import { DealNotDue } from "./rejections/deal-not-due.js";
+import { DealingIsAutomatic } from "./rejections/dealing-is-automatic.js";
 import { GameAlready } from "./rejections/game-already.js";
 import { MembersOnly } from "./rejections/members-only.js";
 import { NoChipRequest } from "./rejections/no-chip-request.js";
@@ -42,6 +43,7 @@ export const RoomRejectionSchema = Schema.Union([
   ClockNotDue,
   CloseAlreadyQueued,
   DealNotDue,
+  DealingIsAutomatic,
   GameAlready,
   MembersOnly,
   NoChipRequest,
@@ -85,6 +87,8 @@ export { ClockNotDue } from "./rejections/clock-not-due.js";
 export { CloseAlreadyQueued } from "./rejections/close-already-queued.js";
 
 export { DealNotDue } from "./rejections/deal-not-due.js";
+
+export { DealingIsAutomatic } from "./rejections/dealing-is-automatic.js";
 
 export { GameAlready } from "./rejections/game-already.js";
 

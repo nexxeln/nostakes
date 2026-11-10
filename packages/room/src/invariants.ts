@@ -146,6 +146,11 @@ const markViolations = (state: Open) => [
 ];
 
 const clockViolations = (state: Open) => [
+  ...check(
+    !state.dealCalled || !TableStates.$is("InHand")(state.table),
+    "CalledHandsWaitBetweenHands",
+    () => "a hand is called while one is in progress"
+  ),
   ...[...state.clocks.bankSpent.values()].flatMap((spent) =>
     check(
       Number.isSafeInteger(spent) && spent >= 0,

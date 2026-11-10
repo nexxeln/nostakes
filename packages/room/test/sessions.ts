@@ -121,6 +121,7 @@ export const settingsFrom = (random: SeededRandom): RoomSettings => ({
     max: chips(400 + random.below(400)),
     min: chips(20 + random.below(60)),
   },
+  dealing: random.chance(1, 3) ? "Host" : "Automatic",
   runChoiceSeconds: 1 + random.below(10),
   seats: random.chance(1, 2) ? 9 : 2 + random.below(8),
   showdownSeconds: 1 + random.below(20),
@@ -356,10 +357,23 @@ const playOrDeal = (
 ): RoomCommand =>
   Option.getOrElse(answerPending(state, random, at), () =>
     Option.match(nextDeadline(state), {
-      onNone: () =>
-        state.game === "Waiting"
-          ? RoomCommands.StartGame({ at: millis(at), by: member(state.host) })
-          : toDealIn(state, random, at),
+      onNone: () => {
+        if (state.game === "Waiting") {
+          return RoomCommands.StartGame({
+            at: millis(at),
+            by: member(state.host),
+          });
+        }
+
+        return state.settings.dealing === "Host" &&
+          !state.dealCalled &&
+          !TableStates.$is("InHand")(state.table)
+          ? RoomCommands.DealNextHand({
+              at: millis(at),
+              by: member(state.host),
+            })
+          : toDealIn(state, random, at);
+      },
       onSome: (deadline) =>
         Deadlines.$is("DealDue")(deadline)
           ? RoomCommands.Deal({
@@ -624,6 +638,7 @@ const junk = (state: Open, random: SeededRandom, at: number): RoomCommand => {
     RoomCommands.ActForSeat({ at: when, by, player }),
     RoomCommands.CloseRoom({ at: when, by: member(player) }),
     RoomCommands.StartGame({ at: when, by }),
+    RoomCommands.DealNextHand({ at: when, by }),
     RoomCommands.RemoveFromSeat({ at: when, by, player }),
     RoomCommands.TransferHost({ at: when, by, to: player }),
     RoomCommands.Deal({ at: when, by, shuffleBytes: bytesFrom(1) }),

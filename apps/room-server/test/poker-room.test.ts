@@ -78,7 +78,7 @@ describe("the poker room adapter", () => {
     const view = openView(welcomeView(room, ana, 1000));
 
     expect(encodeSettings(view.settings)).toBe(
-      '{"approval":{"chips":false,"seats":false},"betweenHandsSeconds":5,"buyIn":{"max":400,"min":40},"runChoiceSeconds":15,"seats":9,"showdownSeconds":15,"shuffle":"Plain","sitOutAfterTimeouts":1,"table":{"ante":{"_tag":"NoAnte"},"bigBlind":2,"maxRuns":1,"rabbitHunt":false,"showdown":"Interactive","smallBlind":1,"straddle":{"button":false,"underTheGun":0}},"timeBankRefill":{"_tag":"NoRefill"},"timeBankSeconds":60,"turnSeconds":30}'
+      '{"approval":{"chips":false,"seats":false},"betweenHandsSeconds":5,"buyIn":{"max":400,"min":40},"dealing":"Automatic","runChoiceSeconds":15,"seats":9,"showdownSeconds":15,"shuffle":"Plain","sitOutAfterTimeouts":1,"table":{"ante":{"_tag":"NoAnte"},"bigBlind":2,"maxRuns":1,"rabbitHunt":false,"showdown":"Interactive","smallBlind":1,"straddle":{"button":false,"underTheGun":0}},"timeBankRefill":{"_tag":"NoRefill"},"timeBankSeconds":60,"turnSeconds":30}'
     );
   });
 

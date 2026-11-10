@@ -24,6 +24,7 @@ export const RoomCommandSchema = Schema.TaggedUnion({
   ChooseRuns: { ...envelope, runs: RunCountSchema },
   CloseRoom: envelope,
   Deal: { ...envelope, shuffleBytes: Schema.Uint8Array },
+  DealNextHand: envelope,
   DeclareStraddle: { ...envelope, on: Schema.Boolean },
   DenyChips: naming,
   DenySeat: naming,

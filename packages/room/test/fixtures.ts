@@ -53,6 +53,7 @@ export const settings: RoomSettings = {
   approval: { chips: false, seats: false },
   betweenHandsSeconds: 0,
   buyIn: { max: chipCount(1000), min: chipCount(100) },
+  dealing: "Automatic",
   runChoiceSeconds: 10,
   seats: 9,
   showdownSeconds: 15,

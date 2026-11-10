@@ -288,6 +288,17 @@ export interface PlannerSetup {
   readonly stats: { silences: number };
 }
 
+const handToCall = (open: OpenView) =>
+  open.settings.dealing === "Host" &&
+  open.game === "Running" &&
+  Option.isNone(open.hand) &&
+  Option.isNone(open.clocks.nextDeal) &&
+  open.seats.filter(({ occupant }) =>
+    occupant.pipe(
+      Option.exists(({ sittingOut, stack }) => !sittingOut && stack > 0)
+    )
+  ).length >= 2;
+
 export const plannerFor = (setup: PlannerSetup) => {
   const { control, label, pass, random, stats, temper } = setup;
   let silent = Option.none<{ readonly key: string; readonly bank: boolean }>();
@@ -418,6 +429,27 @@ export const plannerFor = (setup: PlannerSetup) => {
     );
   };
 
+  const gameIntent = (
+    open: OpenView,
+    seated: number
+  ): Option.Option<Intent> => {
+    if (open.game === "Waiting" && seated >= 2) {
+      return intent(Commands.StartGame.make({}), random.below(300));
+    }
+
+    if (
+      open.game === "Running" &&
+      Option.isNone(open.hand) &&
+      random.chance(0.3)
+    ) {
+      return intent(Commands.PauseGame.make({}));
+    }
+
+    return handToCall(open)
+      ? intent(Commands.DealNextHand.make({}), random.below(400))
+      : Option.none();
+  };
+
   const hostIntent = (open: OpenView): Option.Option<Intent> => {
     const [seatRequest] = open.requests.seats;
     const [chipRequest] = open.requests.chips;
@@ -461,16 +493,10 @@ export const plannerFor = (setup: PlannerSetup) => {
       );
     }
 
-    if (open.game === "Waiting" && seated.length >= 2) {
-      return intent(Commands.StartGame.make({}), random.below(300));
-    }
+    const game = gameIntent(open, seated.length);
 
-    if (
-      open.game === "Running" &&
-      Option.isNone(open.hand) &&
-      random.chance(0.3)
-    ) {
-      return intent(Commands.PauseGame.make({}));
+    if (Option.isSome(game)) {
+      return game;
     }
 
     const toAct = open.hand.pipe(Option.flatMap((hand) => hand.toAct));

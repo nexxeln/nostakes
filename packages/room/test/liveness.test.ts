@@ -199,6 +199,21 @@ const silentNight = (
   for (; steps < STEP_LIMIT; steps += 1) {
     const deadline = nextDeadline(state);
 
+    if (
+      Option.isNone(deadline) &&
+      Result.isSuccess(
+        run(
+          RoomCommands.DealNextHand({
+            at: state.now,
+            by: Actors.Member({ player: host }),
+          })
+        )
+      ) &&
+      Option.isSome(nextDeadline(state))
+    ) {
+      continue;
+    }
+
     if (Option.isNone(deadline)) {
       const away = awayPlayers(state);
 
@@ -323,6 +338,7 @@ describe("liveness", () => {
       const settings: RoomSettings = {
         ...base,
         approval: { chips: false, seats: false },
+        dealing: "Automatic",
         table: {
           ...base.table,
           maxRuns: RunCountSchema.make(2 + random.below(2)),
@@ -419,6 +435,7 @@ describe("liveness at an interactive showdown", () => {
       const settings: RoomSettings = {
         ...base,
         approval: { chips: false, seats: false },
+        dealing: "Automatic",
         table: { ...base.table, showdown: "Interactive" },
         turnSeconds: 0,
       };

@@ -280,13 +280,18 @@ export const planNight = (
     voteRestarts: 1,
   };
 
+  const clients = clientIndices(
+    random,
+    plan.players + plan.spectators + plan.lateJoiners,
+    recipe.clientPercent
+  );
+
+  const hostDeals = !clients.includes(0) && random.chance(30);
+
   return {
     ...plan,
-    clients: clientIndices(
-      random,
-      plan.players + plan.spectators + plan.lateJoiners,
-      recipe.clientPercent
-    ),
+    clients,
+    settings: hostDeals ? { ...settings, dealing: "Host" } : settings,
   };
 };
 
@@ -306,15 +311,22 @@ const longestClockMs = (view: RoomView) =>
       ) * 1000
     : 0;
 
+const waitsForTheHost = (view: RoomView) =>
+  RoomViews.$is("Open")(view) &&
+  view.settings.dealing === "Host" &&
+  Option.isNone(view.hand) &&
+  Option.isNone(view.clocks.nextDeal);
+
 const shouldAdvance = (view: RoomView) =>
   RoomViews.$is("Open")(view) &&
   view.game === "Running" &&
   (Option.isSome(view.hand) ||
-    view.seats.filter(({ occupant }) =>
-      occupant.pipe(
-        Option.exists(({ sittingOut, stack }) => !sittingOut && stack > 0)
-      )
-    ).length >= 2);
+    (!waitsForTheHost(view) &&
+      view.seats.filter(({ occupant }) =>
+        occupant.pipe(
+          Option.exists(({ sittingOut, stack }) => !sittingOut && stack > 0)
+        )
+      ).length >= 2));
 
 export interface OpenedNight {
   readonly plan: NightPlan;

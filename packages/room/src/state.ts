@@ -109,6 +109,7 @@ export type RoomState = Data.TaggedEnum<{
     readonly away: readonly SeatIndex[];
     readonly clocks: Clocks;
     readonly code: RoomCode;
+    readonly dealCalled: boolean;
     readonly entries: Entries;
     readonly game: Game;
     readonly host: PlayerId;

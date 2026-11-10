@@ -13,7 +13,7 @@ import {
 import { closeRoom } from "./closing.js";
 import { RoomCommands } from "./commands.js";
 import type { RoomCommand } from "./commands.js";
-import { deal, pauseGame, startGame } from "./dealing.js";
+import { callNextHand, deal, pauseGame, startGame } from "./dealing.js";
 import type { Decision } from "./decision.js";
 import { RoomEvents } from "./events.js";
 import type { RoomEvent } from "./events.js";
@@ -88,6 +88,8 @@ const decideOpen = (state: Open, command: RoomCommand): Decision =>
     CloseRoom: (close) => byHost(state, close, () => closeRoom(state, close)),
     Deal: (dealing) =>
       Result.flatMap(fromServer(dealing), () => deal(state, dealing)),
+    DealNextHand: (call) =>
+      byHost(state, call, () => callNextHand(state, call.at)),
     DeclareStraddle: (declare) =>
       byMember(state, declare, (player) =>
         declareStraddle(state, player, declare)

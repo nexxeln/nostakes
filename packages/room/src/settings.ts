@@ -89,6 +89,10 @@ export const ApprovalSchema = Schema.Struct({
   }),
 });
 
+export const DealingSchema = Schema.Literals(["Automatic", "Host"]);
+
+export type Dealing = typeof DealingSchema.Type;
+
 export const ShuffleSchema = Schema.Literals(["Checked", "Plain"]);
 
 export type Shuffle = typeof ShuffleSchema.Type;
@@ -107,6 +111,11 @@ const settingsFields = (shuffleWhenAbsent: Shuffle) => ({
     description:
       "The smallest and largest number of chips a player may sit down with.",
     title: "Buy-in",
+  }),
+  dealing: setting(DealingSchema, "Automatic", {
+    description:
+      "Automatic deals the next hand once the pause after a hand is over. Host waits for the host to deal each hand.",
+    title: "Who deals",
   }),
   runChoiceSeconds: wholeSeconds(1, MAX_CLOCK_SECONDS).annotate({
     description:

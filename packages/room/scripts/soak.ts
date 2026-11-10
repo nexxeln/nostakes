@@ -161,6 +161,7 @@ const roomSettings = (random: Random): RoomSettings => {
     approval: { chips: random.chance(50), seats: random.chance(50) },
     betweenHandsSeconds: random.below(4),
     buyIn: { max: chips(min * (3 + random.below(5))), min: chips(min) },
+    dealing: random.chance(30) ? "Host" : "Automatic",
     runChoiceSeconds: 2 + random.below(10),
     seats: random.chance(50) ? 9 : 2 + random.below(8),
     showdownSeconds: 2 + random.below(15),
@@ -191,13 +192,16 @@ const shuffleBytes = (random: Random) => {
 
 const newCounts = () => ({
   approvals: 0,
+  automaticDealCallsRefused: 0,
   bankRefills: 0,
   bankStarts: 0,
   closedDuringHand: 0,
   closedRooms: 0,
+  dealsWaitingForHost: 0,
   denials: 0,
   earlyExpiriesRefused: 0,
   hostChanges: 0,
+  hostDeals: 0,
   midHandLeaves: 0,
   queuedAdds: 0,
   rebuys: 0,
@@ -566,6 +570,13 @@ const REFUSALS: readonly (readonly [
   ["showdownMucksRefused", refusedWinningMuck],
   ["seatsBeyondTableRefused", Predicate.isTagged("SeatBeyondTable")],
   ["shrinksRefused", Predicate.isTagged("SeatsStillTaken")],
+  ["automaticDealCallsRefused", Predicate.isTagged("DealingIsAutomatic")],
+  [
+    "dealsWaitingForHost",
+    (rejection) =>
+      Predicate.isTagged(rejection, "DealNotDue") &&
+      rejection.reason === "WaitingForHost",
+  ],
 ];
 
 const tableEventIs = (
@@ -597,6 +608,7 @@ const COUNTED: readonly (readonly [
   ["timeoutsKeptIn", RoomEvents.$is("TimedOut")],
   ["timeoutStreaksEnded", RoomEvents.$is("TimeoutStreakEnded")],
   ["hostChanges", RoomEvents.$is("HostChanged")],
+  ["hostDeals", RoomEvents.$is("NextHandCalled")],
   ["rulesQueued", RoomEvents.$is("RulesQueued")],
   ["closedDuringHand", RoomEvents.$is("CloseQueued")],
   ["showdownTables", (event) => tableEventIs(event, Events.$is("HandTabled"))],
@@ -788,7 +800,32 @@ const expire = (run: Run, open: Open, deadline: Deadline, sent: number) => {
   }
 };
 
+const callTheDeal = (run: Run, open: Open) => {
+  if (
+    open.game !== "Running" ||
+    open.dealCalled ||
+    TableStates.$is("InHand")(open.table)
+  ) {
+    return;
+  }
+
+  send(
+    run,
+    run.random.chance(80)
+      ? RoomCommands.DealNextHand({ at: at(run), by: member(open.host) })
+      : RoomCommands.Deal({
+          at: at(run),
+          by: Actors.Server(),
+          shuffleBytes: shuffleBytes(run.random),
+        })
+  );
+};
+
 const serve = (run: Run, open: Open) => {
+  if (Option.isNone(nextDeadline(open)) && open.settings.dealing === "Host") {
+    callTheDeal(run, open);
+  }
+
   Option.map(nextDeadline(open), (deadline) => {
     const style = run.random.below(10);
 
@@ -971,7 +1008,9 @@ const hostMove = (run: Run, open: Open) => {
     open.members.filter((each) => each.player !== open.host)
   )?.player;
 
-  if (roll < 3) {
+  if (roll < 1 && open.settings.dealing === "Automatic") {
+    send(run, RoomCommands.DealNextHand({ at: at(run), by }));
+  } else if (roll < 3) {
     send(
       run,
       RoomCommands.ChangeSettings({

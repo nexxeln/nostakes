@@ -44,6 +44,7 @@ export const roomEventFields = {
     player: PlayerIdSchema,
   },
   MemberLeft: { at, player: PlayerIdSchema },
+  NextHandCalled: { at },
   ProfileChanged: {
     at,
     avatar: AvatarSchema,

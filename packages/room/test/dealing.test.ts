@@ -4,6 +4,8 @@ import { Option, Result, Schema } from "effect";
 
 import {
   DealNotDue,
+  DealingIsAutomatic,
+  Deadlines,
   GameAlready,
   NotSeated,
   NotTheHost,
@@ -12,6 +14,7 @@ import {
   ServerOnly,
   ShuffleRanOut,
   deckFromBytes,
+  nextDeadline,
 } from "../src/index.js";
 import type { RoomState } from "../src/index.js";
 import {
@@ -194,5 +197,69 @@ describe("sitting out and straddles", () => {
     expect(
       openOf(run(declared.state, declare(bob, false)).state).straddlers
     ).toStrictEqual([]);
+  });
+});
+
+const hostDeals = runAll(
+  openedBy(ann, { ...settings, betweenHandsSeconds: 5, dealing: "Host" }),
+  [join(bob), join(cat), sit(ann, 0), sit(bob, 1), sit(cat, 2), start(3)]
+);
+
+const callDeal = (who: typeof ann, at: number) =>
+  RoomCommands.DealNextHand({ at: ms(at), by: as(who) });
+
+describe("the host dealing each hand", () => {
+  it("waits for the host to call each hand, then deals it once the pause is over", () => {
+    expect(nextDeadline(hostDeals)).toStrictEqual(Option.none());
+    expect(rejection(hostDeals, dealAt(4))).toStrictEqual(
+      new DealNotDue({ due: Option.none(), reason: "WaitingForHost" })
+    );
+
+    const called = run(hostDeals, callDeal(ann, 4));
+
+    expect(called.events).toStrictEqual([
+      RoomEvents.NextHandCalled({ at: ms(4) }),
+    ]);
+    expect(nextDeadline(called.state)).toStrictEqual(
+      Option.some(Deadlines.DealDue({ at: ms(4) }))
+    );
+    expect(run(called.state, callDeal(ann, 5)).events).toStrictEqual([]);
+
+    const dealt = run(called.state, dealAt(6)).state;
+
+    expect(handStarted(dealt)).toBe(1);
+    expect(openOf(dealt).dealCalled).toBe(false);
+  });
+
+  it("lets only the host call a hand, only between hands of a running game, and only when the host deals", () => {
+    expect(rejection(hostDeals, callDeal(bob, 4))).toStrictEqual(
+      new NotTheHost({ host: ann, player: bob })
+    );
+    expect(
+      rejection(
+        run(hostDeals, RoomCommands.PauseGame({ at: ms(4), by: as(ann) }))
+          .state,
+        callDeal(ann, 5)
+      )
+    ).toStrictEqual(new DealNotDue({ due: Option.none(), reason: "Waiting" }));
+
+    const inHand = runAll(hostDeals, [callDeal(ann, 4), dealAt(5)]);
+
+    expect(rejection(inHand, callDeal(ann, 6))).toStrictEqual(
+      new DealNotDue({ due: Option.none(), reason: "HandInProgress" })
+    );
+    expect(
+      rejection(run(seated, start(3)).state, callDeal(ann, 4))
+    ).toStrictEqual(new DealingIsAutomatic({ betweenHandsSeconds: 5 }));
+  });
+
+  it("forgets a called hand when the host pauses the game", () => {
+    const paused = runAll(hostDeals, [
+      callDeal(ann, 4),
+      RoomCommands.PauseGame({ at: ms(5), by: as(ann) }),
+      start(6),
+    ]);
+
+    expect(nextDeadline(paused)).toStrictEqual(Option.none());
   });
 });

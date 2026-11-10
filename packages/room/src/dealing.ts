@@ -12,7 +12,12 @@ import { Option, Result } from "effect";
 import type { RoomCommandOf } from "./commands.js";
 import type { Decision } from "./decision.js";
 import { RoomEvents } from "./events.js";
-import { DealNotDue, GameAlready, ShuffleRanOut } from "./rejection.js";
+import {
+  DealNotDue,
+  DealingIsAutomatic,
+  GameAlready,
+  ShuffleRanOut,
+} from "./rejection.js";
 import { SEATS, handInProgress, occupantAt } from "./state.js";
 import type { Open } from "./state.js";
 import { onTable } from "./table.js";
@@ -72,14 +77,18 @@ const dueAt = (state: Open): Millis =>
     onSome: (ended) => secondsAfter(ended, state.settings.betweenHandsSeconds),
   });
 
+const waitingForHost = (state: Open) =>
+  state.settings.dealing === "Host" && !state.dealCalled;
+
 export const dealDue = (state: Open) =>
   state.game === "Running" &&
   !handInProgress(state) &&
+  !waitingForHost(state) &&
   dealableSeats(state.table).length >= 2
     ? Option.some(dueAt(state))
     : Option.none();
 
-const notDue = (state: Open, at: Millis) => {
+const cannotDeal = (state: Open) => {
   if (state.game === "Waiting") {
     return Option.some(
       new DealNotDue({ due: Option.none(), reason: "Waiting" })
@@ -92,9 +101,23 @@ const notDue = (state: Open, at: Millis) => {
     );
   }
 
-  if (dealableSeats(state.table).length < 2) {
+  return dealableSeats(state.table).length < 2
+    ? Option.some(
+        new DealNotDue({ due: Option.none(), reason: "TooFewPlayers" })
+      )
+    : Option.none();
+};
+
+const notDue = (state: Open, at: Millis) => {
+  const blocked = cannotDeal(state);
+
+  if (Option.isSome(blocked)) {
+    return blocked;
+  }
+
+  if (waitingForHost(state)) {
     return Option.some(
-      new DealNotDue({ due: Option.none(), reason: "TooFewPlayers" })
+      new DealNotDue({ due: Option.none(), reason: "WaitingForHost" })
     );
   }
 
@@ -185,3 +208,21 @@ export const pauseGame = (state: Open, at: Millis): Decision =>
   state.game === "Waiting"
     ? Result.fail(new GameAlready({ status: "Waiting" }))
     : Result.succeed([RoomEvents.GamePaused({ at })]);
+
+export const callNextHand = (state: Open, at: Millis): Decision => {
+  if (state.settings.dealing === "Automatic") {
+    return Result.fail(
+      new DealingIsAutomatic({
+        betweenHandsSeconds: state.settings.betweenHandsSeconds,
+      })
+    );
+  }
+
+  return Option.match(cannotDeal(state), {
+    onNone: () =>
+      Result.succeed(
+        state.dealCalled ? [] : [RoomEvents.NextHandCalled({ at })]
+      ),
+    onSome: (refusal) => Result.fail(refusal),
+  });
+};
