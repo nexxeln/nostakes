@@ -4,6 +4,7 @@ import { chromium } from "playwright-core";
 import type { Browser, Page } from "playwright-core";
 
 import { localRoomServer, localWebApp, mutedBrowser } from "./local-site.ts";
+import { watchPages } from "./page-evidence.ts";
 
 const WEB_PORT = 5199;
 
@@ -34,6 +35,8 @@ const FIRST_BUILD = "e2e-build-1";
 const SECOND_BUILD = "e2e-build-2";
 
 const STAGE = "verify_web";
+
+const watched = watchPages();
 
 const BUILD_META = "nostakes-build";
 
@@ -74,7 +77,7 @@ const serveBuild = (page: Page, build: string) =>
     page.context().addInitScript(stampPage, { build, meta: BUILD_META })
   );
 
-const player = (opened: Browser) =>
+const player = (opened: Browser, name: string) =>
   attempt("open a window", () => opened.newContext()).pipe(
     Effect.tap((context) =>
       attempt("mute the app before it loads", () =>
@@ -83,7 +86,14 @@ const player = (opened: Browser) =>
         })
       )
     ),
-    Effect.flatMap((context) => attempt("open a page", () => context.newPage()))
+    Effect.flatMap((context) =>
+      attempt("open a page", () => context.newPage())
+    ),
+    Effect.tap((page) =>
+      Effect.sync(() => {
+        watched.watch(page, name);
+      })
+    )
   );
 
 const click = (page: Page, step: string, name: string | RegExp) =>
@@ -398,8 +408,8 @@ const night = Effect.gen(function* playOneHand() {
   yield* Console.log(`web app at ${app}`);
 
   const opened = yield* mutedBrowser(chromium);
-  const ana = yield* player(opened);
-  const ben = yield* player(opened);
+  const ana = yield* player(opened, "Ana");
+  const ben = yield* player(opened, "Ben");
   const loads = { ana: 0, ben: 0 };
 
   yield* serveBuild(ana, FIRST_BUILD);
@@ -552,6 +562,21 @@ const night = Effect.gen(function* playOneHand() {
   );
 });
 
+const explained = night.pipe(
+  Effect.catchTag("NightFailed", (failure) =>
+    watched.explain(failure.step).pipe(
+      Effect.flatMap((evidence) =>
+        Effect.fail(
+          new NightFailed({
+            detail: `${failure.detail}\n${evidence}`,
+            step: failure.step,
+          })
+        )
+      )
+    )
+  )
+);
+
 await Effect.runPromise(
-  night.pipe(Effect.scoped, Effect.provide(NodeServices.layer))
+  explained.pipe(Effect.scoped, Effect.provide(NodeServices.layer))
 );

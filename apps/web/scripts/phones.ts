@@ -18,6 +18,8 @@ import type {
 } from "playwright-core";
 
 import { localSite, mutedBrowser } from "./local-site.ts";
+import { watchPages } from "./page-evidence.ts";
+import type { PageWatch } from "./page-evidence.ts";
 
 const WEB_PORT = 5196;
 
@@ -262,14 +264,18 @@ const insetsFor = (context: BrowserContext, page: Page, insets: typeof NOTCH) =>
     Effect.orElseSucceed(() => false)
   );
 
-const checkEngine = (engine: BrowserType, app: string) =>
-  Effect.gen(function* phoneChecks() {
+const phoneChecks = (engine: BrowserType, app: string, watched: PageWatch) =>
+  Effect.gen(function* runPhoneChecks() {
     const name = engine.name();
     const findings: Finding[] = [];
 
     const note = (check: string, passed: boolean, detail: string) =>
-      Effect.sync(() => {
-        findings.push({ check, detail, engine: name, passed });
+      Effect.gen(function* noteFinding() {
+        const explained = passed
+          ? detail
+          : `${detail}. ${yield* watched.explain(`${name}: ${check}`)}`;
+
+        findings.push({ check, detail: explained, engine: name, passed });
       });
 
     const opened = yield* mutedBrowser(engine);
@@ -283,6 +289,9 @@ const checkEngine = (engine: BrowserType, app: string) =>
     const guest = yield* attempt("open the guest's page", () =>
       guestContext.newPage()
     );
+
+    watched.watch(host, `${name} host`);
+    watched.watch(guest, `${name} guest`);
 
     const pings = { sent: 0 };
 
@@ -554,6 +563,26 @@ const checkEngine = (engine: BrowserType, app: string) =>
     );
 
     return findings;
+  });
+
+const checkEngine = (engine: BrowserType, app: string) =>
+  Effect.gen(function* checkOneEngine() {
+    const watched = watchPages();
+
+    return yield* phoneChecks(engine, app, watched).pipe(
+      Effect.catchTag("PhoneCheckFailed", (failure) =>
+        watched.explain(`${engine.name()}: ${failure.step}`).pipe(
+          Effect.flatMap((evidence) =>
+            Effect.fail(
+              new PhoneCheckFailed({
+                detail: `${failure.detail}\n${evidence}`,
+                step: failure.step,
+              })
+            )
+          )
+        )
+      )
+    );
   }).pipe(Effect.scoped);
 
 const program = Effect.gen(function* checkPhones() {
