@@ -68,9 +68,10 @@ export const DecisionClocks = Data.taggedEnum<DecisionClock>();
 export interface Clocks {
   readonly bankRefilled: ReadonlyMap<PlayerId, number>;
   readonly bankSpent: ReadonlyMap<PlayerId, number>;
-  readonly handsDealt: ReadonlyMap<PlayerId, number>;
   readonly decision: Option.Option<DecisionClock>;
+  readonly handsDealt: ReadonlyMap<PlayerId, number>;
   readonly lastHandEndedAt: Option.Option<Millis>;
+  readonly timeoutsInARow: ReadonlyMap<PlayerId, number>;
 }
 
 export interface Award {

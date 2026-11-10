@@ -219,6 +219,7 @@ export const planNight = (
       ? 9
       : random.between(Math.max(2, recipe.players), 9),
     showdownSeconds: random.between(1, 2),
+    sitOutAfterTimeouts: [1, 1, 1, 0, 2][random.below(5)] ?? 1,
     table: {
       ante: Antes.NoAnte(),
       bigBlind: big,

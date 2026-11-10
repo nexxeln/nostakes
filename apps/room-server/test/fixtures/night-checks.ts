@@ -1104,7 +1104,10 @@ const observeClocks = (checker: Checker, ledger: Ledger, event: RoomEvent) => {
     ledger.deadline = event.deadline;
   }
 
-  if (RoomEvents.$is("MarkedAway")(event)) {
+  if (
+    RoomEvents.$is("MarkedAway")(event) ||
+    RoomEvents.$is("TimedOut")(event)
+  ) {
     checker.counts.timeouts += 1;
 
     if (event.at < ledger.deadline) {

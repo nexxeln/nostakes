@@ -172,6 +172,94 @@ const startedRoom = (
   return state;
 };
 
+const silentNight = (
+  settings: RoomSettings,
+  players: number,
+  returns: number,
+  below: (bound: number) => number
+) => {
+  let state = startedRoom(settings, players, below);
+
+  const run = (command: RoomCommand) => {
+    const decision = decide(state, command);
+
+    if (Result.isSuccess(decision)) {
+      state = evolveAll(state, decision.success);
+    }
+
+    return decision;
+  };
+
+  const refused: string[] = [];
+  let started = 0;
+  let ended = 0;
+  let comebacks = returns;
+  let steps = 0;
+
+  for (; steps < STEP_LIMIT; steps += 1) {
+    const deadline = nextDeadline(state);
+
+    if (Option.isNone(deadline)) {
+      const away = awayPlayers(state);
+
+      if (
+        comebacks === 0 ||
+        away.length === 0 ||
+        !RoomStates.$is("Open")(state)
+      ) {
+        break;
+      }
+
+      comebacks -= 1;
+
+      for (const player of away) {
+        run(
+          RoomCommands.SitIn({
+            at: state.now,
+            by: Actors.Member({ player }),
+          })
+        );
+      }
+
+      continue;
+    }
+
+    const decision = run(serverAnswer(deadline.value, steps));
+
+    if (Result.isFailure(decision)) {
+      refused.push(decision.failure._tag);
+    } else {
+      for (const event of decision.success) {
+        started +=
+          RoomEvents.$is("Table")(event) &&
+          Events.$is("HandStarted")(event.event)
+            ? 1
+            : 0;
+        ended +=
+          RoomEvents.$is("Table")(event) && Events.$is("HandEnded")(event.event)
+            ? 1
+            : 0;
+      }
+    }
+
+    if (
+      RoomStates.$is("Open")(state) &&
+      TableStates.$is("InHand")(state.table) &&
+      Option.isNone(nextDeadline(state))
+    ) {
+      refused.push("a hand in progress has no deadline");
+    }
+  }
+
+  return { ended, refused, started, state, steps };
+};
+
+const silenced = (base: RoomSettings, below: (bound: number) => number) => ({
+  ...base,
+  approval: { chips: false, seats: false },
+  turnSeconds: 1 + below(30),
+});
+
 describe("liveness", () => {
   it.prop(
     "a server that only answers nextDeadline, with players who never act, finishes every hand and keeps dealing while two seats can be dealt in",
@@ -181,90 +269,47 @@ describe("liveness", () => {
       const base = settingsFrom(random);
 
       const settings = {
-        ...base,
-        approval: { chips: false, seats: false },
-        turnSeconds: 1 + random.below(30),
+        ...silenced(base, random.below),
+        sitOutAfterTimeouts: Math.max(1, base.sitOutAfterTimeouts),
       };
 
-      let state = startedRoom(settings, players, random.below);
-
-      const run = (command: RoomCommand) => {
-        const decision = decide(state, command);
-
-        if (Result.isSuccess(decision)) {
-          state = evolveAll(state, decision.success);
-        }
-
-        return decision;
-      };
-
-      const refused: string[] = [];
-      let started = 0;
-      let ended = 0;
-      let comebacks = returns;
-      let steps = 0;
-
-      for (; steps < STEP_LIMIT; steps += 1) {
-        const deadline = nextDeadline(state);
-
-        if (Option.isNone(deadline)) {
-          const away = awayPlayers(state);
-
-          if (
-            comebacks === 0 ||
-            away.length === 0 ||
-            !RoomStates.$is("Open")(state)
-          ) {
-            break;
-          }
-
-          comebacks -= 1;
-
-          for (const player of away) {
-            run(
-              RoomCommands.SitIn({
-                at: state.now,
-                by: Actors.Member({ player }),
-              })
-            );
-          }
-
-          continue;
-        }
-
-        const decision = run(serverAnswer(deadline.value, steps));
-
-        if (Result.isFailure(decision)) {
-          refused.push(decision.failure._tag);
-        } else {
-          for (const event of decision.success) {
-            started +=
-              RoomEvents.$is("Table")(event) &&
-              Events.$is("HandStarted")(event.event)
-                ? 1
-                : 0;
-            ended +=
-              RoomEvents.$is("Table")(event) &&
-              Events.$is("HandEnded")(event.event)
-                ? 1
-                : 0;
-          }
-        }
-
-        if (
-          RoomStates.$is("Open")(state) &&
-          TableStates.$is("InHand")(state.table) &&
-          Option.isNone(nextDeadline(state))
-        ) {
-          refused.push("a hand in progress has no deadline");
-        }
-      }
+      const { ended, refused, started, state, steps } = silentNight(
+        settings,
+        players,
+        returns,
+        random.below
+      );
 
       expect(refused).toStrictEqual([]);
       expect(steps).toBeLessThan(STEP_LIMIT);
       expect(started).toBeGreaterThan(0);
       expect(ended).toBe(started);
       expect(dealable(state)).toBeLessThan(2);
+    }
+  );
+
+  it.prop(
+    "when timeouts never sit anyone out, players who never act stay dealt in and every hand still finishes",
+    { night },
+    ({ night: { players, setup } }) => {
+      const random = seededRandom(setup);
+
+      const settings = {
+        ...silenced(settingsFrom(random), random.below),
+        sitOutAfterTimeouts: 0,
+      };
+
+      const { ended, refused, started, state } = silentNight(
+        settings,
+        players,
+        0,
+        random.below
+      );
+
+      expect(refused).toStrictEqual([]);
+      expect(started).toBeGreaterThan(0);
+      expect(started - ended).toBeLessThanOrEqual(1);
+      expect(awayPlayers(state)).toStrictEqual([]);
     }
   );
 

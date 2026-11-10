@@ -57,6 +57,7 @@ export const settings: RoomSettings = {
   seats: 9,
   showdownSeconds: 15,
   shuffle: "Plain",
+  sitOutAfterTimeouts: 1,
   table: TableConfigSchema.make({
     ante: Antes.NoAnte(),
     bigBlind: chipCount(10),

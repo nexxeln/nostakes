@@ -41,6 +41,12 @@ import type {
 } from "../src/index.js";
 import type { Step } from "./sessions.js";
 
+const sittingAt = (state: Open, seat: SeatIndex) =>
+  Option.fromUndefinedOr(state.table.seats[seat]).pipe(
+    Option.filter(Seats.$is("Occupied")),
+    Option.map((occupant) => occupant.player)
+  );
+
 export const audiencesOf = (state: RoomState): readonly Audience[] =>
   RoomStates.$is("Open")(state)
     ? [
@@ -542,6 +548,30 @@ const expiryProblems = (step: Step, before: Open): readonly string[] => {
   return after === before ? [] : ["a refused expiry changed the room"];
 };
 
+const streakProblems = (
+  during: Open,
+  event: RoomEventOf<"MarkedAway"> | RoomEventOf<"TimedOut">
+): readonly string[] => {
+  const limit = during.settings.sitOutAfterTimeouts;
+
+  const player = RoomEvents.$is("TimedOut")(event)
+    ? Option.some(event.player)
+    : sittingAt(during, event.seat);
+
+  const inARow = Option.match(player, {
+    onNone: () => 0,
+    onSome: (owner) => during.clocks.timeoutsInARow.get(owner) ?? 0,
+  });
+
+  const sitsOut = limit > 0 && inARow + 1 >= limit;
+
+  return sitsOut === RoomEvents.$is("MarkedAway")(event)
+    ? []
+    : [
+        `${event._tag} for ${Option.getOrElse(player, () => "nobody")} after ${inARow} timeouts in a row with a limit of ${limit}`,
+      ];
+};
+
 const refillProblems = (
   during: Open,
   event: RoomEventOf<"TimeBankRefilled">
@@ -580,6 +610,13 @@ const bankProblem = (
 
   if (RoomEvents.$is("TimeBankRefilled")(event)) {
     return refillProblems(during, event);
+  }
+
+  if (
+    RoomEvents.$is("TimedOut")(event) ||
+    RoomEvents.$is("MarkedAway")(event)
+  ) {
+    return streakProblems(during, event);
   }
 
   if (!RoomEvents.$is("TimeBankSpent")(event)) {

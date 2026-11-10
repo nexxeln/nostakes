@@ -25,6 +25,7 @@ export const opened = (event: RoomEventOf<"RoomOpened">): Open =>
       decision: Option.none(),
       handsDealt: new Map(),
       lastHandEndedAt: Option.none(),
+      timeoutsInARow: new Map(),
     },
     code: event.code,
     entries: new Map(),
@@ -40,8 +41,18 @@ export const opened = (event: RoomEventOf<"RoomOpened">): Open =>
     table: initialTable(event.settings.table),
   });
 
-const vacated = (state: Open, player: PlayerId, seat: SeatIndex): Open => ({
+const withoutStreak = (state: Open, player: PlayerId): Open => ({
   ...state,
+  clocks: {
+    ...state.clocks,
+    timeoutsInARow: new Map(
+      [...state.clocks.timeoutsInARow].filter(([owner]) => owner !== player)
+    ),
+  },
+});
+
+const vacated = (state: Open, player: PlayerId, seat: SeatIndex): Open => ({
+  ...withoutStreak(state, player),
   away: state.away.filter((awaySeat) => awaySeat !== seat),
   queued: {
     ...state.queued,
@@ -213,7 +224,14 @@ const evolveOpen = (state: Open, event: RoomEvent): RoomState =>
         leaving: [...state.queued.leaving, player],
       },
     }),
-    MarkedAway: ({ seat }) => ({ ...state, away: [...state.away, seat] }),
+    MarkedAway: ({ seat }) => {
+      const streakEnded = Option.match(occupantAt(state.table, seat), {
+        onNone: () => state,
+        onSome: ({ player }) => withoutStreak(state, player),
+      });
+
+      return { ...streakEnded, away: [...state.away, seat] };
+    },
     MemberJoined: ({ at, avatar, name, player }) => ({
       ...state,
       members: [...state.members, { avatar, joinedAt: at, name, player }],
@@ -288,6 +306,14 @@ const evolveOpen = (state: Open, event: RoomEvent): RoomState =>
       },
     }),
     TimeBankStarted: ({ deadline }) => bankStarted(state, deadline),
+    TimedOut: ({ player }) => ({
+      ...state,
+      clocks: {
+        ...state.clocks,
+        timeoutsInARow: counted(state.clocks.timeoutsInARow, player, 1),
+      },
+    }),
+    TimeoutStreakEnded: ({ player }) => withoutStreak(state, player),
     TurnClockStarted: ({ deadline, player, seat }) =>
       withDecision(
         state,

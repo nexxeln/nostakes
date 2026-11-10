@@ -68,6 +68,8 @@ export type TimeBankRefill = typeof TimeBankRefillSchema.Type;
 
 export const TimeBankRefills = Data.taggedEnum<TimeBankRefill>();
 
+export const MAX_TIMEOUTS_IN_A_ROW = 20;
+
 export const MIN_SEATS = 2;
 
 export const SeatCountSchema = Schema.Int.check(
@@ -130,6 +132,17 @@ const settingsFields = (shuffleWhenAbsent: Shuffle) => ({
       "Checked: before each hand the server seals two decks, and the order comes from a public drand beacon round named in the seal, so every player's device can check each card it was shown. Plain: the server shuffles alone and nobody can check the deck. A change applies from the next sealed hand.",
     title: "Fair shuffle",
   }),
+  sitOutAfterTimeouts: setting(
+    Schema.Int.check(
+      Schema.isBetween({ maximum: MAX_TIMEOUTS_IN_A_ROW, minimum: 0 })
+    ),
+    1,
+    {
+      description:
+        "A player who runs out of time this many turns in a row is sat out until they come back. 0 keeps them dealt in, checking or folding for them each time.",
+      title: "Sit out after timeouts",
+    }
+  ),
   table: TableConfigSchema.annotate({
     description:
       "The rules of a hand. A change made during a hand applies from the next hand.",

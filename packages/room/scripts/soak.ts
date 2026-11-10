@@ -165,6 +165,7 @@ const roomSettings = (random: Random): RoomSettings => {
     seats: random.chance(50) ? 9 : 2 + random.below(8),
     showdownSeconds: 2 + random.below(15),
     shuffle: "Plain",
+    sitOutAfterTimeouts: random.pick([1, 1, 0, 2, 3]) ?? 1,
     table: tableConfig(random),
     timeBankRefill: random.chance(50)
       ? TimeBankRefills.NoRefill()
@@ -214,7 +215,9 @@ const newCounts = () => ({
   straddlesApplied: 0,
   straddlesIgnored: 0,
   tablesShrunk: 0,
+  timeoutStreaksEnded: 0,
   timeouts: 0,
+  timeoutsKeptIn: 0,
   transfers: 0,
   unshownWinners: 0,
 });
@@ -591,6 +594,8 @@ const COUNTED: readonly (readonly [
   ["bankStarts", RoomEvents.$is("TimeBankStarted")],
   ["bankRefills", RoomEvents.$is("TimeBankRefilled")],
   ["timeouts", RoomEvents.$is("MarkedAway")],
+  ["timeoutsKeptIn", RoomEvents.$is("TimedOut")],
+  ["timeoutStreaksEnded", RoomEvents.$is("TimeoutStreakEnded")],
   ["hostChanges", RoomEvents.$is("HostChanged")],
   ["rulesQueued", RoomEvents.$is("RulesQueued")],
   ["closedDuringHand", RoomEvents.$is("CloseQueued")],

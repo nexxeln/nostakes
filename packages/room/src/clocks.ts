@@ -120,24 +120,43 @@ export const actForSeat = (
     )
   );
 
-const timeOut = (state: Open, seat: SeatIndex, at: Millis): Decision =>
+export const timeoutsInARow = (state: Open, player: PlayerId) =>
+  state.clocks.timeoutsInARow.get(player) ?? 0;
+
+const sitsOutNow = (state: Open, player: PlayerId) => {
+  const limit = state.settings.sitOutAfterTimeouts;
+
+  return limit > 0 && timeoutsInARow(state, player) + 1 >= limit;
+};
+
+const sitOutAway = (state: Open, seat: SeatIndex, at: Millis): Decision =>
+  Result.map(
+    onTable(
+      state.table,
+      Commands.SetSittingOut({ seat, sittingOut: true }),
+      at
+    ),
+    (satOut) =>
+      state.away.includes(seat)
+        ? satOut
+        : [...satOut, RoomEvents.MarkedAway({ at, seat })]
+  );
+
+const timeOut = (
+  state: Open,
+  seat: SeatIndex,
+  player: PlayerId,
+  at: Millis
+): Decision =>
   andThen(
     state,
     Option.getOrElse(actAutomatically(state, seat, at), () =>
       Result.succeed([])
     ),
     (acted) =>
-      Result.map(
-        onTable(
-          acted.table,
-          Commands.SetSittingOut({ seat, sittingOut: true }),
-          at
-        ),
-        (satOut) =>
-          acted.away.includes(seat)
-            ? satOut
-            : [...satOut, RoomEvents.MarkedAway({ at, seat })]
-      )
+      sitsOutNow(acted, player)
+        ? sitOutAway(acted, seat, at)
+        : Result.succeed([RoomEvents.TimedOut({ at, player, seat })])
   );
 
 const chooseOneRunForAll = (state: Open, at: Millis): Decision =>
@@ -180,7 +199,7 @@ const expire = (state: Open, clock: DecisionClock, at: Millis): Decision =>
               player,
             }),
           ])
-        : timeOut(state, seat, at);
+        : timeOut(state, seat, player, at);
     },
   });
 

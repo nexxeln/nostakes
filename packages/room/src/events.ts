@@ -81,6 +81,8 @@ export const roomEventFields = {
     seconds: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
   },
   TimeBankStarted: { at, deadline: MillisSchema, player: PlayerIdSchema },
+  TimedOut: { at, player: PlayerIdSchema, seat: SeatIndexSchema },
+  TimeoutStreakEnded: { at, player: PlayerIdSchema },
   TurnClockStarted: {
     at,
     deadline: MillisSchema,
