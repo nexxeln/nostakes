@@ -29,7 +29,7 @@ const NOTCH = { bottom: 34, left: 0, right: 0, top: 47 };
 
 const NOTCH_LANDSCAPE = { bottom: 21, left: 47, right: 47, top: 0 };
 
-const PAGE_COLOURS = { dark: "#0f1012", light: "#f4f1ea" } as const;
+const PAGE_COLOURS = { dark: "#16141d", light: "#f6f1e8" } as const;
 
 const TABLE = "nostakes-table";
 

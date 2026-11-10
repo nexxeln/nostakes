@@ -68,7 +68,7 @@ const seatOf = (index: number): SeatSnapshot => {
   };
 };
 
-const snapshot: TableSnapshot = {
+const showdown: TableSnapshot = {
   afterHand: { bothOnly: false, rabbit: false, showable: [] },
   bigBlind: 20,
   boards: BOARDS.slice(0, boards),
@@ -89,6 +89,40 @@ const snapshot: TableSnapshot = {
   toAct: null,
   waiting: "",
 };
+
+const TURN_STACKS = [398, 398, 412, 376, 398, 521, 455, 398, 240];
+
+const TURN_BOARD = ["3c", "9h", "7d"];
+
+const turnSeat = (index: number): SeatSnapshot => ({
+  ...seatOf(index),
+  cardsHeld: 2,
+  shown: [],
+  stack: TURN_STACKS[index] ?? 400,
+  status: "In",
+});
+
+const turn: TableSnapshot = {
+  ...showdown,
+  boards: [TURN_BOARD],
+  buttonSeat: players - 1,
+  clock: { key: "turn", remainingMs: 600_000, seat: 0, totalMs: 967_742 },
+  heroCards: ["Ad", "Kh"],
+  learned: params.get("hints") === "1" ? [] : showdown.learned,
+  legal: {
+    call: null,
+    check: true,
+    fold: true,
+    muck: false,
+    raise: { isBet: true, max: 398, min: 4 },
+    show: false,
+  },
+  pots: [18],
+  seats: Array.from({ length: players }, (_, index) => turnSeat(index)),
+  toAct: 0,
+};
+
+const snapshot = params.get("scene") === "turn" ? turn : showdown;
 
 interface TableHost extends HTMLElement {
   snapshot: TableSnapshot | null;
