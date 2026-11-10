@@ -2,6 +2,18 @@ export { RoomCommandSchema, RoomCommands } from "./commands.js";
 
 export type { RoomCommand, RoomCommandOf } from "./commands.js";
 
+export {
+  JoinRequestSchema,
+  MemberCommandSchema,
+  OpenRequestSchema,
+} from "./member-commands.js";
+
+export type {
+  JoinRequest,
+  MemberCommand,
+  OpenRequest,
+} from "./member-commands.js";
+
 export { RoomEventSchema, RoomEvents } from "./events.js";
 
 export type { RoomEvent, RoomEventOf } from "./events.js";
