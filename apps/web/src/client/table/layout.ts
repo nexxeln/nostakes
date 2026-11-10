@@ -46,7 +46,7 @@ export interface Geo {
   readonly self: Pt & { readonly size: number };
   readonly chip: Pt & { readonly size: number };
   readonly railTop: number;
-  readonly readout: Pt & { readonly align: "left" | "right" };
+  readonly readout: Pt & { readonly align: "center" | "right" };
   readonly keys: Pt;
   readonly handKeys: Pt;
   readonly zone: { readonly top: number; readonly bottom: number };
@@ -70,6 +70,8 @@ const CAPTION = 40;
 const MAX_TILE = 170;
 
 const TOP = 12;
+
+const READOUT_DEPTH = 0.72;
 
 export const clamp = (value: number, low: number, high: number) =>
   Math.min(high, Math.max(low, value));
@@ -551,7 +553,11 @@ const tallGeo = (w: number, h: number, count: number): Geo => {
     pot: middle.pot,
     railTop,
     readout: boardInStrip
-      ? { align: "left", x: 24, y: middle.strip.y + middle.strip.h / 2 }
+      ? {
+          align: "center",
+          x: cx,
+          y: TOP + (middle.strip.y - TOP) * READOUT_DEPTH,
+        }
       : { align: "right", x: chip.x - 170, y: (railTop + chip.y) / 2 - 40 },
     seats: middle.pts.map((p) => tallSeat(p, cx, middle.tile)),
     self,

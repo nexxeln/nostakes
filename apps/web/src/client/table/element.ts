@@ -44,7 +44,7 @@ const DETENT_GAP = 0.07;
 
 const DETENT_SNAP = 0.045;
 
-type Tone = "" | "hot" | "quiet" | "win";
+type Tone = "" | "hot" | "quiet";
 
 interface Status {
   readonly host: HTMLElement;
@@ -63,6 +63,7 @@ interface Tile {
   readonly name: HTMLDivElement;
   readonly note: HTMLDivElement;
   readonly shown: HTMLDivElement;
+  readonly tab: HTMLDivElement;
   readonly status: Status;
   readonly stack: Counter;
   readonly x: Spring;
@@ -72,6 +73,7 @@ interface Tile {
   lastTransform: string;
   joyUntil: number;
   surpriseUntil: number;
+  winUntil: number;
 }
 
 interface Pile {
@@ -231,6 +233,10 @@ const ringRadius = (frame: Element, size: number) => {
 const RING_GAP = 6;
 
 const POT_STACKED_MIN = 50;
+
+const DETENT_FROM_RAIL = 8;
+
+const WIN_TAB_MS = 3600;
 
 const POT_FLAT_H = 24;
 
@@ -401,6 +407,8 @@ interface Sizing {
   readonly amount: (value: number) => string;
   readonly commit: (value: number) => TableIntent;
   readonly lesson: Hint | null;
+  readonly how: string;
+  readonly holding: string;
 }
 
 const runWord = (runs: number) => {
@@ -416,6 +424,8 @@ const raiseSizing = (spot: RaiseSpot): Sizing => ({
   commit: (to) => TableIntents.Raise.make({ to }),
   detents: detentsFor(spot),
   heading: (value) => (value >= spot.max ? "All in" : raiseHeading(spot)),
+  holding: `you have ${formatChips(spot.max)}`,
+  how: `Let go to ${spot.isBet ? "bet" : "raise"} · drag down to cancel`,
   ladder: raiseLadder(spot),
   lesson: "Raise",
   max: spot.max,
@@ -439,6 +449,8 @@ const runSizing = (most: number): Sizing => {
       Math.max(1, most)
     ),
     heading: () => "Run it",
+    holding: "",
+    how: "Let go to choose · drag down to cancel",
     ladder: counts,
     lesson: null,
     max: Math.max(1, most),
@@ -451,14 +463,28 @@ const runSizing = (most: number): Sizing => {
 const keyValue = (sizing: KeySizing) =>
   sizing.typed === "" ? sizing.value : Number(sizing.typed);
 
+const noteRow = (text: string) => el("span", "row", undefined, text);
+
+const dragNote = (spot: Sizing, detent: string | null) => {
+  const where = [detent, spot.holding].filter(
+    (part): part is string => part !== null && part !== ""
+  );
+
+  return [
+    ...(where.length === 0 ? [] : [noteRow(where.join(" · "))]),
+    noteRow(spot.how),
+  ];
+};
+
 const keyNote = (
   spot: Sizing,
   keyed: boolean,
   low: boolean,
-  high: boolean
+  high: boolean,
+  detent: string | null
 ): readonly (Node | string)[] => {
   if (!keyed) {
-    return [];
+    return dragNote(spot, detent);
   }
 
   if (low) {
@@ -740,6 +766,7 @@ export class NostakesTable extends HTMLElement {
   #selfNote!: HTMLDivElement;
   #selfRing!: SVGRectElement;
   #selfRingSvg!: SVGSVGElement;
+  #selfTab!: HTMLDivElement;
   readonly #selfScale = new Spring(1, 160, 0.6);
   #dealer!: HTMLDivElement;
   #hand!: HTMLDivElement;
@@ -751,7 +778,7 @@ export class NostakesTable extends HTMLElement {
   #rail!: HTMLDivElement;
   #railTrack!: HTMLDivElement;
   #railFill!: HTMLDivElement;
-  #railLine!: HTMLDivElement;
+  #heldChip!: HTMLDivElement;
   #readout!: HTMLDivElement;
   #readKind!: HTMLDivElement;
   #readValue!: HTMLDivElement;
@@ -1001,6 +1028,7 @@ export class NostakesTable extends HTMLElement {
       until: 0,
     };
     this.#selfRingSvg = svgEl("svg", this.#self);
+    this.#selfTab = el("div", "tab", this.#self);
     this.#selfRing = ringIn(this.#selfRingSvg);
     this.#dealer = el("div", "dealer gone", this.#room, "D");
   }
@@ -1172,7 +1200,7 @@ export class NostakesTable extends HTMLElement {
     el("div", "scrim", this.#rail);
     this.#railTrack = el("div", "track", this.#rail);
     this.#railFill = el("div", "fill", this.#rail);
-    this.#railLine = el("div", "line", this.#rail);
+    this.#heldChip = el("div", "held", this.#rail);
     this.#readout = el("div", "readout", this.#rail);
     this.#readKind = el("div", "k", this.#readout);
     this.#readValue = el("div", "v", this.#readout);
@@ -1284,6 +1312,7 @@ export class NostakesTable extends HTMLElement {
     const ring = ringIn(ringSvg);
 
     const shown = el("div", "shown", root);
+    const tab = el("div", "tab", root);
 
     if (info.status !== "Empty") {
       root.addEventListener("click", () => {
@@ -1327,6 +1356,8 @@ export class NostakesTable extends HTMLElement {
       stack,
       status: { act, host: root, until: 0 },
       surpriseUntil: 0,
+      tab,
+      winUntil: 0,
       x: new Spring(0, 140, 0.78),
       y: new Spring(0, 140, 0.78),
     };
@@ -1492,16 +1523,16 @@ export class NostakesTable extends HTMLElement {
       left: `${geo.chip.x}px`,
       top: `${geo.chip.y}px`,
     });
-    Object.assign(this.#railLine.style, {
-      left: `${geo.chip.x - 70}px`,
-      top: `${geo.chip.y - LINE}px`,
-      width: "140px",
-    });
     Object.assign(this.#readout.style, {
       left: `${geo.readout.x}px`,
       top: `${geo.readout.y}px`,
     });
     toggle(this.#readout, "end", geo.readout.align === "right");
+    toggle(this.#readout, "mid", geo.readout.align === "center");
+    Object.assign(this.#heldChip.style, {
+      left: `${geo.chip.x}px`,
+      top: `${geo.chip.y}px`,
+    });
     Object.assign(this.#cancel.style, {
       left: `${geo.chip.x - 30}px`,
       top: `${geo.chip.y + geo.chip.size / 2 + 6}px`,
@@ -2605,10 +2636,11 @@ export class NostakesTable extends HTMLElement {
 
       if (tile !== undefined) {
         tile.joyUntil = performance.now() + 2400;
+        tile.winUntil = performance.now() + WIN_TAB_MS;
+        tile.tab.textContent = `+${formatChips(amount)}`;
         tile.scale.kick(2);
       }
 
-      this.#tag(seat, `+${formatChips(amount)}`, "win", 3600);
       this.#sound.chips(10, 0.2, 0.7);
     }
   }
@@ -2637,12 +2669,7 @@ export class NostakesTable extends HTMLElement {
     const now = performance.now();
     const banner = el("div", "banner", this.#fx);
 
-    this.#tag(
-      this.#snap?.heroSeat ?? -1,
-      `+${formatChips(amount)}`,
-      "win",
-      3600
-    );
+    this.#selfTab.textContent = `+${formatChips(amount)}`;
     this.#handLabel.classList.remove("on");
     this.#heroWinUntil = now + 4200;
     this.#sound.win();
@@ -3124,7 +3151,7 @@ export class NostakesTable extends HTMLElement {
     }
 
     this.#keySize = { detent: null, typed, value: spot.min };
-    this.#chip.style.transition = "transform .18s cubic-bezier(.2,.8,.2,1)";
+    this.#heldChip.style.transition = "transform .18s cubic-bezier(.2,.8,.2,1)";
     this.#openRail(spot);
     this.#rail.classList.add("keyed");
     this.#paintKeySize(spot);
@@ -3218,8 +3245,6 @@ export class NostakesTable extends HTMLElement {
     this.#keySize = null;
     this.#rail.classList.remove("keyed");
     this.#closeRail();
-    this.#chip.style.transition = "transform .4s cubic-bezier(.2,1.4,.4,1)";
-    this.#chip.style.transform = "";
     this.#render();
   }
 
@@ -3286,7 +3311,7 @@ export class NostakesTable extends HTMLElement {
       value: 0,
       y0: event.clientY,
     };
-    this.#chip.style.transition = "none";
+    this.#heldChip.style.transition = "none";
     this.#chip.animate([{ scale: "1" }, { scale: "0.94" }], {
       duration: 90,
       fill: "forwards",
@@ -3317,7 +3342,6 @@ export class NostakesTable extends HTMLElement {
     if ((!this.#canAct() && !this.#canVote()) || spot === null) {
       this.#chipG = null;
       this.#closeRail();
-      this.#chip.style.transform = "";
       this.#render();
 
       return;
@@ -3356,8 +3380,6 @@ export class NostakesTable extends HTMLElement {
     }
 
     this.#closeRail();
-    this.#chip.style.transition = "transform .4s cubic-bezier(.2,1.4,.4,1)";
-    this.#chip.style.transform = "";
     this.#render();
   };
 
@@ -3406,14 +3428,16 @@ export class NostakesTable extends HTMLElement {
 
     const length = geo.chip.y - LINE - geo.railTop;
 
-    this.#detentEls = spot.detents.map((detent) => {
-      const node = el("div", "det", this.#rail, `${detent.label} `);
+    this.#detentEls = spot.detents.map((detent, index) => {
+      const node = el("div", "det", this.#rail);
+      const tag = el("span", "tag", node, `${detent.label} `);
 
       if (spot.typing) {
-        el("b", "", node, spot.amount(detent.value));
+        el("b", "", tag, spot.amount(detent.value));
       }
 
-      node.style.right = `${geo.w - geo.chip.x + 6}px`;
+      node.style.setProperty("--i", String(index));
+      node.style.right = `${geo.w - geo.chip.x + DETENT_FROM_RAIL}px`;
       node.style.top = `${geo.chip.y - LINE - detent.t * length}px`;
       node.dataset.label = detent.label;
 
@@ -3424,6 +3448,8 @@ export class NostakesTable extends HTMLElement {
   #closeRail() {
     this.#rail.classList.remove("on");
     this.#railFill.style.height = "0px";
+    this.#heldChip.style.transition = "transform .4s cubic-bezier(.2,1.4,.4,1)";
+    this.#heldChip.style.transform = "";
   }
 
   #sizeTo(gesture: ChipGesture, spot: Sizing) {
@@ -3478,7 +3504,7 @@ export class NostakesTable extends HTMLElement {
     const low = paint.typed < spot.min;
     const high = paint.typed > spot.max;
 
-    this.#chip.style.transform = `translateY(${-paint.lift}px)`;
+    this.#heldChip.style.transform = `translateY(${-paint.lift}px)`;
     Object.assign(this.#railFill.style, {
       height: `${paint.lift}px`,
       top: `${geo.chip.y - paint.lift}px`,
@@ -3495,9 +3521,11 @@ export class NostakesTable extends HTMLElement {
       keyed ? paint.typed : paint.value
     );
     toggle(this.#readout, "off", keyed && (low || high));
-    this.#readNote.replaceChildren(...keyNote(spot, keyed, low, high));
+    this.#readNote.replaceChildren(
+      ...keyNote(spot, keyed, low, high, paint.detent)
+    );
     this.#chipA.textContent = above ? spot.word(paint.value) : "";
-    this.#chipB.textContent = above ? spot.amount(paint.value) : "";
+    this.#chipB.textContent = "";
   }
 
   #learn(hint: Hint) {
@@ -3788,9 +3816,14 @@ export class NostakesTable extends HTMLElement {
         );
       }
 
-      toggle(target.root, "on-clock", onClock);
+      const won = target.winUntil > now;
 
-      if (onClock) {
+      toggle(target.root, "on-clock", onClock);
+      toggle(target.root, "won", won);
+
+      if (won) {
+        paintRing(target.ring, 1, 1);
+      } else if (onClock) {
         const pulse =
           clock.tanking && !this.#reduced
             ? 0.7 + Math.sin((now / 1000) * Math.PI * 1.6) * 0.3
@@ -3899,9 +3932,14 @@ export class NostakesTable extends HTMLElement {
       snapshot.clock.seat === snapshot.heroSeat &&
       mine;
 
-    toggle(this.#self, "on-clock", onClock);
+    const won = this.#heroWinUntil > now;
 
-    if (onClock) {
+    toggle(this.#self, "on-clock", onClock);
+    toggle(this.#self, "won", won);
+
+    if (won) {
+      paintRing(this.#selfRing, 1, 1);
+    } else if (onClock) {
       paintRing(this.#selfRing, clock.fraction, 1);
     }
   }
