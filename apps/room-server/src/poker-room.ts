@@ -70,6 +70,7 @@ export const DEFAULT_SETTINGS: RoomSettings = Schema.decodeSync(
   buyIn: { max: 400, min: 40 },
   dealing: "Automatic",
   leavingMidHand: "ActedFor",
+  peeking: true,
   runChoiceSeconds: 15,
   seats: 9,
   showdownSeconds: 15,

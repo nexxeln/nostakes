@@ -140,6 +140,7 @@ export const settingsFrom = (random: SeededRandom): RoomSettings => ({
   },
   dealing: random.chance(1, 3) ? "Host" : "Automatic",
   leavingMidHand: random.chance(1, 2) ? "PlaysOn" : "ActedFor",
+  peeking: random.chance(3, 4),
   runChoiceSeconds: 1 + random.below(10),
   seats: random.chance(1, 2) ? 9 : 2 + random.below(8),
   showdownSeconds: 1 + random.below(20),

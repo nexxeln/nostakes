@@ -56,6 +56,7 @@ export const settings: RoomSettings = {
   buyIn: { max: chipCount(1000), min: chipCount(100) },
   dealing: "Automatic",
   leavingMidHand: "ActedFor",
+  peeking: true,
   runChoiceSeconds: 10,
   seats: 9,
   showdownSeconds: 15,

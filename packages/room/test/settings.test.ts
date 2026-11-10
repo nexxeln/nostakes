@@ -44,6 +44,7 @@ const SETTINGS_BEFORE_SHOWDOWNS = `{
 
 const withEveryDefault = {
   ...settings,
+  peeking: true,
   showdownSeconds: 15,
   shuffle: "Plain",
   table: { ...settings.table, showdown: "Automatic" },

@@ -146,6 +146,15 @@ export type {
 } from "./settings.js";
 
 export {
+  REACTIONS,
+  ReactionSchema,
+  RoomSignalSchema,
+  signalAllowed,
+} from "./signals.js";
+
+export type { Reaction, RoomSignal } from "./signals.js";
+
+export {
   BalanceSchema,
   SettlementSchema,
   TransferSchema,

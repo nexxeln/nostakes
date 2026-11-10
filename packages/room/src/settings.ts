@@ -134,6 +134,11 @@ const settingsFields = (shuffleWhenAbsent: Shuffle) => ({
       "What happens to a player who leaves their seat during a hand they are in. ActedFor: the room checks or folds for them whenever the action reaches them. PlaysOn: they play the hand out on their own clock, and stand up when it ends. A player who leaves the room is always acted for.",
     title: "Leaving during a hand",
   }),
+  peeking: setting(Schema.Boolean, true, {
+    description:
+      "Whether the table sees when a player looks at their cards. While a player peeks, everyone else sees their face look down, as they would at a real table. Off keeps peeks to the player's own screen.",
+    title: "Show peeks",
+  }),
   runChoiceSeconds: wholeSeconds(1, MAX_CLOCK_SECONDS).annotate({
     description:
       "Seconds players have to vote on how many times to run the board. Anyone who has not voted runs it once.",
