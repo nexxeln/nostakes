@@ -57,6 +57,7 @@ export interface HandSight {
   readonly own: ReadonlyMap<SeatIndex, readonly Card[]>;
   readonly community: readonly Card[];
   readonly shown: ReadonlyMap<SeatIndex, readonly Card[]>;
+  readonly seenOnlyInViews: ReadonlySet<Card>;
 }
 
 export interface Witness {
@@ -76,9 +77,17 @@ const blankHand: HandSight = {
   openings: [],
   own: new Map(),
   seals: [],
+  seenOnlyInViews: new Set(),
   shown: new Map(),
   started: false,
 };
+
+const cardsOf = (sight: HandSight): ReadonlySet<Card> =>
+  new Set([
+    ...sight.community,
+    ...[...sight.own.values()].flat(),
+    ...[...sight.shown.values()].flat(),
+  ]);
 
 const withHand = (
   witness: Witness,
@@ -397,6 +406,13 @@ const tableSeen = (view: OpenView, hand: number): Option.Option<TableSeen> =>
         : Option.none<TableSeen>(),
   });
 
+const tableCards = (table: TableSeen): ReadonlySet<Card> =>
+  new Set([
+    ...table.community,
+    ...Option.getOrElse(table.own, () => []),
+    ...table.shown.flatMap(({ cards }) => cards),
+  ]);
+
 const dealSightOf = (deal: (typeof DealtViewSchema.Type)["deal"]): DealSight =>
   Predicate.isTagged(deal, "FromBeacon")
     ? DealSights.FromBeacon({
@@ -406,17 +422,70 @@ const dealSightOf = (deal: (typeof DealtViewSchema.Type)["deal"]): DealSight =>
       })
     : DealSights.WithoutBeacon({ reason: deal.reason });
 
+const handOnTable = (view: OpenView): Option.Option<number> =>
+  view.hand.pipe(
+    Option.map((hand) => hand.handNumber),
+    Option.orElse(() =>
+      view.lastHand.pipe(Option.map((last) => last.handNumber))
+    )
+  );
+
+const withTableSeen = (
+  sight: HandSight,
+  table: TableSeen,
+  seat: Option.Option<SeatIndex>
+): HandSight => {
+  const withOwn = Option.match(Option.all([table.own, seat]), {
+    onNone: () => sight,
+    onSome: ([cards, ownSeat]) => addOwn(sight, ownSeat, cards),
+  });
+
+  const withDealt = Option.match(table.dealt, {
+    onNone: () => withOwn,
+    onSome: (seats) => addDealt(withOwn, seats),
+  });
+
+  return addAllShown(addCommunity(withDealt, table.community), table.shown);
+};
+
+const tableOf = (witness: Witness, view: OpenView): Witness =>
+  Option.match(handOnTable(view), {
+    onNone: () => witness,
+    onSome: (hand) =>
+      Option.match(tableSeen(view, hand), {
+        onNone: () => ({ ...witness, current: Option.some(hand) }),
+        onSome: (table) =>
+          withHand(
+            { ...witness, current: Option.some(hand) },
+            hand,
+            (sight) => {
+              const before = cardsOf(sight);
+              const after = withTableSeen(sight, table, yourSeat(view));
+
+              return {
+                ...after,
+                seenOnlyInViews: new Set([
+                  ...sight.seenOnlyInViews,
+                  ...[...cardsOf(after)].filter((card) => !before.has(card)),
+                ]),
+              };
+            }
+          ),
+      }),
+  });
+
 const seenOpenView = (
   witness: Witness,
   view: OpenView,
   at: SealArrival["at"]
 ): Witness => {
   const caughtUp = SealArrivals.CaughtUp({ at });
+  const tabled = tableOf(witness, view);
 
   const sealed = Option.match(view.fairness.sealed, {
-    onNone: () => witness,
+    onNone: () => tabled,
     onSome: (seal) =>
-      withHand(witness, seal.hand, (sight) =>
+      withHand(tabled, seal.hand, (sight) =>
         addSeal(sight, {
           arrival: caughtUp,
           roots: seal.roots,
@@ -430,47 +499,41 @@ const seenOpenView = (
     onNone: () => sealed,
     onSome: (dealt) => {
       const { hand } = dealt.seal;
-      const seen = tableSeen(view, hand);
-      const seat = yourSeat(view);
+
+      const covered = tableSeen(view, hand).pipe(
+        Option.map(tableCards),
+        Option.getOrElse((): ReadonlySet<Card> => new Set())
+      );
 
       const current = Option.match(sealed.current, {
         onNone: () => Option.some(hand),
         onSome: (known) => Option.some(Math.max(known, hand)),
       });
 
-      return withHand({ ...sealed, current }, hand, (sight) => {
-        const known = addDeal(
-          addSeal(sight, {
-            arrival: caughtUp,
-            roots: dealt.seal.roots,
-            round: dealt.seal.round,
-            seats: dealt.seal.seats,
-          }),
-          dealSightOf(dealt.deal)
-        );
-
-        const onTable = Option.match(seen, {
-          onNone: () => known,
-          onSome: (table) => {
-            const withOwn = Option.match(Option.all([table.own, seat]), {
-              onNone: () => known,
-              onSome: ([cards, ownSeat]) => addOwn(known, ownSeat, cards),
-            });
-
-            const withDealt = Option.match(table.dealt, {
-              onNone: () => withOwn,
-              onSome: (seats) => addDealt(withOwn, seats),
-            });
-
-            return addAllShown(
-              addCommunity(withDealt, table.community),
-              table.shown
-            );
-          },
-        });
-
-        return addOpenings(onTable, dealt.openings);
-      });
+      return withHand({ ...sealed, current }, hand, (sight) =>
+        addOpenings(
+          addDeal(
+            addSeal(
+              {
+                ...sight,
+                seenOnlyInViews: new Set(
+                  [...sight.seenOnlyInViews].filter(
+                    (card) => !covered.has(card)
+                  )
+                ),
+              },
+              {
+                arrival: caughtUp,
+                roots: dealt.seal.roots,
+                round: dealt.seal.round,
+                seats: dealt.seal.seats,
+              }
+            ),
+            dealSightOf(dealt.deal)
+          ),
+          dealt.openings
+        )
+      );
     },
   });
 };
@@ -627,10 +690,12 @@ export const evidenceFor = (
 
       const collected = sightingsOf(sight, sight.dealt.value);
 
-      return collected.unopened.length > 0
-        ? Result.fail(
-            MissingEvidences.Unopened({ cards: collected.unopened, hand })
-          )
+      const unopened = collected.unopened.filter(
+        (card) => !sight.seenOnlyInViews.has(card)
+      );
+
+      return unopened.length > 0
+        ? Result.fail(MissingEvidences.Unopened({ cards: unopened, hand }))
         : Result.succeed({
             ...common,
             deal: Deals.FromBeacon({

@@ -123,4 +123,96 @@ describe("what a device sees of a checked hand", () => {
     },
     { arbitrary: { runs: 6 }, timeout: 120_000 }
   );
+
+  it.prop(
+    "lets a device that was away and came back with only the view check every hand it saw whole, and never files a later hand's cards under the hand it saw last",
+    { source: session },
+    ({ source }) => {
+      const witnesses = new Map<string, Witness>();
+      const spectator = "spectator";
+      const AWAY_EVERY = 30;
+      const AWAY_FOR = 12;
+
+      const played = playSession(source, undefined, (settings) => ({
+        ...settings,
+        shuffle: "Checked",
+      }));
+
+      const awayAt = (watcher: number, step: number) =>
+        (step + watcher * 7) % AWAY_EVERY < AWAY_FOR;
+
+      const away = new Set<string>();
+
+      for (const [index, step] of played.steps.entries()) {
+        if (Result.isFailure(step.decision)) {
+          continue;
+        }
+
+        const at = EpochMillisSchema.make(step.command.at);
+        const arrival = SealArrivals.Live({ at });
+
+        const watchers: readonly (readonly [string, Audience])[] = [
+          [spectator, Audiences.Spectator()],
+          ...[...new Set([...POOL, ...membersOf(step.after)])].map(
+            (player) => [player, audienceOf(step.after, player)] as const
+          ),
+        ];
+
+        for (const [watcher, [name, audience]] of watchers.entries()) {
+          if (awayAt(watcher, index)) {
+            away.add(name);
+            continue;
+          }
+
+          let witness = witnesses.get(name) ?? emptyWitness;
+
+          if (!away.delete(name)) {
+            for (const event of step.events) {
+              witness = witnessEvent(witness, redact(event, audience), arrival);
+            }
+          }
+
+          witnesses.set(
+            name,
+            witnessView(
+              witness,
+              viewFor(step.after, audience, step.command.at),
+              at
+            )
+          );
+        }
+      }
+
+      const problems: string[] = [];
+
+      for (const [name, witness] of witnesses) {
+        for (const hand of handsWitnessed(witness)) {
+          Result.match(evidenceFor(witness, hand, ROOM, drand.chain), {
+            onFailure: (missing) => {
+              if (
+                MissingEvidences.$is("Unopened")(missing) ||
+                MissingEvidences.$is("NoSeal")(missing)
+              ) {
+                problems.push(`${name} hand ${hand}: ${missing._tag}`);
+              }
+            },
+            onSuccess: (evidence) => {
+              const kind = verdictKind(judgeHand(evidence));
+
+              if (
+                kind !== "Checked InTime" &&
+                kind !== "Checked NotWatched" &&
+                kind !== "NotChecked"
+              ) {
+                problems.push(`${name} hand ${hand}: ${kind}`);
+              }
+            },
+          });
+        }
+      }
+
+      expect(problems).toStrictEqual([]);
+    },
+    { arbitrary: { runs: 6 }, timeout: 120_000 }
+  );
 });
