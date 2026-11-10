@@ -24,7 +24,7 @@ const roomWith = (
   code: RoomCodeSchema.make("ABC234"),
   connected: true,
   copied: "Nothing",
-  drafts: { buyIn: "", chips: "", raiseTo: "", seat: Option.none() },
+  drafts: { buyIn: "", chips: "", seat: Option.none() },
   events: [],
   link: Option.some({
     phase: live ? "Live" : "Waiting",

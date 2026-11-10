@@ -1,9 +1,4 @@
-import {
-  Actions,
-  Antes,
-  RunCountSchema,
-  ShownCardsSchema,
-} from "@nostakes/engine";
+import { Antes, RunCountSchema, ShownCardsSchema } from "@nostakes/engine";
 import type { Card, SeatIndex } from "@nostakes/engine";
 import type { PlayerId } from "@nostakes/protocol";
 import { MemberCommandSchema, RoomViews } from "@nostakes/room";
@@ -11,19 +6,12 @@ import type { MemberCommand } from "@nostakes/room";
 import { Option } from "effect";
 import type { Html, HtmlBuilder } from "foldkit/html";
 
-import { cardLabel, cardView } from "./cards.js";
+import { cardLabel } from "./cards.js";
 import { soundSwitch, themeSwitch } from "./chrome.js";
 import { Messages } from "./message.js";
 import type { Message } from "./message.js";
 import type { InRoom, Model } from "./model.js";
-import {
-  bettingControls,
-  isActing,
-  isLive,
-  legalOf,
-  settlementText,
-  viewOf,
-} from "./room.js";
+import { isLive, settlementText, viewOf } from "./room.js";
 import type { ClosedView, OpenView } from "./room.js";
 import { settingsPanel } from "./settings-view.js";
 import { tableSnapshot } from "./table/from-room.js";
@@ -171,127 +159,6 @@ const noticeLine = (room: InRoom, h: H): Html =>
       }),
     ]
   );
-
-const raiseLabel = (allIn: boolean, opens: boolean) => {
-  if (allIn) {
-    return "All in";
-  }
-
-  return opens ? "Bet" : "Raise to";
-};
-
-const raiseControls = (room: InRoom, h: H): readonly Html[] =>
-  Option.match(bettingControls(room), {
-    onNone: () => [],
-    onSome: (controls) => [
-      h.button(
-        [
-          h.Type("button"),
-          h.Class("button act"),
-          h.OnClick(Messages.ClickedAction({ action: Actions.Fold() })),
-        ],
-        ["Fold"]
-      ),
-      controls.check
-        ? h.button(
-            [
-              h.Type("button"),
-              h.Class("button act"),
-              h.OnClick(Messages.ClickedAction({ action: Actions.Check() })),
-            ],
-            ["Check"]
-          )
-        : h.empty,
-      Option.match(controls.call, {
-        onNone: () => h.empty,
-        onSome: (amount) =>
-          h.button(
-            [
-              h.Type("button"),
-              h.Class("button act"),
-              h.OnClick(Messages.ClickedAction({ action: Actions.Call() })),
-            ],
-            [`Call ${amount}`]
-          ),
-      }),
-      Option.match(controls.raise, {
-        onNone: () => h.empty,
-        onSome: ({ maxTo, minTo, opens, to }) =>
-          h.div(
-            [h.Class("raise")],
-            [
-              h.input([
-                h.Type("range"),
-                h.Class("raise-slider"),
-                h.Min(String(minTo)),
-                h.Max(String(maxTo)),
-                h.Step("1"),
-                h.Value(String(to)),
-                h.AriaLabel("Amount"),
-                h.OnInput((value) =>
-                  Messages.ChangedDraft({ field: "raiseTo", value })
-                ),
-              ]),
-              h.input([
-                h.Type("number"),
-                h.Class("text-input raise-amount"),
-                h.Min(String(minTo)),
-                h.Max(String(maxTo)),
-                h.InputMode("numeric"),
-                h.Value(
-                  room.drafts.raiseTo === "" ? String(to) : room.drafts.raiseTo
-                ),
-                h.AriaLabel("Amount"),
-                h.OnInput((value) =>
-                  Messages.ChangedDraft({ field: "raiseTo", value })
-                ),
-              ]),
-              h.button(
-                [
-                  h.Type("button"),
-                  h.Class("button act primary"),
-                  h.OnClick(
-                    Messages.ClickedAction({ action: Actions.RaiseTo({ to }) })
-                  ),
-                ],
-                [`${raiseLabel(to === maxTo, opens)} ${to}`]
-              ),
-            ]
-          ),
-      }),
-    ],
-  });
-
-const actionBar = (room: InRoom, h: H): Html => {
-  if (Option.isNone(legalOf(room))) {
-    return h.empty;
-  }
-
-  if (isActing(room)) {
-    return h.div(
-      [h.Class("action-bar")],
-      [h.span([h.Class("pending")], ["Sent. Waiting for the table…"])]
-    );
-  }
-
-  if (!isLive(room)) {
-    return h.div(
-      [h.Class("action-bar")],
-      [
-        h.button(
-          [h.Type("button"), h.Class("button act"), h.Disabled(true)],
-          ["Fold"]
-        ),
-        h.span([h.Class("pending")], ["Reconnecting. Your turn waits."]),
-      ]
-    );
-  }
-
-  return h.div(
-    [h.Class("action-bar"), h.Role("group"), h.AriaLabel("Your turn")],
-    raiseControls(room, h)
-  );
-};
 
 const showButton = (
   h: H,
@@ -498,26 +365,7 @@ const myArea = (
 ): Html =>
   h.section(
     [h.Class("my-area")],
-    [
-      view.holeCards.length > 0
-        ? h.div(
-            [h.Class("my-cards")],
-            view.holeCards.map((card) => cardView(card, h, "is-large"))
-          )
-        : Option.match(view.lastHand, {
-            onNone: () => h.empty,
-            onSome: ({ yourCards }) =>
-              yourCards.length > 0
-                ? h.div(
-                    [h.Class("my-cards is-past")],
-                    yourCards.map((card) => cardView(card, h, "is-large"))
-                  )
-                : h.empty,
-          }),
-      actionBar(room, h),
-      ...handChoices(room, view, mySeat, h),
-      sitPanel(room, view, h),
-    ]
+    [...handChoices(room, view, mySeat, h), sitPanel(room, view, h)]
   );
 
 const balanceOf = (view: OpenView, player: PlayerId) =>

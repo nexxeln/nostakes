@@ -73,7 +73,6 @@ export type SettingsDraft = typeof SettingsDraftSchema.Type;
 export const DraftsSchema = Schema.Struct({
   buyIn: Schema.String,
   chips: Schema.String,
-  raiseTo: Schema.String,
   seat: Schema.Option(Schema.Int),
 });
 

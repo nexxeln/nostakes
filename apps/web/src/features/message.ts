@@ -1,4 +1,3 @@
-import { ActionSchema } from "@nostakes/engine";
 import { PlayerIdSchema, RoomCodeSchema } from "@nostakes/protocol";
 import { MemberCommandSchema, SeenEventSchema } from "@nostakes/room";
 import { Schema } from "effect";
@@ -16,7 +15,7 @@ export const ReplyOutcomes = defineTaggedUnion({
 
 export type ReplyOutcome = typeof ReplyOutcomes.Type;
 
-export const DraftFieldSchema = Schema.Literals(["buyIn", "chips", "raiseTo"]);
+export const DraftFieldSchema = Schema.Literals(["buyIn", "chips"]);
 
 export type DraftField = typeof DraftFieldSchema.Type;
 
@@ -28,7 +27,6 @@ export const Messages = defineMessageUnion({
   ChangedName: { value: Schema.String },
   ChangedSetting: { path: Schema.String, value: Schema.String },
   ChoseTheme: { theme: ThemeSchema },
-  ClickedAction: { action: ActionSchema },
   ClickedCancelSeat: {},
   ClickedCloseSettings: {},
   ClickedCopyLink: {},

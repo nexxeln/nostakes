@@ -1,5 +1,5 @@
-import type { LegalActions, Action, Chips } from "@nostakes/engine";
-import { Actions, ChipsSchema } from "@nostakes/engine";
+import type { LegalActions, Action } from "@nostakes/engine";
+import { Actions } from "@nostakes/engine";
 import { RoomViews } from "@nostakes/room";
 import type { RoomView } from "@nostakes/room";
 import { Option } from "effect";
@@ -46,50 +46,6 @@ export const isLegal = (legal: LegalActions, action: Action) =>
       ),
   });
 
-export interface RaiseControl {
-  readonly minTo: Chips;
-  readonly maxTo: Chips;
-  readonly to: Chips;
-  readonly opens: boolean;
-}
-
-export interface BettingControls {
-  readonly fold: boolean;
-  readonly check: boolean;
-  readonly call: Option.Option<Chips>;
-  readonly raise: Option.Option<RaiseControl>;
-}
-
-const draftedRaise = (draft: string, minTo: Chips, maxTo: Chips) => {
-  const typed = Number(draft);
-
-  return draft.trim().length > 0 &&
-    Number.isSafeInteger(typed) &&
-    typed >= minTo &&
-    typed <= maxTo
-    ? ChipsSchema.make(typed)
-    : minTo;
-};
-
-export const bettingControls = (room: InRoom): Option.Option<BettingControls> =>
-  legalOf(room).pipe(
-    Option.filter(() => isLive(room) && !isActing(room)),
-    Option.map((legal) => ({
-      call: legal.call,
-      check: legal.canCheck,
-      fold: true,
-      raise: legal.raise.pipe(
-        Option.filter(({ maxTo, minTo }) => minTo <= maxTo),
-        Option.map(({ maxTo, minTo }) => ({
-          maxTo,
-          minTo,
-          opens: Option.isNone(legal.call),
-          to: draftedRaise(room.drafts.raiseTo, minTo, maxTo),
-        }))
-      ),
-    }))
-  );
-
 export const clockRunning = (room: InRoom) =>
   Option.exists(
     openViewOf(room),
@@ -99,15 +55,6 @@ export const clockRunning = (room: InRoom) =>
       Option.isSome(clocks.runChoice) ||
       Option.isSome(clocks.nextDeal)
   );
-
-export const secondsLeft = (room: InRoom, now: number, remainingMs: number) => {
-  const elapsed = Option.match(room.link, {
-    onNone: () => 0,
-    onSome: ({ receivedAt }) => Math.max(0, now - receivedAt),
-  });
-
-  return Math.ceil(Math.max(0, remainingMs - elapsed) / 1000);
-};
 
 export const settlementText = (view: ClosedView) => {
   const name = (player: string) =>

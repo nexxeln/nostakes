@@ -56,7 +56,7 @@ const freshRoom = (code: InRoom["code"], player: InRoom["player"]): InRoom => ({
   code,
   connected: false,
   copied: "Nothing",
-  drafts: { buyIn: "", chips: "", raiseTo: "", seat: Option.none() },
+  drafts: { buyIn: "", chips: "", seat: Option.none() },
   events: [],
   link: Option.none(),
   notice: Option.none(),
@@ -160,12 +160,7 @@ const act = (model: Model, action: Action): Return =>
     isLive(room) &&
     !isActing(room) &&
     Option.exists(legalOf(room), (legal) => isLegal(legal, action))
-      ? send(
-          model,
-          { ...room, drafts: { ...room.drafts, raiseTo: "" } },
-          Commands.Act.make({ action }),
-          actionLabel(action)
-        )
+      ? send(model, room, Commands.Act.make({ action }), actionLabel(action))
       : { model }
   );
 
@@ -341,7 +336,6 @@ export const update = (model: Model, message: Message): Return =>
       commands: [ApplyTheme({ theme: Option.some(theme) })],
       model: { ...model, theme: Option.some(theme) },
     }),
-    ClickedAction: ({ action }) => act(model, action),
     ClickedCancelSeat: () =>
       editRoom(model, (room) => ({
         ...room,
@@ -439,13 +433,10 @@ export const update = (model: Model, message: Message): Return =>
       },
     }),
     GotLink: ({ link }) =>
-      editRoom({ ...model, now: link.receivedAt }, (room) => {
-        const next = { ...room, link: Option.some(link) };
-
-        return Option.isSome(legalOf(next))
-          ? next
-          : { ...next, drafts: { ...next.drafts, raiseTo: "" } };
-      }),
+      editRoom({ ...model, now: link.receivedAt }, (room) => ({
+        ...room,
+        link: Option.some(link),
+      })),
     GotReply: ({ key, outcome }) =>
       editRoom(model, (room) => settle(room, key, outcome)),
     GotTableIntent: ({ intent }) => fromTable(model, intent),

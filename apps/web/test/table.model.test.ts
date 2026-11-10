@@ -1,12 +1,10 @@
 import { describe, expect, it } from "@effect/vitest";
-import { ActionSchema, LegalActionsSchema } from "@nostakes/engine";
-import type { Action, LegalActions } from "@nostakes/engine";
+import { Actions, ChipsSchema, LegalActionsSchema } from "@nostakes/engine";
+import type { Action } from "@nostakes/engine";
 import { PlayerIdSchema, RoomCodeSchema } from "@nostakes/protocol";
 import { MemberCommandSchema, RoomViewSchema } from "@nostakes/room";
-import { Option, Schema } from "effect";
+import { Match, Option, Schema } from "effect";
 import * as Arbitrary from "effect/Arbitrary";
-import { Scene } from "foldkit";
-import { getAllByRole, textContent } from "foldkit/scene";
 
 import { Messages, ReplyOutcomes } from "../src/features/message.js";
 import type { Message } from "../src/features/message.js";
@@ -18,8 +16,9 @@ import {
   legalOf,
   roomOf,
 } from "../src/features/room.js";
+import { TableIntentSchema } from "../src/features/table/snapshot.js";
+import type { TableIntent } from "../src/features/table/snapshot.js";
 import { init, update } from "../src/features/update.js";
-import { view } from "../src/features/view.js";
 
 const CODE = RoomCodeSchema.make("ABC234");
 
@@ -35,7 +34,7 @@ const start = init({
 }).model;
 
 const StepSchema = Schema.TaggedUnion({
-  Click: { action: ActionSchema },
+  Intent: { intent: TableIntentSchema },
   Link: {
     legal: Schema.Option(LegalActionsSchema),
     live: Schema.Boolean,
@@ -44,7 +43,6 @@ const StepSchema = Schema.TaggedUnion({
     accepted: Schema.Boolean,
     pick: Schema.Int.check(Schema.isBetween({ maximum: 8, minimum: 0 })),
   },
-  Type: { value: Schema.String.check(Schema.isMaxLength(6)) },
 });
 
 type Step = typeof StepSchema.Type;
@@ -67,7 +65,7 @@ const messageFor = (
   issued: readonly number[]
 ): Message =>
   StepSchema.match(step, {
-    Click: ({ action }) => Messages.ClickedAction({ action }),
+    Intent: ({ intent }) => Messages.GotTableIntent({ intent }),
     Link: ({ legal, live }) =>
       Messages.GotLink({
         link: {
@@ -86,10 +84,26 @@ const messageFor = (
           ? ReplyOutcomes.Accepted({ seq: 1 })
           : ReplyOutcomes.Rejected({ reason: "no" }),
       }),
-    Type: ({ value }) => Messages.ChangedDraft({ field: "raiseTo", value }),
   });
 
-const isClick = Schema.is(Messages.ClickedAction);
+const isIntent = Schema.is(Messages.GotTableIntent);
+
+const actionOf = (intent: TableIntent): Option.Option<Action> =>
+  Match.value(intent).pipe(
+    Match.tagsExhaustive({
+      Call: () => Option.some(Actions.Call()),
+      Check: () => Option.some(Actions.Check()),
+      Fold: () => Option.some(Actions.Fold()),
+      Learned: () => Option.none(),
+      Muck: () => Option.none(),
+      Raise: ({ to }) =>
+        Schema.decodeOption(ChipsSchema)(to).pipe(
+          Option.map((amount) => Actions.RaiseTo({ to: amount }))
+        ),
+      Show: () => Option.none(),
+      Sit: () => Option.none(),
+    })
+  );
 
 const isReply = Schema.is(Messages.GotReply);
 
@@ -108,61 +122,6 @@ const sentActions = (commands: Issued) =>
       : [];
   });
 
-const AMOUNT = /(?<amount>\d+)$/u;
-
-const amountOf = (label: string) => Number(AMOUNT.exec(label)?.groups?.amount);
-
-const buttonLegal = (label: string, legal: LegalActions) => {
-  if (label === "Fold") {
-    return true;
-  }
-
-  if (label === "Check") {
-    return legal.canCheck;
-  }
-
-  if (label.startsWith("Call ")) {
-    return Option.contains(legal.call, amountOf(label));
-  }
-
-  if (
-    label.startsWith("Bet ") ||
-    label.startsWith("Raise to ") ||
-    label.startsWith("All in ")
-  ) {
-    return Option.exists(
-      legal.raise,
-      ({ maxTo, minTo }) => amountOf(label) >= minTo && amountOf(label) <= maxTo
-    );
-  }
-
-  return false;
-};
-
-const BETTING = /^(?:Fold|Check|Call \d+|Bet \d+|Raise to \d+|All in \d+)$/u;
-
-const enabledBettingButtons = (model: Model) => {
-  const labels: string[] = [];
-
-  Scene.scene(
-    { update, view },
-    Scene.given(model),
-    Scene.tap((simulation) => {
-      for (const button of getAllByRole("button", { disabled: false })(
-        simulation.html
-      )) {
-        const label = textContent(button).trim();
-
-        if (BETTING.test(label)) {
-          labels.push(label);
-        }
-      }
-    })
-  );
-
-  return labels;
-};
-
 const legalAction = (model: Model, action: Action) => {
   const room = roomIn(model);
 
@@ -175,40 +134,6 @@ const legalAction = (model: Model, action: Action) => {
 
 describe("the table", () => {
   it.prop(
-    "never enables a betting button for an action the view does not list as legal",
-    { plan: steps, table: views },
-    ({ plan, table }) => {
-      let model = start;
-      const issued: number[] = [];
-
-      for (const step of plan) {
-        const result = update(model, messageFor(step, table, issued));
-
-        issued.push(
-          ...sentActions(result.commands ?? []).map(({ key }) => key)
-        );
-        ({ model } = result);
-
-        const room = roomIn(model);
-        const labels = enabledBettingButtons(model);
-
-        if (labels.length > 0) {
-          expect(isLive(room)).toBe(true);
-          expect(isActing(room)).toBe(false);
-        }
-
-        for (const label of labels) {
-          expect(
-            Option.exists(legalOf(room), (legal) => buttonLegal(label, legal)),
-            label
-          ).toBe(true);
-        }
-      }
-    },
-    { arbitrary: { runs: 60 } }
-  );
-
-  it.prop(
     "sends an action only when it is legal, live, and nothing else is in flight",
     { plan: steps, table: views },
     ({ plan, table }) => {
@@ -220,9 +145,18 @@ describe("the table", () => {
         const result = update(model, message);
         const sent = sentActions(result.commands ?? []);
 
-        if (isClick(message)) {
+        if (isIntent(message)) {
+          const before = model;
+
+          const wanted = actionOf(message.intent).pipe(
+            Option.filter((action) => legalAction(before, action))
+          );
+
           expect(sent.map(({ action }) => action)).toEqual(
-            legalAction(model, message.action) ? [message.action] : []
+            Option.match(wanted, {
+              onNone: () => [],
+              onSome: (action) => [action],
+            })
           );
         } else {
           expect(sent).toEqual([]);
