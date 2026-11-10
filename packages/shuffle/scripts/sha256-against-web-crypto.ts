@@ -15,7 +15,7 @@ class DigestDiffers extends Schema.TaggedError<
   input: Schema.String,
 }) {
   override get message() {
-    return `The in-repo sha256 gave ${this.got} where Web Crypto gave ${this.expected} for the message ${this.input}. Fix src/sha256.ts before any commitment built on it is trusted.`;
+    return `sha256 gave ${this.got} where Web Crypto gave ${this.expected} for the message ${this.input}. Check how src/sha256.ts calls @noble/hashes before any commitment built on it is trusted.`;
   }
 }
 

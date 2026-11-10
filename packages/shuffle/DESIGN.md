@@ -118,7 +118,7 @@ Pure functions. No I/O, no clock, and no randomness read inside: decks, salt sec
 
 | Function | Does |
 | --- | --- |
-| `sha256`, `hmacSha256` | FIPS 180-4 and RFC 2104, synchronous, in-repo |
+| `sha256`, `hmacSha256` | FIPS 180-4 and RFC 2104, synchronous, from `@noble/hashes` |
 | `sealDeck`, `sealCards`, `sealHand` | Seal one deck from a Deck and a salt secret (or from raw cards and salts, which is how the cheat tests build bad decks); seal both decks for a hand |
 | `openCard`, `openDeck`, `openDealt`, `openSpare` | Opening for one position, a full deck, a deal index, the spare |
 | `verifyOpening` | One opening against a root: card, salt, position, slot, room and hand are all bound |
@@ -190,10 +190,8 @@ Unless marked otherwise, every row is a test in test/cheats.test.ts or test/veri
 
 ## 7. Dependencies
 
-- **None added.** The prototype uses only `effect` (already pinned).
-- **Would swap in, with owner sign-off:** `@noble/hashes` (audited, synchronous) behind `sha256` and `hmacSha256` in src/sha256.ts. The signatures stay the same, and the file's `oxlint-disable no-bitwise` directive goes away with it.
-- **Would add for production, with owner sign-off:** `@noble/curves`, to verify drand BLS signatures in the client. It is optional if clients fetch the round from a relay themselves and accept trusting that relay.
-- **Fence note:** src/sha256.ts carries one file-level `oxlint-disable no-bitwise` with its reason. `pnpm debt` went from 15 to 16 entries, and this is the only directive under packages/ or apps/. A new package needs owner sign-off under AGENTS.md; the brief asked for this one.
+- `@noble/hashes` `2.4.0` (MIT, no dependencies), approved by the owner, sits behind `sha256` and `hmacSha256` in src/sha256.ts. The in-repo SHA-256 and its file-level `oxlint-disable no-bitwise` directive are gone, so `pnpm debt` is back to the count on `main`. The FIPS and RFC 4231 vectors and the Web Crypto comparisons now guard the wiring: swapping the HMAC key and message, or hashing one byte short, fails them (run).
+- **Would add for production, with owner sign-off:** `@noble/curves`, to verify drand BLS signatures in the client.
 
 ## 8. Constructions and where they come from
 
