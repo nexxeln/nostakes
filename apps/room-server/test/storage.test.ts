@@ -15,6 +15,7 @@ import {
   post,
   replyTo,
 } from "./fixtures/room-client.js";
+import type { RoomClient } from "./fixtures/room-client.js";
 import { inspect, restart, ToyStack } from "./fixtures/stack.js";
 import { ToyMemberCommandSchema } from "./fixtures/toy-room.js";
 
@@ -148,8 +149,15 @@ test(
   }).pipe(Effect.provide(FetchHttpClient.layer))
 );
 
+const replyText = (client: RoomClient, id: string) =>
+  Effect.gen(function* replyFrameText() {
+    const reply = yield* client.next(`reply ${id}`, replyTo(id));
+
+    return client.frames[client.messages.indexOf(reply)] ?? "";
+  });
+
 test(
-  "6. idempotent: the same command id takes effect once and gets the same reply, across a restart",
+  "6. idempotent: a repeated command id takes effect once and is answered with the stored reply, byte for byte, across a restart",
   Effect.gen(function* idempotent() {
     const base = yield* baseUrl;
     const [anaPass] = yield* openRoomWith(base, ["Ana"]);
@@ -160,15 +168,26 @@ test(
 
     const first = yield* joinAs(base, anaPass, "ana");
     const once = command("same", Commands.Increment.make({ times: 1 }));
+    const refused = command("refused", Commands.Act.make({}));
 
     yield* first.client.send(once);
 
-    const reply = yield* first.client.next("first reply", replyTo("same"));
+    const accepted = yield* replyText(first.client, "same");
 
+    yield* first.client.send(refused);
+
+    const rejected = yield* replyText(first.client, "refused");
+
+    yield* first.client.send(
+      command("turn", Commands.StartTurn.make({ ms: 600_000 }))
+    );
+    yield* first.client.next("reply turn", replyTo("turn"));
     yield* first.client.send(once);
+    yield* first.client.send(refused);
 
-    const again = yield* first.client.next("second reply", replyTo("same"));
-    const afterTwo = yield* inspect(base, anaPass.code);
+    const acceptedAgain = yield* replyText(first.client, "same");
+    const rejectedAgain = yield* replyText(first.client, "refused");
+    const afterRepeats = yield* inspect(base, anaPass.code);
 
     yield* first.client.disconnect;
     yield* restart(base, anaPass.code);
@@ -176,19 +195,23 @@ test(
     const second = yield* joinAs(base, anaPass, "ana again");
 
     yield* second.client.send(once);
+    yield* second.client.send(refused);
 
-    const afterRestart = yield* second.client.next(
-      "reply after restart",
-      replyTo("same")
-    );
-
+    const acceptedAfterRestart = yield* replyText(second.client, "same");
+    const rejectedAfterRestart = yield* replyText(second.client, "refused");
     const final = yield* inspect(base, anaPass.code);
 
-    expect(again.result).toEqual(reply.result);
-    expect(afterRestart.result).toEqual(reply.result);
-    expect(afterTwo.headSeq).toBe(3);
-    expect(final.headSeq).toBe(3);
-    expect(final.seqs).toEqual(contiguous(3));
+    expect(accepted).toBe(
+      '{"_tag":"Reply","id":"same","result":{"_tag":"Accepted","seq":3}}'
+    );
+    expect(rejected).toBe(
+      '{"_tag":"Reply","id":"refused","result":{"_tag":"Rejected","rejection":{"_tag":"ToyRefusal","reason":"NotYourTurn"}}}'
+    );
+    expect([acceptedAgain, acceptedAfterRestart]).toEqual([accepted, accepted]);
+    expect([rejectedAgain, rejectedAfterRestart]).toEqual([rejected, rejected]);
+    expect(afterRepeats.headSeq).toBe(4);
+    expect(final.headSeq).toBe(4);
+    expect(final.seqs).toEqual(contiguous(4));
     expect(second.welcome.view.count).toBe(1);
   }).pipe(Effect.provide(FetchHttpClient.layer))
 );
