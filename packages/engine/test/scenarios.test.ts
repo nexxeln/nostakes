@@ -22,6 +22,8 @@ import {
 
 const BOARD = "2h 5d 9c Jh 4d";
 
+const deck = deckStartingWith("Ac Kc Qc Jc Tc 9c 8c 7c 6c 5c 4c 3c 2c");
+
 const shown = (index: number, hole: string) =>
   ShowdownEntries.Shown({
     cards: cards(hole),
@@ -121,6 +123,31 @@ describe("antes", () => {
     expect(stacksOf(hand.state).slice(0, 4)).toStrictEqual([88, 118, 88, 8]);
   });
 
+  it("gives each folder back the ante chips a seat all in for less than the ante could never match", () => {
+    const config: TableConfig = {
+      ...baseConfig,
+      ante: Antes.EveryPlayer({ amount: chipCount(2) }),
+    };
+
+    const hand = play(
+      startHand(occupiedTable(config, { 0: 100, 1: 100, 2: 1 }), deck).state,
+      [
+        [0, folds],
+        [1, folds],
+      ]
+    );
+
+    expect(hand.events).toStrictEqual([
+      Events.Folded({ seat: seat(0) }),
+      Events.Folded({ seat: seat(1) }),
+      Events.UncalledBetReturned({ amount: chipCount(6), seat: seat(1) }),
+      Events.UncalledBetReturned({ amount: chipCount(1), seat: seat(0) }),
+      pot(1, 3, [2], 2),
+      Events.HandEnded({ handNumber: 1 }),
+    ]);
+    expect(stacksOf(hand.state).slice(0, 3)).toStrictEqual([99, 99, 3]);
+  });
+
   it("puts the big-blind ante into the main pot that a short big blind can still win", () => {
     const config: TableConfig = {
       ...baseConfig,
@@ -154,8 +181,6 @@ const straddling: TableConfig = {
 
 const fiveHanded = () =>
   occupiedTable(straddling, { 0: 500, 1: 500, 2: 500, 3: 500, 4: 500 });
-
-const deck = deckStartingWith("Ac Kc Qc Jc Tc 9c 8c 7c 6c 5c 4c 3c 2c");
 
 describe("straddles", () => {
   it("gives an under-the-gun straddler the last word before the flop, with a raise to at least twice the straddle", () => {

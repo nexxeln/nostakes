@@ -58,14 +58,30 @@ export const buildPots = (hand: Hand): readonly Pot[] => {
   });
 };
 
+const matchableBy = (top: HandPlayer, others: readonly HandPlayer[]) =>
+  Math.max(
+    0,
+    ...others.flatMap((other) =>
+      top.status === "Folded" && other.status === "Folded"
+        ? []
+        : [other.committedTotal]
+    )
+  );
+
 export const uncalledExcess = (hand: Hand) => {
-  const [top, second] = hand.players.toSorted(
+  const [top, ...others] = hand.players.toSorted(
     (left, right) => right.committedTotal - left.committedTotal
   );
 
-  return top !== undefined && top.committedTotal > (second?.committedTotal ?? 0)
+  if (top === undefined) {
+    return Option.none();
+  }
+
+  const matched = matchableBy(top, others);
+
+  return top.committedTotal > matched
     ? Option.some({
-        amount: chips(top.committedTotal - (second?.committedTotal ?? 0)),
+        amount: chips(top.committedTotal - matched),
         seat: top.seat,
       })
     : Option.none();

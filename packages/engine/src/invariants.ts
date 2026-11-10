@@ -1,6 +1,7 @@
 import { Option } from "effect";
 
 import { DECK_SIZE } from "./cards.js";
+import type { Card } from "./cards.js";
 import { buildPots, uncalledExcess } from "./pots.js";
 import { SEAT_COUNT, chips } from "./primitives.js";
 import {
@@ -60,26 +61,30 @@ const amountViolations = (hand: Hand) => [
 const sumOf = (amounts: readonly number[]) =>
   amounts.reduce((total, amount) => total + amount, 0);
 
+const withUncalledReturned = (hand: Hand): Hand =>
+  Option.match(uncalledExcess(hand), {
+    onNone: () => hand,
+    onSome: ({ amount, seat }) =>
+      withUncalledReturned({
+        ...hand,
+        players: hand.players.map((player) =>
+          player.seat === seat
+            ? {
+                ...player,
+                committedTotal: chips(player.committedTotal - amount),
+              }
+            : player
+        ),
+      }),
+  });
+
 const potViolations = (hand: Hand) => {
   const committed =
     sumOf(hand.players.map((player) => player.committedTotal)) + hand.deadMoney;
 
   const won = sumOf(hand.players.map((player) => player.won));
 
-  const returned: Hand = Option.match(uncalledExcess(hand), {
-    onNone: () => hand,
-    onSome: (excess) => ({
-      ...hand,
-      players: hand.players.map((player) =>
-        player.seat === excess.seat
-          ? {
-              ...player,
-              committedTotal: chips(player.committedTotal - excess.amount),
-            }
-          : player
-      ),
-    }),
-  });
+  const returned = withUncalledReturned(hand);
 
   return [
     ...(won <= committed
@@ -97,23 +102,39 @@ const potViolations = (hand: Hand) => {
   ];
 };
 
+const distinctCards = (groups: readonly (readonly Card[])[]) => {
+  const seen = new Uint8Array(DECK_SIZE);
+  let count = 0;
+  let distinct = 0;
+
+  for (const group of groups) {
+    for (const card of group) {
+      count += 1;
+      distinct += seen[card] === 0 ? 1 : 0;
+      seen[card] = 1;
+    }
+  }
+
+  return { count, distinct };
+};
+
 const cardViolations = (hand: Hand) => {
   const runs = Phases.$is("RunningOut")(hand.phase) ? hand.phase.runs : [];
 
-  const all = [
-    ...hand.players.flatMap((player) => player.holeCards),
-    ...hand.board,
-    ...runs.flat(),
-    ...hand.deck,
-  ];
+  const cards = distinctCards([
+    ...hand.players.map((player) => player.holeCards),
+    hand.board,
+    ...runs,
+    hand.deck,
+  ]);
 
   return [
-    ...(all.length === DECK_SIZE && new Set(all).size === DECK_SIZE
+    ...(cards.count === DECK_SIZE && cards.distinct === DECK_SIZE
       ? []
       : [
           violation(
             "OneDeck",
-            `${all.length} cards, ${new Set(all).size} distinct`
+            `${cards.count} cards, ${cards.distinct} distinct`
           ),
         ]),
     ...(BOARD_BY_STREET[hand.street] === hand.board.length
