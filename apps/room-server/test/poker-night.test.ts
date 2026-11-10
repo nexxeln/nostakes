@@ -7,6 +7,11 @@ import * as FetchHttpClient from "effect/http/FetchHttpClient";
 import type { Temper } from "./fixtures/bot.js";
 import type { ClientTemper } from "./fixtures/client-bot.js";
 import {
+  addFairness,
+  emptyFairness,
+  FAIRNESS_COUNT_NAMES,
+} from "./fixtures/fair-checks.js";
+import {
   judgeNight,
   openNight,
   planNight,
@@ -26,6 +31,8 @@ const deployed = beforeAll(deploy(PokerStack));
 afterAll(destroy(PokerStack));
 
 const SEED = 20_261_110;
+
+const CHECKED_HANDS = 4;
 
 const TEMPER: Temper = {
   churnPercent: 6,
@@ -65,10 +72,11 @@ test(
           betweenHandsSeconds: 0,
           clientPercent: 50,
           handBudgetMs: 4000,
-          hands: 10,
+          hands: index === 0 ? CHECKED_HANDS : 13,
           players,
           restarts: 1,
           rotation: index * 2,
+          shuffle: index === 0 ? "Checked" : "Plain",
           silences: 1,
           turnSeconds: 1,
         },
@@ -89,12 +97,25 @@ test(
     );
 
     const results = played.map(judgeNight);
+    const fairness = emptyFairness();
+
+    for (const result of results) {
+      addFairness(fairness, result.verdict.fairness);
+    }
+
+    yield* Effect.logInfo(
+      `small night fair shuffle: ${FAIRNESS_COUNT_NAMES.map((name) => `${name} ${fairness[name]}`).join(", ")}`
+    );
 
     const total = (
       pick: (counts: (typeof results)[number]["verdict"]["counts"]) => number
     ) => results.reduce((sum, result) => sum + pick(result.verdict.counts), 0);
 
     expect(results.flatMap((result) => result.verdict.problems)).toEqual([]);
+    expect(fairness.sealedDeals).toBeGreaterThanOrEqual(CHECKED_HANDS);
+    expect(fairness.checkedInTime).toBeGreaterThanOrEqual(CHECKED_HANDS);
+    expect(fairness.failedVerdicts).toBe(0);
+    expect(fairness.plainHands).toBeGreaterThan(0);
     expect(total((counts) => counts.hands)).toBeGreaterThanOrEqual(30);
     expect(total((counts) => counts.restarts)).toBeGreaterThanOrEqual(3);
     expect(total((counts) => counts.timeouts)).toBeGreaterThanOrEqual(3);

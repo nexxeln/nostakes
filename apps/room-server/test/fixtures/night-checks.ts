@@ -31,8 +31,17 @@ import { pokerRoom } from "../../src/poker-room.js";
 import type { MemberCommand } from "../../src/poker-room.js";
 import type { BotRecord, SocketRecord } from "./bot.js";
 import type { ClientBotRecord } from "./client-bot.js";
+import {
+  addFairness,
+  emptyFairness,
+  judgeDevice,
+  waitBeyondPause,
+  witnessFrom,
+} from "./fair-checks.js";
+import type { FairnessCounts, Proof } from "./fair-checks.js";
 import { decodeServerFrame, pokerCodec, wallClock } from "./poker-socket.js";
 import type { Arrival } from "./poker-socket.js";
+import { beaconDown } from "./test-beacon.js";
 
 const eventCodec = Schema.fromJsonString(Schema.toCodecJson(RoomEventSchema));
 
@@ -218,6 +227,7 @@ export const emptyCounts = (): NightCounts => ({
 });
 
 export interface NightEvidence {
+  readonly checked: boolean;
   readonly seed: number;
   readonly code: RoomCode;
   readonly events: readonly string[];
@@ -233,6 +243,8 @@ export interface NightEvidence {
 export interface NightVerdict {
   readonly problems: readonly string[];
   readonly counts: NightCounts;
+  readonly fairness: FairnessCounts;
+  readonly proofs: readonly Proof[];
   readonly deafReplyMs: readonly number[];
   readonly transfers: readonly number[];
   readonly replayMs: number;
@@ -1464,6 +1476,123 @@ const deafReplyTimes = (clients: readonly ClientBotRecord[]) =>
     )
   );
 
+const devicesOf = (evidence: NightEvidence) => [
+  ...evidence.bots.flatMap((bot) =>
+    bot.devices
+      .filter((device) => device.sockets.length > 0)
+      .map((device) => ({
+        arrivals: device.sockets.flatMap(({ socket }) => socket.arrivals),
+        label: `${bot.label} ${device.name}`,
+      }))
+  ),
+  ...evidence.clients.map((client) => ({
+    arrivals: client.arrivals(),
+    label: client.label,
+  })),
+];
+
+interface SealedDeals {
+  readonly fromBeacon: readonly number[];
+  readonly withoutBeacon: readonly {
+    readonly hand: number;
+    readonly round: number;
+  }[];
+  readonly plain: readonly number[];
+}
+
+const sealedDealsIn = (events: readonly RoomEvent[]): SealedDeals => {
+  const fromBeacon: number[] = [];
+  const withoutBeacon: { hand: number; round: number }[] = [];
+  const plain: number[] = [];
+  let sealedDeal = false;
+
+  for (const event of events) {
+    if (RoomEvents.$is("DealtFromBeacon")(event)) {
+      fromBeacon.push(event.hand);
+      sealedDeal = true;
+    }
+
+    if (RoomEvents.$is("DealtWithoutBeacon")(event)) {
+      withoutBeacon.push({ hand: event.hand, round: event.round });
+      sealedDeal = true;
+    }
+
+    if (
+      RoomEvents.$is("Table")(event) &&
+      Events.$is("HandStarted")(event.event)
+    ) {
+      if (!sealedDeal) {
+        plain.push(event.event.handNumber);
+      }
+
+      sealedDeal = false;
+    }
+  }
+
+  return { fromBeacon, plain, withoutBeacon };
+};
+
+const checkFairness = (
+  checker: Checker,
+  evidence: NightEvidence,
+  events: readonly RoomEvent[]
+) => {
+  const fairness = emptyFairness();
+  const proofs: Proof[] = [];
+  const checkedHands = new Set<number>();
+  const now = wallClock();
+
+  for (const device of devicesOf(evidence)) {
+    const judged = judgeDevice(
+      device.label,
+      witnessFrom(device.arrivals),
+      evidence.code,
+      now
+    );
+
+    addFairness(fairness, judged.counts);
+    proofs.push(...judged.proofs);
+
+    for (const problem of judged.problems) {
+      report(checker, problem);
+    }
+
+    for (const hand of judged.checkedHands) {
+      checkedHands.add(hand);
+    }
+  }
+
+  const deals = sealedDealsIn(events);
+  const waits = waitBeyondPause(events);
+
+  fairness.sealedDeals += waits.length;
+  fairness.waitBeyondPauseMs += waits.reduce((total, wait) => total + wait, 0);
+
+  for (const hand of deals.fromBeacon) {
+    if (!checkedHands.has(hand)) {
+      report(checker, `no bot came back with hand ${hand} checked`);
+    }
+  }
+
+  for (const { hand, round } of deals.withoutBeacon) {
+    if (!beaconDown(round)) {
+      report(
+        checker,
+        `hand ${hand} was dealt as beacon round ${round} unavailable, and the test beacon was up`
+      );
+    }
+  }
+
+  if (evidence.checked && deals.plain.length > 0) {
+    report(
+      checker,
+      `hands ${deals.plain.join(",")} were dealt plain in a checked room`
+    );
+  }
+
+  return { fairness, proofs };
+};
+
 export const checkNight = (evidence: NightEvidence): NightVerdict => {
   const checker: Checker = {
     code: evidence.code,
@@ -1503,7 +1632,9 @@ export const checkNight = (evidence: NightEvidence): NightVerdict => {
     return {
       counts: checker.counts,
       deafReplyMs: deafReplyTimes(evidence.clients),
+      fairness: emptyFairness(),
       problems: checker.problems,
+      proofs: [],
       replayMs: 0,
       transfers: [],
       viewMs: 0,
@@ -1589,11 +1720,14 @@ export const checkNight = (evidence: NightEvidence): NightVerdict => {
   }
 
   const transfers = checkSettlement(checker, received.finals, ledger.net);
+  const fair = checkFairness(checker, evidence, events);
 
   return {
     counts: checker.counts,
     deafReplyMs: deafReplyTimes(evidence.clients),
+    fairness: fair.fairness,
     problems: checker.problems,
+    proofs: fair.proofs,
     replayMs,
     transfers,
     viewMs: ledger.viewMs,

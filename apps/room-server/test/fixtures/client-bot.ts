@@ -35,6 +35,7 @@ import type {
 import { clientWire, describeFrame, timeline } from "./client-wire.js";
 import type { Line, LineMode, Moment } from "./client-wire.js";
 import { pokerCodec, wallClock } from "./poker-socket.js";
+import type { Arrival } from "./poker-socket.js";
 import { socketUrl } from "./room-client.js";
 
 export interface PokerClientTypes {
@@ -138,6 +139,7 @@ export interface ClientBotRecord {
   readonly firstSeq: () => Option.Option<number>;
   readonly final: () => Option.Option<PokerClientState>;
   readonly frames: () => readonly string[];
+  readonly arrivals: () => readonly Arrival[];
   readonly opened: () => number;
   readonly latest: () => Option.Option<RoomView>;
   readonly lastSeq: () => number;
@@ -438,6 +440,7 @@ export const startClientBot = (setup: ClientBotSetup) => {
 
   const record: ClientBotRecord = {
     activity,
+    arrivals: wire.arrivals,
     commands,
     drops,
     final: () => current,

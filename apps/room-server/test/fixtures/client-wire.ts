@@ -3,7 +3,7 @@ import { PING_FRAME } from "@nostakes/protocol";
 import { Effect, Layer, Option, Result, Schema, Stream } from "effect";
 
 import { decodeServerFrame, pokerCodec, wallClock } from "./poker-socket.js";
-import type { PokerServerMessage } from "./poker-socket.js";
+import type { Arrival, PokerServerMessage } from "./poker-socket.js";
 import { TEST_ORIGIN } from "./toy-worker.js";
 
 export type LineMode = "Clear" | "BlackHole" | "Deaf";
@@ -99,6 +99,7 @@ export const clientWire = (journal: Timeline) => {
   const { note } = journal;
   const lines: Line[] = [];
   const frames: string[] = [];
+  const arrivals: Arrival[] = [];
   const batches: PastBatch[] = [];
   const echoes: string[] = [];
   let offline = false;
@@ -136,6 +137,10 @@ export const clientWire = (journal: Timeline) => {
       }
 
       frames.push(text);
+
+      for (const message of Option.toArray(decoded)) {
+        arrivals.push({ at: wallClock(), message, text });
+      }
 
       for (const { to } of Option.toArray(
         decoded.pipe(Option.filter(pokerCodec.server.guards.Events))
@@ -206,6 +211,7 @@ export const clientWire = (journal: Timeline) => {
   };
 
   return {
+    arrivals: (): readonly Arrival[] => arrivals,
     blackHole: () => {
       setMode("BlackHole");
     },

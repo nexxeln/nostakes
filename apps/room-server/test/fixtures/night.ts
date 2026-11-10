@@ -6,7 +6,8 @@ import {
 } from "@nostakes/protocol";
 import type { RoomCode, RoomPass } from "@nostakes/protocol";
 import { RoomSettingsSchema, RoomViews, TimeBankRefills } from "@nostakes/room";
-import type { RoomSettings, RoomView } from "@nostakes/room";
+import type { RoomSettings, RoomView, Shuffle } from "@nostakes/room";
+import { SEALING_MARGIN_MS } from "@nostakes/shuffle";
 import { Duration, Effect, Option, Schema } from "effect";
 
 import { handsSeen, randomSource, startBot } from "./bot.js";
@@ -27,6 +28,7 @@ import type { NightEvidence, NightVerdict } from "./night-checks.js";
 import { createPokerRoom, joinPokerRoom } from "./poker-http.js";
 import { wallClock } from "./poker-socket.js";
 import { inspect, queueCodes, restart } from "./stack.js";
+import { TEST_CHAIN } from "./test-beacon.js";
 
 type EncodedSettings = typeof RoomSettingsSchema.Encoded;
 
@@ -78,6 +80,9 @@ export class NightFailed extends Schema.TaggedError<
 }
 
 export const WATCHDOG_MARGIN_MS = 6000;
+
+export const SEALED_DEAL_WAIT_MS =
+  SEALING_MARGIN_MS + TEST_CHAIN.periodSeconds * 1000;
 
 export const CLOSE_GRACE_MS = 30_000;
 
@@ -177,6 +182,7 @@ export const RULES: readonly RuleChange[] = [
 ];
 
 export interface NightRecipe {
+  readonly shuffle: Shuffle;
   readonly handBudgetMs: number;
   readonly rotation: number;
   readonly betweenHandsSeconds: number;
@@ -248,6 +254,7 @@ export const planNight = (
       ? 9
       : random.between(Math.max(2, recipe.players), 9),
     showdownSeconds: random.between(1, 2),
+    shuffle: recipe.shuffle,
     sitOutAfterTimeouts: [1, 1, 1, 0, 2][random.below(5)] ?? 1,
     table: tableFrom(random, small),
     timeBankRefill:
@@ -273,7 +280,11 @@ export const planNight = (
     code: codeFrom(random),
     hands: recipe.hands,
     lateJoiners,
-    limitMs: recipe.hands * recipe.handBudgetMs + 60_000,
+    limitMs:
+      recipe.hands *
+        (recipe.handBudgetMs +
+          (recipe.shuffle === "Checked" ? SEALED_DEAL_WAIT_MS : 0)) +
+      60_000,
     players: recipe.players - (recipe.players > 2 ? 1 : 0),
     restartHands: Array.from({ length: recipe.restarts }, (_, index) =>
       Math.max(
@@ -333,7 +344,9 @@ const longestClockMs = (view: RoomView) =>
           ),
         view.settings.runChoiceSeconds,
         view.settings.betweenHandsSeconds
-      ) * 1000
+      ) *
+        1000 +
+      (view.settings.shuffle === "Checked" ? SEALED_DEAL_WAIT_MS : 0)
     : 0;
 
 const waitsForTheHost = (view: RoomView) =>
@@ -678,6 +691,7 @@ export const playNight = (base: string, opened: OpenedNight) =>
       events: inspection.events,
       evidence: {
         bots: records,
+        checked: plan.settings.shuffle === "Checked",
         clients,
         code: plan.code,
         events: inspection.events,

@@ -18,6 +18,13 @@ import type { Temper } from "../test/fixtures/bot.js";
 import type { ClientTemper } from "../test/fixtures/client-bot.js";
 import type { Moment } from "../test/fixtures/client-wire.js";
 import {
+  addFairness,
+  emptyFairness,
+  FAIRNESS_COUNT_NAMES,
+  proofRecord,
+} from "../test/fixtures/fair-checks.js";
+import type { FairnessCountName, Proof } from "../test/fixtures/fair-checks.js";
+import {
   COUNT_NAMES,
   DEAF_REPLY_BOUND_MS,
   emptyCounts,
@@ -83,6 +90,8 @@ const CHAOS: ClientTemper = {
 
 const HAND_BUDGET_MS = 12_000;
 
+const CHECKED_ROOMS_IN_TEN = 7;
+
 const LOOP_PROBE_MS = 100;
 
 const STALL_REPORT_MS = 500;
@@ -136,6 +145,12 @@ const describeStalls = (
       .join(", ")}`,
   ];
 };
+
+const FAIRNESS_EXPECTED: readonly FairnessCountName[] = [
+  "handsJudged",
+  "checkedInTime",
+  "plainHands",
+];
 
 const INFORMATIONAL: ReadonlySet<CountName> = new Set([
   "catchUpsSkipped",
@@ -199,9 +214,18 @@ const summarize = (
 
   const slowestDeafReply = Math.max(0, ...deafReplies);
 
-  const gaps = COUNT_NAMES.filter(
-    (name) => counts[name] === 0 && !INFORMATIONAL.has(name)
-  );
+  const fairness = emptyFairness();
+
+  for (const result of results) {
+    addFairness(fairness, result.verdict.fairness);
+  }
+
+  const gaps = [
+    ...COUNT_NAMES.filter(
+      (name) => counts[name] === 0 && !INFORMATIONAL.has(name)
+    ),
+    ...FAIRNESS_EXPECTED.filter((name) => fairness[name] === 0),
+  ];
 
   const lines = [
     `soak seed ${seed} summary`,
@@ -223,6 +247,7 @@ const summarize = (
     `  client wakes ${counts.clientWakes}, naps ${counts.clientNaps}, skipped ranges ${counts.clientSkippedRanges}, past batches echoed ${counts.clientEchoes}, events checked ${counts.clientEventsChecked}, views checked ${counts.clientViewsChecked}, unexpected refusals ${counts.clientUnexpectedRefusals}`,
     `  replay of the longest night (${longest?.plan.code ?? "none"}, ${longest?.verdict.counts.hands ?? 0} hands, ${longest?.verdict.counts.events ?? 0} events): ${(longest?.verdict.replayMs ?? 0).toFixed(1)} ms`,
     `  settlement transfers per room: ${results.map((result) => result.verdict.transfers.join(",")).join(" ")} (total ${counts.transfers})`,
+    `  fair shuffle, verdicts by the bots' devices: ${FAIRNESS_COUNT_NAMES.map((name) => `${name} ${fairness[name]}`).join(", ")}`,
     `  gaps (counts at zero): ${gaps.length === 0 ? "none" : gaps.join(", ")}`,
     ...failures.map((failure) => `  FAILED ${failure}`),
   ];
@@ -245,7 +270,12 @@ const timelineText = (night: OpenedNight) => {
   ].join("\n");
 };
 
-const saveLog = (seed: number, night: OpenedNight, events: readonly string[]) =>
+const saveLog = (
+  seed: number,
+  night: OpenedNight,
+  events: readonly string[],
+  proofs: readonly Proof[] = []
+) =>
   Effect.gen(function* writeLog() {
     const { plan } = night;
     const fs = yield* FileSystem.FileSystem;
@@ -265,6 +295,13 @@ const saveLog = (seed: number, night: OpenedNight, events: readonly string[]) =>
       `${directory}/${seed}-${plan.code}.timeline.txt`,
       timelineText(night)
     );
+
+    if (proofs.length > 0) {
+      yield* fs.writeFileString(
+        `${directory}/${seed}-${plan.code}.proofs.json`,
+        JSON.stringify(proofs.map(proofRecord), null, 2)
+      );
+    }
 
     return path;
   });
@@ -288,6 +325,7 @@ test(
           players: 2 + (index % 8),
           restarts: 2,
           rotation: index,
+          shuffle: index % 10 < CHECKED_ROOMS_IN_TEN ? "Checked" : "Plain",
           silences: 3,
           turnSeconds: index % 6 === 5 ? 0 : 1 + (index % 2),
         },
@@ -353,7 +391,12 @@ test(
       results.push(outcome.success);
 
       if (outcome.success.verdict.problems.length > 0) {
-        const path = yield* saveLog(seed, night, outcome.success.events);
+        const path = yield* saveLog(
+          seed,
+          night,
+          outcome.success.events,
+          outcome.success.verdict.proofs
+        );
 
         failures.push(
           `${plan.code} (seed ${plan.seed}): ${outcome.success.verdict.problems.join(" | ")} log ${path}`
