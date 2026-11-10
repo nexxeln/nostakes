@@ -140,4 +140,8 @@ export type { SealArrival, SealSeen, SealTiming } from "./timing.js";
 
 export { dealIndexOf, verifyHand } from "./verify.js";
 
+export { Deals, judgeHand, Verdicts } from "./verdict.js";
+
+export type { CheckedTiming, Deal, HandEvidence, Verdict } from "./verdict.js";
+
 export type { Verified } from "./verify.js";

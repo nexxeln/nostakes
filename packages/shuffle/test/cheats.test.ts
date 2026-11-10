@@ -2,26 +2,39 @@ import { describe, expect, it } from "@effect/vitest";
 import { Array as Arr, Option, Result } from "effect";
 
 import {
+  BEACON_WAIT_LIMIT_MS,
   BeaconRoundMismatch,
+  BeaconSignatureInvalid,
   CardSchema,
   CardSeenTwice,
   DealIndexSchema,
   dealingPlan,
+  Deals,
   DealtSeatsDiffer,
   DeckSchema,
+  EpochMillisSchema,
+  judgeHand,
   OpeningMismatch,
   openDeck,
+  PHONE_CLOCK_TOLERANCE_MS,
   RandomnessSchema,
+  roundTime,
   SaltSchema,
   SaltSecretSchema,
+  SEAL_DELIVERY_BUDGET_MS,
+  SealArrivals,
+  SealArrivedAfterRound,
   sealCards,
   sealDeck,
   sealHand,
+  sealsWithNoDeal,
   seedOf,
   sha256,
   ShownCardDiffers,
   SpareDeckMismatch,
   SpareDeckRepeatsCard,
+  verifyBeacon,
+  Verdicts,
   verifyHand,
   WrongPosition,
 } from "../src/index.js";
@@ -29,10 +42,15 @@ import type {
   Beacon,
   Deck,
   HandContext,
+  HandEvidence,
   PlayerSaw,
+  SealArrival,
   SealedHand,
+  SealSeen,
   Sighting,
+  Verdict,
 } from "../src/index.js";
+import { signingChain } from "./beacons.js";
 import { dealHonestly, sawOf } from "./hands.js";
 import type { HonestHand } from "./hands.js";
 
@@ -86,6 +104,41 @@ const board = (hand: HonestHand) =>
   Arr.range(0, 4).map((drawn) => dealtAt(hand, 2 * DEALT_IN + drawn));
 
 const RIVER = 2 * DEALT_IN + 4;
+
+const drand = signingChain("test beacon");
+
+const serversOwn = signingChain("a key the server holds");
+
+const dueAt = (round: number) => roundTime(drand.chain, round);
+
+const live = (millis: number): SealArrival =>
+  SealArrivals.Live({ at: EpochMillisSchema.make(millis) });
+
+const evidenceFor = (
+  hand: HonestHand,
+  signature: Uint8Array,
+  seen: readonly Sighting[],
+  sealArrival: SealArrival
+): HandEvidence => ({
+  chain: drand.chain,
+  context: hand.sealed.context,
+  deal: Deals.FromBeacon({
+    round: hand.beacon.round,
+    seats: hand.sealed.seal.seats,
+    sightings: seen,
+    signature,
+    spare: hand.spare,
+  }),
+  seal: hand.sealed.seal,
+  sealArrival,
+});
+
+const verdictTag = (verdict: Verdict) =>
+  Verdicts.$match(verdict, {
+    Checked: ({ timing }) => timing._tag,
+    Failed: ({ reason }) => reason,
+    NotChecked: ({ reason }) => reason,
+  });
 
 const beaconPicking = (sealed: SealedHand, slot: 0 | 1): Beacon => {
   for (let attempt = 0; ; attempt += 1) {
@@ -336,6 +389,135 @@ describe("planted cheats a beacon leaves the server", () => {
       ).toEqual(
         new DealtSeatsDiffer({ dealt: withoutSeatFive, sealed: SEATS })
       );
+    }
+  });
+
+  it("a beacon value the server made up fails for every player, though every card opens", () => {
+    const forged = serversOwn.sign(ROUND);
+
+    const beaconOfItsOwn = Result.getOrThrow(
+      verifyBeacon(serversOwn.chain, ROUND, forged)
+    );
+
+    const hand = dealHonestly(
+      sealHand(context, [sorted, reversed], secret, ROUND, SEATS),
+      beaconOfItsOwn
+    );
+
+    for (let turn = 0; turn < DEALT_IN; turn += 1) {
+      const seen = [...holeCardsOf(hand, turn), ...board(hand)];
+
+      expect(outcome(sawOf(hand, seen))).toBe("checked out");
+
+      expect(
+        verdictTag(
+          judgeHand(evidenceFor(hand, forged, seen, live(dueAt(ROUND) - 3000)))
+        )
+      ).toEqual(
+        new BeaconSignatureInvalid({
+          beaconId: drand.chain.beaconId,
+          round: ROUND,
+        })
+      );
+    }
+  });
+
+  it("a deck sealed after its round was out is never shown as sealed in time, and fails on a device that got it a second after", () => {
+    const signature = drand.sign(ROUND);
+
+    const beaconSeen = Result.getOrThrow(
+      verifyBeacon(drand.chain, ROUND, signature)
+    );
+
+    const stacked = dealHonestly(
+      sealHand(context, [sorted, reversed], secret, ROUND, SEATS),
+      beaconSeen
+    );
+
+    const sealArrives = dueAt(ROUND) + 300;
+
+    const verdicts = [-1000, -500, 0, 500, 699, 700, 1000].map((clockError) =>
+      verdictTag(
+        judgeHand(
+          evidenceFor(
+            stacked,
+            signature,
+            holeCardsOf(stacked, 0),
+            live(sealArrives + clockError)
+          )
+        )
+      )
+    );
+
+    const arrivedAfter = (clockError: number) =>
+      new SealArrivedAfterRound({
+        arrivedAt: sealArrives + clockError,
+        round: ROUND,
+        roundAt: dueAt(ROUND),
+        tolerance: PHONE_CLOCK_TOLERANCE_MS,
+      });
+
+    expect(verdicts).toEqual([
+      "TooCloseToCall",
+      "TooCloseToCall",
+      "TooCloseToCall",
+      "TooCloseToCall",
+      "TooCloseToCall",
+      arrivedAfter(700),
+      arrivedAfter(1000),
+    ]);
+  });
+
+  it("a sealed hand the server cancels after its round shows on every connected player's screen", () => {
+    const round = ROUND;
+    const due = dueAt(round);
+    const deadline = due + BEACON_WAIT_LIMIT_MS + SEAL_DELIVERY_BUDGET_MS;
+
+    const neverDealt: SealSeen = {
+      dealt: false,
+      hand: context.hand,
+      round,
+      withdrawn: Option.none(),
+    };
+
+    const calledOffLate: SealSeen = {
+      ...neverDealt,
+      withdrawn: Option.some(live(due + 2000)),
+    };
+
+    for (const clockError of [-1000, 0, 1000]) {
+      const now = EpochMillisSchema.make(
+        deadline + PHONE_CLOCK_TOLERANCE_MS + clockError + 1000
+      );
+
+      expect(
+        [neverDealt, calledOffLate].map((seen) =>
+          sealsWithNoDeal(drand.chain, now, [seen]).map(
+            ({ withdrawal }) => withdrawal
+          )
+        )
+      ).toEqual([["never"], ["after the round"]]);
+    }
+  });
+
+  it("a hand the server says it dealt without the beacon is never shown as checked to anyone", () => {
+    const hand = honest();
+
+    for (const arrival of [
+      live(dueAt(ROUND) - 3000),
+      live(dueAt(ROUND) + 5000),
+    ]) {
+      expect(
+        verdictTag(
+          judgeHand({
+            chain: drand.chain,
+            context,
+            deal: Deals.BeaconUnavailable({ round: ROUND }),
+            seal: hand.sealed.seal,
+            sealArrival: arrival,
+          })
+        )
+      ).toBe("beacon unavailable");
     }
   });
 });
