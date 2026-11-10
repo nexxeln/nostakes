@@ -36,6 +36,28 @@ pnpm --filter @nostakes/web exec playwright-core install --only-shell chromium
 pnpm --filter @nostakes/web verify
 ```
 
+## Smoke check
+
+The smoke check plays one short night against any running copy of the site: it loads the home page and a room link, opens a room, joins a second player, connects both sockets, plays one hand, closes the room, and reads the settlement twice.
+
+```sh
+pnpm smoke https://nostakes.club
+```
+
+It sends the base URL's own origin unless you pass `--origin=<origin>`. To run it against the production Worker on local workerd, as CI does:
+
+```sh
+pnpm build
+cd apps/room-server
+CLOUDFLARE_ACCOUNT_ID=00000000000000000000000000000000 pnpm exec alchemy dev --stage preview scripts/production.run.ts
+```
+
+Then, from the repository root in a second terminal, with the port that `alchemy dev` prints:
+
+```sh
+pnpm smoke http://localhost:1337 --origin=https://preview.nostakes.club
+```
+
 ## Commands
 
 - `pnpm dev`: run the room server and the web app locally
@@ -43,6 +65,7 @@ pnpm --filter @nostakes/web verify
 - `pnpm check`: typecheck, lint, and format check
 - `pnpm test`: build and run every test suite
 - `pnpm verify`: run the long-running verification scripts
+- `pnpm smoke <base-url>`: play one hand against a running site
 - `pnpm turbo run check test build`: the full gate that CI runs
 
 Read `AGENTS.md` before you change anything.

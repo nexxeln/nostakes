@@ -38,3 +38,40 @@ jobs:
           path: .turbo/runs/*.json
           include-hidden-files: true
           if-no-files-found: ignore
+
+  smoke:
+    name: smoke against local workerd
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      ALCHEMY_TELEMETRY_DISABLED: "1"
+      NO_COLOR: "1"
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Use Node.js 24.18.0
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24.18.0
+      - name: Enable corepack pnpm
+        run: corepack enable && corepack prepare pnpm@11.3.0 --activate
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Build every package and the web app
+        run: pnpm turbo run build
+      - name: Start the production stack on local workerd as the preview stage
+        working-directory: apps/room-server
+        env:
+          CLOUDFLARE_ACCOUNT_ID: "00000000000000000000000000000000"
+        run: |
+          pnpm exec alchemy dev --no-input --stage preview scripts/production.run.ts > "$RUNNER_TEMP/site.log" 2>&1 &
+          for attempt in $(seq 1 120); do
+            if grep -q "ready at http" "$RUNNER_TEMP/site.log"; then break; fi
+            sleep 1
+          done
+          grep -oE "ready at http://localhost:[0-9]+" "$RUNNER_TEMP/site.log" | head -n 1 | sed 's/^ready at /SITE_URL=/' >> "$GITHUB_ENV"
+      - name: Play one hand through the smoke check
+        run: pnpm smoke "$SITE_URL" --origin=https://preview.nostakes.club
+      - name: Show the local Worker's log
+        if: failure()
+        run: cat "$RUNNER_TEMP/site.log"

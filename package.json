@@ -15,6 +15,7 @@
     "format": "oxfmt",
     "format:check": "oxfmt --check",
     "prepare": "effect-tsgo patch && if git rev-parse --git-dir >/dev/null 2>&1; then lefthook install; fi",
+    "smoke": "node apps/room-server/scripts/smoke.ts",
     "test": "turbo run test",
     "typecheck": "turbo run typecheck typecheck-scripts",
     "typecheck:tsc": "turbo run typecheck:tsc typecheck:tsc-scripts",
