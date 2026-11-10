@@ -90,6 +90,7 @@ export interface Straddle {
 }
 
 export interface Hand {
+  readonly aggressor: Option.Option<SeatIndex>;
   readonly bigBlindSeat: SeatIndex;
   readonly board: readonly Card[];
   readonly deadMoney: Chips;

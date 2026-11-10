@@ -53,6 +53,7 @@ export const SessionSchema = Schema.Struct({
     Schema.isMaxLength(600)
   ),
   interactive: Schema.Boolean,
+  lastAggressorShows: Schema.Boolean,
   maxRuns: between(1, 4),
   rabbitHunt: Schema.Boolean,
   smallBlind: between(1, 10),
@@ -87,6 +88,9 @@ export const configOf = (source: Session): TableConfig =>
     rabbitHunt: source.rabbitHunt,
     runCount: source.fixedRuns ? "Fixed" : "Vote",
     showdown: source.interactive ? "Interactive" : "Automatic",
+    showdownOrder: source.lastAggressorShows
+      ? "LastAggressor"
+      : "RiverAggressor",
     smallBlind: chipCount(source.smallBlind),
     straddle: { button: source.button, underTheGun: source.underTheGun },
     straddleSize: source.straddlesDouble ? "Doubling" : "TwoBigBlinds",
@@ -103,6 +107,7 @@ const randomConfig = (random: SeededRandom): TableConfig => {
     rabbitHunt: random.chance(1, 2),
     runCount: random.chance(1, 4) ? "Fixed" : "Vote",
     showdown: random.chance(1, 2) ? "Interactive" : "Automatic",
+    showdownOrder: random.chance(1, 2) ? "LastAggressor" : "RiverAggressor",
     smallBlind: chipCount(small),
     straddle: { button: random.chance(1, 2), underTheGun: random.below(4) },
     straddleSize: random.chance(1, 3) ? "TwoBigBlinds" : "Doubling",

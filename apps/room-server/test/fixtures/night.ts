@@ -237,6 +237,7 @@ export const planNight = (
       rabbitHunt: random.chance(50),
       runCount: random.chance(25) ? "Fixed" : "Vote",
       showdown: random.chance(80) ? "Interactive" : "Automatic",
+      showdownOrder: random.chance(30) ? "LastAggressor" : "RiverAggressor",
       smallBlind: small,
       straddle: { button: random.chance(50), underTheGun: random.below(3) },
       straddleSize: random.chance(30) ? "TwoBigBlinds" : "Doubling",

@@ -148,6 +148,7 @@ const tableConfig = (random: Random): TableConfig => {
     rabbitHunt: random.chance(50),
     runCount: random.chance(25) ? "Fixed" : "Vote",
     showdown: random.chance(60) ? "Interactive" : "Automatic",
+    showdownOrder: random.chance(30) ? "LastAggressor" : "RiverAggressor",
     smallBlind: chips(smallBlind),
     straddle: {
       button: random.chance(50),

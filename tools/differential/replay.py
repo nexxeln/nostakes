@@ -148,6 +148,13 @@ EXCLUSIONS = {
         "run-out it may concede a pot it could have won, so that hand's awards are not "
         "compared either."
     ),
+    "showdown-order-last-aggressor": (
+        "With showdownOrder LastAggressor the last seat to bet or raise on any street "
+        "shows first. PokerKit starts with the last aggressor on the river only. When the "
+        "two orders differ, the show-or-muck order and the interactive choices are not "
+        "compared; the pots and awards still are, except after an interactive showdown, "
+        "whose choices PokerKit could not replay."
+    ),
     "odd-chip-spread": (
         "PokerKit gives a pot's whole remainder to the first run and to the first winner. "
         "Brief rules 17 and 22 hand leftover chips out one at a time. Awards and final "
@@ -769,6 +776,9 @@ class Hand:
         if self.river_call_for_raise:
             self.excluded.add("pokerkit-refuses-raise-nobody-can-call")
             self.stop("pokerkit-refuses-raise-nobody-can-call")
+        elif self.config.get("showdownOrder") == "LastAggressor":
+            self.excluded.add("showdown-order-last-aggressor")
+            self.stop("showdown-order-last-aggressor")
         else:
             self.differ("show-or-muck", f"engine showdown order {self.interactive}, pokerkit {pokerkit_order}")
             self.stop("show-or-muck")
@@ -904,6 +914,10 @@ class Hand:
         if engine_order != pokerkit_order:
             if self.river_call_for_raise:
                 self.excluded.add("pokerkit-refuses-raise-nobody-can-call")
+            elif self.config.get("showdownOrder") == "LastAggressor" and [s for s, _ in engine_order] != [
+                s for s, _ in pokerkit_order
+            ]:
+                self.excluded.add("showdown-order-last-aggressor")
             else:
                 self.differ("show-or-muck", f"engine {engine_order}, pokerkit {pokerkit_order}")
 

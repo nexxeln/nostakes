@@ -14,13 +14,13 @@ import {
   awardPart,
   rankOnBoard,
   shownAcrossRuns,
+  startingWith,
 } from "./showdown.js";
 import {
   Phases,
   activePlayers,
   isInHand,
   notFolded,
-  playersClockwiseAfter,
   updatePlayer,
   whenInHand,
   withHand,
@@ -158,7 +158,7 @@ const tabledFirst = (state: InHand, contenders: readonly HandPlayer[]) =>
     : [];
 
 export const runOut = (state: InHand, runs: RunCount): readonly Event[] => {
-  const contenders = playersClockwiseAfter(notFolded(state.hand), state.button);
+  const contenders = startingWith(state, Option.none());
   const pots = buildPots(state.hand);
   const parts = pots.map((pot) => splitEvenly(pot.amount, runs));
   const dealt = dealRuns(state.hand, runs);

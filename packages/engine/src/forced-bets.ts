@@ -303,6 +303,7 @@ export const beginHand = (
     button: event.button,
     config: state.config,
     hand: {
+      aggressor: Option.none(),
       bigBlindSeat: event.bigBlindSeat,
       board: [],
       deadMoney: NO_CHIPS,

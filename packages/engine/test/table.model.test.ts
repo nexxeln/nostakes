@@ -1,5 +1,5 @@
 import { describe, expect, it } from "@effect/vitest";
-import { Option, Result } from "effect";
+import { Match, Option, Result } from "effect";
 
 import {
   Actions,
@@ -27,6 +27,7 @@ import type {
   Event,
   LegalActions,
   SeatIndex,
+  ShowdownOrder,
   TableState,
 } from "../src/index.js";
 import { bankrollChange, chipCount, runCount, seat } from "./fixtures.js";
@@ -227,6 +228,97 @@ const cardsMadePublic = (event: Event): readonly Card[] => {
 
 const oddChipDistance = (button: number, seatIndex: number) =>
   (seatIndex - button + 8) % 9;
+
+interface OrderWatch {
+  readonly button: number;
+  readonly dealt: readonly number[];
+  readonly folded: ReadonlySet<number>;
+  readonly handOrder: ShowdownOrder;
+  readonly lastRaise: number;
+  readonly onRiver: boolean;
+  readonly order: ShowdownOrder;
+  readonly riverRaise: number;
+  readonly wrong: readonly string[];
+}
+
+const newOrderWatch = (order: ShowdownOrder): OrderWatch => ({
+  button: -1,
+  dealt: [],
+  folded: new Set(),
+  handOrder: order,
+  lastRaise: -1,
+  onRiver: false,
+  order,
+  riverRaise: -1,
+  wrong: [],
+});
+
+const firstShown = (event: Event): number | undefined => {
+  if (Events.$is("ShowdownStarted")(event)) {
+    return event.order[0];
+  }
+
+  return Events.$is("ShowdownReached")(event) && event.run === 1
+    ? event.order[0]?.seat
+    : undefined;
+};
+
+const expectedFirst = (watch: OrderWatch) => {
+  const contenders = [
+    ...watch.dealt.filter((seatIndex) => seatIndex > watch.button),
+    ...watch.dealt.filter((seatIndex) => seatIndex <= watch.button),
+  ].filter((seatIndex) => !watch.folded.has(seatIndex));
+
+  const aggressor =
+    watch.handOrder === "LastAggressor" ? watch.lastRaise : watch.riverRaise;
+
+  return contenders.includes(aggressor) ? aggressor : contenders[0];
+};
+
+const watchOrder = (watch: OrderWatch, event: Event): OrderWatch => {
+  const first = firstShown(event);
+
+  if (first !== undefined) {
+    const expected = expectedFirst(watch);
+
+    return first === expected
+      ? watch
+      : {
+          ...watch,
+          wrong: [
+            ...watch.wrong,
+            `${watch.handOrder}: ${first} showed first, expected ${expected}`,
+          ],
+        };
+  }
+
+  return Match.value(event).pipe(
+    Match.tag("RulesChanged", ({ config }) => ({
+      ...watch,
+      order: config.showdownOrder,
+    })),
+    Match.tag("HandStarted", (started) => ({
+      ...newOrderWatch(watch.order),
+      button: started.button,
+      dealt: started.dealtIn,
+      wrong: watch.wrong,
+    })),
+    Match.tag("Folded", ({ seat: folded }) => ({
+      ...watch,
+      folded: new Set([...watch.folded, folded]),
+    })),
+    Match.tag("StreetDealt", ({ street }) => ({
+      ...watch,
+      onRiver: watch.onRiver || street === "River",
+    })),
+    Match.tag("RaisedTo", ({ seat: raiser }) => ({
+      ...watch,
+      lastRaise: raiser,
+      riverRaise: watch.onRiver ? raiser : watch.riverRaise,
+    })),
+    Match.orElse(() => watch)
+  );
+};
 
 describe("generated sessions", () => {
   it.prop(
@@ -476,6 +568,20 @@ describe("generated sessions", () => {
           }
         }
       }
+    }
+  );
+
+  it.prop(
+    "showdown order: the first seat to show is the last seat to bet or raise, on the river or on any street as the rules say, when it is still in, and otherwise the first seat still in after the button",
+    { source: session },
+    ({ source }) => {
+      let watch = newOrderWatch(configOf(source).showdownOrder);
+
+      for (const event of playSession(source).events) {
+        watch = watchOrder(watch, event);
+      }
+
+      expect(watch.wrong).toStrictEqual([]);
     }
   );
 

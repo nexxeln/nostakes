@@ -166,6 +166,47 @@ describe("showdown order", () => {
   });
 });
 
+const raisedThenChecked = (config: TableConfig) =>
+  play(
+    startHand(
+      occupiedTable(config, { 0: 1000, 1: 1000, 2: 1000 }),
+      deckStartingWith(`As Ks 4s Ac 3c 5s ${THREE_HANDED_BOARD}`)
+    ).state,
+    [
+      [0, raisesTo(30)],
+      [1, calls],
+      [2, calls],
+      ...[1, 2, 3].flatMap(() => [
+        [1, checks] as const,
+        [2, checks] as const,
+        [0, checks] as const,
+      ]),
+    ]
+  ).events.find(Events.$is("ShowdownReached"));
+
+describe("showdown order by the last aggressor on any street", () => {
+  it("has the pre-flop raiser show first when every later street is checked", () => {
+    expect(
+      raisedThenChecked({ ...baseConfig, showdownOrder: "LastAggressor" })
+    ).toStrictEqual(
+      Events.ShowdownReached({
+        order: [
+          shown(0, "4s 5s", THREE_HANDED_BOARD),
+          shown(1, "As Ac", THREE_HANDED_BOARD),
+          mucked(2),
+        ],
+        run: 1,
+      })
+    );
+    expect(raisedThenChecked(baseConfig)).toStrictEqual(
+      Events.ShowdownReached({
+        order: [shown(1, "As Ac", THREE_HANDED_BOARD), mucked(2), mucked(0)],
+        run: 1,
+      })
+    );
+  });
+});
+
 describe("split pots", () => {
   it("splits a pot when the board plays and gives the odd chip to the first winner after the button (TDA Rule 20-A)", () => {
     const board = "As Ks Qs Js Ts";

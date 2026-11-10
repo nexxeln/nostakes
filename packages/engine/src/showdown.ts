@@ -43,9 +43,14 @@ export const rankOnBoard = (
 
 export const startingWith = (
   state: InHand,
-  lastAggressor: Option.Option<SeatIndex>
+  riverAggressor: Option.Option<SeatIndex>
 ) => {
   const contenders = notFolded(state.hand);
+
+  const lastAggressor =
+    state.config.showdownOrder === "LastAggressor"
+      ? state.hand.aggressor
+      : riverAggressor;
 
   const aggressor = lastAggressor.pipe(
     Option.filter((seat) => contenders.some((player) => player.seat === seat))

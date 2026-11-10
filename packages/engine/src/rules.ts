@@ -47,6 +47,13 @@ export const ShowdownRuleSchema = Schema.Literals(["Automatic", "Interactive"]);
 
 export type ShowdownRule = typeof ShowdownRuleSchema.Type;
 
+export const ShowdownOrderSchema = Schema.Literals([
+  "RiverAggressor",
+  "LastAggressor",
+]);
+
+export type ShowdownOrder = typeof ShowdownOrderSchema.Type;
+
 export const StraddleSizeSchema = Schema.Literals(["Doubling", "TwoBigBlinds"]);
 
 export type StraddleSize = typeof StraddleSizeSchema.Type;
@@ -93,6 +100,11 @@ export const TableConfigSchema = Schema.Struct({
     description:
       "Automatic shows the first hand and then each hand that can win or tie. Interactive asks each seat in turn to table or muck.",
     title: "Showdown",
+  }),
+  showdownOrder: setting(ShowdownOrderSchema, "RiverAggressor", {
+    description:
+      "Who shows first at a showdown. RiverAggressor: the last player to bet or raise on the river, or the first player still in after the button when nobody bet. LastAggressor: the last player to bet or raise on any street, or the first after the button when nobody did.",
+    title: "Who shows first",
   }),
   smallBlind: PositiveChipsSchema.annotate({
     description:

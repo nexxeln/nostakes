@@ -315,16 +315,23 @@ export const call = (state: TableState, event: EventOf<"Called">) =>
     })
   );
 
+const aggressed = (state: InHand, seat: SeatIndex): InHand =>
+  withHand(state, { ...state.hand, aggressor: Option.some(seat) });
+
 export const raise = (state: TableState, event: EventOf<"RaisedTo">) =>
   whenBetting(state, (inHand, betting) =>
-    afterAction(commit(inHand, event.seat, event.added, true), event.seat, {
-      actedAt: actedAt(betting, event.seat, event.to),
-      currentBet: event.to,
-      lastAggressor: Option.some(event.seat),
-      lastFullRaise: event.full
-        ? chips(event.to - betting.currentBet)
-        : betting.lastFullRaise,
-    })
+    afterAction(
+      aggressed(commit(inHand, event.seat, event.added, true), event.seat),
+      event.seat,
+      {
+        actedAt: actedAt(betting, event.seat, event.to),
+        currentBet: event.to,
+        lastAggressor: Option.some(event.seat),
+        lastFullRaise: event.full
+          ? chips(event.to - betting.currentBet)
+          : betting.lastFullRaise,
+      }
+    )
   );
 
 export const returnUncalled = (
