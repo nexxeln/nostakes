@@ -17,6 +17,7 @@ import {
   GREETING_TIMEOUT_MS,
   OVERDUE_GRACE_MS,
   PING_INTERVAL_MS,
+  REPLY_LAST_RESORT_MS,
   roomClient,
   SILENCE_LIMIT_MS,
   WAKE_PROBE_MS,
@@ -85,6 +86,8 @@ const busyTable = (open: FakeSocket, firstSeq: number) => {
 const ANSWER_LAG_MS = ANSWER_LIMIT_MS - 500;
 
 const UNANSWERED_AFTER_MS = ANSWER_LIMIT_MS + OVERDUE_GRACE_MS;
+
+const COMMAND_UNHEARD_AFTER_MS = ANSWER_LIMIT_MS + UNANSWERED_AFTER_MS;
 
 const harness = Effect.gen(function* harness() {
   const fake = yield* fakeTransport;
@@ -556,7 +559,7 @@ describe("room client against a fake socket", () => {
   );
 
   it.effect(
-    "a command nobody hears drops the connection at the answer limit while batches keep arriving, and its resend is answered once",
+    "a command nobody hears sends a probe at the answer limit, drops when the probe gets no pong even while batches keep arriving, and its resend is answered once",
     () =>
       Effect.gen(function* unheardCommand() {
         const { client, fake, greet, live, phase, socket } = yield* harness;
@@ -569,12 +572,18 @@ describe("room client against a fake socket", () => {
 
         yield* settle;
 
-        for (let second = 1; second < UNANSWERED_AFTER_MS / 1000; second += 1) {
+        for (
+          let second = 1;
+          second < COMMAND_UNHEARD_AFTER_MS / 1000;
+          second += 1
+        ) {
           yield* busy(1000);
         }
 
         yield* busy(999);
         expect(yield* phase).toBe("Live");
+        expect(tagsSent(first)).toEqual(["Hello", "Command", "Ping"]);
+        expect(first.sent.at(-1)?.at).toBe(ANSWER_LIMIT_MS);
 
         yield* advance(1);
 
@@ -583,14 +592,14 @@ describe("room client against a fake socket", () => {
         expect(dropped.connection).toBe("Waiting");
         expect(dropped.drop).toEqual(Option.some("Unanswered"));
         expect(dropped.pending).toEqual([issued.id]);
-        expect(dropped.seq).toEqual(Option.some(seqOf(7)));
+        expect(dropped.seq).toEqual(Option.some(seqOf(12)));
         expect(first.released()).toBe(true);
 
         yield* advance(125);
 
-        const second = yield* greet(1, 7);
+        const second = yield* greet(1, 12);
 
-        yield* second.push(serverText.reply(issued.id, 8));
+        yield* second.push(serverText.reply(issued.id, 13));
 
         const reply = yield* issued.reply;
 
@@ -616,6 +625,7 @@ describe("room client against a fake socket", () => {
         const issued = yield* client.issue(add(1));
 
         yield* settle;
+        yield* advance(ANSWER_LIMIT_MS);
         yield* advance(UNANSWERED_AFTER_MS);
         expect((yield* client.state).drop).toEqual(Option.some("Unanswered"));
 
@@ -625,6 +635,7 @@ describe("room client against a fake socket", () => {
 
         expect(commandIds(second)).toEqual([issued.id]);
 
+        yield* advance(ANSWER_LIMIT_MS);
         yield* advance(UNANSWERED_AFTER_MS - 1);
         expect(yield* phase).toBe("Live");
 
@@ -649,33 +660,32 @@ describe("room client against a fake socket", () => {
   );
 
   it.effect(
-    "a reply that reached the socket before the client noticed its deadline pass keeps the connection, because the client is slow to hand it the frame",
+    "a pong that reached the socket before the client noticed its deadline pass keeps the connection, because the client is slow to hand it the frame",
     () =>
       Effect.gen(function* answerStillInTheClient() {
-        const { client, fake, live, phase, socket } = yield* harness;
+        const { fake, live, phase, socket } = yield* harness;
 
         yield* live(1);
 
         const open = yield* socket(0);
-        const issued = yield* client.issue(add(1));
 
-        yield* advance(ANSWER_LIMIT_MS - 1);
+        yield* advance(PING_INTERVAL_MS + ANSWER_LIMIT_MS - 1);
         yield* open.hold;
-        yield* open.push(serverText.reply(issued.id, 2));
+        yield* open.push(serverText.pong());
         yield* advance(OVERDUE_GRACE_MS - 1);
         expect(yield* phase).toBe("Live");
 
         yield* open.handOver;
         yield* advance(OVERDUE_GRACE_MS * 3);
 
-        expect((yield* issued.reply)._tag).toBe("Accepted");
+        expect(tagsSent(open)).toEqual(["Hello", "Ping"]);
         expect(yield* phase).toBe("Live");
         expect(fake.sockets.length).toBe(1);
       }).pipe(Effect.scoped, lowestJitter)
   );
 
   it.effect(
-    "a reply held past the grace costs one reconnect: the command is resent once with the same id and the caller gets exactly one reply",
+    "a pong held past the grace costs one reconnect: the pending command is resent once with the same id and the caller gets exactly one reply",
     () =>
       Effect.gen(function* answerHeldTooLong() {
         const { client, fake, greet, live, phase, socket } = yield* harness;
@@ -685,10 +695,13 @@ describe("room client against a fake socket", () => {
         const first = yield* socket(0);
         const issued = yield* client.issue(add(1));
 
-        yield* advance(ANSWER_LIMIT_MS - 1);
+        yield* advance(ANSWER_LIMIT_MS);
+        expect(tagsSent(first)).toEqual(["Hello", "Command", "Ping"]);
+
         yield* first.hold;
+        yield* first.push(serverText.pong());
         yield* first.push(serverText.reply(issued.id, 2));
-        yield* advance(OVERDUE_GRACE_MS + 1);
+        yield* advance(UNANSWERED_AFTER_MS);
 
         const dropped = yield* client.state;
 
@@ -752,32 +765,75 @@ describe("room client against a fake socket", () => {
       }).pipe(Effect.scoped, lowestJitter)
   );
 
-  it.effect("a pong never stands in for the reply to a command", () =>
-    Effect.gen(function* pongIsNotAReply() {
-      const { client, live, phase, socket } = yield* harness;
+  it.effect(
+    "a late reply on a line that still pongs keeps the connection, shows the command as waiting for the table, and drops once at the last resort",
+    () =>
+      Effect.gen(function* slowTable() {
+        const { client, live, phase, socket } = yield* harness;
 
-      yield* live(1);
+        yield* live(1);
 
-      const open = yield* socket(0);
-      const issued = yield* client.issue(add(1));
+        const open = yield* socket(0);
+        const issued = yield* client.issue(add(1));
 
-      yield* settle;
-      yield* advance(1000);
-      yield* client.wake;
-      yield* settle;
-      yield* advance(500);
-      yield* open.push(serverText.pong());
-      yield* advance(UNANSWERED_AFTER_MS - 1501);
-      expect(tagsSent(open)).toEqual(["Hello", "Command", "Ping"]);
-      expect(yield* phase).toBe("Live");
+        yield* advance(ANSWER_LIMIT_MS);
+        expect(tagsSent(open)).toEqual(["Hello", "Command", "Ping"]);
+        expect((yield* client.state).waitingForTable).toEqual([issued.id]);
 
-      yield* advance(1);
+        yield* open.push(serverText.pong());
+        yield* advance(PING_INTERVAL_MS - ANSWER_LIMIT_MS);
+        expect(tagsSent(open)).toEqual(["Hello", "Command", "Ping", "Ping"]);
 
-      const state = yield* client.state;
+        yield* open.push(serverText.pong());
+        yield* advance(
+          REPLY_LAST_RESORT_MS + OVERDUE_GRACE_MS - PING_INTERVAL_MS - 1
+        );
 
-      expect(state.drop).toEqual(Option.some("Unanswered"));
-      expect(state.pending).toEqual([issued.id]);
-    }).pipe(Effect.scoped, lowestJitter)
+        const waiting = yield* client.state;
+
+        expect(waiting.connection).toBe("Live");
+        expect(waiting.waitingForTable).toEqual([issued.id]);
+
+        yield* advance(1);
+
+        const dropped = yield* client.state;
+
+        expect(dropped.drop).toEqual(Option.some("Unanswered"));
+        expect(dropped.pending).toEqual([issued.id]);
+        expect(dropped.waitingForTable).toEqual([]);
+        expect(yield* phase).toBe("Waiting");
+      }).pipe(Effect.scoped, lowestJitter)
+  );
+
+  it.effect(
+    "a reply that comes after the answer limit on a line that pongs is taken, and the connection stays",
+    () =>
+      Effect.gen(function* slowReply() {
+        const { client, fake, live, phase, socket } = yield* harness;
+
+        yield* live(1);
+
+        const open = yield* socket(0);
+        const issued = yield* client.issue(add(1));
+
+        yield* advance(ANSWER_LIMIT_MS);
+        yield* open.push(serverText.pong());
+        yield* advance(2000);
+        yield* open.push(serverText.reply(issued.id, 2));
+
+        expect((yield* issued.reply)._tag).toBe("Accepted");
+
+        yield* advance(PING_INTERVAL_MS - ANSWER_LIMIT_MS - 2000);
+        yield* open.push(serverText.pong());
+        yield* advance(REPLY_LAST_RESORT_MS);
+
+        const state = yield* client.state;
+
+        expect(state.waitingForTable).toEqual([]);
+        expect(state.pending).toEqual([]);
+        expect(yield* phase).toBe("Live");
+        expect(fake.sockets.length).toBe(1);
+      }).pipe(Effect.scoped, lowestJitter)
   );
 
   it.effect(
@@ -803,7 +859,8 @@ describe("room client against a fake socket", () => {
 
         expect((yield* first.reply)._tag).toBe("Accepted");
 
-        yield* advance(UNANSWERED_AFTER_MS - 1001);
+        yield* advance(ANSWER_LIMIT_MS + 2000 - 3000);
+        yield* advance(UNANSWERED_AFTER_MS - 1);
         expect(yield* phase).toBe("Live");
 
         yield* advance(1);
@@ -913,6 +970,7 @@ describe("room client against a fake socket", () => {
         ]);
         expect(second.sent.at(-1)?.at).toBe(resentAt);
 
+        yield* advance(ANSWER_LIMIT_MS);
         yield* advance(UNANSWERED_AFTER_MS - 1);
         expect(yield* phase).toBe("Live");
 
@@ -950,11 +1008,22 @@ describe("room client against a fake socket", () => {
 
         yield* advance(500);
         yield* open.push(serverText.pong());
-        yield* advance(UNANSWERED_AFTER_MS - 3001);
+        yield* advance(ANSWER_LIMIT_MS - 3001);
         expect(tagsSent(open)).toEqual(["Hello", "Command", "Ping", "Ping"]);
         expect(yield* Clock.currentTimeMillis).toBeGreaterThan(
           lastWakeAt + WAKE_PROBE_MS
         );
+        expect(yield* phase).toBe("Live");
+
+        yield* advance(1);
+        yield* advance(UNANSWERED_AFTER_MS - 1);
+        expect(tagsSent(open)).toEqual([
+          "Hello",
+          "Command",
+          "Ping",
+          "Ping",
+          "Ping",
+        ]);
         expect(yield* phase).toBe("Live");
 
         yield* advance(1);

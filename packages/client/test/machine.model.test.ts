@@ -17,6 +17,7 @@ import {
   NOTHING_OWED,
   OVERDUE_GRACE_MS,
   pongDeadline,
+  REPLY_LAST_RESORT_MS,
   replyDeadline,
   roomClientMachine,
   TIMERS,
@@ -119,8 +120,26 @@ const NAMED_FIRING: Record<NamedTimer, MachineEvent> = {
 
 const isNamedTimer = Schema.is(NamedTimerSchema);
 
-const firing = (id: string): MachineEvent =>
-  isNamedTimer(id) ? NAMED_FIRING[id] : { deadline: id, type: "Overdue" };
+const SAMPLE_ID = CommandIdSchema.make("x");
+
+const REPLY_PREFIX = replyDeadline(SAMPLE_ID).slice(0, -SAMPLE_ID.length);
+
+const firing = (id: string, snapshot: Snapshot): MachineEvent => {
+  if (isNamedTimer(id)) {
+    return NAMED_FIRING[id];
+  }
+
+  const late = snapshot.context.owed.late.some(
+    (owed) => replyDeadline(owed) === id
+  );
+
+  return id.startsWith(REPLY_PREFIX) && !late
+    ? {
+        id: CommandIdSchema.make(id.slice(REPLY_PREFIX.length)),
+        type: "ReplyLate",
+      }
+    : { deadline: id, type: "Overdue" };
+};
 
 const added = (total: number) =>
   ToyEventSchema.cases.Added.make({ amount: 1, total });
@@ -197,7 +216,7 @@ const STEP_EVENTS: Record<Step, (step: StepInput) => readonly MachineEvent[]> =
       const ids = timerIds(snapshot);
       const id = ids[pick % Math.max(1, ids.length)];
 
-      return id === undefined ? [] : [firing(id)];
+      return id === undefined ? [] : [firing(id, snapshot)];
     },
     Wake: () => [{ type: "Wake" }],
     Welcome: ({ snapshot }) => {
@@ -283,10 +302,18 @@ const checkOwed = (snapshot: Snapshot) => {
   ]);
 
   expect(owed.overdue.every((late) => owedFrames.has(late))).toBe(true);
+  expect(new Set(owed.late).size).toBe(owed.late.length);
+  expect(owed.late.every((id) => owed.replies.includes(id))).toBe(true);
+
+  const lateDeadlines = new Set(owed.late.map(replyDeadline));
 
   for (const id of answerTimers(owed)) {
+    const expectedDelay = lateDeadlines.has(id)
+      ? REPLY_LAST_RESORT_MS - ANSWER_LIMIT_MS
+      : ANSWER_LIMIT_MS;
+
     expect(timerDelays(snapshot)[id]).toBe(
-      id === TIMERS.overdue ? OVERDUE_GRACE_MS : ANSWER_LIMIT_MS
+      id === TIMERS.overdue ? OVERDUE_GRACE_MS : expectedDelay
     );
   }
 };
@@ -361,12 +388,14 @@ const checkStep = (
 
 interface Answers {
   readonly replies: Set<CommandId>;
+  readonly late: Set<CommandId>;
   readonly overdue: Set<string>;
   pings: number;
   pongs: number;
 }
 
 const noAnswersOwed = (): Answers => ({
+  late: new Set(),
   overdue: new Set(),
   pings: 0,
   pongs: 0,
@@ -393,7 +422,12 @@ const owe = (answers: Answers, before: Snapshot, event: MachineEvent) => {
 
   if (event.type === "Reply" || event.type === "Cancel") {
     answers.replies.delete(event.id);
+    answers.late.delete(event.id);
     answers.overdue.delete(replyDeadline(event.id));
+  }
+
+  if (event.type === "ReplyLate" && answers.replies.has(event.id)) {
+    answers.late.add(event.id);
   }
 
   if (event.type === "Pong" && answers.pongs < answers.pings) {
@@ -438,7 +472,17 @@ const replay = (history: readonly (readonly [Step, number])[]) => {
         sentOnThisSocket = new Map();
       }
 
+      const lateBefore = answers.late.size;
+
       owe(answers, snapshot, event);
+
+      const probes = transmitted(effects).filter(toyCodec.client.guards.Ping);
+
+      if (event.type === "ReplyLate") {
+        expect(probes.length).toBe(
+          lateBefore === 0 && answers.late.size === 1 ? 1 : 0
+        );
+      }
 
       if (!isLive(next)) {
         answers = noAnswersOwed();
@@ -571,13 +615,25 @@ describe("answer deadlines", () => {
     });
   });
 
-  it("a deadline that passes arms one grace, an answer inside the grace keeps the connection, and the grace running out drops it as unanswered with nothing owed after", () => {
-    const late = {
+  it("a late reply sends one probe and keeps the connection, its last resort arms one grace, an answer inside the grace keeps the connection, and the grace running out drops it as unanswered with nothing owed after", () => {
+    const lateReply = { id: commandC0, type: "ReplyLate" } as const;
+
+    const lastResort = {
       deadline: replyDeadline(commandC0),
       type: "Overdue",
     } as const;
 
-    const overdue = run([...LIVE_WITH_C0_OWED, late]);
+    const waiting = run([...LIVE_WITH_C0_OWED, lateReply]);
+
+    expect(waiting.matches({ Online: "Live" })).toBe(true);
+    expect(waiting.context.owed.late).toEqual([commandC0]);
+    expect(timerDelays(waiting)).toEqual({
+      [replyDeadline(commandC0)]: REPLY_LAST_RESORT_MS - ANSWER_LIMIT_MS,
+      ping: 15_000,
+      silence: 30_000,
+    });
+
+    const overdue = run([...LIVE_WITH_C0_OWED, lateReply, lastResort]);
 
     expect(overdue.matches({ Online: "Live" })).toBe(true);
     expect(timerDelays(overdue)).toEqual({
@@ -588,7 +644,8 @@ describe("answer deadlines", () => {
 
     const saved = run([
       ...LIVE_WITH_C0_OWED,
-      late,
+      lateReply,
+      lastResort,
       replyTo(run(LIVE_WITH_C0_OWED), commandC0),
     ]);
 
@@ -596,7 +653,12 @@ describe("answer deadlines", () => {
     expect(saved.context.owed).toEqual(NOTHING_OWED);
     expect(timerIds(saved).toSorted()).toEqual(["ping", "silence"]);
 
-    const dropped = run([...LIVE_WITH_C0_OWED, late, { type: "Unanswered" }]);
+    const dropped = run([
+      ...LIVE_WITH_C0_OWED,
+      lateReply,
+      lastResort,
+      { type: "Unanswered" },
+    ]);
 
     expect(dropped.matches("Waiting")).toBe(true);
     expect(dropped.context.drop).toEqual(Option.some("Unanswered"));

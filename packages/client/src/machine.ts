@@ -32,6 +32,7 @@ import {
   GREETING_TIMEOUT_MS,
   OVERDUE_GRACE_MS,
   PING_INTERVAL_MS,
+  REPLY_LAST_RESORT_MS,
   SILENCE_LIMIT_MS,
   WAKE_PROBE_MS,
 } from "./timing.js";
@@ -54,6 +55,7 @@ export const replyDeadline = (id: CommandId) => `reply ${id}`;
 export const pongDeadline = (ping: number) => `pong ${ping}`;
 
 export const NOTHING_OWED: Owed = {
+  late: [],
   overdue: [],
   pingsSent: 0,
   pongsHeard: 0,
@@ -76,6 +78,16 @@ const answered = (owed: Owed, deadline: string): Owed => ({
   ...owed,
   overdue: owed.overdue.filter((late) => late !== deadline),
 });
+
+const replyAnswered = (owed: Owed, id: CommandId): Owed =>
+  answered(
+    {
+      ...owed,
+      late: owed.late.filter((late) => late !== id),
+      replies: owed.replies.filter((owedId) => owedId !== id),
+    },
+    replyDeadline(id)
+  );
 
 const ConnectionInput = Schema.Struct({ url: Schema.String });
 
@@ -181,6 +193,7 @@ export const roomClientMachine = <T extends RoomTypes>(
         GreetingTimedOut: NoPayload,
         Overdue: types<{ readonly deadline: string }>(),
         PingDue: NoPayload,
+        ReplyLate: types<{ readonly id: CommandId }>(),
         RetryDue: NoPayload,
         Silent: NoPayload,
         Unanswered: NoPayload,
@@ -206,17 +219,9 @@ export const roomClientMachine = <T extends RoomTypes>(
     initial: "Idle",
     on: {
       Cancel: ({ context, event }, enq) => {
-        const deadline = replyDeadline(event.id);
+        const owed = replyAnswered(context.owed, event.id);
 
-        const owed = answered(
-          {
-            ...context.owed,
-            replies: context.owed.replies.filter((id) => id !== event.id),
-          },
-          deadline
-        );
-
-        enq.cancel(deadline);
+        enq.cancel(replyDeadline(event.id));
 
         if (owed.overdue.length === 0) {
           enq.cancel(TIMERS.overdue);
@@ -470,11 +475,9 @@ export const roomClientMachine = <T extends RoomTypes>(
                   return {};
                 }
 
-                const deadline = replyDeadline(event.id);
-
                 enq.raise(
-                  { deadline, type: "Overdue" },
-                  { delay: ANSWER_LIMIT_MS, id: deadline }
+                  { id: event.id, type: "ReplyLate" },
+                  { delay: ANSWER_LIMIT_MS, id: replyDeadline(event.id) }
                 );
 
                 return {
@@ -595,16 +598,7 @@ export const roomClientMachine = <T extends RoomTypes>(
                 }
 
                 const deadline = replyDeadline(event.id);
-
-                const owed = answered(
-                  {
-                    ...context.owed,
-                    replies: context.owed.replies.filter(
-                      (id) => id !== event.id
-                    ),
-                  },
-                  deadline
-                );
+                const owed = replyAnswered(context.owed, event.id);
 
                 enq.cancel(deadline);
 
@@ -622,6 +616,40 @@ export const roomClientMachine = <T extends RoomTypes>(
                   context: {
                     owed,
                     pending: withoutCommand(context.pending, event.id),
+                  },
+                };
+              },
+              ReplyLate: ({ context, event }, enq) => {
+                const deadline = replyDeadline(event.id);
+
+                enq.cancel(deadline);
+
+                const stillOwed =
+                  context.owed.replies.includes(event.id) &&
+                  !context.owed.late.includes(event.id);
+
+                if (!stillOwed) {
+                  return {};
+                }
+
+                if (context.owed.late.length === 0) {
+                  enq(transmitFrame, context.link, Frames.Ping.make({}));
+                }
+
+                enq.raise(
+                  { deadline, type: "Overdue" },
+                  {
+                    delay: REPLY_LAST_RESORT_MS - ANSWER_LIMIT_MS,
+                    id: deadline,
+                  }
+                );
+
+                return {
+                  context: {
+                    owed: {
+                      ...context.owed,
+                      late: [...context.owed.late, event.id],
+                    },
                   },
                 };
               },

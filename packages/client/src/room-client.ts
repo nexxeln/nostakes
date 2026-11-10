@@ -54,6 +54,7 @@ export interface ClientState<T extends RoomTypes> {
   readonly you: Option.Option<PlayerId>;
   readonly presence: readonly PlayerId[];
   readonly pending: readonly CommandId[];
+  readonly waitingForTable: readonly CommandId[];
   readonly failures: number;
   readonly retryDelayMs: Option.Option<number>;
   readonly drop: Option.Option<DropReason>;
@@ -162,6 +163,7 @@ export const roomClient = <T extends RoomTypes>(
             : Option.none(),
         seq: context.applied,
         view: context.view,
+        waitingForTable: context.owed.late,
         you: context.you,
       };
     };

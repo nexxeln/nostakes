@@ -16,6 +16,8 @@ export const ANSWER_LIMIT_MS = 5000;
 
 export const OVERDUE_GRACE_MS = 1000;
 
+export const REPLY_LAST_RESORT_MS = 20_000;
+
 export const WAKE_PROBE_MS = 2000;
 
 export const CLIENT_FRAME_BURST = FRAME_BURST - 2;
