@@ -16,7 +16,8 @@
     "phones": "node scripts/phones.ts",
     "shots": "node scripts/phone-shots.ts",
     "moments": "node scripts/moment-pictures.ts",
-    "keep": "node scripts/keep-pictures.ts"
+    "keep": "node scripts/keep-pictures.ts",
+    "night": "node scripts/night-pictures.ts"
   },
   "dependencies": {
     "@effect/platform-browser": "4.1.2",

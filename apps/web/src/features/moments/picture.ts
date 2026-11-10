@@ -1,229 +1,30 @@
-import { avatarFor, render } from "@nostakes/avatar";
 import type { Tier } from "@nostakes/room";
 
+import type { Theme } from "../model.js";
 import {
-  CARD_HEIGHT,
-  cardFaceMarks,
-  isSuitLetter,
-  rankLabel,
-} from "../card-art.js";
-import type { SuitLetter } from "../card-art.js";
-import type { Deck, Theme } from "../model.js";
-import { FRAME_SIZES } from "../pictures/paper.js";
-import type { PictureFrame } from "../pictures/paper.js";
+  CARD_RATIO,
+  ON_RED,
+  RED,
+  cardArt,
+  escaped,
+  faceArt,
+  markArt,
+  number,
+  paletteFor,
+  paperSvg,
+  part,
+  sheet,
+  titleSize,
+} from "../pictures/paper.js";
+import type { Palette, PictureLook } from "../pictures/paper.js";
 import { chipsText } from "./captions.js";
 import type { MomentPicture, PictureFace } from "./schema.js";
 
 export type { MomentPicture, PictureFace } from "./schema.js";
 
-export interface PictureLook {
-  readonly deck: Deck;
-  readonly fonts: string;
-  readonly frame: PictureFrame;
-  readonly theme: Theme;
-}
-
-const CARD_RATIO = CARD_HEIGHT / 100;
-
-interface Palette {
-  readonly card: string;
-  readonly dimCard: string;
-  readonly cardInk: string;
-  readonly cardRed: string;
-  readonly edge: string;
-  readonly face: string;
-  readonly felt: string;
-  readonly ink: string;
-  readonly muted: string;
-  readonly page: string;
-  readonly brandShadow: string;
-  readonly shadow: string;
-  readonly suits: Readonly<Record<SuitLetter, string>>;
-}
-
-const RED = "#ef5326";
-
-const ON_RED = "#fffaf3";
+export type { PictureLook } from "../pictures/paper.js";
 
 const SCRAP_COLOURS = ["#ef5326", "#3c67e8", "#f4b93c", "#00a768", "#f590b8"];
-
-const paletteFor = (theme: Theme, deck: Deck): Palette => {
-  const light = theme === "Light";
-  const cardInk = "#1d1c24";
-  const cardRed = "#dc3b2f";
-
-  return {
-    brandShadow: light ? "#f4b93c" : "#3c67e8",
-    card: light ? "#ffffff" : "#f7f3ea",
-    cardInk,
-    cardRed,
-    dimCard: light ? "#f7f3ec" : "#7a777a",
-    edge: light ? "rgb(255 255 255 / 0.7)" : "rgb(255 255 255 / 0.14)",
-    face: light ? "#fffdf8" : "#ece6da",
-    felt: light ? "#efe8dc" : "#201d29",
-    ink: light ? "#1f1c31" : "#f4efe6",
-    muted: light ? "#716a79" : "#9c95a8",
-    page: light ? "#f6f1e8" : "#16141d",
-    shadow: light ? "rgb(40 24 70 / 0.32)" : "rgb(0 0 0 / 0.62)",
-    suits:
-      deck === "FourColour"
-        ? { c: "#22955a", d: "#2f63d8", h: "#e0402f", s: cardInk }
-        : { c: cardInk, d: cardRed, h: cardRed, s: cardInk },
-  };
-};
-
-const part = (role: string, index: number, inner: string) =>
-  inner.length === 0
-    ? ""
-    : `<g class="part" data-part="${role}" data-index="${index}">${inner}</g>`;
-
-const escaped = (text: string) =>
-  text
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;");
-
-const number = (value: number) => Number(value.toFixed(2));
-
-const sheet = (
-  palette: Palette,
-  box: {
-    readonly fill: string;
-    readonly height: number;
-    readonly lift: number;
-    readonly radius: number;
-    readonly width: number;
-    readonly x: number;
-    readonly y: number;
-  }
-) => {
-  const step = Math.max(1.4, box.lift);
-  const { height, radius, width, x, y } = box;
-
-  return [
-    `<rect x="${number(x + step * 0.55)}" y="${number(y + step)}" width="${width}" height="${height}" rx="${radius}" fill="${palette.shadow}"/>`,
-    `<rect x="${number(x - 0.6)}" y="${number(y - 0.8)}" width="${width}" height="${height}" rx="${radius}" fill="${palette.edge}"/>`,
-    `<rect x="${x}" y="${y}" width="${width}" height="${height}" rx="${radius}" fill="${box.fill}"/>`,
-  ].join("");
-};
-
-const DIM_MARKS = 0.42;
-
-const cardArt = (
-  palette: Palette,
-  card: string,
-  place: {
-    readonly dim: boolean;
-    readonly lift?: number;
-    readonly turn: number;
-    readonly width: number;
-    readonly x: number;
-    readonly y: number;
-  }
-) => {
-  const rank = rankLabel(card.charAt(0));
-  const suit = card.charAt(1);
-  const { width, x, y } = place;
-  const height = width * CARD_RATIO;
-  const marks = isSuitLetter(suit) ? cardFaceMarks(rank, suit) : "";
-  const colour = isSuitLetter(suit) ? palette.suits[suit] : palette.cardInk;
-
-  return [
-    `<g transform="rotate(${place.turn} ${number(x + width / 2)} ${number(y + height / 2)})">`,
-    sheet(palette, {
-      fill: place.dim ? palette.dimCard : palette.card,
-      height,
-      lift: width * (place.lift ?? 0.035),
-      radius: width * 0.11,
-      width,
-      x,
-      y,
-    }),
-    `<svg x="${number(x)}" y="${number(y)}" width="${number(width)}" height="${number(height)}" viewBox="0 0 100 ${CARD_HEIGHT}" fill="${colour}"${place.dim ? ` opacity="${DIM_MARKS}"` : ""} font-family="DM Sans, Figtree, sans-serif" font-weight="800">${marks}</svg>`,
-    "</g>",
-  ].join("");
-};
-
-const NAME_WIDTH = 0.6;
-
-const nameArt = (
-  palette: Palette,
-  face: PictureFace,
-  place: {
-    readonly size: number;
-    readonly tagged: boolean;
-    readonly x: number;
-    readonly y: number;
-  }
-) => {
-  const { size, x, y } = place;
-  const font = number(Math.max(34, size * 0.12));
-  const middle = number(x + size / 2);
-  const baseline = number(y + size + size * 0.17);
-
-  const text = (fill: string) =>
-    `<text x="${middle}" y="${baseline}" text-anchor="middle" font-family="Figtree, sans-serif" font-weight="700" font-size="${font}" fill="${fill}">${escaped(face.name)}</text>`;
-
-  if (!place.tagged) {
-    return text(palette.ink);
-  }
-
-  const width = face.name.length * font * NAME_WIDTH + font * 1.1;
-
-  return [
-    sheet(palette, {
-      fill: RED,
-      height: font * 1.5,
-      lift: 3,
-      radius: font * 0.36,
-      width: number(width),
-      x: number(x + size / 2 - width / 2),
-      y: number(baseline - font * 1.08),
-    }),
-    text(ON_RED),
-  ].join("");
-};
-
-const faceArt = (
-  palette: Palette,
-  face: PictureFace,
-  theme: Theme,
-  place: {
-    readonly size: number;
-    readonly tagged: boolean;
-    readonly x: number;
-    readonly y: number;
-  }
-) => {
-  const { size, x, y } = place;
-
-  const art = render(avatarFor(face.avatar), {
-    expression: face.expression,
-    size: size * 0.84,
-    theme,
-  }).replace(
-    /^<svg /u,
-    `<svg x="${number(x + size * 0.08)}" y="${number(y + size * 0.1)}" `
-  );
-
-  return [
-    sheet(palette, {
-      fill: palette.face,
-      height: size,
-      lift: size * 0.02,
-      radius: size * 0.13,
-      width: size,
-      x,
-      y,
-    }),
-    art,
-    nameArt(palette, face, place),
-  ].join("");
-};
-
-const titleSize = (title: string, room: number, largest: number) =>
-  Math.min(largest, room / Math.max(1, title.length * 0.56));
 
 const titleArt = (
   palette: Palette,
@@ -309,15 +110,6 @@ const potArt = (
     `<text x="${place.x + 100}" y="${place.y + 68}" font-family="DM Sans, Figtree, sans-serif" font-weight="800" font-size="58" fill="${ON_RED}">${text}</text>`,
   ].join("");
 };
-
-const markArt = (
-  palette: Palette,
-  place: { readonly x: number; readonly y: number }
-) =>
-  [
-    `<text x="${place.x + 3}" y="${place.y + 3}" text-anchor="end" font-family="DM Sans, Figtree, sans-serif" font-weight="800" font-size="40" letter-spacing="-1.4" fill="${palette.brandShadow}">nostakes</text>`,
-    `<text x="${place.x}" y="${place.y}" text-anchor="end" font-family="DM Sans, Figtree, sans-serif" font-weight="800" font-size="40" letter-spacing="-1.4" fill="${palette.ink}">nostakes</text>`,
-  ].join("");
 
 const boardArt = (
   palette: Palette,
@@ -484,50 +276,29 @@ const lineArt = (
     .join("");
 };
 
-const fontsFor = (fonts: string) =>
-  fonts.length > 0 ? `<style>${fonts}</style>` : "";
-
 export const pictureSvg = (picture: MomentPicture, look: PictureLook) => {
   const palette = paletteFor(look.theme, look.deck);
-  const { height, width } = FRAME_SIZES[look.frame];
-  const top = (height - FRAME_SIZES.Chat.height) / 2;
   const duel = picture.faces.length >= 2;
-  const table = look.frame === "Table";
 
-  const body = [
-    table
-      ? ""
-      : `<rect x="0" y="${-top}" width="${width}" height="${height}" fill="${palette.page}"/>`,
-    part(
-      "felt",
-      0,
-      sheet(palette, {
-        fill: palette.felt,
-        height: 1350 - 96,
-        lift: 5,
-        radius: 44,
-        width: 1080 - 96,
-        x: 48,
-        y: 48,
-      })
-    ),
-    confetti(picture, 1080, 1350),
-    part("title", 0, titleArt(palette, picture, { room: 900, x: 90, y: 262 })),
-    part("line", 0, lineArt(palette, picture.line, { x: 92, y: 342 })),
-    duel
-      ? duelBody(palette, picture, look.theme)
-      : soloBody(palette, picture, look.theme),
-    part("pot", 0, potArt(palette, picture.pot, { x: 90, y: 1190 })),
-    picture.also.length > 0
-      ? `<text class="part" data-part="also" data-index="0" x="${1080 - 92}" y="1226" text-anchor="end" font-family="Figtree, sans-serif" font-weight="700" font-size="34" fill="${palette.muted}">${escaped(picture.also)}</text>`
-      : "",
-    part("mark", 0, markArt(palette, { x: 1080 - 92, y: 1278 })),
-  ].join("");
-
-  return [
-    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}">`,
-    fontsFor(look.fonts),
-    `<g transform="translate(0 ${top})">${body}</g>`,
-    "</svg>",
-  ].join("");
+  return paperSvg(
+    palette,
+    look,
+    [
+      confetti(picture, 1080, 1350),
+      part(
+        "title",
+        0,
+        titleArt(palette, picture, { room: 900, x: 90, y: 262 })
+      ),
+      part("line", 0, lineArt(palette, picture.line, { x: 92, y: 342 })),
+      duel
+        ? duelBody(palette, picture, look.theme)
+        : soloBody(palette, picture, look.theme),
+      part("pot", 0, potArt(palette, picture.pot, { x: 90, y: 1190 })),
+      picture.also.length > 0
+        ? `<text class="part" data-part="also" data-index="0" x="${1080 - 92}" y="1226" text-anchor="end" font-family="Figtree, sans-serif" font-weight="700" font-size="34" fill="${palette.muted}">${escaped(picture.also)}</text>`
+        : "",
+      part("mark", 0, markArt(palette, { x: 1080 - 92, y: 1278 })),
+    ].join("")
+  );
 };

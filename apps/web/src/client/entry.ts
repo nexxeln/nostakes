@@ -34,3 +34,7 @@ defineTable();
 const { defineMoment } = await import("./moments/element.js");
 
 defineMoment();
+
+const { defineKeep } = await import("./pictures/element.js");
+
+defineKeep();

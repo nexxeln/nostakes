@@ -27,6 +27,8 @@ import type { HaltedStanding, InRoom, Model } from "./model.js";
 import { momentElement } from "./moments/element.js";
 import { handEnded } from "./moments/watch.js";
 import { updateLine } from "./page-update.js";
+import { KeepPictureSchema, keepElement } from "./pictures/keep.js";
+import { settleUpCardOf } from "./pictures/settle-up.js";
 import { hasLeft, isLive, isYou, nameOf, openViewOf, viewOf } from "./room.js";
 import type { ClosedView, OpenView } from "./room.js";
 import { rulesSheet } from "./rules-view.js";
@@ -472,7 +474,27 @@ const openRoomView = (
     ]
   );
 
-const closedRoomView = (room: InRoom, view: ClosedView, h: H): Html => {
+const settleUpKeep = (model: Model, view: ClosedView, h: H): Html => {
+  const keep = keepElement.withMessage(h);
+
+  return keep(
+    [
+      h.Class("keep-row"),
+      keep.Picture(KeepPictureSchema.cases.SettleUp.make(settleUpCardOf(view))),
+      keep.Theme(pageTheme(model)),
+      keep.Deck(model.deck),
+      keep.Label("Share as a picture"),
+    ],
+    []
+  );
+};
+
+const closedRoomView = (
+  model: Model,
+  room: InRoom,
+  view: ClosedView,
+  h: H
+): Html => {
   const name = (player: PlayerId) => nameOf(view, player);
 
   return h.section(
@@ -508,13 +530,14 @@ const closedRoomView = (room: InRoom, view: ClosedView, h: H): Html => {
               )
             )
       ),
+      settleUpKeep(model, view, h),
       h.button(
         [
           h.Type("button"),
-          h.Class("button primary"),
+          h.Class("button"),
           h.OnClick(Messages.ClickedCopySettlement()),
         ],
-        [room.copied === "Settlement" ? "Copied" : "Copy for the group chat"]
+        [room.copied === "Settlement" ? "Copied" : "Copy as text"]
       ),
       h.button(
         [
@@ -684,7 +707,7 @@ export const roomView = (model: Model, room: InRoom, h: H): Html => {
                 : h.p([h.Class("muted opening")], ["Opening the room…"]),
             onSome: (current) =>
               RoomViews.$match(current, {
-                Closed: (closed) => closedRoomView(room, closed, h),
+                Closed: (closed) => closedRoomView(model, room, closed, h),
                 Open: (live) =>
                   hasLeft(live)
                     ? leftRoomView(live, h)

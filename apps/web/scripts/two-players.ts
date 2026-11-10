@@ -7,6 +7,7 @@ import type { Browser, Page } from "playwright-core";
 
 import { localRoomServer, localWebApp, mutedBrowser } from "./local-site.ts";
 import { watchPages } from "./page-evidence.ts";
+import { SHARE_STUB } from "./share-stub.ts";
 
 const WEB_PORT = 5199;
 
@@ -642,6 +643,94 @@ const calmDeck = (page: Page) =>
       : Effect.succeed(deck ?? "");
   });
 
+const NIGHT_OVER = "The night is over";
+
+const settles = (
+  pages: readonly Page[],
+  left: number
+): Effect.Effect<void, NightFailed> =>
+  attempt("wait for the night to close", () =>
+    Promise.all(
+      pages.map((page) => page.getByText(NIGHT_OVER).waitFor({ timeout: 5000 }))
+    )
+  ).pipe(
+    Effect.asVoid,
+    Effect.catchTag("NightFailed", (failure) =>
+      left <= 0
+        ? Effect.fail(failure)
+        : whoseTurn(pages).pipe(
+            Effect.flatMap((page) =>
+              drag(page, HAND, 170, "fold the hand in play so the night ends")
+            ),
+            Effect.andThen(Effect.suspend(() => settles(pages, left - 1)))
+          )
+    )
+  );
+
+const endsTheNight = (ana: Page, ben: Page) =>
+  Effect.gen(function* endTheNight() {
+    yield* click(ana, "Ana opens the menu", "Menu");
+    yield* click(ana, "Ana asks to end the night", "End the night");
+    yield* attempt("Ana confirms the end of the night", () =>
+      ana
+        .locator(".sheet .button.danger")
+        .filter({ hasText: "End the night" })
+        .click()
+    );
+    yield* settles([ana, ben], 4);
+  });
+
+const SettleSharedSchema = Schema.Array(
+  Schema.Struct({ name: Schema.String, sameTask: Schema.Boolean })
+);
+
+const sharesTheSettleUp = (page: Page) =>
+  Effect.gen(function* shareTheSettleUp() {
+    yield* attempt("stub the share sheet", () => page.evaluate(SHARE_STUB));
+    yield* attempt("draw the settle-up picture before any tap", () =>
+      page
+        .locator('nostakes-keep[data-drawn="Chat Story"]')
+        .waitFor({ state: "attached", timeout: 30_000 })
+    );
+    yield* shoot(page, "settled.png");
+    yield* attempt("tap Share as a picture", () =>
+      page.locator("nostakes-keep .keep").click()
+    );
+    yield* attempt("hand the picture to the share sheet", () =>
+      page.waitForFunction("window.__shared.length >= 1", undefined, {
+        timeout: 10_000,
+      })
+    );
+
+    const shared = yield* attempt("read what was shared", () =>
+      page.evaluate<string>("JSON.stringify(window.__shared)")
+    ).pipe(
+      Effect.flatMap(
+        Schema.decodeEffect(Schema.fromJsonString(SettleSharedSchema))
+      ),
+      Effect.catchTag("SchemaError", (failure) =>
+        Effect.fail(
+          new NightFailed({
+            detail: failure.message,
+            step: "read what was shared",
+          })
+        )
+      )
+    );
+
+    const [first] = shared;
+
+    yield* holds(
+      first !== undefined &&
+        first.name === "nostakes-settle-up.png" &&
+        first.sameTask,
+      new NightFailed({
+        detail: `the share sheet got ${JSON.stringify(shared)}`,
+        step: "share the settle-up picture from inside the tap",
+      })
+    );
+  });
+
 const night = Effect.gen(function* playOneHand() {
   const firstDeploy = yield* Scope.make();
 
@@ -813,6 +902,12 @@ const night = Effect.gen(function* playOneHand() {
   );
   yield* Console.log(
     `the pages sent their device ids and ${traffic.reports.length} reports, all accepted`
+  );
+  yield* endsTheNight(ana, ben);
+  yield* Console.log("Ana ends the night and both players see the settle-up");
+  yield* sharesTheSettleUp(ben);
+  yield* Console.log(
+    "Ben's settle-up picture was drawn before his tap and shared inside it"
   );
 });
 
