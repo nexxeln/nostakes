@@ -74,9 +74,8 @@ const rankInHand = (hand: Hand, player: HandPlayer) =>
 const hasEntry = (entries: readonly ShowdownEntry[], seat: SeatIndex) =>
   entries.some((entry) => entry.seat === seat);
 
-export interface Standing {
+interface Standing {
   readonly beatenInEveryPot: boolean;
-  readonly contested: boolean;
   readonly winsPot: Option.Option<number>;
 }
 
@@ -100,7 +99,6 @@ const standingAgainst = (
     return [
       {
         beaten: rivals.some((rival) => rival > rank),
-        contested: claimants.length > 1,
         pot: index + 1,
         wins: rivals.length > 0 && rivals.every((rival) => rival <= rank),
       },
@@ -109,12 +107,11 @@ const standingAgainst = (
 
   return {
     beatenInEveryPot: claimed.every((pot) => pot.beaten),
-    contested: claimed.some((pot) => pot.contested),
     winsPot: Option.fromUndefinedOr(claimed.find((pot) => pot.wins)?.pot),
   };
 };
 
-export const standingOf = (
+const standingOf = (
   hand: Hand,
   entries: readonly ShowdownEntry[],
   player: HandPlayer
