@@ -432,26 +432,34 @@ export const runNight = (base: string, opened: OpenedNight) =>
       );
     };
 
-    const troubleAt = (now: number, hands: number) => {
-      const reported = clients.flatMap((client) => client.problems).at(0);
-
-      if (reported !== undefined) {
-        return Option.some(`a client bot failed: ${reported}`);
-      }
-
-      return now - started > plan.limitMs
-        ? Option.some(
-            `the night reached ${hands} of ${plan.hands} hands in ${plan.limitMs} ms`
-          )
-        : Option.none();
-    };
-
     const unsettledClients = () =>
       clients.flatMap((client) =>
         Option.toArray(client.unsettled()).map(
           (why) => `${client.label} ${why}`
         )
       );
+
+    let handsReached = 0;
+
+    const troubleAt = (now: number, hands: number) => {
+      const reported = clients.flatMap((client) => client.problems).at(0);
+
+      handsReached = Math.max(handsReached, hands);
+
+      if (reported !== undefined) {
+        return Option.some(`a client bot failed: ${reported}`);
+      }
+
+      const unsettled = control.closing
+        ? `, and these client bots were not yet live with nothing pending: ${unsettledClients().join("; ") || "none"}`
+        : "";
+
+      return now - started > plan.limitMs
+        ? Option.some(
+            `the night reached ${handsReached} of ${plan.hands} hands in ${plan.limitMs} ms${unsettled}`
+          )
+        : Option.none();
+    };
 
     let settlingSince = Option.none<number>();
 
