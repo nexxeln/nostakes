@@ -471,11 +471,26 @@ export const menuSheet = (
     sheetTop(h, codeButton(room, h)),
     stuckBlock(view, h),
     ...approvals(room, view, h),
-    ...seatBlock(model, room, view, h),
-    hostStrip(room, view, h),
-    rulesCard(view, h),
-    peopleList(view, presence, pageTheme(model), h),
-    menuFoot(model, view, h),
+    h.div(
+      [h.Class("menu-columns")],
+      [
+        h.div(
+          [h.Class("menu-column")],
+          [
+            ...seatBlock(model, room, view, h),
+            hostStrip(room, view, h),
+            rulesCard(view, h),
+          ]
+        ),
+        h.div(
+          [h.Class("menu-column")],
+          [
+            peopleList(view, presence, pageTheme(model), h),
+            menuFoot(model, view, h),
+          ]
+        ),
+      ]
+    ),
   ]);
 
 const holdsUpTheGame = (view: OpenView, player: PlayerId) =>

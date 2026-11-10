@@ -1033,6 +1033,30 @@ html:has(.room) {
   gap: var(--space-3);
 }
 
+.menu-columns,
+.menu-column {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+@media (orientation: landscape) and (max-height: 32rem) {
+  .sheet.menu-sheet {
+    max-width: min(52rem, 100%);
+    max-height: calc(100dvh - var(--space-5));
+  }
+
+  .menu-columns {
+    flex-direction: row;
+    gap: var(--space-5);
+  }
+
+  .menu-column {
+    flex: 1;
+    min-width: 0;
+  }
+}
+
 .seat-card {
   display: flex;
   align-items: center;
