@@ -195,7 +195,9 @@ test(
       })
     );
 
-    const replies = yield* Effect.all(players.map(sendAll), {
+    const senders = players.map(sendAll);
+
+    const replies = yield* Effect.all(senders, {
       concurrency: "unbounded",
     }).pipe(Effect.timeout("60 seconds"), Effect.orDie);
 
@@ -233,7 +235,9 @@ test(
       })
     );
 
-    const replies = yield* Effect.all(players.map(sendAll), {
+    const senders = players.map(sendAll);
+
+    const replies = yield* Effect.all(senders, {
       concurrency: "unbounded",
     }).pipe(Effect.timeout("60 seconds"), Effect.orDie);
 
