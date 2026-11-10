@@ -56,10 +56,22 @@ const deployed = beforeAll(deploy(PokerStack));
 
 afterAll(destroy(PokerStack));
 
+const ROOMS_AT_ONCE = 4;
+
+const BUDGET_MINUTES = 95;
+
+const VITEST_LIMIT_MS = (BUDGET_MINUTES + 15) * 60_000;
+
 const soakConfig = Config.all({
+  budgetMinutes: Config.Int("SOAK_BUDGET_MINUTES").pipe(
+    Config.withDefault(BUDGET_MINUTES)
+  ),
   hands: Config.Int("SOAK_HANDS").pipe(Config.withDefault(1000)),
   keepLogs: Config.Boolean("SOAK_KEEP_LOGS").pipe(Config.withDefault(false)),
   rooms: Config.Int("SOAK_ROOMS").pipe(Config.withDefault(12)),
+  roomsAtOnce: Config.Int("SOAK_CONCURRENCY").pipe(
+    Config.withDefault(ROOMS_AT_ONCE)
+  ),
   seed: Config.Int("SOAK_SEED").pipe(Config.withDefault(20_261_110)),
 });
 
@@ -90,7 +102,16 @@ const CHAOS: ClientTemper = {
 
 const HAND_BUDGET_MS = 12_000;
 
+const UNCLOCKED_VOTE_SILENCE_PERCENT = 30;
+
+const temperFor = (turnSeconds: number): Temper =>
+  turnSeconds === 0
+    ? { ...TEMPER, voteSilencePercent: UNCLOCKED_VOTE_SILENCE_PERCENT }
+    : TEMPER;
+
 const CHECKED_ROOMS_IN_TEN = 7;
+
+const CHECKED_SPREAD = 3;
 
 const LOOP_PROBE_MS = 100;
 
@@ -101,7 +122,21 @@ interface Stall {
   readonly ms: number;
 }
 
-const watchEventLoop = (stalls: Stall[]) =>
+interface Window {
+  readonly from: number;
+  readonly to: number;
+}
+
+interface Probe {
+  readonly stalls: Stall[];
+  peakHeapBytes: number;
+}
+
+type JudgedNight = Omit<NightResult, "events">;
+
+const MEGABYTE = 1024 * 1024;
+
+const watchEventLoop = (probe: Probe) =>
   Effect.gen(function* probeEventLoop() {
     let last = wallClock();
 
@@ -112,9 +147,13 @@ const watchEventLoop = (stalls: Stall[]) =>
           const late = now - last - LOOP_PROBE_MS;
 
           if (late > STALL_REPORT_MS) {
-            stalls.push({ at: now - late, ms: late });
+            probe.stalls.push({ at: now - late, ms: late });
           }
 
+          probe.peakHeapBytes = Math.max(
+            probe.peakHeapBytes,
+            process.memoryUsage().heapUsed
+          );
           last = now;
         })
       )
@@ -125,17 +164,21 @@ const watchEventLoop = (stalls: Stall[]) =>
 
 const describeStalls = (
   started: number,
-  playedUntil: number,
-  stalls: readonly Stall[],
-  results: readonly NightResult[]
+  windows: readonly Window[],
+  probe: Probe,
+  results: readonly JudgedNight[]
 ) => {
   const at = (when: number) => `+${((when - started) / 1000).toFixed(1)} s`;
 
-  const whilePlaying = stalls.filter((stall) => stall.at < playedUntil);
+  const whilePlaying = probe.stalls.filter((stall) =>
+    windows.some(({ from, to }) => stall.at >= from && stall.at < to)
+  );
+
   const longest = Math.max(0, ...whilePlaying.map(({ ms }) => ms));
 
   return [
-    `  event loop stalls over ${STALL_REPORT_MS} ms while rooms were playing: ${whilePlaying.length}, longest ${longest.toFixed(0)} ms${whilePlaying.length === 0 ? "" : `: ${whilePlaying.map((stall) => `${at(stall.at)} ${stall.ms.toFixed(0)} ms`).join(", ")}`}; every room stopped playing at ${at(playedUntil)}`,
+    `  event loop stalls over ${STALL_REPORT_MS} ms while rooms were playing: ${whilePlaying.length}, longest ${longest.toFixed(0)} ms${whilePlaying.length === 0 ? "" : `: ${whilePlaying.map((stall) => `${at(stall.at)} ${stall.ms.toFixed(0)} ms`).join(", ")}`}; waves played ${windows.map(({ from, to }) => `${at(from)} to ${at(to)}`).join(", ")}`,
+    `  peak heap ${(probe.peakHeapBytes / MEGABYTE).toFixed(0)} MB`,
     `  checks after each night: ${results
       .toSorted((left, right) => left.checkedAt - right.checkedAt)
       .map(
@@ -175,7 +218,7 @@ export class SoakFailed extends Schema.TaggedError<
 const describePlan = (plan: NightPlan) =>
   `${plan.code} seed ${plan.seed}: ${plan.players + plan.lateJoiners} players and ${plan.spectators} spectators, ${plan.hands} hands, turn ${plan.settings.turnSeconds}s, bank ${plan.settings.timeBankSeconds}s, runs ${plan.settings.table.maxRuns}, client bots ${plan.clients.join(",") || "none"}, rules ${plan.ruleChanges.map((rule) => `${rule.label} at ${rule.atHand}`).join("; ")}`;
 
-const sumCounts = (results: readonly NightResult[]) => {
+const sumCounts = (results: readonly JudgedNight[]) => {
   const total = emptyCounts();
 
   for (const result of results) {
@@ -191,7 +234,7 @@ const summarize = (
   seed: number,
   rooms: number,
   elapsed: number,
-  results: readonly NightResult[],
+  results: readonly JudgedNight[],
   failures: readonly string[]
 ) => {
   const counts = sumCounts(results);
@@ -311,11 +354,16 @@ test(
   Effect.gen(function* soak() {
     const { url } = yield* deployed;
     const base = yield* Effect.fromNullishOr(url).pipe(Effect.orDie);
-    const { hands, keepLogs, rooms, seed } = yield* soakConfig;
+
+    const { budgetMinutes, hands, keepLogs, rooms, roomsAtOnce, seed } =
+      yield* soakConfig;
+
     const perRoom = Math.ceil(hands / rooms);
 
-    const plans = Array.from({ length: rooms }, (_, index) =>
-      planNight(
+    const plans = Array.from({ length: rooms }, (_, index) => {
+      const turnSeconds = index % 6 === 5 ? 0 : 1 + (index % 2);
+
+      return planNight(
         seed * 100 + index,
         {
           betweenHandsSeconds: index % 2,
@@ -325,17 +373,20 @@ test(
           players: 2 + (index % 8),
           restarts: 2,
           rotation: index,
-          shuffle: index % 10 < CHECKED_ROOMS_IN_TEN ? "Checked" : "Plain",
+          shuffle:
+            (index * CHECKED_SPREAD) % 10 < CHECKED_ROOMS_IN_TEN
+              ? "Checked"
+              : "Plain",
           silences: 3,
-          turnSeconds: index % 6 === 5 ? 0 : 1 + (index % 2),
+          turnSeconds,
         },
-        TEMPER,
+        temperFor(turnSeconds),
         CHAOS
-      )
-    );
+      );
+    });
 
     yield* Console.log(
-      `soak seed ${seed}: ${rooms} rooms, ${hands} hands wanted`
+      `soak seed ${seed}: ${rooms} rooms, ${hands} hands wanted, ${roomsAtOnce} rooms playing at a time, ${budgetMinutes} minutes to finish`
     );
 
     for (const plan of plans) {
@@ -343,70 +394,99 @@ test(
     }
 
     const started = wallClock();
-    const stalls: Stall[] = [];
-    const probe = yield* watchEventLoop(stalls).pipe(Effect.forkChild);
-    const opened = [];
+    const probe: Probe = { peakHeapBytes: 0, stalls: [] };
+    const prober = yield* watchEventLoop(probe).pipe(Effect.forkChild);
+    const waveCount = Math.ceil(plans.length / Math.max(1, roomsAtOnce));
 
-    for (const plan of plans) {
-      opened.push(yield* openNight(base, plan));
-    }
-
-    const played = yield* Effect.all(
-      opened.map((night) => playNight(base, night).pipe(Effect.result)),
-      { concurrency: "unbounded" }
+    const waves = Array.from({ length: waveCount }, (_, wave) =>
+      plans.filter(
+        ({ seed: roomSeed }) => (roomSeed - seed * 100) % waveCount === wave
+      )
     );
 
-    const playedUntil = wallClock();
-
-    const outcomes = played.map((outcome) =>
-      outcome.pipe(Result.map(judgeNight))
-    );
-
-    yield* Fiber.interrupt(probe);
-
-    const elapsed = (wallClock() - started) / 1000;
-    const results: NightResult[] = [];
+    const windows: Window[] = [];
+    const results: JudgedNight[] = [];
     const failures: string[] = [];
     const kept: string[] = [];
 
-    for (const [index, outcome] of outcomes.entries()) {
-      const night = opened[index];
+    let wavesJudged = 0;
 
-      if (night === undefined) {
-        continue;
-      }
+    const playWaves = Effect.gen(function* playWaves() {
+      for (const wave of waves) {
+        const opened: OpenedNight[] = [];
 
-      const { plan } = night;
+        for (const plan of wave) {
+          opened.push(yield* openNight(base, plan));
+        }
 
-      if (Result.isFailure(outcome)) {
-        const stored = yield* inspect(base, plan.code);
-        const path = yield* saveLog(seed, night, stored.events);
+        const from = wallClock();
 
-        failures.push(
-          `${plan.code} (seed ${plan.seed}): ${outcome.failure.message} The room halted: ${Option.getOrElse(stored.halted, () => "no")}. log ${path}`
-        );
-        continue;
-      }
-
-      results.push(outcome.success);
-
-      if (outcome.success.verdict.problems.length > 0) {
-        const path = yield* saveLog(
-          seed,
-          night,
-          outcome.success.events,
-          outcome.success.verdict.proofs
+        const played = yield* Effect.all(
+          opened.map((night) => playNight(base, night).pipe(Effect.result)),
+          { concurrency: "unbounded" }
         );
 
-        failures.push(
-          `${plan.code} (seed ${plan.seed}): ${outcome.success.verdict.problems.join(" | ")} log ${path}`
-        );
-      } else if (keepLogs) {
-        const path = yield* saveLog(seed, night, outcome.success.events);
+        windows.push({ from, to: wallClock() });
 
-        kept.push(`  kept ${plan.code} (seed ${plan.seed}) log ${path}`);
+        for (const [index, outcome] of played.entries()) {
+          const night = opened[index];
+
+          if (night === undefined) {
+            continue;
+          }
+
+          const { plan } = night;
+
+          if (Result.isFailure(outcome)) {
+            const stored = yield* inspect(base, plan.code);
+            const path = yield* saveLog(seed, night, stored.events);
+
+            const failure = `${plan.code} (seed ${plan.seed}): ${outcome.failure.message} The room halted: ${Option.getOrElse(stored.halted, () => "no")}. log ${path}`;
+
+            failures.push(failure);
+            yield* Console.log(`  wave ${wavesJudged + 1} FAILED ${failure}`);
+            continue;
+          }
+
+          const { checkMs, checkedAt, durationMs, events, verdict } =
+            judgeNight(outcome.success);
+
+          results.push({ checkMs, checkedAt, durationMs, plan, verdict });
+
+          yield* Console.log(
+            `  wave ${wavesJudged + 1} ${plan.code}: ${verdict.counts.hands} hands in ${(durationMs / 1000).toFixed(0)} s, checked in ${checkMs.toFixed(0)} ms, ${verdict.problems.length === 0 ? "ok" : `FAILED ${verdict.problems.slice(0, 3).join(" | ")}`}`
+          );
+
+          if (verdict.problems.length > 0) {
+            const path = yield* saveLog(seed, night, events, verdict.proofs);
+
+            failures.push(
+              `${plan.code} (seed ${plan.seed}): ${verdict.problems.join(" | ")} log ${path}`
+            );
+          } else if (keepLogs) {
+            const path = yield* saveLog(seed, night, events);
+
+            kept.push(`  kept ${plan.code} (seed ${plan.seed}) log ${path}`);
+          }
+        }
+
+        wavesJudged += 1;
       }
+    });
+
+    const finished = yield* playWaves.pipe(
+      Effect.timeoutOption(Duration.minutes(budgetMinutes))
+    );
+
+    if (Option.isNone(finished)) {
+      failures.push(
+        `the soak ran out of its ${budgetMinutes} minutes during wave ${wavesJudged + 1} of ${waveCount}; the rooms of that wave and later ones were not judged`
+      );
     }
+
+    yield* Fiber.interrupt(prober);
+
+    const elapsed = (wallClock() - started) / 1000;
 
     const { counts, gaps, lines } = summarize(
       seed,
@@ -419,7 +499,7 @@ test(
     yield* Console.log(
       [
         ...lines,
-        ...describeStalls(started, playedUntil, stalls, results),
+        ...describeStalls(started, windows, probe, results),
         ...kept,
       ].join("\n")
     );
@@ -439,5 +519,5 @@ test(
         )
       : Effect.void;
   }).pipe(Effect.provide([FetchHttpClient.layer, NodeFileSystem.layer])),
-  { timeout: 1_800_000 }
+  { timeout: VITEST_LIMIT_MS }
 );

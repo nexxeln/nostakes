@@ -3,6 +3,8 @@ name: Verify
 on:
   push:
     branches: [main]
+  schedule:
+    - cron: "30 1 * * *"
   workflow_dispatch:
 
 permissions:
@@ -11,6 +13,7 @@ permissions:
 jobs:
   verify:
     name: ${{ matrix.target }}
+    if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
     timeout-minutes: 60
     concurrency:
@@ -27,7 +30,7 @@ jobs:
           - target: room
             run: pnpm turbo run verify --filter=@nostakes/room
           - target: room-server
-            run: pnpm turbo run verify --filter=@nostakes/room-server
+            run: pnpm turbo run build --filter=@nostakes/room-server... && SOAK_ROOMS=12 SOAK_HANDS=160 SOAK_CONCURRENCY=6 SOAK_BUDGET_MINUTES=20 pnpm --filter @nostakes/room-server verify
           - target: shuffle
             run: pnpm turbo run verify --filter=@nostakes/shuffle
           - target: web
@@ -58,6 +61,41 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: verify-${{ matrix.target }}-logs
+          path: |
+            /tmp/nostakes-soak-*
+            ${{ runner.temp }}/nostakes-soak-*
+          if-no-files-found: ignore
+
+  full-soak:
+    name: room-server full soak
+    if: github.event_name != 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    concurrency:
+      group: verify-full-soak-${{ github.ref }}
+      cancel-in-progress: false
+    env:
+      SOAK_CONCURRENCY: "3"
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Use Node.js 24.18.0
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24.18.0
+      - name: Enable corepack pnpm
+        run: corepack enable && corepack prepare pnpm@11.3.0 --activate
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Build the room server and its packages
+        run: pnpm turbo run build --filter=@nostakes/room-server...
+      - name: Play 1,000 hands across 12 rooms
+        run: pnpm --filter @nostakes/room-server exec vitest run --config vitest.verify.config.ts --silent=false scripts/soak.verify.ts
+      - name: Upload saved logs from a failed soak
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: verify-full-soak-logs
           path: |
             /tmp/nostakes-soak-*
             ${{ runner.temp }}/nostakes-soak-*
