@@ -12,6 +12,7 @@ import {
   RoomSettingsSchema,
   RoomViewSchema,
   SeenEventSchema,
+  TimeBankRefills,
   audienceOf,
   decide,
   evolve,
@@ -69,6 +70,7 @@ export const DEFAULT_SETTINGS: RoomSettings = Schema.decodeSync(
     smallBlind: 1,
     straddle: { button: false, underTheGun: 0 },
   },
+  timeBankRefill: TimeBankRefills.NoRefill(),
   timeBankSeconds: 60,
   turnSeconds: 30,
 });

@@ -7,6 +7,7 @@ import {
   actForSeat,
   clockEvents,
   expireClock,
+  timeBankRefills,
   timeBankUsed,
 } from "./clocks.js";
 import { closeRoom } from "./closing.js";
@@ -199,6 +200,9 @@ const followThrough = (
       appended(played, (state) =>
         timeBankUsed(before, state, played.events, at)
       )
+    ),
+    Result.map((spent) =>
+      appended(spent, (state) => timeBankRefills(state, spent.events, at))
     ),
     Result.flatMap((spent) => drain(spent, (state) => endOfHand(state, at))),
     Result.map(

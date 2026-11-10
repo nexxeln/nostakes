@@ -29,6 +29,7 @@ import {
   RoomCodeSchema,
   RoomCommands,
   RoomStates,
+  TimeBankRefills,
   SEATS,
   decide,
   evolve,
@@ -124,6 +125,13 @@ export const settingsFrom = (random: SeededRandom): RoomSettings => ({
   seats: random.chance(1, 2) ? 9 : 2 + random.below(8),
   showdownSeconds: 1 + random.below(20),
   table: tableConfigFrom(random),
+  timeBankRefill: random.chance(1, 2)
+    ? TimeBankRefills.NoRefill()
+    : TimeBankRefills.Refill({
+        everyHands: 1 + random.below(3),
+        seconds: 1 + random.below(10),
+        upTo: 1 + random.below(30),
+      }),
   timeBankSeconds: BANK_SECONDS[random.below(3)] ?? 0,
   turnSeconds: CLOCK_SECONDS[random.below(3)] ?? 0,
 });

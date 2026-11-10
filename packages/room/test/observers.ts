@@ -24,6 +24,7 @@ import {
   RoomViewSchema,
   SEATS,
   SeenEventSchema,
+  TimeBankRefills,
   evolve,
   nextDeadline,
   timeBankLeft,
@@ -35,6 +36,7 @@ import type {
   Open,
   RoomCommand,
   RoomEvent,
+  RoomEventOf,
   RoomState,
 } from "../src/index.js";
 import type { Step } from "./sessions.js";
@@ -540,6 +542,29 @@ const expiryProblems = (step: Step, before: Open): readonly string[] => {
   return after === before ? [] : ["a refused expiry changed the room"];
 };
 
+const refillProblems = (
+  during: Open,
+  event: RoomEventOf<"TimeBankRefilled">
+): readonly string[] =>
+  TimeBankRefills.$match(during.settings.timeBankRefill, {
+    NoRefill: () => [`${event.player} got a refill in a room without refills`],
+    Refill: ({ everyHands, seconds, upTo }) => {
+      const left = timeBankLeft(during, event.player);
+      const dealt = during.clocks.handsDealt.get(event.player) ?? 0;
+
+      return [
+        ...(left + event.seconds <= upTo && event.seconds <= seconds
+          ? []
+          : [
+              `${event.player} with ${left} left got ${event.seconds} toward ${upTo}`,
+            ]),
+        ...(dealt % everyHands === 0
+          ? []
+          : [`${event.player} got a refill after ${dealt} hands`]),
+      ];
+    },
+  });
+
 const bankProblem = (
   during: Open,
   event: RoomEvent,
@@ -551,6 +576,10 @@ const bankProblem = (
     banks.add(event.player);
 
     return again ? [`${event.player} started a second bank`] : [];
+  }
+
+  if (RoomEvents.$is("TimeBankRefilled")(event)) {
+    return refillProblems(during, event);
   }
 
   if (!RoomEvents.$is("TimeBankSpent")(event)) {

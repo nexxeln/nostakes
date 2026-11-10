@@ -36,6 +36,7 @@ import {
   RoomViews,
   SEATS,
   SeenEvents,
+  TimeBankRefills,
   decide,
   evolve,
   invariants,
@@ -164,6 +165,13 @@ const roomSettings = (random: Random): RoomSettings => {
     seats: random.chance(50) ? 9 : 2 + random.below(8),
     showdownSeconds: 2 + random.below(15),
     table: tableConfig(random),
+    timeBankRefill: random.chance(50)
+      ? TimeBankRefills.NoRefill()
+      : TimeBankRefills.Refill({
+          everyHands: 1 + random.below(4),
+          seconds: 1 + random.below(10),
+          upTo: 5 + random.below(40),
+        }),
     timeBankSeconds: random.pick([0, 5, 30]) ?? 0,
     turnSeconds: random.pick([0, 10, 20, 30]) ?? 0,
   };
@@ -181,6 +189,7 @@ const shuffleBytes = (random: Random) => {
 
 const newCounts = () => ({
   approvals: 0,
+  bankRefills: 0,
   bankStarts: 0,
   closedDuringHand: 0,
   closedRooms: 0,
@@ -579,6 +588,7 @@ const COUNTED: readonly (readonly [
   ["queuedAdds", RoomEvents.$is("ChipsQueued")],
   ["midHandLeaves", RoomEvents.$is("LeaveQueued")],
   ["bankStarts", RoomEvents.$is("TimeBankStarted")],
+  ["bankRefills", RoomEvents.$is("TimeBankRefilled")],
   ["timeouts", RoomEvents.$is("MarkedAway")],
   ["hostChanges", RoomEvents.$is("HostChanged")],
   ["rulesQueued", RoomEvents.$is("RulesQueued")],

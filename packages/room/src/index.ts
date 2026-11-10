@@ -91,12 +91,15 @@ export {
   BuyInRangeSchema,
   ChipAmountSchema,
   MAX_CHIP_AMOUNT,
+  MAX_REFILL_HANDS,
   MIN_SEATS,
   RoomSettingsSchema,
   SeatCountSchema,
+  TimeBankRefillSchema,
+  TimeBankRefills,
 } from "./settings.js";
 
-export type { BuyInRange, RoomSettings } from "./settings.js";
+export type { BuyInRange, RoomSettings, TimeBankRefill } from "./settings.js";
 
 export {
   BalanceSchema,

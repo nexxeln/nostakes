@@ -1,5 +1,12 @@
 import { describe, expect, it } from "@effect/vitest";
-import { Actions, ChipsSchema, Events, RunCountSchema } from "@nostakes/engine";
+import {
+  Actions,
+  ChipsSchema,
+  Events,
+  PendingDecisions,
+  RunCountSchema,
+  pendingDecisions,
+} from "@nostakes/engine";
 import type { Action } from "@nostakes/engine";
 import { Option } from "effect";
 
@@ -11,7 +18,9 @@ import {
   RoomCommands,
   RoomEvents,
   ServerOnly,
+  TimeBankRefills,
   nextDeadline,
+  seatOf,
   timeBankLeft,
 } from "../src/index.js";
 import type { RoomEvent, RoomSettings, RoomState } from "../src/index.js";
@@ -355,5 +364,120 @@ describe("a time bank when the room closes", () => {
     expect(closed.events.find(RoomEvents.$is("TimeBankSpent"))).toStrictEqual(
       RoomEvents.TimeBankSpent({ at: ms(34_100), player: bob, seconds: 3 })
     );
+  });
+});
+
+const refilling = {
+  ...clocked,
+  timeBankRefill: TimeBankRefills.Refill({
+    everyHands: 2,
+    seconds: 5,
+    upTo: 8,
+  }),
+  timeBankSeconds: 6,
+};
+
+const everyone = [ann, bob, cat];
+
+const foldedOut = (state: RoomState, at: number) => {
+  let current = state;
+  const events: RoomEvent[] = [];
+
+  for (let turn = 0; turn < everyone.length; turn += 1) {
+    const open = openOf(current);
+    const pending = pendingDecisions(open.table);
+
+    const who = everyone.find(
+      (player) =>
+        PendingDecisions.$is("Bet")(pending) &&
+        Option.contains(seatOf(open, player), pending.legal.seat)
+    );
+
+    if (who !== undefined) {
+      const step = run(current, act(who, Actions.Fold(), at + turn));
+
+      events.push(...step.events);
+      current = step.state;
+    }
+  }
+
+  return { events, state: current };
+};
+
+const refills = (events: readonly RoomEvent[]) =>
+  events.filter(RoomEvents.$is("TimeBankRefilled"));
+
+const banks = (state: RoomState) =>
+  everyone.map((player) => timeBankLeft(openOf(state), player));
+
+describe("a time bank refill", () => {
+  it("adds seconds after every second hand a player is dealt, never past the most a bank holds", () => {
+    const first = runAll(openedBy(ann, refilling), [
+      join(bob),
+      join(cat),
+      sit(ann, 0),
+      sit(bob, 1),
+      sit(cat, 2),
+      RoomCommands.StartGame({ at: ms(3), by: as(ann) }),
+      dealAt(1000),
+      expire(31_000),
+      act(ann, Actions.Fold(), 34_500),
+    ]);
+
+    const handOne = foldedOut(first, 35_000);
+
+    expect(refills(handOne.events)).toStrictEqual([]);
+    expect(banks(handOne.state)).toStrictEqual([2, 6, 6]);
+
+    const handTwo = foldedOut(run(handOne.state, dealAt(40_000)).state, 41_000);
+
+    expect(refills(handTwo.events)).toStrictEqual([
+      RoomEvents.TimeBankRefilled({ at: ms(41_001), player: ann, seconds: 5 }),
+      RoomEvents.TimeBankRefilled({ at: ms(41_001), player: bob, seconds: 2 }),
+      RoomEvents.TimeBankRefilled({ at: ms(41_001), player: cat, seconds: 2 }),
+    ]);
+    expect(banks(handTwo.state)).toStrictEqual([7, 8, 8]);
+
+    const handThree = foldedOut(
+      run(handTwo.state, dealAt(50_000)).state,
+      51_000
+    );
+
+    expect(refills(handThree.events)).toStrictEqual([]);
+
+    const handFour = foldedOut(
+      run(handThree.state, dealAt(60_000)).state,
+      61_000
+    );
+
+    expect(refills(handFour.events)).toStrictEqual([
+      RoomEvents.TimeBankRefilled({ at: ms(61_001), player: ann, seconds: 1 }),
+    ]);
+    expect(banks(handFour.state)).toStrictEqual([8, 8, 8]);
+  });
+
+  it("counts only the hands a player is dealt, so a seat sitting out earns nothing", () => {
+    const sittingOut = runAll(
+      openedBy(ann, { ...refilling, timeBankSeconds: 0 }),
+      [
+        join(bob),
+        join(cat),
+        sit(ann, 0),
+        sit(bob, 1),
+        sit(cat, 2),
+        RoomCommands.SitOut({ at: ms(3), by: as(cat) }),
+        RoomCommands.StartGame({ at: ms(3), by: as(ann) }),
+        dealAt(1000),
+      ]
+    );
+
+    const handOne = foldedOut(sittingOut, 2000);
+    const handTwo = foldedOut(run(handOne.state, dealAt(3000)).state, 4000);
+
+    expect(refills(handTwo.events).map((event) => event.player)).toStrictEqual([
+      ann,
+      bob,
+    ]);
+    expect(banks(handTwo.state)).toStrictEqual([5, 5, 0]);
   });
 });

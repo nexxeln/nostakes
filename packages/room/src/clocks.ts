@@ -6,6 +6,7 @@ import {
   pendingDecisions,
   RunCountSchema,
   SeatIndexSchema,
+  TableStates,
 } from "@nostakes/engine";
 import type { Command, Event, PlayerId, SeatIndex } from "@nostakes/engine";
 import { Data, Option, Result, Schema } from "effect";
@@ -17,7 +18,7 @@ import type { Decision } from "./decision.js";
 import { RoomEvents } from "./events.js";
 import type { RoomEvent } from "./events.js";
 import { ActionNotOnSeat, ClockNotDue, NoSuchDeadline } from "./rejection.js";
-import { turnClockRuns } from "./settings.js";
+import { TimeBankRefills, turnClockRuns } from "./settings.js";
 import { DecisionClocks, RoomStates, heldSeat, occupantAt } from "./state.js";
 import type { DecisionClock, Open, RoomState } from "./state.js";
 import { onTable } from "./table.js";
@@ -66,7 +67,9 @@ const ONE_RUN = RunCountSchema.make(1);
 export const timeBankLeft = (state: Open, player: PlayerId) =>
   Math.max(
     0,
-    state.settings.timeBankSeconds - (state.clocks.bankSpent.get(player) ?? 0)
+    state.settings.timeBankSeconds +
+      (state.clocks.bankRefilled.get(player) ?? 0) -
+      (state.clocks.bankSpent.get(player) ?? 0)
   );
 
 export const automaticFor = (
@@ -329,3 +332,29 @@ export const clockEvents = (
     wantedClock(after, events.some(movesTheAction), at),
     () => []
   );
+
+const endsAHand = (event: RoomEvent) =>
+  RoomEvents.$is("Table")(event) && Events.$is("HandEnded")(event.event);
+
+export const timeBankRefills = (
+  after: Open,
+  events: readonly RoomEvent[],
+  at: Millis
+): readonly RoomEvent[] =>
+  TimeBankRefills.$match(after.settings.timeBankRefill, {
+    NoRefill: () => [],
+    Refill: ({ everyHands, seconds, upTo }) =>
+      events.some(endsAHand) && TableStates.$is("BetweenHands")(after.table)
+        ? Option.toArray(after.table.lastHand).flatMap((lastHand) =>
+            lastHand.players.flatMap(({ player }) => {
+              const dealt = after.clocks.handsDealt.get(player) ?? 0;
+              const room = upTo - timeBankLeft(after, player);
+              const added = Math.min(seconds, room);
+
+              return dealt % everyHands === 0 && added > 0
+                ? [RoomEvents.TimeBankRefilled({ at, player, seconds: added })]
+                : [];
+            })
+          )
+        : [],
+  });

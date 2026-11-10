@@ -20,8 +20,10 @@ export const opened = (event: RoomEventOf<"RoomOpened">): Open =>
   RoomStates.Open({
     away: [],
     clocks: {
+      bankRefilled: new Map(),
       bankSpent: new Map(),
       decision: Option.none(),
+      handsDealt: new Map(),
       lastHandEndedAt: Option.none(),
     },
     code: event.code,
@@ -52,9 +54,29 @@ const vacated = (state: Open, player: PlayerId, seat: SeatIndex): Open => ({
   straddlers: state.straddlers.filter((straddler) => straddler !== player),
 });
 
+const counted = (
+  totals: ReadonlyMap<PlayerId, number>,
+  player: PlayerId,
+  more: number
+) => new Map([...totals, [player, (totals.get(player) ?? 0) + more]]);
+
+const dealtInto = (state: Open, seats: readonly SeatIndex[]): Open => {
+  let { handsDealt } = state.clocks;
+
+  for (const seat of seats) {
+    for (const occupant of Option.toArray(occupantAt(state.table, seat))) {
+      handsDealt = counted(handsDealt, occupant.player, 1);
+    }
+  }
+
+  return { ...state, clocks: { ...state.clocks, handsDealt } };
+};
+
 const onTable = (state: Open, event: Event, at: Millis): Open => {
   const next = {
-    ...state,
+    ...(Events.$is("HandStarted")(event)
+      ? dealtInto(state, event.dealtIn)
+      : state),
     record: recorded(state.record, event),
     table: evolveTable(state.table, event),
   };
@@ -251,14 +273,18 @@ const evolveOpen = (state: Open, event: RoomEvent): RoomState =>
         : state.straddlers.filter((straddler) => straddler !== player),
     }),
     Table: ({ at, event: tableEvent }) => onTable(state, tableEvent, at),
+    TimeBankRefilled: ({ player, seconds }) => ({
+      ...state,
+      clocks: {
+        ...state.clocks,
+        bankRefilled: counted(state.clocks.bankRefilled, player, seconds),
+      },
+    }),
     TimeBankSpent: ({ player, seconds }) => ({
       ...state,
       clocks: {
         ...state.clocks,
-        bankSpent: new Map([
-          ...state.clocks.bankSpent,
-          [player, (state.clocks.bankSpent.get(player) ?? 0) + seconds],
-        ]),
+        bankSpent: counted(state.clocks.bankSpent, player, seconds),
       },
     }),
     TimeBankStarted: ({ deadline }) => bankStarted(state, deadline),

@@ -70,6 +70,11 @@ export const roomEventFields = {
   SettingsChanged: { at, settings: RoomSettingsSchema },
   ShowdownClockStarted: { at, deadline: MillisSchema, seat: SeatIndexSchema },
   StraddleDeclared: { at, on: Schema.Boolean, player: PlayerIdSchema },
+  TimeBankRefilled: {
+    at,
+    player: PlayerIdSchema,
+    seconds: Schema.Int.check(Schema.isGreaterThanOrEqualTo(1)),
+  },
   TimeBankSpent: {
     at,
     player: PlayerIdSchema,

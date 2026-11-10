@@ -4,7 +4,7 @@ import {
   TableConfigSchema,
   setting,
 } from "@nostakes/engine";
-import { Schema } from "effect";
+import { Data, Schema } from "effect";
 
 export const MAX_CHIP_AMOUNT = 1_000_000_000;
 
@@ -40,6 +40,33 @@ export const MAX_CLOCK_SECONDS = 3600;
 export const MAX_TIME_BANK_SECONDS = 86_400;
 
 export const DEFAULT_SHOWDOWN_SECONDS = 15;
+
+export const MAX_REFILL_HANDS = 1000;
+
+export const TimeBankRefillSchema = Schema.TaggedUnion({
+  NoRefill: {},
+  Refill: {
+    everyHands: Schema.Int.check(
+      Schema.isBetween({ maximum: MAX_REFILL_HANDS, minimum: 1 })
+    ).annotate({
+      description:
+        "A player's bank grows after every this many hands they are dealt.",
+      title: "Every this many hands",
+    }),
+    seconds: wholeSeconds(1, MAX_CLOCK_SECONDS).annotate({
+      description: "Seconds each refill adds to the bank.",
+      title: "Seconds added",
+    }),
+    upTo: wholeSeconds(1, MAX_TIME_BANK_SECONDS).annotate({
+      description: "A refill never takes a bank above this many seconds.",
+      title: "Most seconds in a bank",
+    }),
+  },
+});
+
+export type TimeBankRefill = typeof TimeBankRefillSchema.Type;
+
+export const TimeBankRefills = Data.taggedEnum<TimeBankRefill>();
 
 export const MIN_SEATS = 2;
 
@@ -98,6 +125,11 @@ export const RoomSettingsSchema = Schema.Struct({
     description:
       "The rules of a hand. A change made during a hand applies from the next hand.",
     title: "Table rules",
+  }),
+  timeBankRefill: setting(TimeBankRefillSchema, TimeBankRefills.NoRefill(), {
+    description:
+      "Whether a player's time bank grows back during the night: never, or by some seconds every few hands they are dealt, up to a most.",
+    title: "Time bank refill",
   }),
   timeBankSeconds: wholeSeconds(0, MAX_TIME_BANK_SECONDS).annotate({
     description:

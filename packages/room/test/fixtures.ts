@@ -14,6 +14,7 @@ import {
   RoomCodeSchema,
   RoomCommands,
   RoomStates,
+  TimeBankRefills,
   decide,
   evolveAll,
   millis,
@@ -64,6 +65,7 @@ export const settings: RoomSettings = {
     smallBlind: chipCount(5),
     straddle: { button: false, underTheGun: 0 },
   }),
+  timeBankRefill: TimeBankRefills.NoRefill(),
   timeBankSeconds: 0,
   turnSeconds: 0,
 };

@@ -5,7 +5,7 @@ import {
   RoomCodeSchema,
 } from "@nostakes/protocol";
 import type { RoomCode, RoomPass } from "@nostakes/protocol";
-import { RoomSettingsSchema, RoomViews } from "@nostakes/room";
+import { RoomSettingsSchema, RoomViews, TimeBankRefills } from "@nostakes/room";
 import type { RoomSettings, RoomView } from "@nostakes/room";
 import { Duration, Effect, Option, Schema } from "effect";
 
@@ -228,6 +228,14 @@ export const planNight = (
       smallBlind: small,
       straddle: { button: random.chance(50), underTheGun: random.below(3) },
     },
+    timeBankRefill:
+      recipe.turnSeconds > 0 && random.chance(50)
+        ? TimeBankRefills.Refill({
+            everyHands: random.between(1, 3),
+            seconds: 1,
+            upTo: random.between(1, 3),
+          })
+        : TimeBankRefills.NoRefill(),
     timeBankSeconds: recipe.turnSeconds > 0 ? random.between(1, 2) : 0,
     turnSeconds: recipe.turnSeconds,
   });
@@ -284,7 +292,14 @@ export const planNight = (
 const longestClockMs = (view: RoomView) =>
   RoomViews.$is("Open")(view)
     ? Math.max(
-        view.settings.turnSeconds + view.settings.timeBankSeconds,
+        view.settings.turnSeconds +
+          Math.max(
+            view.settings.timeBankSeconds,
+            TimeBankRefills.$match(view.settings.timeBankRefill, {
+              NoRefill: () => 0,
+              Refill: ({ upTo }) => upTo,
+            })
+          ),
         view.settings.runChoiceSeconds,
         view.settings.betweenHandsSeconds
       ) * 1000
