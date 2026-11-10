@@ -27,7 +27,7 @@ To play a hand with yourself:
 3. In each window, select **Sit** on an empty seat, then **Sit down**.
 4. In the first window, select **Start the game**.
 
-A refresh puts a player back in their seat. To reach the server from a phone on your network, start it with `ALLOWED_ORIGINS` set to the page's address.
+A refresh puts a player back in their seat.
 
 The two-window check that CI runs plays the same steps in headless, muted Chromium:
 
