@@ -1,3 +1,4 @@
+import { Activities } from "@nostakes/client";
 import { Antes, Events, Seats, ShowdownEntries } from "@nostakes/engine";
 import type { Card, Event, PlayerId, SeatIndex } from "@nostakes/engine";
 import { MAX_MISSED_EVENTS } from "@nostakes/protocol";
@@ -12,6 +13,7 @@ import {
   RoomViews,
   audienceOf,
   chipsOnTable,
+  decide,
   evolve,
   redact,
   replay,
@@ -20,13 +22,18 @@ import {
 import type { RoomEvent, RoomState, RoomView } from "@nostakes/room";
 import { Option, Predicate, Result, Schema } from "effect";
 
+import { pokerRoom } from "../../src/poker-room.js";
+import type { MemberCommand } from "../../src/poker-room.js";
 import type { BotRecord, SocketRecord } from "./bot.js";
-import { pokerCodec, wallClock } from "./poker-socket.js";
+import type { ClientBotRecord } from "./client-bot.js";
+import { decodeServerFrame, pokerCodec, wallClock } from "./poker-socket.js";
 import type { Arrival } from "./poker-socket.js";
 
-const decodeEvent = Schema.decodeSync(
-  Schema.fromJsonString(Schema.toCodecJson(RoomEventSchema))
-);
+const eventCodec = Schema.fromJsonString(Schema.toCodecJson(RoomEventSchema));
+
+const decodeEvent = Schema.decodeSync(eventCodec);
+
+const encodeEvent = Schema.encodeSync(eventCodec);
 
 const seenCodec = Schema.fromJsonString(Schema.toCodecJson(SeenEventSchema));
 
@@ -56,6 +63,25 @@ export const COUNT_NAMES = [
   "bigBlindAnteHands",
   "catchUps",
   "catchUpsSkipped",
+  "clientBots",
+  "clientCommands",
+  "clientCommandsTraced",
+  "clientDropsBlackHole",
+  "clientDropsBotClose",
+  "clientDropsDeafSilence",
+  "clientDropsRestart",
+  "clientDropsSilenceLimit",
+  "clientDropsUnexplained",
+  "clientEchoes",
+  "clientEventsChecked",
+  "clientFailedAttempts",
+  "clientIssuedBeforeDrop",
+  "clientNaps",
+  "clientResent",
+  "clientSkippedRanges",
+  "clientUnexpectedRefusals",
+  "clientViewsChecked",
+  "clientWakes",
   "closeQueued",
   "commands",
   "denials",
@@ -103,6 +129,25 @@ export const emptyCounts = (): NightCounts => ({
   bigBlindAnteHands: 0,
   catchUps: 0,
   catchUpsSkipped: 0,
+  clientBots: 0,
+  clientCommands: 0,
+  clientCommandsTraced: 0,
+  clientDropsBlackHole: 0,
+  clientDropsBotClose: 0,
+  clientDropsDeafSilence: 0,
+  clientDropsRestart: 0,
+  clientDropsSilenceLimit: 0,
+  clientDropsUnexplained: 0,
+  clientEchoes: 0,
+  clientEventsChecked: 0,
+  clientFailedAttempts: 0,
+  clientIssuedBeforeDrop: 0,
+  clientNaps: 0,
+  clientResent: 0,
+  clientSkippedRanges: 0,
+  clientUnexpectedRefusals: 0,
+  clientViewsChecked: 0,
+  clientWakes: 0,
   closeQueued: 0,
   commands: 0,
   denials: 0,
@@ -147,6 +192,7 @@ export interface NightEvidence {
   readonly halted: Option.Option<string>;
   readonly memoryMatchesLog: boolean;
   readonly bots: readonly BotRecord[];
+  readonly clients: readonly ClientBotRecord[];
   readonly restarts: number;
   readonly voteRestarts: number;
 }
@@ -181,10 +227,26 @@ interface Final {
   readonly view: RoomView;
 }
 
+interface ClientView {
+  readonly player: PlayerId;
+  readonly view: RoomView;
+  readonly where: string;
+}
+
+interface Trace {
+  readonly player: PlayerId;
+  readonly command: MemberCommand;
+  readonly id: string;
+  readonly to: number;
+  readonly where: string;
+}
+
 interface Received {
   readonly events: Map<number, Seen[]>;
   readonly views: Map<number, Seen[]>;
   readonly welcomes: Map<number, WelcomeSeen[]>;
+  readonly clientViews: Map<number, ClientView[]>;
+  readonly traces: Trace[];
   readonly finals: Final[];
 }
 
@@ -600,6 +662,203 @@ const indexBot = (checker: Checker, received: Received, bot: BotRecord) => {
   });
 };
 
+const addClientStats = (checker: Checker, client: ClientBotRecord) => {
+  const { counts } = checker;
+  const { stats } = client;
+
+  counts.clientBots += 1;
+  counts.clientCommands += stats.commands;
+  counts.clientIssuedBeforeDrop += stats.issuedBeforeDrop;
+  counts.clientResent += stats.resent;
+  counts.clientDropsBotClose += stats.dropsBotClose;
+  counts.clientDropsRestart += stats.dropsRestart;
+  counts.clientDropsSilenceLimit += stats.dropsSilenceLimit;
+  counts.clientDropsBlackHole += stats.dropsBlackHole;
+  counts.clientDropsDeafSilence += stats.dropsDeafSilence;
+  counts.clientDropsUnexplained += stats.dropsUnexplained;
+  counts.clientFailedAttempts += stats.failedAttempts;
+  counts.clientWakes += stats.wakes;
+  counts.clientSkippedRanges += stats.skippedRanges;
+  counts.clientUnexpectedRefusals += stats.unexpectedRefusals;
+  counts.clientEchoes += stats.echoes;
+  counts.clientNaps += stats.naps;
+  counts.commands += stats.commands;
+  counts.rejected += stats.rejected;
+  counts.illegal += stats.illegal;
+  counts.silences += stats.silences;
+};
+
+const finalSeqOf = (client: ClientBotRecord) =>
+  client.final().pipe(
+    Option.flatMap(({ seq }) => seq),
+    Option.getOrElse(() => 0)
+  );
+
+const indexClientActivity = (
+  checker: Checker,
+  received: Received,
+  client: ClientBotRecord,
+  first: number
+) => {
+  const { player } = client.pass;
+  const where = `${client.label} activity`;
+  let expected = first + 1;
+  let broken = Option.none<string>();
+
+  for (const item of client.activity) {
+    if (Option.isSome(broken)) {
+      break;
+    }
+
+    if (Activities.$is("Applied")(item)) {
+      if (item.seq === expected) {
+        const text = textOf(encodeSeenResult(item.event));
+
+        checker.counts.clientEventsChecked += 1;
+        pushTo(received.events, item.seq, {
+          player,
+          raw: decodeJson(text),
+          text,
+          where,
+        });
+        expected = item.seq + 1;
+      } else {
+        broken = Option.some(
+          `${where} reported event ${item.seq} while ${expected} was next`
+        );
+      }
+    } else if (item.from === expected) {
+      expected = item.to + 1;
+    } else {
+      broken = Option.some(
+        `${where} reported skipping ${item.from}..${item.to} while ${expected} was next`
+      );
+    }
+  }
+
+  const applied = finalSeqOf(client);
+
+  Option.match(broken, {
+    onNone: () => {
+      if (expected - 1 !== applied) {
+        report(
+          checker,
+          `${where} accounts for events up to ${expected - 1}, but the client applied ${applied}`
+        );
+      }
+    },
+    onSome: (problem) => {
+      report(checker, problem);
+    },
+  });
+};
+
+const indexClientReplies = (
+  checker: Checker,
+  received: Received,
+  client: ClientBotRecord
+) => {
+  const issued = new Set<string>(client.commands.map(({ id }) => id));
+  const replies = new Map<string, Set<string>>();
+
+  for (const entry of client.commands) {
+    const where = `${client.label} ${entry.command._tag} ${entry.id}`;
+
+    Option.match(entry.outcome, {
+      onNone: () => {
+        report(checker, `${where} was still waiting for its reply`);
+      },
+      onSome: Result.match({
+        onFailure: (why) => {
+          report(checker, `${where} got no reply: ${why}`);
+        },
+        onSuccess: (reply) => {
+          if (pokerCodec.reply.guards.Accepted(reply)) {
+            received.traces.push({
+              command: entry.command,
+              id: entry.id,
+              player: client.pass.player,
+              to: reply.seq,
+              where,
+            });
+          }
+
+          if (pokerCodec.reply.guards.Unavailable(reply)) {
+            report(checker, `${where} was answered ${reply.reason}`);
+          }
+        },
+      }),
+    });
+  }
+
+  for (const text of client.frames()) {
+    const message = decodeServerFrame(text).pipe(
+      Result.getSuccess,
+      Option.filter(guards.Reply)
+    );
+
+    for (const { id, result } of Option.toArray(message)) {
+      if (!issued.has(id)) {
+        report(
+          checker,
+          `${client.label} was answered for ${id}, which it never issued`
+        );
+      }
+
+      const seen = replies.get(id) ?? new Set<string>();
+
+      seen.add(pokerCodec.encodeReply(result));
+      replies.set(id, seen);
+    }
+  }
+
+  for (const [id, texts] of replies) {
+    if (texts.size > 1) {
+      report(
+        checker,
+        `${client.label} got different replies to ${id}: ${[...texts].join(" / ")}`
+      );
+    }
+  }
+};
+
+const indexClient = (
+  checker: Checker,
+  received: Received,
+  client: ClientBotRecord
+) => {
+  addClientStats(checker, client);
+
+  for (const problem of client.problems) {
+    report(checker, problem);
+  }
+
+  Option.match(client.firstSeq(), {
+    onNone: () => {
+      report(checker, `${client.label} never went live`);
+    },
+    onSome: (first) => {
+      indexClientActivity(checker, received, client, first);
+    },
+  });
+
+  for (const { hand, seq, view } of client.handEnds) {
+    pushTo(received.clientViews, seq, {
+      player: client.pass.player,
+      view,
+      where: `${client.label} after hand ${hand}`,
+    });
+  }
+
+  indexClientReplies(checker, received, client);
+
+  for (const view of Option.toArray(
+    client.final().pipe(Option.flatMap((state) => state.view))
+  )) {
+    received.finals.push({ player: client.pass.player, view });
+  }
+};
+
 const countHandStart = (checker: Checker, state: RoomState) => {
   if (!RoomStates.$is("Open")(state)) {
     return;
@@ -866,6 +1125,118 @@ const checkWelcomes = (
   }
 };
 
+const withoutClocks = (view: RoomView) => {
+  const json = decodeJson(encodeView(view));
+
+  return JSON.stringify(
+    isJsonObject(json)
+      ? Object.fromEntries(
+          Object.entries(json).filter(([key]) => key !== "clocks")
+        )
+      : json
+  );
+};
+
+const checkClientViews = (
+  checker: Checker,
+  state: RoomState,
+  seen: readonly ClientView[],
+  seq: number
+) => {
+  for (const item of seen) {
+    checker.counts.clientViewsChecked += 1;
+
+    const expected = withoutClocks(
+      viewFor(state, audienceOf(state, item.player), state.now)
+    );
+
+    const shown = withoutClocks(item.view);
+
+    if (shown !== expected) {
+      report(
+        checker,
+        `${item.where} showed a view at ${seq} that differs from the log's apart from its clocks: ${shown} / ${expected}`
+      );
+    }
+  }
+};
+
+const batchStarts = (events: readonly RoomEvent[], to: number) => {
+  const at = events[to - 1]?.at;
+  const starts = [to + 1];
+
+  for (let start = to; start >= 2 && events[start - 1]?.at === at; start -= 1) {
+    starts.push(start);
+  }
+
+  return starts;
+};
+
+const isEffectOf = (
+  events: readonly RoomEvent[],
+  trace: Trace,
+  start: number,
+  before: RoomState | undefined
+) => {
+  if (before === undefined) {
+    return false;
+  }
+
+  const at = events[trace.to - 1]?.at ?? 0;
+
+  const decided = decide(
+    before,
+    pokerRoom.stamp(trace.player, at, trace.command)
+  );
+
+  const stored = events.slice(start - 1, trace.to);
+
+  return (
+    Result.isSuccess(decided) &&
+    decided.success.length === stored.length &&
+    decided.success.every(
+      (event, offset) =>
+        stored[offset] !== undefined &&
+        encodeEvent(event) === encodeEvent(stored[offset])
+    )
+  );
+};
+
+const traceCommands = (
+  checker: Checker,
+  events: readonly RoomEvent[],
+  traces: readonly Trace[],
+  statesAfter: ReadonlyMap<number, RoomState>
+) => {
+  const claimed = new Set<number>();
+
+  for (const trace of traces) {
+    const start = batchStarts(events, trace.to).find((candidate) =>
+      isEffectOf(events, trace, candidate, statesAfter.get(candidate - 1))
+    );
+
+    if (start === undefined) {
+      report(
+        checker,
+        `${trace.where} was accepted at ${trace.to}, but no batch ending there is its effect`
+      );
+    } else {
+      checker.counts.clientCommandsTraced += 1;
+
+      if (start <= trace.to && claimed.has(trace.to)) {
+        report(
+          checker,
+          `${trace.where} claims the batch ending at ${trace.to}, which another command already caused`
+        );
+      }
+
+      if (start <= trace.to) {
+        claimed.add(trace.to);
+      }
+    }
+  }
+};
+
 const checkSettlement = (
   checker: Checker,
   finals: readonly Final[],
@@ -944,8 +1315,10 @@ export const checkNight = (evidence: NightEvidence): NightVerdict => {
   };
 
   const received: Received = {
+    clientViews: new Map(),
     events: new Map(),
     finals: [],
+    traces: [],
     views: new Map(),
     welcomes: new Map(),
   };
@@ -959,6 +1332,10 @@ export const checkNight = (evidence: NightEvidence): NightVerdict => {
 
   for (const bot of evidence.bots) {
     indexBot(checker, received, bot);
+  }
+
+  for (const client of evidence.clients) {
+    indexClient(checker, received, client);
   }
 
   const [opening, ...rest] = events;
@@ -992,6 +1369,14 @@ export const checkNight = (evidence: NightEvidence): NightVerdict => {
   };
 
   let state: RoomState = replay([opening]);
+
+  const needed = new Set(
+    received.traces.flatMap((trace) =>
+      batchStarts(events, trace.to).map((start) => start - 1)
+    )
+  );
+
+  const statesAfter = new Map<number, RoomState>();
 
   for (const [index, event] of events.entries()) {
     const seq = index + 1;
@@ -1027,7 +1412,14 @@ export const checkNight = (evidence: NightEvidence): NightVerdict => {
       received.welcomes.get(seq) ?? [],
       seq
     );
+    checkClientViews(checker, state, received.clientViews.get(seq) ?? [], seq);
+
+    if (needed.has(seq)) {
+      statesAfter.set(seq, state);
+    }
   }
+
+  traceCommands(checker, events, received.traces, statesAfter);
 
   if (JSON.stringify(state) !== JSON.stringify(replayed)) {
     report(checker, "folding the log event by event differs from replay");

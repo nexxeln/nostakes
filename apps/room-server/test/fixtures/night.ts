@@ -14,9 +14,12 @@ import type {
   BotRecord,
   NightControl,
   Random,
+  Role,
   RuleChange,
   Temper,
 } from "./bot.js";
+import { startClientBot } from "./client-bot.js";
+import type { ClientBotRecord, ClientTemper } from "./client-bot.js";
 import { checkNight } from "./night-checks.js";
 import type { NightVerdict } from "./night-checks.js";
 import { createPokerRoom, joinPokerRoom } from "./poker-http.js";
@@ -38,6 +41,8 @@ export interface NightPlan {
   readonly ruleChanges: readonly RuleChange[];
   readonly silences: readonly number[];
   readonly temper: Temper;
+  readonly chaos: ClientTemper;
+  readonly clients: readonly number[];
   readonly limitMs: number;
 }
 
@@ -62,6 +67,14 @@ export class NightFailed extends Schema.TaggedError<
 }
 
 export const WATCHDOG_MARGIN_MS = 6000;
+
+export const CLOSE_GRACE_MS = 30_000;
+
+interface Watched {
+  readonly latest: () => Option.Option<RoomView>;
+  readonly lastSeq: () => number;
+  readonly lastTableAt: () => number;
+}
 
 const codeFrom = (random: Random): RoomCode =>
   RoomCodeSchema.make(
@@ -138,12 +151,30 @@ export interface NightRecipe {
   readonly turnSeconds: number;
   readonly restarts: number;
   readonly silences: number;
+  readonly clientPercent: number;
 }
+
+const clientIndices = (random: Random, bots: number, percent: number) => {
+  const drawn = Array.from({ length: bots }, (_, index) => index).filter(() =>
+    random.chance(percent)
+  );
+
+  if (bots < 2 || percent <= 0) {
+    return drawn;
+  }
+
+  if (drawn.length === 0) {
+    return [random.below(bots)];
+  }
+
+  return drawn.length === bots ? drawn.slice(1) : drawn;
+};
 
 export const planNight = (
   seed: number,
   recipe: NightRecipe,
-  temper: Temper
+  temper: Temper,
+  chaos: ClientTemper
 ): NightPlan => {
   const random = randomSource(seed);
   const small = random.between(1, 3);
@@ -171,10 +202,13 @@ export const planNight = (
     turnSeconds: recipe.turnSeconds,
   });
 
-  return {
+  const lateJoiners = recipe.players > 2 ? 1 : 0;
+
+  const plan = {
+    chaos,
     code: codeFrom(random),
     hands: recipe.hands,
-    lateJoiners: recipe.players > 2 ? 1 : 0,
+    lateJoiners,
     limitMs: recipe.hands * 4000 + 60_000,
     players: recipe.players - (recipe.players > 2 ? 1 : 0),
     restartHands: Array.from({ length: recipe.restarts }, (_, index) =>
@@ -205,6 +239,15 @@ export const planNight = (
     spectators: random.chance(50) ? 1 : 0,
     temper,
     voteRestarts: 1,
+  };
+
+  return {
+    ...plan,
+    clients: clientIndices(
+      random,
+      plan.players + plan.spectators + plan.lateJoiners,
+      recipe.clientPercent
+    ),
   };
 };
 
@@ -271,6 +314,7 @@ export const runNight = (base: string, opened: OpenedNight) =>
 
     const control: NightControl = {
       closing: false,
+      head: 0,
       quiet: new Set(),
       ruleChanges: plan.ruleChanges,
       rulesApplied: 0,
@@ -281,33 +325,49 @@ export const runNight = (base: string, opened: OpenedNight) =>
     };
 
     const records: BotRecord[] = [];
+    const clients: ClientBotRecord[] = [];
+    const watched: Watched[] = [];
     const closers: Effect.Effect<void>[] = [];
 
     const fail = (problem: string) =>
       new NightFailed({ code: plan.code, problem, seed: plan.seed });
 
     const launch = (pass: RoomPass, index: number) => {
-      const bot = startBot({
+      const role: Role =
+        index < plan.players || index >= plan.players + plan.spectators
+          ? "Player"
+          : "Spectator";
+
+      const setup = {
         base,
         control,
         index,
         pass,
         random: randomSource(plan.seed * 31 + index * 7919 + 1),
-        role:
-          index < plan.players || index >= plan.players + plan.spectators
-            ? "Player"
-            : "Spectator",
+        role,
         temper: plan.temper,
-      });
+      };
+
+      if (plan.clients.includes(index)) {
+        const bot = startClientBot({ ...setup, chaos: plan.chaos });
+
+        clients.push(bot.record);
+        watched.push(bot.record);
+
+        return bot.loop;
+      }
+
+      const bot = startBot(setup);
 
       records.push(bot.record);
+      watched.push(bot.record);
       closers.push(bot.closeAll);
 
       return bot.loop;
     };
 
     const freshest = () =>
-      records
+      watched
         .filter((record) => Option.isSome(record.latest()))
         .toSorted((left, right) => right.lastSeq() - left.lastSeq())
         .at(0)
@@ -337,6 +397,36 @@ export const runNight = (base: string, opened: OpenedNight) =>
     let restarts = 0;
     let voteRestarts = 0;
 
+    let closedAt = Option.none<number>();
+
+    const nightOver = (now: number) => {
+      const sawClose = watched.filter((record) =>
+        record.latest().pipe(Option.exists(RoomViews.$is("Closed")))
+      ).length;
+
+      closedAt =
+        sawClose > 0 && Option.isNone(closedAt) ? Option.some(now) : closedAt;
+
+      return (
+        (watched.length > 0 && sawClose === watched.length) ||
+        closedAt.pipe(Option.exists((at) => now - at > CLOSE_GRACE_MS))
+      );
+    };
+
+    const troubleAt = (now: number, hands: number) => {
+      const reported = clients.flatMap((client) => client.problems).at(0);
+
+      if (reported !== undefined) {
+        return Option.some(`a client bot failed: ${reported}`);
+      }
+
+      return now - started > plan.limitMs
+        ? Option.some(
+            `the night reached ${hands} of ${plan.hands} hands in ${plan.limitMs} ms`
+          )
+        : Option.none();
+    };
+
     const supervise = Effect.gen(function* superviseNight() {
       let progress = wallClock();
       let problem = Option.none<string>();
@@ -348,22 +438,20 @@ export const runNight = (base: string, opened: OpenedNight) =>
         const view = freshest();
         const hands = handsNow();
 
-        if (
-          records.length > 0 &&
-          records.every((record) =>
-            record.latest().pipe(Option.exists(RoomViews.$is("Closed")))
-          )
-        ) {
+        control.head = Math.max(
+          control.head,
+          ...watched.map((record) => record.lastSeq())
+        );
+
+        if (nightOver(now)) {
           control.stop = true;
 
           continue;
         }
 
-        if (now - started > plan.limitMs) {
-          problem = Option.some(
-            `the night reached ${hands} of ${plan.hands} hands in ${plan.limitMs} ms`
-          );
+        problem = troubleAt(now, hands);
 
+        if (Option.isSome(problem)) {
           continue;
         }
 
@@ -401,7 +489,7 @@ export const runNight = (base: string, opened: OpenedNight) =>
         }
 
         const lastEvent = Math.max(
-          ...records.map((record) => record.lastTableAt())
+          ...watched.map((record) => record.lastTableAt())
         );
 
         progress = shouldAdvance(open.value)
@@ -442,6 +530,7 @@ export const runNight = (base: string, opened: OpenedNight) =>
 
     const verdict = checkNight({
       bots: records,
+      clients,
       code: plan.code,
       events: inspection.events,
       halted: inspection.halted,

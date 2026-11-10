@@ -13,6 +13,7 @@ import {
 import * as FetchHttpClient from "effect/http/FetchHttpClient";
 
 import type { Temper } from "../test/fixtures/bot.js";
+import type { ClientTemper } from "../test/fixtures/client-bot.js";
 import { COUNT_NAMES, emptyCounts } from "../test/fixtures/night-checks.js";
 import type { CountName } from "../test/fixtures/night-checks.js";
 import { openNight, planNight, runNight } from "../test/fixtures/night.js";
@@ -48,8 +49,23 @@ const TEMPER: Temper = {
   thinkMs: 30,
 };
 
+const CHAOS: ClientTemper = {
+  blackHolePercent: 0.3,
+  deafPercent: 0.03,
+  dropPercent: 0.6,
+  echoPercent: 0.5,
+  issueBeforeDropPercent: 60,
+  napPercent: 0.2,
+  waitOutSilencePercent: 25,
+  wakePercent: 0.5,
+};
+
 const INFORMATIONAL: ReadonlySet<CountName> = new Set([
   "catchUpsSkipped",
+  "clientDropsDeafSilence",
+  "clientDropsUnexplained",
+  "clientFailedAttempts",
+  "clientUnexpectedRefusals",
   "replyTimeouts",
 ]);
 
@@ -63,7 +79,7 @@ export class SoakFailed extends Schema.TaggedError<
 }
 
 const describePlan = (plan: NightPlan) =>
-  `${plan.code} seed ${plan.seed}: ${plan.players + plan.lateJoiners} players and ${plan.spectators} spectators, ${plan.hands} hands, turn ${plan.settings.turnSeconds}s, bank ${plan.settings.timeBankSeconds}s, runs ${plan.settings.table.maxRuns}, rules ${plan.ruleChanges.map((rule) => `${rule.label} at ${rule.atHand}`).join("; ")}`;
+  `${plan.code} seed ${plan.seed}: ${plan.players + plan.lateJoiners} players and ${plan.spectators} spectators, ${plan.hands} hands, turn ${plan.settings.turnSeconds}s, bank ${plan.settings.timeBankSeconds}s, runs ${plan.settings.table.maxRuns}, client bots ${plan.clients.join(",") || "none"}, rules ${plan.ruleChanges.map((rule) => `${rule.label} at ${rule.atHand}`).join("; ")}`;
 
 const sumCounts = (results: readonly NightResult[]) => {
   const total = emptyCounts();
@@ -117,6 +133,9 @@ const summarize = (
     `  hands with approval ${counts.handsWithApproval} and without ${counts.handsWithoutApproval}, approvals ${counts.approvals}, denials ${counts.denials}`,
     `  settings changed ${counts.settingsChanged}, rules queued ${counts.rulesQueued}, closes queued in a hand ${counts.closeQueued}`,
     `  frames checked ${counts.framesChecked}, views checked ${counts.viewsChecked}, viewFor ${views > 0 ? ((viewMs * 1000) / views).toFixed(1) : "n/a"} µs each over ${views}`,
+    `  client bots ${counts.clientBots}: commands ${counts.clientCommands}, traced to the log ${counts.clientCommandsTraced}, issued right before a drop ${counts.clientIssuedBeforeDrop}, resent after a drop ${counts.clientResent}`,
+    `  client drops: bot close ${counts.clientDropsBotClose}, server restart ${counts.clientDropsRestart}, silence limit ${counts.clientDropsSilenceLimit}, black hole ${counts.clientDropsBlackHole}; deaf and silent ${counts.clientDropsDeafSilence}, unexplained ${counts.clientDropsUnexplained}, failed reconnects ${counts.clientFailedAttempts}`,
+    `  client wakes ${counts.clientWakes}, naps ${counts.clientNaps}, skipped ranges ${counts.clientSkippedRanges}, past batches echoed ${counts.clientEchoes}, events checked ${counts.clientEventsChecked}, views checked ${counts.clientViewsChecked}, unexpected refusals ${counts.clientUnexpectedRefusals}`,
     `  replay of the longest night (${longest?.plan.code ?? "none"}, ${longest?.verdict.counts.hands ?? 0} hands, ${longest?.verdict.counts.events ?? 0} events): ${(longest?.verdict.replayMs ?? 0).toFixed(1)} ms`,
     `  settlement transfers per room: ${results.map((result) => result.verdict.transfers.join(",")).join(" ")} (total ${counts.transfers})`,
     `  gaps (counts at zero): ${gaps.length === 0 ? "none" : gaps.join(", ")}`,
@@ -158,6 +177,7 @@ test(
         seed * 100 + index,
         {
           betweenHandsSeconds: index % 2,
+          clientPercent: 50,
           hands: perRoom + (index % 3),
           players: 2 + (index % 8),
           restarts: 2,
@@ -165,7 +185,8 @@ test(
           silences: 3,
           turnSeconds: index % 6 === 5 ? 0 : 1 + (index % 2),
         },
-        TEMPER
+        TEMPER,
+        CHAOS
       )
     );
 
@@ -232,7 +253,10 @@ test(
     yield* Console.log(lines.join("\n"));
 
     const failed =
-      failures.length > 0 || gaps.length > 0 || counts.hands < hands;
+      failures.length > 0 ||
+      gaps.length > 0 ||
+      counts.hands < hands ||
+      counts.clientUnexpectedRefusals > 0;
 
     return yield* failed
       ? Effect.fail(

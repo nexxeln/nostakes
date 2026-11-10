@@ -5,6 +5,7 @@ import { Effect } from "effect";
 import * as FetchHttpClient from "effect/http/FetchHttpClient";
 
 import type { Temper } from "./fixtures/bot.js";
+import type { ClientTemper } from "./fixtures/client-bot.js";
 import { openNight, planNight, runNight } from "./fixtures/night.js";
 import { PokerStack } from "./fixtures/poker-stack.js";
 
@@ -31,6 +32,17 @@ const TEMPER: Temper = {
   thinkMs: 30,
 };
 
+const CHAOS: ClientTemper = {
+  blackHolePercent: 1.5,
+  deafPercent: 0,
+  dropPercent: 1.5,
+  echoPercent: 1,
+  issueBeforeDropPercent: 70,
+  napPercent: 0,
+  waitOutSilencePercent: 0,
+  wakePercent: 1,
+};
+
 test(
   "a small night: three rooms play about 30 hands over real sockets, with restarts, timeouts, reconnects, duplicates, and a second device, and every check holds",
   Effect.gen(function* smallNight() {
@@ -42,6 +54,7 @@ test(
         SEED + index,
         {
           betweenHandsSeconds: 0,
+          clientPercent: 50,
           hands: 10,
           players,
           restarts: 1,
@@ -49,7 +62,8 @@ test(
           silences: 1,
           turnSeconds: 1,
         },
-        TEMPER
+        TEMPER,
+        CHAOS
       )
     );
 
@@ -77,6 +91,25 @@ test(
       total((counts) => counts.duplicatesConfirmed)
     ).toBeGreaterThanOrEqual(1);
     expect(total((counts) => counts.viewsChecked)).toBeGreaterThan(0);
+    expect(total((counts) => counts.clientBots)).toBeGreaterThanOrEqual(3);
+    expect(
+      total((counts) => counts.clientCommandsTraced)
+    ).toBeGreaterThanOrEqual(30);
+    expect(total((counts) => counts.clientViewsChecked)).toBeGreaterThan(0);
+    expect(total((counts) => counts.clientEventsChecked)).toBeGreaterThan(0);
+    expect(
+      total((counts) => counts.clientIssuedBeforeDrop)
+    ).toBeGreaterThanOrEqual(1);
+    expect(total((counts) => counts.clientResent)).toBeGreaterThanOrEqual(1);
+    expect(
+      total((counts) => counts.clientDropsBotClose)
+    ).toBeGreaterThanOrEqual(1);
+    expect(total((counts) => counts.clientDropsRestart)).toBeGreaterThanOrEqual(
+      1
+    );
+    expect(total((counts) => counts.clientWakes)).toBeGreaterThanOrEqual(1);
+    expect(total((counts) => counts.clientEchoes)).toBeGreaterThanOrEqual(1);
+    expect(total((counts) => counts.clientUnexpectedRefusals)).toBe(0);
   }).pipe(Effect.provide(FetchHttpClient.layer)),
   { timeout: 120_000 }
 );

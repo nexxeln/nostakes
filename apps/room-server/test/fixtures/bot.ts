@@ -86,6 +86,7 @@ export interface RuleChange {
 export interface NightControl {
   stop: boolean;
   closing: boolean;
+  head: number;
   rulesApplied: number;
   readonly ruleChanges: readonly RuleChange[];
   readonly silences: readonly number[];
@@ -153,7 +154,7 @@ export class BotFailed extends Schema.TaggedError<
   }
 }
 
-interface Intent {
+export interface Intent {
   readonly command: MemberCommand;
   readonly illegal: boolean;
   readonly think: number;
@@ -269,234 +270,22 @@ const awaitReply = (socket: PokerSocket, id: string, from: number) =>
     Effect.map(Option.flatten)
   );
 
-export const startBot = (setup: BotSetup) => {
-  const { base, control, pass, random, temper } = setup;
-  const label = `bot${setup.index}`;
-  const main: Device = { name: "main", sockets: [] };
-  const second: Device = { name: "second", sockets: [] };
+export interface PlannerSetup {
+  readonly label: string;
+  readonly pass: RoomPass;
+  readonly role: Role;
+  readonly random: Random;
+  readonly temper: Temper;
+  readonly control: NightControl;
+  readonly stats: { silences: number };
+}
 
-  const stats: BotStats = {
-    commands: 0,
-    drops: 0,
-    duplicates: 0,
-    illegal: 0,
-    protocolViolations: 0,
-    reconnects: 0,
-    rejected: 0,
-    replyTimeouts: 0,
-    resent: 0,
-    secondDevices: 0,
-    silences: 0,
-  };
-
-  const sent = new Map<string, number>();
-  const laterDuplicates: string[] = [];
-  let cursor = 0;
-  let lastSeq = 0;
-  let lastTableAt = wallClock();
-  let view = Option.none<RoomView>();
+export const plannerFor = (setup: PlannerSetup) => {
+  const { control, label, pass, random, stats, temper } = setup;
   let silent = Option.none<{ readonly key: string; readonly bank: boolean }>();
   let decided = "";
-  let counter = 0;
   let finishedHand = 0;
   let restingUntil = 0;
-
-  const record: BotRecord = {
-    devices: [main, second],
-    index: setup.index,
-    label,
-    lastSeq: () => lastSeq,
-    lastTableAt: () => lastTableAt,
-    latest: () => view,
-    pass,
-    role: setup.role,
-    sent,
-    stats,
-  };
-
-  const currentOf = (device: Device) =>
-    Option.fromUndefinedOr(device.sockets.at(-1));
-
-  const isLive = (device: Device) =>
-    currentOf(device).pipe(
-      Option.exists(({ socket }) => Option.isNone(socket.closed()))
-    );
-
-  const lastSeqOf = (device: Device) =>
-    currentOf(device).pipe(
-      Option.flatMap(({ socket }) =>
-        Option.fromUndefinedOr(
-          socket.arrivals
-            .flatMap(({ message }) => {
-              if (guards.Welcome(message)) {
-                return [message.seq];
-              }
-
-              return guards.Events(message) ? [message.to] : [];
-            })
-            .at(-1)
-        )
-      )
-    );
-
-  const absorb = () => {
-    const current = currentOf(main);
-
-    if (Option.isNone(current)) {
-      return;
-    }
-
-    const { arrivals } = current.value.socket;
-
-    for (; cursor < arrivals.length; cursor += 1) {
-      const arrival = arrivals[cursor];
-
-      if (arrival !== undefined && guards.Welcome(arrival.message)) {
-        lastSeq = arrival.message.seq;
-        view = Option.some(arrival.message.view);
-      }
-
-      if (arrival !== undefined && guards.Events(arrival.message)) {
-        lastSeq = arrival.message.to;
-        view = Option.some(arrival.message.view);
-        lastTableAt = arrival.message.events.some(SeenEvents.$is("Table"))
-          ? arrival.at
-          : lastTableAt;
-      }
-    }
-  };
-
-  const connectOnce = (device: Device, after: Option.Option<number>) =>
-    Effect.gen(function* connectDevice() {
-      const socket = yield* openSocket(
-        base,
-        pass.code,
-        `${label} ${device.name} #${device.sockets.length + 1}`
-      );
-
-      const helloAt = yield* socket.send(
-        pokerCodec.client.cases.Hello.make({
-          after: after.pipe(Option.map((seq) => SeqSchema.make(seq))),
-          token: pass.token,
-        })
-      );
-
-      device.sockets.push({ after, helloAt, socket });
-
-      yield* awaitArrival(socket, "welcome", guards.Welcome);
-    });
-
-  const connect = (device: Device, after: Option.Option<number>) =>
-    connectOnce(device, after).pipe(
-      Effect.retry({
-        schedule: Schedule.spaced(Duration.millis(150)),
-        times: 40,
-      }),
-      Effect.mapError(
-        (failure) =>
-          new BotFailed({
-            label,
-            problem: `could not connect: ${failure.message}`,
-          })
-      )
-    );
-
-  const reconnectMain = Effect.gen(function* reconnectMain() {
-    absorb();
-    yield* Effect.sleep(Duration.millis(random.between(20, 250)));
-    yield* connect(main, lastSeq > 0 ? Option.some(lastSeq) : Option.none());
-    cursor = 0;
-    stats.reconnects += 1;
-    absorb();
-  });
-
-  const wait = (ms: number) =>
-    currentOf(main).pipe(
-      Option.match({
-        onNone: () => Effect.sleep(Duration.millis(ms)),
-        onSome: ({ socket }) =>
-          Queue.take(socket.signal).pipe(
-            Effect.timeoutOption(Duration.millis(ms)),
-            Effect.andThen(Queue.clear(socket.signal)),
-            Effect.asVoid
-          ),
-      })
-    );
-
-  const sendCounted = (socket: PokerSocket, id: string, text: string) =>
-    socket.sendText(text).pipe(
-      Effect.tap(() =>
-        Effect.sync(() => {
-          sent.set(id, (sent.get(id) ?? 0) + 1);
-        })
-      )
-    );
-
-  const perform = (planned: Intent) =>
-    Effect.gen(function* sendCommand() {
-      counter += 1;
-
-      const id = `${label}.${counter}`;
-
-      const text = encodeClientFrame(
-        pokerCodec.client.cases.Command.make({
-          command: planned.command,
-          id: CommandIdSchema.make(id),
-        })
-      );
-
-      const current = currentOf(main);
-
-      if (Option.isNone(current)) {
-        return;
-      }
-
-      const { socket } = current.value;
-      const from = socket.arrivals.length;
-
-      stats.commands += 1;
-      stats.illegal += planned.illegal ? 1 : 0;
-
-      yield* sendCounted(socket, id, text);
-
-      if (random.chance(temper.duplicatePercent)) {
-        stats.duplicates += 1;
-
-        if (random.chance(50)) {
-          yield* sendCounted(socket, id, text);
-        } else {
-          laterDuplicates.push(text);
-        }
-      }
-
-      let reply = yield* awaitReply(socket, id, from);
-
-      if (Option.isNone(reply) && Option.isSome(socket.closed())) {
-        yield* reconnectMain;
-
-        const again = currentOf(main);
-
-        if (Option.isSome(again)) {
-          const start = again.value.socket.arrivals.length;
-
-          stats.resent += 1;
-          yield* sendCounted(again.value.socket, id, text);
-          reply = yield* awaitReply(again.value.socket, id, start);
-        }
-      }
-
-      if (Option.isNone(reply)) {
-        stats.replyTimeouts += isLive(main) ? 1 : 0;
-      }
-
-      stats.rejected += reply.pipe(
-        Option.exists(({ result }) => pokerCodec.reply.guards.Rejected(result))
-      )
-        ? 1
-        : 0;
-
-      absorb();
-    });
 
   const freeSeats = (open: OpenView) =>
     open.seats
@@ -908,6 +697,244 @@ export const startBot = (setup: BotSetup) => {
     });
   };
 
+  return { choose };
+};
+
+export const startBot = (setup: BotSetup) => {
+  const { base, control, pass, random, temper } = setup;
+  const label = `bot${setup.index}`;
+  const main: Device = { name: "main", sockets: [] };
+  const second: Device = { name: "second", sockets: [] };
+
+  const stats: BotStats = {
+    commands: 0,
+    drops: 0,
+    duplicates: 0,
+    illegal: 0,
+    protocolViolations: 0,
+    reconnects: 0,
+    rejected: 0,
+    replyTimeouts: 0,
+    resent: 0,
+    secondDevices: 0,
+    silences: 0,
+  };
+
+  const planner = plannerFor({
+    control,
+    label,
+    pass,
+    random,
+    role: setup.role,
+    stats,
+    temper,
+  });
+
+  const sent = new Map<string, number>();
+  const laterDuplicates: string[] = [];
+  let cursor = 0;
+  let lastSeq = 0;
+  let lastTableAt = wallClock();
+  let view = Option.none<RoomView>();
+  let counter = 0;
+
+  const record: BotRecord = {
+    devices: [main, second],
+    index: setup.index,
+    label,
+    lastSeq: () => lastSeq,
+    lastTableAt: () => lastTableAt,
+    latest: () => view,
+    pass,
+    role: setup.role,
+    sent,
+    stats,
+  };
+
+  const currentOf = (device: Device) =>
+    Option.fromUndefinedOr(device.sockets.at(-1));
+
+  const isLive = (device: Device) =>
+    currentOf(device).pipe(
+      Option.exists(({ socket }) => Option.isNone(socket.closed()))
+    );
+
+  const lastSeqOf = (device: Device) =>
+    currentOf(device).pipe(
+      Option.flatMap(({ socket }) =>
+        Option.fromUndefinedOr(
+          socket.arrivals
+            .flatMap(({ message }) => {
+              if (guards.Welcome(message)) {
+                return [message.seq];
+              }
+
+              return guards.Events(message) ? [message.to] : [];
+            })
+            .at(-1)
+        )
+      )
+    );
+
+  const absorb = () => {
+    const current = currentOf(main);
+
+    if (Option.isNone(current)) {
+      return;
+    }
+
+    const { arrivals } = current.value.socket;
+
+    for (; cursor < arrivals.length; cursor += 1) {
+      const arrival = arrivals[cursor];
+
+      if (arrival !== undefined && guards.Welcome(arrival.message)) {
+        lastSeq = arrival.message.seq;
+        view = Option.some(arrival.message.view);
+      }
+
+      if (arrival !== undefined && guards.Events(arrival.message)) {
+        lastSeq = arrival.message.to;
+        view = Option.some(arrival.message.view);
+        lastTableAt = arrival.message.events.some(SeenEvents.$is("Table"))
+          ? arrival.at
+          : lastTableAt;
+      }
+    }
+  };
+
+  const connectOnce = (device: Device, after: Option.Option<number>) =>
+    Effect.gen(function* connectDevice() {
+      const socket = yield* openSocket(
+        base,
+        pass.code,
+        `${label} ${device.name} #${device.sockets.length + 1}`
+      );
+
+      const helloAt = yield* socket.send(
+        pokerCodec.client.cases.Hello.make({
+          after: after.pipe(Option.map((seq) => SeqSchema.make(seq))),
+          token: pass.token,
+        })
+      );
+
+      device.sockets.push({ after, helloAt, socket });
+
+      yield* awaitArrival(socket, "welcome", guards.Welcome);
+    });
+
+  const connect = (device: Device, after: Option.Option<number>) =>
+    connectOnce(device, after).pipe(
+      Effect.retry({
+        schedule: Schedule.spaced(Duration.millis(150)),
+        times: 40,
+      }),
+      Effect.mapError(
+        (failure) =>
+          new BotFailed({
+            label,
+            problem: `could not connect: ${failure.message}`,
+          })
+      )
+    );
+
+  const reconnectMain = Effect.gen(function* reconnectMain() {
+    absorb();
+    yield* Effect.sleep(Duration.millis(random.between(20, 250)));
+    yield* connect(main, lastSeq > 0 ? Option.some(lastSeq) : Option.none());
+    cursor = 0;
+    stats.reconnects += 1;
+    absorb();
+  });
+
+  const wait = (ms: number) =>
+    currentOf(main).pipe(
+      Option.match({
+        onNone: () => Effect.sleep(Duration.millis(ms)),
+        onSome: ({ socket }) =>
+          Queue.take(socket.signal).pipe(
+            Effect.timeoutOption(Duration.millis(ms)),
+            Effect.andThen(Queue.clear(socket.signal)),
+            Effect.asVoid
+          ),
+      })
+    );
+
+  const sendCounted = (socket: PokerSocket, id: string, text: string) =>
+    socket.sendText(text).pipe(
+      Effect.tap(() =>
+        Effect.sync(() => {
+          sent.set(id, (sent.get(id) ?? 0) + 1);
+        })
+      )
+    );
+
+  const perform = (planned: Intent) =>
+    Effect.gen(function* sendCommand() {
+      counter += 1;
+
+      const id = `${label}.${counter}`;
+
+      const text = encodeClientFrame(
+        pokerCodec.client.cases.Command.make({
+          command: planned.command,
+          id: CommandIdSchema.make(id),
+        })
+      );
+
+      const current = currentOf(main);
+
+      if (Option.isNone(current)) {
+        return;
+      }
+
+      const { socket } = current.value;
+      const from = socket.arrivals.length;
+
+      stats.commands += 1;
+      stats.illegal += planned.illegal ? 1 : 0;
+
+      yield* sendCounted(socket, id, text);
+
+      if (random.chance(temper.duplicatePercent)) {
+        stats.duplicates += 1;
+
+        if (random.chance(50)) {
+          yield* sendCounted(socket, id, text);
+        } else {
+          laterDuplicates.push(text);
+        }
+      }
+
+      let reply = yield* awaitReply(socket, id, from);
+
+      if (Option.isNone(reply) && Option.isSome(socket.closed())) {
+        yield* reconnectMain;
+
+        const again = currentOf(main);
+
+        if (Option.isSome(again)) {
+          const start = again.value.socket.arrivals.length;
+
+          stats.resent += 1;
+          yield* sendCounted(again.value.socket, id, text);
+          reply = yield* awaitReply(again.value.socket, id, start);
+        }
+      }
+
+      if (Option.isNone(reply)) {
+        stats.replyTimeouts += isLive(main) ? 1 : 0;
+      }
+
+      stats.rejected += reply.pipe(
+        Option.exists(({ result }) => pokerCodec.reply.guards.Rejected(result))
+      )
+        ? 1
+        : 0;
+
+      absorb();
+    });
+
   const chaos = Effect.gen(function* chaos() {
     if (control.closing) {
       return;
@@ -1001,7 +1028,7 @@ export const startBot = (setup: BotSetup) => {
         continue;
       }
 
-      const planned = choose(current.value);
+      const planned = planner.choose(current.value);
 
       if (Option.isNone(planned)) {
         continue;

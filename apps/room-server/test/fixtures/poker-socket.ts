@@ -18,7 +18,7 @@ export type PokerServerMessage = ServerMessage<PokerTypes>;
 
 export type PokerClientMessage = ClientMessage<PokerTypes>;
 
-const decodeServerFrame = Schema.decodeUnknownResult(
+export const decodeServerFrame = Schema.decodeUnknownResult(
   Schema.fromJsonString(pokerCodec.server)
 );
 
