@@ -2,23 +2,15 @@ import { Commands, PendingDecisions, pendingDecisions } from "@nostakes/engine";
 import type { PlayerId, SeatIndex } from "@nostakes/engine";
 import { Option, Result } from "effect";
 
-import { andThen } from "./batch.js";
+import { inSequence } from "./batch.js";
+import type { Step } from "./batch.js";
 import { actAutomatically } from "./clocks.js";
+import { closingSteps } from "./closing.js";
 import type { Decision } from "./decision.js";
 import { handInProgress, occupantAt, seatOf } from "./state.js";
 import type { ChipRequest, Open } from "./state.js";
 import { onTable } from "./table.js";
 import type { Millis } from "./time.js";
-
-type Step = (state: Open) => Decision;
-
-export const inSequence = (state: Open, steps: readonly Step[]): Decision => {
-  const [first, ...rest] = steps;
-
-  return first === undefined
-    ? Result.succeed([])
-    : andThen(state, first(state), (after) => inSequence(after, rest));
-};
 
 const onSeatOf =
   (player: PlayerId, act: (seat: SeatIndex, state: Open) => Decision): Step =>
@@ -47,6 +39,9 @@ export const queuedSteps = (state: Open, at: Millis): readonly Step[] => [
       (current) => onTable(current.table, Commands.ChangeRules({ config }), at),
     ],
   }),
+  ...(state.queued.close
+    ? [(current: Open) => inSequence(current, closingSteps(current, at))]
+    : []),
 ];
 
 export const endOfHand = (state: Open, at: Millis): Option.Option<Decision> => {

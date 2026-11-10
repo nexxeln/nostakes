@@ -8,6 +8,7 @@ import { Data, Schema } from "effect";
 
 import { AvatarSchema, NameSchema, RoomCodeSchema } from "./identity.js";
 import { ChipAmountSchema, RoomSettingsSchema } from "./settings.js";
+import { SettlementSchema } from "./settlement.js";
 import { MillisSchema } from "./time.js";
 
 const at = MillisSchema;
@@ -30,6 +31,7 @@ export const RoomEventSchema = Schema.TaggedUnion({
   ChipsQueued: { amount: ChipAmountSchema, at, player: PlayerIdSchema },
   ChipsRequested: { amount: ChipAmountSchema, at, player: PlayerIdSchema },
   ClockStopped: { at },
+  CloseQueued: { at },
   GamePaused: { at },
   GameStarted: { at },
   HostChanged: { at, host: PlayerIdSchema },
@@ -48,6 +50,7 @@ export const RoomEventSchema = Schema.TaggedUnion({
     name: NameSchema,
     player: PlayerIdSchema,
   },
+  RoomClosed: { at, settlement: SettlementSchema },
   RoomOpened: {
     at,
     code: RoomCodeSchema,

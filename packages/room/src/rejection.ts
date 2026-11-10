@@ -1,3 +1,4 @@
+import { Unbalanced } from "@nostakes/ledger";
 import { Schema } from "effect";
 
 import { ActionNotOnSeat } from "./rejections/action-not-on-seat.js";
@@ -9,6 +10,7 @@ import { BuyInOutOfRange } from "./rejections/buy-in-out-of-range.js";
 import { ChipRequestPending } from "./rejections/chip-request-pending.js";
 import { ChipsOverMax } from "./rejections/chips-over-max.js";
 import { ClockNotDue } from "./rejections/clock-not-due.js";
+import { CloseAlreadyQueued } from "./rejections/close-already-queued.js";
 import { DealNotDue } from "./rejections/deal-not-due.js";
 import { GameAlready } from "./rejections/game-already.js";
 import { MembersOnly } from "./rejections/members-only.js";
@@ -22,6 +24,7 @@ import { RoomIsClosed } from "./rejections/room-is-closed.js";
 import { SeatNotFree } from "./rejections/seat-not-free.js";
 import { SeatRequestPending } from "./rejections/seat-request-pending.js";
 import { ServerOnly } from "./rejections/server-only.js";
+import { SettlesAfterHand } from "./rejections/settles-after-hand.js";
 import { ShuffleRanOut } from "./rejections/shuffle-ran-out.js";
 import { TableRejected } from "./rejections/table-rejected.js";
 
@@ -35,6 +38,7 @@ export const RoomRejectionSchema = Schema.Union([
   ChipRequestPending,
   ChipsOverMax,
   ClockNotDue,
+  CloseAlreadyQueued,
   DealNotDue,
   GameAlready,
   MembersOnly,
@@ -48,8 +52,10 @@ export const RoomRejectionSchema = Schema.Union([
   SeatNotFree,
   SeatRequestPending,
   ServerOnly,
+  SettlesAfterHand,
   ShuffleRanOut,
   TableRejected,
+  Unbalanced,
 ]);
 
 export type RoomRejection = typeof RoomRejectionSchema.Type;
@@ -71,6 +77,8 @@ export { ChipRequestPending } from "./rejections/chip-request-pending.js";
 export { ChipsOverMax } from "./rejections/chips-over-max.js";
 
 export { ClockNotDue } from "./rejections/clock-not-due.js";
+
+export { CloseAlreadyQueued } from "./rejections/close-already-queued.js";
 
 export { DealNotDue } from "./rejections/deal-not-due.js";
 
@@ -98,6 +106,10 @@ export { SeatRequestPending } from "./rejections/seat-request-pending.js";
 
 export { ServerOnly } from "./rejections/server-only.js";
 
+export { SettlesAfterHand } from "./rejections/settles-after-hand.js";
+
 export { ShuffleRanOut } from "./rejections/shuffle-ran-out.js";
 
 export { TableRejected } from "./rejections/table-rejected.js";
+
+export { Unbalanced } from "@nostakes/ledger";

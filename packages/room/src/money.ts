@@ -4,8 +4,10 @@ import {
   AmountSchema,
   BoughtIn as boughtInEntry,
   CashedOut as cashedOutEntry,
+  balances,
+  settle,
 } from "@nostakes/ledger";
-import type { LedgerEntry } from "@nostakes/ledger";
+import type { LedgerEntry, Unbalanced } from "@nostakes/ledger";
 import { Option, Result } from "effect";
 
 import type { RoomCommandOf } from "./commands.js";
@@ -16,9 +18,11 @@ import {
   ChipRequestPending,
   ChipsOverMax,
   NoChipRequest,
+  SettlesAfterHand,
 } from "./rejection.js";
-import { heldSeat, occupantAt } from "./state.js";
-import type { Entries, Open } from "./state.js";
+import type { Settlement } from "./settlement.js";
+import { RoomStates, SEATS, heldSeat, occupantAt } from "./state.js";
+import type { Entries, Open, RoomState } from "./state.js";
 import { onTable } from "./table.js";
 import type { Millis } from "./time.js";
 
@@ -183,3 +187,42 @@ export const chipsOnTable = (state: Open) => {
 
   return total;
 };
+
+export const allEntries = (entries: Entries) => [...entries.values()].flat();
+
+const stacksCashedOut = (state: Open): readonly LedgerEntry<PlayerId>[] =>
+  SEATS.flatMap((seat) =>
+    Option.match(occupantAt(state.table, seat), {
+      onNone: () => [],
+      onSome: (occupant) =>
+        occupant.stack > 0 ? [cashedOut(occupant.player, occupant.stack)] : [],
+    })
+  );
+
+export const settlementOf = (
+  state: Open
+): Result.Result<Settlement, SettlesAfterHand | Unbalanced> => {
+  if (TableStates.$is("InHand")(state.table)) {
+    return Result.fail(
+      new SettlesAfterHand({ handNumber: state.table.handNumber })
+    );
+  }
+
+  const rows = balances([
+    ...allEntries(state.entries),
+    ...stacksCashedOut(state),
+  ]);
+
+  return Result.map(settle(rows), (transfers) => ({
+    balances: rows,
+    transfers,
+  }));
+};
+
+export const settlement = (
+  state: RoomState
+): Result.Result<Settlement, SettlesAfterHand | Unbalanced> =>
+  RoomStates.$match(state, {
+    Closed: (closed) => Result.succeed(closed.settlement),
+    Open: (open) => settlementOf(open),
+  });

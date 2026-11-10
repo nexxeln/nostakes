@@ -171,6 +171,10 @@ const evolveOpen = (state: Open, event: RoomEvent): RoomState =>
       },
     }),
     ClockStopped: () => withDecision(state, Option.none()),
+    CloseQueued: () => ({
+      ...state,
+      queued: { ...state.queued, close: true },
+    }),
     GamePaused: (): Open => ({ ...state, game: "Waiting" }),
     GameStarted: (): Open => ({ ...state, game: "Running" }),
     HostChanged: ({ host }) => ({ ...state, host }),
@@ -204,6 +208,14 @@ const evolveOpen = (state: Open, event: RoomEvent): RoomState =>
         member.player === player ? { ...member, avatar, name } : member
       ),
     }),
+    RoomClosed: ({ at, settlement }) =>
+      RoomStates.Closed({
+        code: state.code,
+        entries: state.entries,
+        members: state.members,
+        now: at,
+        settlement,
+      }),
     RoomOpened: (opening) => opened(opening),
     RulesQueued: ({ config }) => ({
       ...state,

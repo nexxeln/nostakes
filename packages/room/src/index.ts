@@ -30,6 +30,7 @@ export {
   ChipRequestPending,
   ChipsOverMax,
   ClockNotDue,
+  CloseAlreadyQueued,
   DealNotDue,
   GameAlready,
   MembersOnly,
@@ -44,8 +45,10 @@ export {
   SeatNotFree,
   SeatRequestPending,
   ServerOnly,
+  SettlesAfterHand,
   ShuffleRanOut,
   TableRejected,
+  Unbalanced,
 } from "./rejection.js";
 
 export type { RoomRejection } from "./rejection.js";
@@ -77,9 +80,15 @@ export {
 
 export type { BuyInRange, RoomSettings } from "./settings.js";
 
-export { SettlementSchema } from "./settlement.js";
+export {
+  BalanceSchema,
+  SettlementSchema,
+  TransferSchema,
+} from "./settlement.js";
 
-export type { Settlement } from "./settlement.js";
+export { chipsOnTable, settlement } from "./money.js";
+
+export type { Balance, Settlement, Transfer } from "./settlement.js";
 
 export { RoomStates, SEATS, seatOf } from "./state.js";
 

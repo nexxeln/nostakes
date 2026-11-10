@@ -24,6 +24,7 @@ export const RoomCommandSchema = Schema.TaggedUnion({
     ...envelope,
     runs: Schema.Int.check(Schema.isGreaterThanOrEqualTo(1)),
   },
+  CloseRoom: envelope,
   Deal: { ...envelope, shuffleBytes: Schema.Uint8Array },
   DeclareStraddle: { ...envelope, on: Schema.Boolean },
   DenyChips: naming,

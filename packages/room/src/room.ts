@@ -4,6 +4,7 @@ import { Option, Result, Schema } from "effect";
 
 import { fromHost, fromMember, fromServer, fromSomeone } from "./authority.js";
 import { actForSeat, clockEvents, expireClock } from "./clocks.js";
+import { closeRoom } from "./closing.js";
 import { RoomCommands } from "./commands.js";
 import type { RoomCommand } from "./commands.js";
 import { deal, pauseGame, startGame } from "./dealing.js";
@@ -77,6 +78,7 @@ const decideOpen = (state: Open, command: RoomCommand): Decision =>
       byHost(state, change, () => changeSettings(state, change)),
     ChooseRuns: (choose) =>
       byMember(state, choose, (player) => play(state, player, choose)),
+    CloseRoom: (close) => byHost(state, close, () => closeRoom(state, close)),
     Deal: (dealing) =>
       Result.flatMap(fromServer(dealing), () => deal(state, dealing)),
     DeclareStraddle: (declare) =>
