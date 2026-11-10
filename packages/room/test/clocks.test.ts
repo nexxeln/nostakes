@@ -20,6 +20,7 @@ import {
   as,
   bob,
   cat,
+  dan,
   dealAt,
   join,
   ms,
@@ -127,6 +128,19 @@ describe("turn clocks", () => {
     expect(rejection(acted.state, expire(51_000))).toStrictEqual(
       new NoSuchDeadline({ deadline: ms(51_000) })
     );
+  });
+
+  it("leaves a running bank alone while the turn has not ended", () => {
+    const banked = run(dealt.state, expire(31_000)).state;
+
+    expect(run(banked, join(dan, 32_000)).events).toStrictEqual([
+      RoomEvents.MemberJoined({
+        at: ms(32_000),
+        avatar: "",
+        name: dan,
+        player: dan,
+      }),
+    ]);
   });
 
   it("acts for a seat whose bank runs out, folding when it cannot check, then marks it away and sits it out", () => {
