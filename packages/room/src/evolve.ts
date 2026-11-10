@@ -39,6 +39,7 @@ export const opened = (event: RoomEventOf<"RoomOpened">): Open =>
     },
     code: event.code,
     dealCalled: false,
+    departed: [],
     entries: new Map(),
     game: "Waiting",
     host: event.host,
@@ -297,10 +298,15 @@ const evolveOpen = (state: Open, event: RoomEvent): RoomState =>
     },
     MemberJoined: ({ at, avatar, name, player }) => ({
       ...state,
+      departed: state.departed.filter((member) => member.player !== player),
       members: [...state.members, { avatar, joinedAt: at, name, player }],
     }),
     MemberLeft: ({ player }) => ({
       ...state,
+      departed: [
+        ...state.departed.filter((member) => member.player !== player),
+        ...state.members.filter((member) => member.player === player),
+      ],
       members: state.members.filter((member) => member.player !== player),
       requests: {
         chips: state.requests.chips.filter(
@@ -327,6 +333,7 @@ const evolveOpen = (state: Open, event: RoomEvent): RoomState =>
     RoomClosed: ({ at, settlement }) =>
       RoomStates.Closed({
         code: state.code,
+        departed: state.departed,
         entries: state.entries,
         members: state.members,
         now: at,

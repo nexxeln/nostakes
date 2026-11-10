@@ -225,6 +225,7 @@ describe("who you are", () => {
               ? Option.some({
                   away: false,
                   leaving: false,
+                  leavingRoom: false,
                   owes: { big: false, entry: false, small: false },
                   player: named,
                   posts: false,
@@ -248,6 +249,65 @@ describe("who you are", () => {
 
       expect(heroOf(Option.some(named))).toBe(4);
       expect(heroOf(Option.some(PLAYER))).toBeNull();
+    },
+    { arbitrary: { runs: 20 } }
+  );
+});
+
+describe("a player who leaves", () => {
+  it.prop(
+    "keeps their name at the table while their seat plays out, and the seat says whether they are leaving the room or only standing up",
+    { view: views },
+    ({ view }) => {
+      const gone = PlayerIdSchema.make("player-0000000gh");
+      const standing = PlayerIdSchema.make("player-0000000ij");
+
+      const occupant = (player: typeof gone, leavingRoom: boolean) =>
+        Option.some({
+          away: false,
+          leaving: true,
+          leavingRoom,
+          owes: { big: false, entry: false, small: false },
+          player,
+          posts: false,
+          sittingOut: false,
+          stack: ChipsSchema.make(100),
+          straddling: false,
+        });
+
+      const leaving = {
+        ...view,
+        departed: [{ avatar: "", name: "Cat", player: gone }],
+        members: [{ avatar: "", name: "Bea", player: standing }],
+        seats: Array.from({ length: 9 }, (_, index) => {
+          const seat = SeatIndexSchema.make(index);
+
+          if (index === 2) {
+            return { occupant: occupant(gone, true), seat };
+          }
+
+          return index === 3
+            ? { occupant: occupant(standing, false), seat }
+            : { occupant: Option.none(), seat };
+        }),
+        settings: { ...view.settings, seats: 9 },
+      };
+
+      const { seats } = tableSnapshot(
+        roomWith(leaving, true, false),
+        leaving,
+        [gone, standing],
+        []
+      );
+
+      expect(
+        seats
+          .filter(({ status }) => status !== "Empty")
+          .map(({ name, note, seat }) => [seat, name, note])
+      ).toEqual([
+        [2, "Cat", "Leaving"],
+        [3, "Bea", "Standing up"],
+      ]);
     },
     { arbitrary: { runs: 20 } }
   );
@@ -287,6 +347,7 @@ describe("after a hand, on a fresh page", () => {
               ? Option.some({
                   away: false,
                   leaving: false,
+                  leavingRoom: false,
                   owes: { big: false, entry: false, small: false },
                   player: entry.seat === hero ? PLAYER : stillIn,
                   posts: false,

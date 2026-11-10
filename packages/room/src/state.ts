@@ -148,6 +148,7 @@ export type Entries = ReadonlyMap<PlayerId, readonly LedgerEntry<PlayerId>[]>;
 export type RoomState = Data.TaggedEnum<{
   Closed: {
     readonly code: RoomCode;
+    readonly departed: readonly Member[];
     readonly entries: Entries;
     readonly members: readonly Member[];
     readonly now: Millis;
@@ -159,6 +160,7 @@ export type RoomState = Data.TaggedEnum<{
     readonly clocks: Clocks;
     readonly code: RoomCode;
     readonly dealCalled: boolean;
+    readonly departed: readonly Member[];
     readonly entries: Entries;
     readonly game: Game;
     readonly host: PlayerId;

@@ -11,7 +11,7 @@ import { face } from "./face-builder.js";
 import { Messages } from "./message.js";
 import type { Message } from "./message.js";
 import type { InRoom, Model } from "./model.js";
-import { isLive, isYou, viewOf } from "./room.js";
+import { hasLeft, isLive, isYou, nameOf, viewOf } from "./room.js";
 import type { ClosedView, OpenView } from "./room.js";
 import { settingsPanel } from "./settings-view.js";
 import { heroSeatOf, tableSnapshot } from "./table/from-room.js";
@@ -24,9 +24,6 @@ type Occupant = Option.Option.Value<OpenView["seats"][number]["occupant"]>;
 const Commands = MemberCommandSchema.cases;
 
 const LIST_FACE_PX = 28;
-
-const nameIn = (members: OpenView["members"], player: PlayerId) =>
-  members.find((member) => member.player === player)?.name ?? "Someone";
 
 const commandButton = (
   h: H,
@@ -259,11 +256,7 @@ const playerSheet = (room: InRoom, view: OpenView, h: H): Html =>
     {
       onNone: () => h.empty,
       onSome: ({ player }) =>
-        sheet(
-          h,
-          nameIn(view.members, player),
-          hostTools(room, view, player, h)
-        ),
+        sheet(h, nameOf(view, player), hostTools(room, view, player, h)),
     }
   );
 
@@ -499,7 +492,7 @@ const hostRequests = (room: InRoom, view: OpenView, h: H): Html => {
   const seats = view.requests.seats.map((request) =>
     requestPill(
       `seat-${request.player}`,
-      `${nameIn(view.members, request.player)} wants to sit with ${request.buyIn}`,
+      `${nameOf(view, request.player)} wants to sit with ${request.buyIn}`,
       [
         commandButton(
           h,
@@ -525,7 +518,7 @@ const hostRequests = (room: InRoom, view: OpenView, h: H): Html => {
   const chips = view.requests.chips.map((request) =>
     requestPill(
       `chips-${request.player}`,
-      `${nameIn(view.members, request.player)} wants ${request.amount} more chips`,
+      `${nameOf(view, request.player)} wants ${request.amount} more chips`,
       [
         commandButton(
           h,
@@ -622,7 +615,7 @@ const openRoomView = (
   );
 
 const closedRoomView = (room: InRoom, view: ClosedView, h: H): Html => {
-  const name = (player: PlayerId) => nameIn(view.members, player);
+  const name = (player: PlayerId) => nameOf(view, player);
 
   return h.section(
     [h.Class("card-panel settlement")],
@@ -683,11 +676,26 @@ const homeButton = (label: string, h: H): Html =>
     [label]
   );
 
-const leftRoomView = (h: H): Html =>
+const stillPlayingOut = (view: OpenView) =>
+  view.seats.some(({ occupant }) =>
+    Option.exists(occupant, ({ player }) => isYou(view, player))
+  );
+
+const leftRoomView = (view: OpenView, h: H): Html =>
   h.section(
     [h.Class("card-panel settlement")],
     [
       h.h2([h.Class("sheet-title")], ["You left this room"]),
+      ...(stillPlayingOut(view)
+        ? [
+            h.p(
+              [h.Class("muted")],
+              [
+                "Your seat plays out this hand, then your chips are counted for the settle-up.",
+              ]
+            ),
+          ]
+        : []),
       h.p(
         [h.Class("muted")],
         ["To play again, open the room link and join as a new player."]
@@ -730,9 +738,9 @@ export const roomView = (model: Model, room: InRoom, h: H): Html => {
           RoomViews.$match(current, {
             Closed: (closed) => closedRoomView(room, closed, h),
             Open: (live) =>
-              live.members.some(({ player }) => isYou(live, player))
-                ? openRoomView(model, room, live, presence, h)
-                : leftRoomView(h),
+              hasLeft(live)
+                ? leftRoomView(live, h)
+                : openRoomView(model, room, live, presence, h),
           }),
       }),
     ]

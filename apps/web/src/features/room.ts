@@ -23,6 +23,13 @@ export const connectionTarget = (model: Model): Option.Option<SavedPass> =>
 export const isYou = (view: RoomView, player: PlayerId) =>
   Option.contains(view.you, player);
 
+export const nameOf = (view: RoomView, player: PlayerId) =>
+  [...view.members, ...view.departed].find((member) => member.player === player)
+    ?.name ?? "Someone";
+
+export const hasLeft = (view: RoomView) =>
+  view.departed.some(({ player }) => isYou(view, player));
+
 export const viewOf = (room: InRoom): Option.Option<RoomView> =>
   room.shown.pipe(Option.map(({ view }) => view));
 
@@ -61,8 +68,7 @@ export const clockRunning = (room: InRoom) =>
   );
 
 export const settlementText = (view: ClosedView) => {
-  const name = (player: string) =>
-    view.members.find((member) => member.player === player)?.name ?? "Someone";
+  const name = (player: PlayerId) => nameOf(view, player);
 
   const nets = view.settlement.balances
     .toSorted((left, right) => right.net - left.net)

@@ -169,8 +169,12 @@ interface SeatContext {
 }
 
 const noteOf = (occupant: Occupant, here: boolean) => {
-  if (occupant.leaving) {
+  if (occupant.leavingRoom) {
     return "Leaving";
+  }
+
+  if (occupant.leaving) {
+    return "Standing up";
   }
 
   if (occupant.sittingOut) {
@@ -219,7 +223,10 @@ const occupiedSeat = (
   const { presence, view } = context;
   const mine = isYou(view, occupant.player);
   const here = presence.includes(occupant.player);
-  const member = view.members.find(({ player }) => player === occupant.player);
+
+  const member = [...view.members, ...view.departed].find(
+    ({ player }) => player === occupant.player
+  );
 
   const inHand = view.hand.pipe(
     Option.flatMap((hand) =>

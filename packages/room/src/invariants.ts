@@ -66,6 +66,18 @@ const peopleViolations = (state: Open) => [
       () => `${player} holds a seat without being a member or leaving`
     )
   ),
+  ...state.departed.flatMap(({ player }) =>
+    check(
+      !isMember(state, player),
+      "DepartedAreNotMembers",
+      () => `${player} is both a member and departed`
+    )
+  ),
+  ...check(
+    !hasDuplicates(state.departed.map((member) => member.player)),
+    "DepartedAreDistinct",
+    () => state.departed.map((member) => member.player).join(",")
+  ),
 ];
 
 const requestViolations = (state: Open) => [

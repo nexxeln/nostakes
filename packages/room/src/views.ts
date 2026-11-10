@@ -38,10 +38,11 @@ import {
   ProofDeals,
   RoomStates,
   SEATS,
+  isMember,
   occupantAt,
   seatOf,
 } from "./state.js";
-import type { Closed, Open, RoomState, Sealed } from "./state.js";
+import type { Closed, Member, Open, RoomState, Sealed } from "./state.js";
 import { MillisSchema, latest, millis } from "./time.js";
 import type { Millis } from "./time.js";
 
@@ -202,6 +203,7 @@ export const SeatViewSchema = Schema.Struct({
     Schema.Struct({
       away: Schema.Boolean,
       leaving: Schema.Boolean,
+      leavingRoom: absentAs(Schema.Boolean, false),
       owes: Schema.Struct({
         big: Schema.Boolean,
         entry: Schema.Boolean,
@@ -325,9 +327,12 @@ const MemberViewSchema = Schema.Struct({
 
 const youField = absentAs(Schema.Option(PlayerIdSchema), Option.none());
 
+const departedField = absentAs(Schema.Array(MemberViewSchema), []);
+
 export const RoomViewSchema = Schema.TaggedUnion({
   Closed: {
     code: RoomCodeSchema,
+    departed: departedField,
     members: Schema.Array(MemberViewSchema),
     settlement: SettlementSchema,
     you: youField,
@@ -336,6 +341,7 @@ export const RoomViewSchema = Schema.TaggedUnion({
     balances: Schema.Array(BalanceSchema),
     clocks: ClocksViewSchema,
     code: RoomCodeSchema,
+    departed: departedField,
     fairness: FairnessViewSchema,
     game: Schema.Literals(["Running", "Waiting"]),
     hand: Schema.Option(HandViewSchema),
@@ -398,6 +404,7 @@ const seatsView = (state: Open) =>
       Option.map((occupant) => ({
         away: state.away.includes(seat),
         leaving: state.queued.leaving.includes(occupant.player),
+        leavingRoom: !isMember(state, occupant.player),
         owes: occupant.owes,
         player: occupant.player,
         posts: state.posters.includes(occupant.player),
@@ -614,8 +621,10 @@ const fairnessView = (state: Open, audience: Audience) => {
   };
 };
 
-const membersView = (state: Open | Closed) =>
-  state.members.map(({ avatar, name, player }) => ({ avatar, name, player }));
+const profilesOf = (members: readonly Member[]) =>
+  members.map(({ avatar, name, player }) => ({ avatar, name, player }));
+
+const membersView = (state: Open | Closed) => profilesOf(state.members);
 
 const legalFor = (state: Open, viewer: Option.Option<Audience>) => {
   const pending = pendingDecisions(state.table);
@@ -649,6 +658,7 @@ const openView = (state: Open, audience: Audience, at: Millis): RoomView => {
     balances: balances(allEntries(state.entries)),
     clocks: clocksView(state, latest(at, state.now)),
     code: state.code,
+    departed: profilesOf(state.departed),
     fairness: fairnessView(state, audience),
     game: state.game,
     hand: handView(state),
@@ -681,6 +691,7 @@ export const viewFor = (
     Closed: (closed) =>
       RoomViews.Closed({
         code: closed.code,
+        departed: profilesOf(closed.departed),
         members: membersView(closed),
         settlement: closed.settlement,
         you: Audiences.$match(audience, {

@@ -317,3 +317,58 @@ describe("clock lengths", () => {
     ]);
   });
 });
+
+describe("leaving the room", () => {
+  const catLeft = run(
+    dealt.state,
+    RoomCommands.LeaveRoom({ at: ms(1500), by: as(cat) })
+  ).state;
+
+  it("shows the seat of a player who left the room as leaving it until the hand ends, and keeps their name and face among the departed", () => {
+    const view = openView(viewFor(catLeft, annSees, ms(1500)));
+
+    expect(view.members.map(({ player }) => player)).toStrictEqual([
+      ann,
+      bob,
+      dan,
+    ]);
+    expect(view.departed).toStrictEqual([
+      { avatar: "", name: cat, player: cat },
+    ]);
+    expect(
+      view.seats[2]?.occupant.pipe(
+        Option.map(({ leaving, leavingRoom, player }) => ({
+          leaving,
+          leavingRoom,
+          player,
+        }))
+      )
+    ).toStrictEqual(
+      Option.some({ leaving: true, leavingRoom: true, player: cat })
+    );
+    expect(
+      view.seats[1]?.occupant.pipe(Option.map(({ leavingRoom }) => leavingRoom))
+    ).toStrictEqual(Option.some(false));
+  });
+
+  it("keeps a departed player listed once their seat stands, tells their own device it has left, and drops them from the list when they join again", () => {
+    const ended = runAll(catLeft, [
+      act(ann, Actions.Fold(), 1600),
+      act(bob, Actions.Fold(), 1700),
+    ]);
+
+    const view = openView(viewFor(ended, annSees, ms(1800)));
+    const catView = openView(viewFor(ended, audienceOf(ended, cat), ms(1800)));
+
+    expect(view.seats[2]?.occupant).toStrictEqual(Option.none());
+    expect(view.departed.map(({ player }) => player)).toStrictEqual([cat]);
+    expect(catView.you).toStrictEqual(Option.some(cat));
+    expect(catView.departed.map(({ player }) => player)).toStrictEqual([cat]);
+
+    const back = run(ended, join(cat, 1900)).state;
+
+    expect(openView(viewFor(back, annSees, ms(1900))).departed).toStrictEqual(
+      []
+    );
+  });
+});
