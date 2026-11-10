@@ -32,6 +32,7 @@ const tables = Arbitrary.schema(RoomViewSchema.cases.Open);
 const Attendance = AttendanceViewSchema.cases;
 
 const opened = init({
+  deck: "TwoColour",
   invite: Option.some(CODE),
   learned: [],
   profile: { avatar: "🦊", name: "Ana" },

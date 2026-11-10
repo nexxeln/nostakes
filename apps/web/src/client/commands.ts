@@ -18,6 +18,7 @@ import { Command, Navigation } from "foldkit";
 import { Messages, ReplyOutcomes } from "../features/message.js";
 import {
   CopiedSchema,
+  DeckSchema,
   ProfileSchema,
   ReloadTargets,
   RoomRecordSchema,
@@ -36,6 +37,7 @@ import {
   storePass,
   storeProfile,
   storeRoomRecord,
+  storeDeck,
   storeSound,
   storeTheme,
 } from "./storage.js";
@@ -269,6 +271,24 @@ export const ApplyTheme = Command.define("ApplyTheme", {
       paintThemeColor(Option.isSome(theme));
     }).pipe(
       Effect.andThen(storeTheme(theme)),
+      Effect.as(Messages.CompletedPreference())
+    ),
+  messages: [Messages.CompletedPreference],
+});
+
+export const ApplyDeck = Command.define("ApplyDeck", {
+  args: { deck: DeckSchema },
+  execute: ({ deck }) =>
+    Effect.sync(() => {
+      const root = globalThis.document.documentElement;
+
+      if (deck === "FourColour") {
+        root.dataset.deck = "four";
+      } else {
+        delete root.dataset.deck;
+      }
+    }).pipe(
+      Effect.andThen(storeDeck(deck)),
       Effect.as(Messages.CompletedPreference())
     ),
   messages: [Messages.CompletedPreference],

@@ -13,6 +13,7 @@ import { defineTaggedUnion } from "foldkit/schema";
 
 import {
   CopiedSchema,
+  DeckSchema,
   FacePartSchema,
   FairMarks,
   LinkSchema,
@@ -40,6 +41,7 @@ export const Messages = defineMessageUnion({
   ChangedSetting: { path: Schema.String, value: Schema.String },
   ChangedSystemTheme: { theme: ThemeSchema },
   CheckedRoom: { code: RoomCodeSchema, gone: Schema.Boolean },
+  ChoseDeck: { deck: DeckSchema },
   ChoseFacePart: { part: FacePartSchema },
   ChoseTheme: { theme: ThemeSchema },
   ClickedCancelFace: {},

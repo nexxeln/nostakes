@@ -40,6 +40,7 @@ type Status = HandView["players"][number]["status"];
 
 const opened = (reloadedFor: Option.Option<ReloadTarget>) =>
   init({
+    deck: "TwoColour",
     invite: Option.some(CODE),
     learned: [],
     profile: { avatar: "🦊", name: "Ana" },

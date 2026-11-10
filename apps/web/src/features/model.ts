@@ -32,6 +32,10 @@ export const ThemeSchema = Schema.Literals(["Light", "Dark"]);
 
 export type Theme = typeof ThemeSchema.Type;
 
+export const DeckSchema = Schema.Literals(["TwoColour", "FourColour"]);
+
+export type Deck = typeof DeckSchema.Type;
+
 export const ProfileSchema = Schema.Struct({
   avatar: Schema.String,
   name: Schema.String,
@@ -203,6 +207,7 @@ export const KnownRoomSchema = Schema.Struct({
 export type KnownRoom = typeof KnownRoomSchema.Type;
 
 export const ModelSchema = Schema.Struct({
+  deck: DeckSchema,
   faceDraft: Schema.Option(AvatarSchema),
   facePart: FacePartSchema,
   faceShuffled: Schema.Boolean,
@@ -232,6 +237,7 @@ export const SavedPassSchema = Schema.Struct({
 export type SavedPass = typeof SavedPassSchema.Type;
 
 export const FlagsSchema = Schema.Struct({
+  deck: DeckSchema,
   invite: Schema.Option(RoomCodeSchema),
   learned: Schema.Array(HintSchema),
   profile: ProfileSchema,

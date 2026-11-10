@@ -28,6 +28,7 @@ import type * as HttpClient from "effect/http/HttpClient";
 import type { ManagedResource, Update } from "foldkit";
 
 import {
+  ApplyDeck,
   ApplyTheme,
   CheckRoom,
   CopyRoomLink,
@@ -117,6 +118,7 @@ const checksFor = (model: Model) =>
 
 export const init = (flags: Flags): Return => {
   const base = {
+    deck: flags.deck,
     faceDraft: Option.none(),
     facePart: "Species" as const,
     faceShuffled: false,
@@ -162,7 +164,11 @@ export const init = (flags: Flags): Return => {
 
   return {
     ...opened,
-    commands: [ApplyTheme({ theme: flags.theme }), ...checksFor(opened.model)],
+    commands: [
+      ApplyTheme({ theme: flags.theme }),
+      ApplyDeck({ deck: flags.deck }),
+      ...checksFor(opened.model),
+    ],
   };
 };
 
@@ -588,6 +594,10 @@ export const update = (model: Model, message: Message): Return =>
       gone
         ? { commands: [ForgetRoom({ code })], model: withoutRoom(model, code) }
         : { model },
+    ChoseDeck: ({ deck }) => ({
+      commands: [ApplyDeck({ deck })],
+      model: { ...model, deck },
+    }),
     ChoseFacePart: ({ part }) => ({ model: { ...model, facePart: part } }),
     ChoseTheme: ({ theme }) => ({
       commands: [ApplyTheme({ theme: Option.some(theme) })],

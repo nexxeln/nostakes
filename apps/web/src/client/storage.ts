@@ -4,6 +4,7 @@ import type { RoomPass } from "@nostakes/protocol";
 import { Effect, Option, Random, Schema } from "effect";
 
 import {
+  DeckSchema,
   ProfileSchema,
   ReloadTargets,
   RoomRecordSchema,
@@ -11,6 +12,7 @@ import {
   ThemeSchema,
 } from "../features/model.js";
 import type {
+  Deck,
   Flags,
   KnownRoom,
   Profile,
@@ -31,6 +33,8 @@ export const systemTheme = (): Theme =>
   globalThis.matchMedia(DARK_SCHEME).matches ? "Dark" : "Light";
 
 const SOUND_KEY = "nostakes.sound";
+
+const DECK_KEY = "nostakes.deck";
 
 const SOUND_OFF = "off";
 
@@ -90,6 +94,8 @@ export const storeTheme = (theme: Option.Option<Theme>) =>
       }),
     onSome: (chosen) => writeItem(THEME_KEY, chosen),
   });
+
+export const storeDeck = (deck: Deck) => writeItem(DECK_KEY, deck);
 
 export const storeSound = (on: boolean) =>
   writeItem(SOUND_KEY, on ? "on" : SOUND_OFF);
@@ -244,7 +250,13 @@ export const readFlags = Effect.gen(function* readFlags() {
 
   const rooms = yield* knownRooms;
 
+  const deck = (yield* readItem(DECK_KEY)).pipe(
+    Option.flatMap(Schema.decodeUnknownOption(DeckSchema)),
+    Option.getOrElse((): Deck => "TwoColour")
+  );
+
   const flags: Flags = {
+    deck,
     invite,
     learned,
     profile,

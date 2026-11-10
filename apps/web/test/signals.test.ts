@@ -82,6 +82,7 @@ const withWireIds = (view: OpenView): OpenView => ({
 const HEARD_AT = 1_000_000;
 
 const start = init({
+  deck: "TwoColour",
   invite: Option.none(),
   learned: [],
   profile: { avatar: "", name: "Ana" },

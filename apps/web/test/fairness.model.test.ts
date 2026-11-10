@@ -16,6 +16,7 @@ const PLAYER = PlayerIdSchema.make("player-0000000ab");
 const marks = Arbitrary.schema(FairMarks);
 
 const room = init({
+  deck: "TwoColour",
   invite: Option.some(CODE),
   learned: [],
   profile: { avatar: "🦊", name: "Ana" },

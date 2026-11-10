@@ -31,6 +31,7 @@ const CODE = RoomCodeSchema.make("ABC234");
 const PLAYER = PlayerIdSchema.make("player-0000000ab");
 
 const start = init({
+  deck: "TwoColour",
   invite: Option.some(CODE),
   learned: [],
   profile: { avatar: "🦊", name: "Ana" },

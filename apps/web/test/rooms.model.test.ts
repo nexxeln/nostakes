@@ -23,6 +23,7 @@ const tables = Arbitrary.schema(RoomViewSchema.cases.Open);
 type OpenView = typeof RoomViewSchema.cases.Open.Type;
 
 const flags = {
+  deck: "TwoColour" as const,
   invite: Option.none(),
   learned: [],
   profile: { avatar: "🦊", name: "Ana" },

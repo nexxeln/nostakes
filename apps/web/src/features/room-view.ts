@@ -7,7 +7,7 @@ import { Option } from "effect";
 import type { Html, HtmlBuilder } from "foldkit/html";
 
 import { attendanceLine } from "./attendance-line.js";
-import { faceButton, soundSwitch, themeSwitch } from "./chrome.js";
+import { deckSwitch, faceButton, soundSwitch, themeSwitch } from "./chrome.js";
 import { face } from "./face-builder.js";
 import { fairLabel, fairParagraph, fairSymbol } from "./fairness-text.js";
 import { Messages } from "./message.js";
@@ -529,7 +529,7 @@ const menuSheet = (
     ...peopleSection(view, presence, pageTheme(model), h),
     h.div(
       [h.Class("sheet-row")],
-      [soundSwitch(model.sound, h), themeSwitch(h)]
+      [soundSwitch(model.sound, h), themeSwitch(h), deckSwitch(model.deck, h)]
     ),
     commandButton(
       h,

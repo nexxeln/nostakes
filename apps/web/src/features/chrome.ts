@@ -4,7 +4,7 @@ import type { Html, HtmlBuilder } from "foldkit/html";
 import { face } from "./face-builder.js";
 import { Messages } from "./message.js";
 import type { Message } from "./message.js";
-import type { Theme } from "./model.js";
+import type { Deck, Theme } from "./model.js";
 
 type H = HtmlBuilder<Message>;
 
@@ -31,6 +31,25 @@ export const themeSwitch = (h: H): Html =>
         ["Light"]
       ),
     ]
+  );
+
+export const deckSwitch = (deck: Deck, h: H): Html =>
+  h.button(
+    [
+      h.Type("button"),
+      h.Class("bar-button"),
+      h.AriaLabel(
+        deck === "FourColour"
+          ? "Draw the cards in two colours"
+          : "Draw the cards in four colours"
+      ),
+      h.OnClick(
+        Messages.ChoseDeck({
+          deck: deck === "FourColour" ? "TwoColour" : "FourColour",
+        })
+      ),
+    ],
+    [deck === "FourColour" ? "Two colours" : "Four colours"]
   );
 
 export const soundSwitch = (on: boolean, h: H): Html =>

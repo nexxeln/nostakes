@@ -32,6 +32,7 @@ const tables = Arbitrary.schema(RoomViewSchema.cases.Open);
 type OpenView = typeof RoomViewSchema.cases.Open.Type;
 
 const home = init({
+  deck: "TwoColour",
   invite: Option.none(),
   learned: [],
   profile: { avatar: "🦊", name: "" },
@@ -47,6 +48,7 @@ const inRoom = (worn: Avatar, table: OpenView): Model =>
   update(
     update(
       init({
+        deck: "TwoColour",
         invite: Option.some(CODE),
         learned: [],
         profile: { avatar: codeFor(DEFAULT_AVATAR), name: NAME },

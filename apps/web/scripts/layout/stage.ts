@@ -143,6 +143,10 @@ const element = (tag: string, className: string, text = "") => {
 
 const definedLate = params.get("late") === "1";
 
+if (params.get("deck") === "four") {
+  document.documentElement.dataset.deck = "four";
+}
+
 const mount = () => {
   if (!definedLate) {
     defineTable();
