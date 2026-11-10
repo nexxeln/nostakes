@@ -1,4 +1,5 @@
 import { avatarFor, codeFor } from "@nostakes/avatar";
+import type { Avatar } from "@nostakes/avatar";
 import {
   Actions,
   CardFromText,
@@ -118,6 +119,7 @@ export const init = (flags: Flags): Return => {
   const base = {
     faceDraft: Option.none(),
     facePart: "Species" as const,
+    faceShuffled: false,
     joinCode: "",
     learned: flags.learned,
     nextKey: 1,
@@ -531,6 +533,25 @@ const sendFace = (model: Model): Return =>
     })
   );
 
+const wearFace = (
+  model: Model,
+  avatar: Avatar,
+  faceShuffled: boolean
+): Return => {
+  if (Option.isSome(model.faceDraft)) {
+    return {
+      model: { ...model, faceDraft: Option.some(avatar), faceShuffled },
+    };
+  }
+
+  const profile = { ...model.profile, avatar: codeFor(avatar) };
+
+  return {
+    commands: [SaveProfile({ profile })],
+    model: { ...model, faceShuffled, profile },
+  };
+};
+
 const saveFace = (model: Model): Return =>
   Option.match(roomOf(model), {
     onNone: () => keepFace(model),
@@ -783,18 +804,7 @@ export const update = (model: Model, message: Message): Return =>
           .toSorted((one, other) => other.hand - one.hand)
           .slice(0, KEPT_FAIR_HANDS),
       })),
-    PickedAvatar: ({ avatar }) => {
-      if (Option.isSome(model.faceDraft)) {
-        return { model: { ...model, faceDraft: Option.some(avatar) } };
-      }
-
-      const profile = { ...model.profile, avatar: codeFor(avatar) };
-
-      return {
-        commands: [SaveProfile({ profile })],
-        model: { ...model, profile },
-      };
-    },
+    PickedAvatar: ({ avatar }) => wearFace(model, avatar, false),
     ReleasedConnection: () =>
       editRoom(model, (room) => ({ ...room, connected: false })),
     SentSignal: ({ at, sent, signal }) =>
@@ -815,6 +825,7 @@ export const update = (model: Model, message: Message): Return =>
             },
           }))
         : { model },
+    ShuffledFace: ({ avatar }) => wearFace(model, avatar, true),
     StartedReload: () => ({ model }),
     SubmittedCreate: () => {
       const name = model.profile.name.trim();

@@ -290,9 +290,9 @@ export const SaveLearned = Command.define("SaveLearned", {
 
 export const ShuffleFace = Command.define("ShuffleFace", {
   execute: randomSeed.pipe(
-    Effect.map((seed) => Messages.PickedAvatar({ avatar: randomAvatar(seed) }))
+    Effect.map((seed) => Messages.ShuffledFace({ avatar: randomAvatar(seed) }))
   ),
-  messages: [Messages.PickedAvatar],
+  messages: [Messages.ShuffledFace],
 });
 
 export const SaveProfile = Command.define("SaveProfile", {

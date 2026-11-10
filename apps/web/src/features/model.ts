@@ -205,6 +205,7 @@ export type KnownRoom = typeof KnownRoomSchema.Type;
 export const ModelSchema = Schema.Struct({
   faceDraft: Schema.Option(AvatarSchema),
   facePart: FacePartSchema,
+  faceShuffled: Schema.Boolean,
   joinCode: Schema.String,
   learned: Schema.Array(HintSchema),
   nextKey: Schema.Int,

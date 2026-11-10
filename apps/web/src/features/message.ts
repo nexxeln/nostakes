@@ -92,6 +92,7 @@ export const Messages = defineMessageUnion({
     sent: Schema.Boolean,
     signal: RoomSignalSchema,
   },
+  ShuffledFace: { avatar: AvatarSchema },
   StartedReload: {},
   SubmittedCreate: {},
   SubmittedInvite: {},

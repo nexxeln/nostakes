@@ -23,7 +23,7 @@ const FACE_ROW_PX = 56;
 const faceSheetOf = (model: Model, h: H): Html =>
   Option.match(model.faceDraft, {
     onNone: () => h.empty,
-    onSome: (draft) => faceSheet(draft, model.facePart, h),
+    onSome: (draft) => faceSheet(draft, model.facePart, model.faceShuffled, h),
   });
 
 const profileFields = (model: Model, h: H): readonly Html[] => [

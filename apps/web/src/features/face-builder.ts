@@ -126,15 +126,35 @@ export const face = (
     []
   );
 
-const preview = (avatar: Avatar, h: H): Html =>
+const stackedFace = (
+  avatar: Avatar,
+  expression: Expression,
+  className: string,
+  h: H
+): Html =>
+  h.span(
+    [
+      h.Class(className),
+      h.AriaHidden(true),
+      h.InnerHTML(
+        render(avatar, { expression, layers: true, size: PREVIEW_PX })
+      ),
+    ],
+    []
+  );
+
+const preview = (avatar: Avatar, shuffled: boolean, h: H): Html =>
   h.div(
     [h.Class("face-stage")],
     [
       h.div(
-        [h.Key(codeFor(avatar)), h.Class("face-preview")],
         [
-          face(avatar, "Resting", PREVIEW_PX, "face-frame is-resting", h),
-          face(avatar, "Happy", PREVIEW_PX, "face-frame is-happy", h),
+          h.Key(codeFor(avatar)),
+          h.Class(shuffled ? "face-preview is-shuffled" : "face-preview"),
+        ],
+        [
+          stackedFace(avatar, "Resting", "face-frame is-resting", h),
+          stackedFace(avatar, "Happy", "face-frame is-happy", h),
         ]
       ),
       h.button(
@@ -211,20 +231,30 @@ const optionGrid = (
     )
   );
 
-export const faceBuilder = (avatar: Avatar, part: FacePart, h: H): Html => {
+export const faceBuilder = (
+  avatar: Avatar,
+  part: FacePart,
+  shuffled: boolean,
+  h: H
+): Html => {
   const picker = PICKERS[part];
 
   return h.div(
     [h.Class("face-builder")],
     [
-      preview(avatar, h),
+      preview(avatar, shuffled, h),
       tabs(part, h),
       optionGrid(picker.label, picker.choices(avatar), picker.closeUp, h),
     ]
   );
 };
 
-export const faceSheet = (draft: Avatar, part: FacePart, h: H): Html =>
+export const faceSheet = (
+  draft: Avatar,
+  part: FacePart,
+  shuffled: boolean,
+  h: H
+): Html =>
   h.div(
     [h.Class("face-sheet")],
     [
@@ -237,7 +267,7 @@ export const faceSheet = (draft: Avatar, part: FacePart, h: H): Html =>
         ],
         [
           h.h2([h.Class("panel-title")], ["Your face"]),
-          faceBuilder(draft, part, h),
+          faceBuilder(draft, part, shuffled, h),
           h.div(
             [h.Class("choice-row")],
             [

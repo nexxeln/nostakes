@@ -606,7 +606,6 @@ html:has(.room) {
   flex: none;
   width: var(--size-face-row);
   height: var(--size-face-row);
-  box-shadow: var(--shadow-face);
 }
 
 .face-row-text {
@@ -633,9 +632,12 @@ html:has(.room) {
 }
 
 .face-frame {
+  --rise-face: -5%;
+
   display: block;
-  border-radius: 50%;
-  overflow: hidden;
+  border-radius: var(--radius-face);
+  background: var(--color-face);
+  box-shadow: var(--shadow-sheet-1);
   line-height: 0;
 }
 
@@ -643,21 +645,46 @@ html:has(.room) {
   display: block;
   width: 100%;
   height: 100%;
+  overflow: visible;
+  transform: translateY(var(--rise-face));
 }
 
 .face-preview {
+  --duration-apart: 820ms;
+  --delay-apart: 18ms;
+  --step-apart-x: 2px;
+  --step-apart-y: -2.6px;
+
   position: relative;
   width: var(--size-face-preview);
   height: var(--size-face-preview);
-  border-radius: 50%;
-  box-shadow: var(--shadow-2);
+  margin-top: var(--space-4);
+  border-radius: var(--radius-face);
+  background: var(--color-face);
+  box-shadow: var(--shadow-sheet-2);
   animation: face-bob var(--duration-3) var(--ease) 0s 1;
 }
 
 .face-preview .face-frame {
   position: absolute;
   inset: 0;
+  background: none;
+  box-shadow: none;
   transition: opacity var(--duration-2) var(--ease);
+}
+
+.face-preview.is-shuffled .sheet {
+  animation: face-apart var(--duration-apart) var(--ease) both;
+  animation-delay: calc(var(--sheet) * var(--delay-apart));
+}
+
+@keyframes face-apart {
+  45% {
+    transform: translate(
+      calc(var(--sheet) * var(--step-apart-x)),
+      calc(var(--sheet) * var(--step-apart-y))
+    );
+  }
 }
 
 .face-preview .is-happy {
@@ -693,7 +720,6 @@ html:has(.room) {
 .face-strip .face-frame {
   width: var(--size-face-strip);
   height: var(--size-face-strip);
-  box-shadow: var(--shadow-face);
 }
 
 .face-tabs {
@@ -737,7 +763,7 @@ html:has(.room) {
   aspect-ratio: 1;
   padding: 0;
   border: 0;
-  border-radius: 50%;
+  border-radius: var(--radius-face);
   background: none;
   cursor: pointer;
   transition: transform var(--duration-1) var(--ease-back);
@@ -746,7 +772,6 @@ html:has(.room) {
 .face-option .face-frame {
   width: 100%;
   height: 100%;
-  box-shadow: var(--shadow-face);
 }
 
 .face-option:hover {
@@ -764,13 +789,18 @@ html:has(.room) {
 
 .face-option.is-picked .face-frame {
   box-shadow:
+    var(--shadow-sheet-1),
     0 0 0 2px var(--color-raised),
     0 0 0 4px var(--color-ring);
 }
 
+.is-close-up {
+  overflow: hidden;
+}
+
 .is-close-up svg {
   transform: scale(var(--zoom-face-part));
-  transform-origin: 50% 60%;
+  transform-origin: 50% 45%;
 }
 
 .face-button {
@@ -825,6 +855,7 @@ html:has(.room) {
 }
 @media (prefers-reduced-motion: reduce) {
   .face-preview,
+  .face-preview.is-shuffled .sheet,
   .face-sheet-panel {
     animation: none;
   }

@@ -11,7 +11,7 @@ import { MemberCommandSchema, RoomViewSchema } from "@nostakes/room";
 import { Option, Schema } from "effect";
 import * as Arbitrary from "effect/Arbitrary";
 import { Scene } from "foldkit";
-import { attr, getAllByRole } from "foldkit/scene";
+import { attr, findAll, getAllByRole } from "foldkit/scene";
 
 import { Messages } from "../src/features/message.js";
 import type { Message } from "../src/features/message.js";
@@ -127,6 +127,22 @@ const checkedLabels = (model: Model) => {
   );
 
   return labels;
+};
+
+const previews = (model: Model) => {
+  const classes: string[] = [];
+
+  Scene.scene(
+    { update, view },
+    Scene.given(model),
+    Scene.tap((simulation) => {
+      for (const preview of findAll(simulation.html, ".face-preview")) {
+        classes.push(Option.getOrElse(attr(preview, "class"), () => ""));
+      }
+    })
+  );
+
+  return classes;
 };
 
 const spaced = (name: string) => name.replaceAll(/(?<=[a-z])(?=[A-Z])/gu, " ");
@@ -248,6 +264,32 @@ describe("the face builder", () => {
     expect(namesOf(shuffled.commands)).toStrictEqual(["ShuffleFace"]);
     expect(shuffled.model).toStrictEqual(home);
   });
+
+  it.prop(
+    "pulls a shuffled face apart into its sheets for a moment, and not a picked part",
+    { picked: avatars, shuffled: avatars },
+    ({ picked, shuffled }) => {
+      const opened = update(home, Messages.ClickedEditFace()).model;
+
+      expect(previews(opened)).toStrictEqual(["face-preview"]);
+
+      const dealt = update(
+        opened,
+        Messages.ShuffledFace({ avatar: shuffled })
+      ).model;
+
+      expect(dealt.faceDraft).toStrictEqual(Option.some({ ...shuffled }));
+      expect(previews(dealt)).toStrictEqual(["face-preview is-shuffled"]);
+
+      const chosen = update(
+        dealt,
+        Messages.PickedAvatar({ avatar: picked })
+      ).model;
+
+      expect(chosen.faceDraft).toStrictEqual(Option.some({ ...picked }));
+      expect(previews(chosen)).toStrictEqual(["face-preview"]);
+    }
+  );
 
   it.prop(
     "marks exactly the parts the face wears as picked",
