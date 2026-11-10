@@ -6,6 +6,7 @@ import { view } from "../features/view.js";
 import { managedResources } from "./connection.js";
 import { readFlags } from "./storage.js";
 import { subscriptions } from "./subscriptions.js";
+import { watchZoom } from "./zoom.js";
 
 import "./tokens.css";
 import "./app.css";
@@ -23,6 +24,8 @@ const application = Runtime.makeApplication({
 });
 
 Runtime.run(application, { flags: readFlags });
+
+watchZoom();
 
 const { defineTable } = await import("./table/element.js");
 

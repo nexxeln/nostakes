@@ -264,6 +264,88 @@ const insetsFor = (context: BrowserContext, page: Page, insets: typeof NOTCH) =>
     Effect.orElseSucceed(() => false)
   );
 
+const IOS_FOCUS_ZOOM_BELOW_PX = 16;
+
+const ZOOMED_IN = 2;
+
+const PINCH_AT_Y = 300;
+
+const fieldSizes = (page: Page, screen: string) =>
+  attempt(`read the text fields' font sizes on ${screen}`, () =>
+    page.evaluate(() =>
+      [...document.querySelectorAll("input, select, textarea")].map((field) =>
+        Number(getComputedStyle(field).fontSize.replace("px", ""))
+      )
+    )
+  ).pipe(Effect.map((sizes) => ({ screen, sizes })));
+
+const pretendZoom = (page: Page, scale: number) =>
+  attempt(`pretend the page is zoomed to ${scale}`, () =>
+    page.evaluate((wanted) => {
+      const viewport = globalThis.visualViewport;
+
+      if (viewport !== null) {
+        Object.defineProperty(viewport, "scale", {
+          configurable: true,
+          get: () => wanted,
+        });
+        viewport.dispatchEvent(new Event("resize"));
+      }
+    }, scale)
+  );
+
+const forgetPretendZoom = (page: Page) =>
+  attempt("stop pretending the page is zoomed", () =>
+    page.evaluate(() => {
+      const viewport = globalThis.visualViewport;
+
+      if (viewport !== null) {
+        Reflect.deleteProperty(viewport, "scale");
+        viewport.dispatchEvent(new Event("resize"));
+      }
+    })
+  );
+
+const zoomHintShown = (page: Page) =>
+  attempt("look for the zoom hint", () =>
+    page.evaluate(() => {
+      const hint = document.querySelector(".zoom-hint");
+
+      return hint === null ? false : getComputedStyle(hint).display !== "none";
+    })
+  );
+
+const visualScale = (page: Page) =>
+  attempt("read the visual viewport's scale", () =>
+    page.evaluate(() => globalThis.visualViewport?.scale ?? 1)
+  );
+
+const pinchTable = (context: BrowserContext, page: Page, scaleFactor: number) =>
+  attempt("open a devtools session", () => context.newCDPSession(page)).pipe(
+    Effect.flatMap((session) =>
+      attempt(`pinch the table by ${scaleFactor}`, () =>
+        session.send("Input.synthesizePinchGesture", {
+          gestureSourceType: "touch",
+          relativeSpeed: 600,
+          scaleFactor,
+          x: PHONE.width / 2,
+          y: PINCH_AT_Y,
+        })
+      )
+    ),
+    Effect.as(""),
+    Effect.catchTag("PhoneCheckFailed", (failure) =>
+      Effect.succeed(failure.detail)
+    )
+  );
+
+const wideOverflow = (page: Page) =>
+  attempt("measure the page's width", () =>
+    page.evaluate(
+      () => document.documentElement.scrollWidth - globalThis.innerWidth
+    )
+  );
+
 const phoneChecks = (engine: BrowserType, app: string, watched: PageWatch) =>
   Effect.gen(function* runPhoneChecks() {
     const name = engine.name();
@@ -325,6 +407,8 @@ const phoneChecks = (engine: BrowserType, app: string, watched: PageWatch) =>
       lightColours.join(",") === `${PAGE_COLOURS.light},${PAGE_COLOURS.dark}`,
       lightColours.join(",")
     );
+    const homeFields = yield* fieldSizes(host, "home");
+
     yield* attempt("type the host's name", () =>
       host.getByPlaceholder("Name").fill("Ana")
     );
@@ -335,6 +419,8 @@ const phoneChecks = (engine: BrowserType, app: string, watched: PageWatch) =>
     yield* attempt("the guest opens the link", () =>
       guest.goto(`${host.url()}?mute=1`)
     );
+    const joinFields = yield* fieldSizes(guest, "the invitation");
+
     yield* attempt("type the guest's name", () =>
       guest.getByPlaceholder("Name").fill("Ben")
     );
@@ -372,9 +458,22 @@ const phoneChecks = (engine: BrowserType, app: string, watched: PageWatch) =>
       yield* style(host, ".room", "touch-action")
     );
     yield* note(
-      "the table takes every touch for its gestures",
-      (yield* style(host, TABLE, "touch-action")) === "none",
+      "no part of the page zooms on a double tap, the strips around the room included",
+      (yield* style(host, "html", "touch-action")) === "manipulation",
+      yield* style(host, "html", "touch-action")
+    );
+    yield* note(
+      "the table keeps one-finger touches for its gestures and lets a pinch through",
+      (yield* style(host, TABLE, "touch-action")) === "pinch-zoom",
       yield* style(host, TABLE, "touch-action")
+    );
+
+    const overflow = yield* wideOverflow(host);
+
+    yield* note(
+      "nothing in the room is wider than the screen, so the page starts at its own scale",
+      overflow <= 0,
+      `${overflow}px wider`
     );
 
     const keyHints = yield* attempt("read the key hints", () =>
@@ -466,6 +565,99 @@ const phoneChecks = (engine: BrowserType, app: string, watched: PageWatch) =>
       (yield* themeColours(host)).join(",")
     );
     yield* button(host, "Close");
+    yield* button(host, "Menu");
+    yield* button(host, "Add chips");
+    yield* attempt("wait for the chips field", () =>
+      host.locator(".sheet input").first().waitFor({ timeout: 5000 })
+    );
+
+    const chipFields = yield* fieldSizes(host, "adding chips");
+
+    yield* button(host, "Close");
+    yield* button(host, "Menu");
+    yield* attempt("open the house rules", () =>
+      host.locator(".rules-card").first().click()
+    );
+    yield* attempt("open the blinds", () =>
+      host
+        .locator(".sheet")
+        .getByText("Blinds", { exact: true })
+        .first()
+        .click()
+    );
+    yield* attempt("wait for the rules' number fields", () =>
+      host.locator(".sheet input").first().waitFor({ timeout: 5000 })
+    );
+
+    const ruleFields = yield* fieldSizes(host, "the house rules");
+
+    yield* button(host, "Close");
+
+    const screens = [homeFields, joinFields, chipFields, ruleFields];
+
+    yield* note(
+      "every text field is 16px or more, so focusing one never zooms the page",
+      screens.every(({ sizes }) =>
+        sizes.every((size) => size >= IOS_FOCUS_ZOOM_BELOW_PX)
+      ) && screens.every(({ sizes }) => sizes.length > 0),
+      screens
+        .map(({ screen, sizes }) => `${screen} ${sizes.join("/")}`)
+        .join(", ")
+    );
+
+    yield* pretendZoom(host, ZOOMED_IN);
+    yield* Effect.sleep("200 millis");
+
+    const zoomedTouch = yield* style(host, TABLE, "touch-action");
+    const zoomedHint = yield* zoomHintShown(host);
+
+    yield* forgetPretendZoom(host);
+    yield* Effect.sleep("200 millis");
+
+    const restoredTouch = yield* style(host, TABLE, "touch-action");
+    const restoredHint = yield* zoomHintShown(host);
+
+    yield* note(
+      "zoomed in, the table pans and pinches like the page and says how to get back; at its own scale it takes its gestures again",
+      zoomedTouch === "manipulation" &&
+        zoomedHint &&
+        restoredTouch === "pinch-zoom" &&
+        !restoredHint,
+      `zoomed ${zoomedTouch}, hint ${zoomedHint}; back ${restoredTouch}, hint ${restoredHint}`
+    );
+
+    if (engine.name() === "chromium") {
+      const pinchedIn = yield* pinchTable(hostContext, host, ZOOMED_IN);
+
+      yield* Effect.sleep("400 millis");
+
+      const inScale = yield* visualScale(host);
+      const pinchedTouch = yield* style(host, TABLE, "touch-action");
+      const pinchedHint = yield* zoomHintShown(host);
+
+      yield* note(
+        "a pinch that starts on the table zooms the page, and the zoomed table then pans and pinches and says how to get back",
+        pinchedIn === "" &&
+          inScale > 1.2 &&
+          pinchedTouch === "manipulation" &&
+          pinchedHint,
+        `pinched to ${inScale.toFixed(2)} ${pinchedIn}, table ${pinchedTouch}, hint ${pinchedHint}`.trim()
+      );
+      yield* attempt("reload at the page's own scale", () =>
+        host.goto(host.url())
+      );
+      yield* attempt("see the table again", () =>
+        host
+          .locator(`${TABLE} .self:not(.gone)`)
+          .waitFor({ state: "attached", timeout: 15_000 })
+      );
+    } else {
+      yield* note(
+        "pinching the table",
+        true,
+        "not checked: this engine cannot synthesize a pinch"
+      );
+    }
 
     const emulated = yield* insetsFor(hostContext, host, NOTCH);
 

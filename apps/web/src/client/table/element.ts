@@ -3186,7 +3186,12 @@ export class NostakesTable extends HTMLElement {
   readonly #onHandDown = (event: PointerEvent) => {
     const snapshot = this.#snap;
 
-    if (snapshot === null || this.#hand.classList.contains("gone")) {
+    if (
+      snapshot === null ||
+      this.#hand.classList.contains("gone") ||
+      !event.isPrimary ||
+      this.#handG !== null
+    ) {
       return;
     }
 
@@ -3733,6 +3738,10 @@ export class NostakesTable extends HTMLElement {
   }
 
   readonly #onChipDown = (event: PointerEvent) => {
+    if (!event.isPrimary || this.#chipG !== null) {
+      return;
+    }
+
     this.#sound.unlock();
 
     if (this.#pressPaper()) {

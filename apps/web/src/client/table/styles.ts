@@ -1,7 +1,7 @@
 export const tableCss = `
 :host {
   display: block; position: relative; overflow: hidden; contain: strict;
-  user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; touch-action: none;
+  user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; touch-action: pinch-zoom;
 }
 * { box-sizing: border-box; }
 .room {
@@ -239,7 +239,7 @@ export const tableCss = `
 .entry .post-action:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 3px; }
 .entry.posting .post-action { background: transparent; box-shadow: none; color: var(--color-ink-muted); font-weight: var(--weight-body); text-decoration: underline; text-underline-offset: 3px; min-height: 36px; }
 .entry .note { font-size: var(--text-1); color: var(--color-ink-muted); }
-.chipctl { position: absolute; z-index: 9; width: var(--c); height: var(--c); cursor: grab; touch-action: none; border: 0; padding: 0; background: none; font: inherit; color: inherit; }
+.chipctl { position: absolute; z-index: 9; width: var(--c); height: var(--c); cursor: grab; border: 0; padding: 0; background: none; font: inherit; color: inherit; }
 .chipctl:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 4px; border-radius: 50%; }
 .chipctl .disc {
   position: absolute; inset: 0; border-radius: 50%; background: var(--color-accent); box-shadow: var(--shadow-action);

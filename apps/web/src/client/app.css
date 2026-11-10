@@ -2,6 +2,10 @@
   box-sizing: border-box;
 }
 
+html {
+  touch-action: manipulation;
+}
+
 html,
 body {
   margin: 0;
@@ -22,6 +26,12 @@ input,
 select {
   font: inherit;
   color: inherit;
+}
+
+input,
+select,
+textarea {
+  font-size: max(16px, 1em);
 }
 
 :focus-visible {
@@ -468,6 +478,31 @@ html:has(.room) {
   max-width: var(--size-sheet);
   width: 100%;
   margin: var(--space-5) auto 0;
+}
+
+:root[data-zoomed] .table-host {
+  touch-action: manipulation;
+}
+
+.zoom-hint {
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: 50;
+  transform-origin: 0 0;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-3);
+  background: var(--color-toast);
+  color: var(--color-on-toast);
+  box-shadow: var(--shadow-sheet-2);
+  font-size: var(--text-2);
+  font-weight: var(--weight-strong);
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.zoom-hint[hidden] {
+  display: none;
 }
 
 .table-host {
@@ -1650,6 +1685,7 @@ button.person {
   background: none;
   color: inherit;
   font: inherit;
+  font-size: max(16px, 1em);
   font-weight: var(--weight-strong);
   text-align: center;
   appearance: textfield;
