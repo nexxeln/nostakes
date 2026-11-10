@@ -13,6 +13,7 @@ import {
   loadRoom,
   openStorage,
   Origins,
+  ROOM_RETENTION_MS,
 } from "../../src/room-host.js";
 import type { Connections } from "../../src/room-host.js";
 import { memoryStorage } from "./memory-storage.js";
@@ -41,7 +42,8 @@ export const openPokerHost = (request: OpenRequest) => {
   const host = hostRoom(
     pokerRoom,
     memory.storage,
-    Option.getOrThrow(loadRoom(pokerRoom, memory.storage))
+    Option.getOrThrow(loadRoom(pokerRoom, memory.storage)),
+    ROOM_RETENTION_MS
   );
 
   const viewers: RecordingViewer[] = [];

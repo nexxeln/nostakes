@@ -5,7 +5,15 @@ import type {
   PlayerId,
   RoomCode,
 } from "@nostakes/protocol";
-import { Array as Arr, Data, Inspectable, Option, Order, Result } from "effect";
+import {
+  Array as Arr,
+  Data,
+  Duration,
+  Inspectable,
+  Option,
+  Order,
+  Result,
+} from "effect";
 
 import { hashedCredential, matchCredential } from "./credentials.js";
 import type { HashedCredential } from "./credentials.js";
@@ -60,10 +68,13 @@ export interface RecentStates<State> {
   readonly states: readonly State[];
 }
 
+export const ROOM_RETENTION_MS = Duration.toMillis(Duration.days(30));
+
 export interface HostState<T extends RoomTypes> {
   readonly code: RoomCode;
   readonly state: T["State"];
   readonly headSeq: number;
+  readonly lastEventAt: number;
   readonly halted: Option.Option<string>;
   readonly credentials: readonly HashedCredential[];
   readonly recent: RecentStates<T["State"]>;
@@ -116,6 +127,7 @@ export const loadRoom = <T extends RoomTypes>(
           ? Option.some(violations.join("; "))
           : meta.halted,
         headSeq: rows.at(-1)?.seq ?? 0,
+        lastEventAt: rows.at(-1)?.at ?? 0,
         recent: { from: rows[split - 1]?.seq ?? 0, states },
         state,
       };
@@ -160,15 +172,19 @@ const guarded = <A>(label: string, run: () => Checked<A>): Checked<A> =>
 export const hostRoom = <T extends RoomTypes>(
   core: HostedRoom<T>,
   storage: RoomStorage,
-  loaded: HostState<T>
+  loaded: HostState<T>,
+  retainFor: number
 ) => {
   const codec = roomCodec(core);
   let current = loaded;
+
+  const expiresAt = () => current.lastEventAt + retainFor;
 
   const alarmAt = (socketDeadline: Option.Option<number>) =>
     earliest([
       core.nextDeadline(current.state).pipe(Option.map(({ at }) => at)),
       socketDeadline,
+      Option.some(expiresAt()),
     ]);
 
   const armAlarm = (socketDeadline: Option.Option<number>) => {
@@ -402,6 +418,7 @@ export const hostRoom = <T extends RoomTypes>(
         ...Option.toArray(input.grant).map(hashedCredential),
       ],
       headSeq: to,
+      lastEventAt: events.length > 0 ? input.at : current.lastEventAt,
       recent: keepRecent(current.recent, states),
       state: next,
     };
@@ -542,6 +559,7 @@ export const hostRoom = <T extends RoomTypes>(
       matchCredential(current.credentials, hash),
     codec,
     commit,
+    expiresAt,
     nextDeadline: () => core.nextDeadline(current.state),
     snapshot: () => current,
     welcome,

@@ -12,6 +12,7 @@ import {
   loadRoom,
   hostRoom,
   openStorage,
+  ROOM_RETENTION_MS,
   Origins,
 } from "../../src/room-host.js";
 import type { Connections, Viewer } from "../../src/room-host.js";
@@ -64,7 +65,8 @@ export const openToyHost = (
   const host = hostRoom(
     core,
     storage,
-    Option.getOrThrow(loadRoom(core, storage))
+    Option.getOrThrow(loadRoom(core, storage)),
+    ROOM_RETENTION_MS
   );
 
   const closings: string[] = [];

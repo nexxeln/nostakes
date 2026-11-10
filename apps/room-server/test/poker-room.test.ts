@@ -20,7 +20,7 @@ import {
   MemberCommandSchema,
   pokerRoom,
 } from "../src/poker-room.js";
-import { hostRoom, loadRoom } from "../src/room-host.js";
+import { hostRoom, loadRoom, ROOM_RETENTION_MS } from "../src/room-host.js";
 import { ana, ben, cy, openPokerHost } from "./fixtures/poker-host.js";
 
 const Commands = MemberCommandSchema.cases;
@@ -348,7 +348,8 @@ describe("catching up after a reconnect", () => {
     const restarted = hostRoom(
       pokerRoom,
       room.memory.storage,
-      Option.getOrThrow(loadRoom(pokerRoom, room.memory.storage))
+      Option.getOrThrow(loadRoom(pokerRoom, room.memory.storage)),
+      ROOM_RETENTION_MS
     );
 
     const again = (player: typeof ana) =>

@@ -10,6 +10,7 @@ import type { Beacon } from "../../src/beacon.js";
 import type { Entropy } from "../../src/entropy.js";
 import type { HostedRoom, RoomTypes } from "../../src/hosted-room.js";
 import { bytesForCode } from "../../src/room-code.js";
+import { ROOM_RETENTION_MS } from "../../src/room-host.js";
 import { roomObject } from "../../src/room-object.js";
 import { InspectionSchema } from "../../src/room-rpc.js";
 import { testBeacon } from "./test-beacon.js";
@@ -20,11 +21,16 @@ const AlarmAt = Schema.Int;
 export const roomObjectWithTestHooks = <T extends RoomTypes>(
   core: HostedRoom<T>,
   entropyFor: (state: cf.DurableObjectState) => Layer.Layer<Entropy>,
-  beacon: Layer.Layer<Beacon> = testBeacon
+  beacon: Layer.Layer<Beacon> = testBeacon,
+  retainFor = ROOM_RETENTION_MS
 ) =>
   Cloudflare.DurableObjectState.pipe(
     Effect.flatMap((state) =>
-      roomObject(core, { beacon, entropy: entropyFor(state.raw) }).pipe(
+      roomObject(core, {
+        beacon,
+        entropy: entropyFor(state.raw),
+        retainFor,
+      }).pipe(
         Effect.map((instance) =>
           instance.pipe(
             Effect.map((room) => ({

@@ -1,6 +1,6 @@
 import type * as cf from "@cloudflare/workers-types";
 import { PlayerIdSchema, RoomCodeSchema } from "@nostakes/protocol";
-import { Option, Schema } from "effect";
+import { Effect, Option, Schema } from "effect";
 
 import {
   REPLIES_KEPT_PER_PLAYER,
@@ -135,6 +135,9 @@ export const sqliteStorage = (
             .toArray()
         )[0]
       ).pipe(Option.map(({ reply }) => reply)),
+    forget: Effect.promise(() => storage.deleteAlarm()).pipe(
+      Effect.andThen(Effect.promise(() => storage.deleteAll()))
+    ),
     grant: ({ hash, player }) => {
       sql.exec(
         "insert into members_auth (player, token_hash) values (?, ?)",

@@ -1,5 +1,5 @@
 import type { CommandId, PlayerId, RoomCode } from "@nostakes/protocol";
-import type { Option } from "effect";
+import type { Effect, Option } from "effect";
 
 export const REPLIES_KEPT_PER_PLAYER = 64;
 
@@ -38,4 +38,5 @@ export interface RoomStorage {
   readonly grant: (credential: Credential) => void;
   readonly credentials: () => readonly Credential[];
   readonly setAlarm: (at: Option.Option<number>) => void;
+  readonly forget: Effect.Effect<void>;
 }

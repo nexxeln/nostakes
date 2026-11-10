@@ -4,6 +4,7 @@ import { QUICKNET } from "@nostakes/shuffle";
 import { liveBeacon } from "./beacon.js";
 import { liveEntropy } from "./entropy.js";
 import { pokerRoom } from "./poker-room.js";
+import { ROOM_RETENTION_MS } from "./room-host.js";
 import { roomObject } from "./room-object.js";
 
 export default class PokerRoom extends Cloudflare.DurableObject<PokerRoom>()(
@@ -11,5 +12,6 @@ export default class PokerRoom extends Cloudflare.DurableObject<PokerRoom>()(
   roomObject(pokerRoom, {
     beacon: liveBeacon(QUICKNET),
     entropy: liveEntropy,
+    retainFor: ROOM_RETENTION_MS,
   })
 ) {}

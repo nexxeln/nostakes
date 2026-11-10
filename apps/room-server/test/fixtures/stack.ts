@@ -7,6 +7,7 @@ import * as HttpClient from "effect/http/HttpClient";
 import * as HttpClientRequest from "effect/http/HttpClientRequest";
 
 import { InspectionSchema } from "../../src/room-rpc.js";
+import BriefWorker from "./brief-worker.js";
 import ToyWorker from "./toy-worker.js";
 
 export const ToyStack = Alchemy.Stack(
@@ -14,6 +15,16 @@ export const ToyStack = Alchemy.Stack(
   { providers: Cloudflare.providers(), state: State.inMemoryState() },
   Effect.gen(function* toyStack() {
     const worker = yield* ToyWorker;
+
+    return { url: worker.url };
+  })
+);
+
+export const BriefStack = Alchemy.Stack(
+  "RoomServerBriefTest",
+  { providers: Cloudflare.providers(), state: State.inMemoryState() },
+  Effect.gen(function* briefStack() {
+    const worker = yield* BriefWorker;
 
     return { url: worker.url };
   })

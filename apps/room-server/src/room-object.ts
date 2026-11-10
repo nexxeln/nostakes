@@ -61,6 +61,7 @@ import { workerdGlobals } from "./workerd.js";
 export interface RoomObjectOptions {
   readonly entropy: Layer.Layer<Entropy>;
   readonly beacon: Layer.Layer<Beacon>;
+  readonly retainFor: number;
 }
 
 const refusalStatus: Record<HttpRefusal["refusal"], number> = {
@@ -149,9 +150,14 @@ export const roomObject = <T extends RoomTypes>(
         const alarmRuns: { at: number; outcome: string }[] = [];
         const buckets = new WeakMap<cf.WebSocket, FrameBucket>();
 
-        let host: Option.Option<RoomHost<T>> = loadRoom(core, storage).pipe(
-          Option.map((loaded) => hostRoom(core, storage, loaded))
-        );
+        const hosted = () =>
+          loadRoom(core, storage).pipe(
+            Option.map((loaded) =>
+              hostRoom(core, storage, loaded, options.retainFor)
+            )
+          );
+
+        let host: Option.Option<RoomHost<T>> = hosted();
 
         const codecOf = (room: RoomHost<T>) => room.codec;
 
@@ -539,6 +545,15 @@ export const roomObject = <T extends RoomTypes>(
 
           const room = host.value;
 
+          if (room.expiresAt() <= at) {
+            connectionsOf(room, Option.none()).closeAll("NotFound");
+            yield* storage.forget;
+            host = Option.none();
+            alarmRuns.push({ at, outcome: "Forgotten" });
+
+            return;
+          }
+
           expireHellos(at);
           dropSilent(at);
 
@@ -627,9 +642,7 @@ export const roomObject = <T extends RoomTypes>(
               { hash: minted.hash, player: minted.player }
             );
 
-            host = loadRoom(core, storage).pipe(
-              Option.map((loaded) => hostRoom(core, storage, loaded))
-            );
+            host = hosted();
 
             for (const room of Option.toArray(host)) {
               armAlarm(room);

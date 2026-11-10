@@ -1,5 +1,5 @@
 import type { CommandId, PlayerId, RoomCode } from "@nostakes/protocol";
-import { Option } from "effect";
+import { Effect, Option } from "effect";
 
 import { REPLIES_KEPT_PER_PLAYER } from "../../src/room-storage.js";
 import type {
@@ -66,6 +66,10 @@ export const memoryStorage = () => {
           (stored) => stored.player === player && stored.id === id
         )
       ).pipe(Option.map(({ reply }) => reply)),
+    forget: Effect.sync(() => {
+      tables = emptyTables;
+      alarm = Option.none();
+    }),
     grant: (credential) => {
       write((current) => ({
         ...current,

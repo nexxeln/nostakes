@@ -7,7 +7,7 @@ import {
 import { Equal, Option, Result, Schema } from "effect";
 import * as Arbitrary from "effect/Arbitrary";
 
-import { CommitNotes, loadRoom } from "../src/room-host.js";
+import { CommitNotes, loadRoom, ROOM_RETENTION_MS } from "../src/room-host.js";
 import { REPLIES_KEPT_PER_PLAYER } from "../src/room-storage.js";
 import { describeCatchUp, missedIn } from "./fixtures/room-client.js";
 import { ana, ben, cy, openToyHost } from "./fixtures/toy-host.js";
@@ -246,7 +246,7 @@ describe("commit", () => {
     expect(room.memory.tables().events).toBe(before.events);
   });
 
-  it("arms the alarm for the earliest deadline and clears it when none is left", () => {
+  it("arms the alarm for the earliest deadline, and once none is left for the room's expiry, which each new event pushes back", () => {
     const room = withMembers();
 
     room.send(ben, "start", 2000, Commands.StartTurn.make({ ms: 300 }));
@@ -255,7 +255,16 @@ describe("commit", () => {
 
     room.send(ben, "act", 2100, Commands.Act.make({}));
 
-    expect(room.memory.alarm()).toEqual(Option.none());
+    expect(room.memory.alarm()).toEqual(Option.some(2100 + ROOM_RETENTION_MS));
+
+    room.send(ben, "noise", 2200, Commands.Act.make({}));
+
+    expect(room.memory.alarm()).toEqual(Option.some(2100 + ROOM_RETENTION_MS));
+
+    room.send(ben, "again", 2400, Commands.StartTurn.make({ ms: 300 }));
+    room.send(ben, "done", 2500, Commands.Act.make({}));
+
+    expect(room.memory.alarm()).toEqual(Option.some(2500 + ROOM_RETENTION_MS));
 
     room.host.armAlarm(Option.some(9000));
 
