@@ -32,6 +32,7 @@ const TEMPER: Temper = {
   dropPercent: 1,
   duplicatePercent: 8,
   illegalPercent: 3,
+  mustTableMuckPercent: 90,
   secondDevicePercent: 1.5,
   showdownSilencePercent: 5,
   silencePercent: 0,

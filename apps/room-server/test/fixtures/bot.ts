@@ -3,6 +3,7 @@ import {
   CardSchema,
   ChipsSchema,
   ShownCardsSchema,
+  WinningHandMustTable,
 } from "@nostakes/engine";
 import type {
   Action,
@@ -17,8 +18,9 @@ import {
   RoomSettingsSchema,
   RoomViews,
   SeenEvents,
+  TableRejected,
 } from "@nostakes/room";
-import type { RoomView, RoomViewSchema } from "@nostakes/room";
+import type { RoomRejection, RoomView, RoomViewSchema } from "@nostakes/room";
 import { Duration, Effect, Option, Queue, Schedule, Schema } from "effect";
 
 import { MemberCommandSchema } from "../../src/poker-room.js";
@@ -37,6 +39,14 @@ export type OpenView = typeof RoomViewSchema.cases.Open.Type;
 type EncodedSettings = typeof RoomSettingsSchema.Encoded;
 
 const Commands = MemberCommandSchema.cases;
+
+export const refusedWinningMuck = (
+  command: MemberCommand,
+  rejection: RoomRejection
+) =>
+  MemberCommandSchema.guards.MuckHand(command) &&
+  Schema.is(TableRejected)(rejection) &&
+  Schema.is(WinningHandMustTable)(rejection.rejection);
 
 const decodeRuns = Schema.decodeSync(Commands.ChooseRuns.fields.runs);
 
@@ -77,6 +87,7 @@ export interface Temper {
   readonly voteSilencePercent: number;
   readonly showdownSilencePercent: number;
   readonly illegalPercent: number;
+  readonly mustTableMuckPercent: number;
   readonly duplicatePercent: number;
   readonly dropPercent: number;
   readonly secondDevicePercent: number;
@@ -303,6 +314,7 @@ export const plannerFor = (setup: PlannerSetup) => {
   const { control, label, pass, random, stats, temper } = setup;
   let silent = Option.none<{ readonly key: string; readonly bank: boolean }>();
   let decided = "";
+  let muckFirst = "";
   let finishedHand = 0;
   let restingUntil = 0;
 
@@ -403,6 +415,10 @@ export const plannerFor = (setup: PlannerSetup) => {
 
     if (decided !== key) {
       decided = key;
+      muckFirst =
+        !choices.canMuck && random.chance(temper.mustTableMuckPercent)
+          ? key
+          : "";
 
       if (random.chance(temper.showdownSilencePercent)) {
         stats.silences += 1;
@@ -410,15 +426,14 @@ export const plannerFor = (setup: PlannerSetup) => {
       }
     }
 
-    if (silent.pipe(Option.exists((quiet) => quiet.key === key))) {
-      return Option.none();
+    if (muckFirst === key) {
+      muckFirst = "";
+
+      return illegal(Commands.MuckHand.make({}));
     }
 
-    if (
-      !choices.canMuck &&
-      random.chance(Math.min(50, temper.illegalPercent * 5))
-    ) {
-      return illegal(Commands.MuckHand.make({}));
+    if (silent.pipe(Option.exists((quiet) => quiet.key === key))) {
+      return Option.none();
     }
 
     return intent(
@@ -964,10 +979,6 @@ export const startBot = (setup: BotSetup) => {
 
       stats.commands += 1;
       stats.illegal += planned.illegal ? 1 : 0;
-      stats.illegalMucks +=
-        planned.illegal && MemberCommandSchema.guards.MuckHand(planned.command)
-          ? 1
-          : 0;
 
       yield* sendCounted(socket, id, text);
 
@@ -1006,6 +1017,17 @@ export const startBot = (setup: BotSetup) => {
       )
         ? 1
         : 0;
+      stats.illegalMucks +=
+        planned.illegal &&
+        reply.pipe(
+          Option.exists(
+            ({ result }) =>
+              pokerCodec.reply.guards.Rejected(result) &&
+              refusedWinningMuck(planned.command, result.rejection)
+          )
+        )
+          ? 1
+          : 0;
 
       absorb();
     });

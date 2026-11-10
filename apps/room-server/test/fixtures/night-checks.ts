@@ -730,6 +730,7 @@ const addClientStats = (checker: Checker, client: ClientBotRecord) => {
   counts.commands += stats.commands;
   counts.rejected += stats.rejected;
   counts.illegal += stats.illegal;
+  counts.illegalMucks += stats.illegalMucks;
   counts.silences += stats.silences;
 };
 

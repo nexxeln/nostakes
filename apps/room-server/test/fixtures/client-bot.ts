@@ -23,7 +23,7 @@ import type { Scope } from "effect";
 
 import { MemberCommandSchema, pokerRoom } from "../../src/poker-room.js";
 import type { MemberCommand } from "../../src/poker-room.js";
-import { plannerFor } from "./bot.js";
+import { plannerFor, refusedWinningMuck } from "./bot.js";
 import type {
   Intent,
   NightControl,
@@ -103,6 +103,7 @@ export interface ClientBotStats {
   commands: number;
   rejected: number;
   illegal: number;
+  illegalMucks: number;
   silences: number;
   issuedBeforeDrop: number;
   resent: number;
@@ -246,6 +247,7 @@ export const startClientBot = (setup: ClientBotSetup) => {
     echoes: 0,
     failedAttempts: 0,
     illegal: 0,
+    illegalMucks: 0,
     issuedBeforeDrop: 0,
     naps: 0,
     rejected: 0,
@@ -628,6 +630,13 @@ export const startClientBot = (setup: ClientBotSetup) => {
         stats.rejected +=
           Result.isSuccess(outcome) &&
           pokerCodec.reply.guards.Rejected(outcome.success)
+            ? 1
+            : 0;
+        stats.illegalMucks +=
+          planned.illegal &&
+          Result.isSuccess(outcome) &&
+          pokerCodec.reply.guards.Rejected(outcome.success) &&
+          refusedWinningMuck(planned.command, outcome.success.rejection)
             ? 1
             : 0;
         stats.resent +=
