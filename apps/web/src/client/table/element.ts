@@ -1643,10 +1643,12 @@ export class NostakesTable extends HTMLElement {
       tile.shown.replaceChildren();
       tile.status.until = 0;
       tile.root.classList.remove("acting");
+      delete tile.root.dataset.awarded;
     }
 
     this.#selfStatus.until = 0;
     this.#self.classList.remove("acting");
+    delete this.#self.dataset.awarded;
     this.#boardShown = [];
 
     for (const slot of this.#slots) {
@@ -2661,6 +2663,7 @@ export class NostakesTable extends HTMLElement {
         tile.joyUntil = performance.now() + 2400;
         tile.winUntil = performance.now() + WIN_TAB_MS;
         tile.tab.textContent = `+${formatChips(amount)}`;
+        tile.root.dataset.awarded = tile.tab.textContent;
         tile.scale.kick(2);
       }
 
@@ -2693,6 +2696,7 @@ export class NostakesTable extends HTMLElement {
     const banner = el("div", "banner", this.#fx);
 
     this.#selfTab.textContent = `+${formatChips(amount)}`;
+    this.#self.dataset.awarded = this.#selfTab.textContent;
     this.#handLabel.classList.remove("on");
     this.#heroWinUntil = now + 4200;
     this.#sound.win();

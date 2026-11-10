@@ -294,9 +294,9 @@ const playHand = (pages: readonly Page[], watcher: Page) =>
 
     return yield* attempt("see the pot awarded", () =>
       watcher
-        .locator(`${TABLE} .act.win`)
+        .locator(`${TABLE} [data-awarded]`)
         .first()
-        .textContent({ timeout: 15_000 })
+        .getAttribute("data-awarded", { timeout: 15_000 })
     ).pipe(Effect.map((text) => text?.trim() ?? ""));
   });
 
