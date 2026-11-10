@@ -3,7 +3,7 @@ import { Data, Schema } from "effect";
 import { CardSchema, DeckSchema } from "./cards.js";
 import { HandRankSchema } from "./evaluation.js";
 import { ChipsSchema, PlayerIdSchema, SeatIndexSchema } from "./primitives.js";
-import { TableConfigSchema } from "./rules.js";
+import { RunCountSchema, TableConfigSchema } from "./rules.js";
 import { StreetSchema } from "./state.js";
 
 export const BlindSchema = Schema.Literals(["Small", "Big"]);
@@ -91,11 +91,8 @@ export const EventSchema = Schema.TaggedUnion({
     to: ChipsSchema,
   },
   RulesChanged: { config: TableConfigSchema },
-  RunsAgreed: { runs: Schema.Int.check(Schema.isGreaterThanOrEqualTo(1)) },
-  RunsChosen: {
-    runs: Schema.Int.check(Schema.isGreaterThanOrEqualTo(1)),
-    seat: SeatIndexSchema,
-  },
+  RunsAgreed: { runs: RunCountSchema },
+  RunsChosen: { runs: RunCountSchema, seat: SeatIndexSchema },
   ShowdownReached: {
     order: Schema.Array(ShowdownEntrySchema),
     run: Schema.Int.check(Schema.isGreaterThanOrEqualTo(1)),

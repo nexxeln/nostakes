@@ -3,8 +3,9 @@ import {
   Commands,
   Events,
   PendingDecisions,
-  SeatIndexSchema,
   pendingDecisions,
+  RunCountSchema,
+  SeatIndexSchema,
 } from "@nostakes/engine";
 import type { Command, Event, PlayerId, SeatIndex } from "@nostakes/engine";
 import { Data, Option, Result, Schema } from "effect";
@@ -57,6 +58,8 @@ export const nextDeadline = (state: RoomState): Option.Option<Deadline> =>
       }),
   });
 
+const ONE_RUN = RunCountSchema.make(1);
+
 export const timeBankLeft = (state: Open, player: PlayerId) =>
   Math.max(
     0,
@@ -79,7 +82,7 @@ export const automaticFor = (
         : Option.none(),
     ChooseRuns: ({ seats }) =>
       seats.includes(seat)
-        ? Option.some(Commands.ChooseRuns({ runs: 1, seat }))
+        ? Option.some(Commands.ChooseRuns({ runs: ONE_RUN, seat }))
         : Option.none(),
     Nothing: () => Option.none(),
   });
@@ -135,7 +138,7 @@ const chooseOneRunForAll = (state: Open, at: Millis): Decision =>
             state,
             onTable(
               state.table,
-              Commands.ChooseRuns({ runs: 1, seat: first }),
+              Commands.ChooseRuns({ runs: ONE_RUN, seat: first }),
               at
             ),
             (after) => chooseOneRunForAll(after, at)

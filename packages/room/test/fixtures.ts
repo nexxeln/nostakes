@@ -2,6 +2,7 @@ import {
   Antes,
   ChipsSchema,
   PlayerIdSchema,
+  RunCountSchema,
   SeatIndexSchema,
 } from "@nostakes/engine";
 import type { PlayerId } from "@nostakes/engine";
@@ -54,7 +55,7 @@ export const settings: RoomSettings = {
   table: {
     ante: Antes.NoAnte(),
     bigBlind: chipCount(10),
-    maxRuns: 1,
+    maxRuns: RunCountSchema.make(1),
     rabbitHunt: false,
     smallBlind: chipCount(5),
     straddle: { button: false, underTheGun: 0 },

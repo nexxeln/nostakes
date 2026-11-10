@@ -3,7 +3,7 @@ import { Data, Option, Schema } from "effect";
 import type { Card } from "./cards.js";
 import type { Chips, PlayerId, SeatIndex } from "./primitives.js";
 import { SEAT_COUNT, chips } from "./primitives.js";
-import type { TableConfig } from "./rules.js";
+import type { RunCount, TableConfig } from "./rules.js";
 
 export const StreetSchema = Schema.Literals([
   "Preflop",
@@ -48,7 +48,7 @@ export interface HandPlayer {
 }
 
 export interface RunChoice {
-  readonly runs: number;
+  readonly runs: RunCount;
   readonly seat: SeatIndex;
 }
 
@@ -63,7 +63,7 @@ export type Phase = Data.TaggedEnum<{
   Betting: Round & { readonly toAct: SeatIndex };
   ChoosingRuns: {
     readonly choices: readonly RunChoice[];
-    readonly maxRuns: number;
+    readonly maxRuns: RunCount;
     readonly pending: readonly SeatIndex[];
   };
   RunningOut: { readonly runs: readonly (readonly Card[])[] };

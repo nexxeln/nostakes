@@ -1,5 +1,5 @@
 import { describe, expect, it } from "@effect/vitest";
-import { Actions, ChipsSchema, Events } from "@nostakes/engine";
+import { Actions, ChipsSchema, Events, RunCountSchema } from "@nostakes/engine";
 import type { Action } from "@nostakes/engine";
 import { Option } from "effect";
 
@@ -49,7 +49,11 @@ const expire = (deadline: number, at = deadline) =>
   RoomCommands.ExpireClock({ at: ms(at), by: server, deadline: ms(deadline) });
 
 const choose = (who: typeof ann, runs: number, at: number) =>
-  RoomCommands.ChooseRuns({ at: ms(at), by: as(who), runs });
+  RoomCommands.ChooseRuns({
+    at: ms(at),
+    by: as(who),
+    runs: RunCountSchema.make(runs),
+  });
 
 const dealt = run(
   runAll(openedBy(ann, clocked), [
@@ -240,7 +244,7 @@ describe("run-choice clock", () => {
     const allIn = runAll(
       openedBy(ann, {
         ...clocked,
-        table: { ...clocked.table, maxRuns: 3 },
+        table: { ...clocked.table, maxRuns: RunCountSchema.make(3) },
       }),
       [
         join(bob),
@@ -273,8 +277,8 @@ describe("run-choice clock", () => {
           : []
       )
     ).toStrictEqual([
-      Events.RunsChosen({ runs: 1, seat: seat(1) }),
-      Events.RunsAgreed({ runs: 1 }),
+      Events.RunsChosen({ runs: RunCountSchema.make(1), seat: seat(1) }),
+      Events.RunsAgreed({ runs: RunCountSchema.make(1) }),
     ]);
     expect(openOf(expired.state).clocks.decision).toStrictEqual(Option.none());
   });

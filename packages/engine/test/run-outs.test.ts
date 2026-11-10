@@ -26,6 +26,7 @@ import {
   rejection,
   run,
   runAll,
+  runCount,
   seat,
   stacksOf,
   startHand,
@@ -43,7 +44,7 @@ const ACES_WIN_AGAIN = "6c 6s 2d 3d 4h";
 
 const runsConfig = (maxRuns: number): TableConfig => ({
   ...baseConfig,
-  maxRuns,
+  maxRuns: runCount(maxRuns),
 });
 
 const headsUpAllIn = (maxRuns: number, stack: number) =>
@@ -59,7 +60,7 @@ const headsUpAllIn = (maxRuns: number, stack: number) =>
   );
 
 const choose = (index: number, runs: number) =>
-  Commands.ChooseRuns({ runs, seat: seat(index) });
+  Commands.ChooseRuns({ runs: runCount(runs), seat: seat(index) });
 
 const shownOn = (index: number, hole: string, board: string) =>
   ShowdownEntries.Shown({
@@ -105,7 +106,7 @@ describe("running the board", () => {
 
     expect(allIn.events.some(Events.$is("RunsChosen"))).toBe(false);
     expect(runOutEvents(allIn.events)).toStrictEqual([
-      Events.RunsAgreed({ runs: 1 }),
+      Events.RunsAgreed({ runs: runCount(1) }),
       Events.HandsTabled({
         hands: [
           { cards: cards(ACES), seat: seat(1) },
@@ -130,7 +131,10 @@ describe("running the board", () => {
       Events.Called({ allIn: true, amount: chipCount(90), seat: seat(1) })
     );
     expect(pendingDecisions(allIn.state)).toStrictEqual(
-      PendingDecisions.ChooseRuns({ maxRuns: 3, seats: [seat(0), seat(1)] })
+      PendingDecisions.ChooseRuns({
+        maxRuns: runCount(3),
+        seats: [seat(0), seat(1)],
+      })
     );
   });
 
@@ -141,7 +145,7 @@ describe("running the board", () => {
     ]);
 
     expect(runOutEvents(twice.events)).toStrictEqual([
-      Events.RunsAgreed({ runs: 2 }),
+      Events.RunsAgreed({ runs: runCount(2) }),
       Events.HandsTabled({
         hands: [
           { cards: cards(ACES), seat: seat(1) },
@@ -197,7 +201,7 @@ describe("running the board", () => {
     ]);
 
     expect(chosen.events.filter(Events.$is("RunsAgreed"))).toStrictEqual([
-      Events.RunsAgreed({ runs: 2 }),
+      Events.RunsAgreed({ runs: runCount(2) }),
     ]);
   });
 
@@ -208,7 +212,7 @@ describe("running the board", () => {
     ]);
 
     expect(once.events.filter(Events.$is("RunsAgreed"))).toStrictEqual([
-      Events.RunsAgreed({ runs: 1 }),
+      Events.RunsAgreed({ runs: runCount(1) }),
     ]);
     expect(once.events.filter(Events.$is("StreetDealt"))).toHaveLength(3);
   });
@@ -218,7 +222,11 @@ describe("running the board", () => {
     const chosen = run(allIn, choose(0, 2)).state;
 
     expect(rejection(allIn, choose(0, 4))).toStrictEqual(
-      new RunsOutOfRange({ maxRuns: 3, runs: 4, seat: seat(0) })
+      new RunsOutOfRange({
+        maxRuns: runCount(3),
+        runs: runCount(4),
+        seat: seat(0),
+      })
     );
     expect(rejection(chosen, choose(0, 2))).toStrictEqual(
       new NoRunChoiceOwed({ seat: seat(0) })

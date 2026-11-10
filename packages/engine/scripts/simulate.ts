@@ -7,6 +7,7 @@ import {
   Events,
   PendingDecisions,
   PlayerIdSchema,
+  RunCountSchema,
   SeatIndexSchema,
   Seats,
   ShowdownEntries,
@@ -75,6 +76,8 @@ const chipCount = (amount: number) => ChipsSchema.make(amount);
 
 const seatAt = (index: number) => SeatIndexSchema.make(index);
 
+const runCount = (count: number) => RunCountSchema.make(count);
+
 const anteOf = (random: Random, bigBlind: number): Ante => {
   const kind = random.below(3);
 
@@ -96,7 +99,7 @@ const randomConfig = (random: Random): TableConfig => {
   return {
     ante: anteOf(random, bigBlind),
     bigBlind: chipCount(bigBlind),
-    maxRuns: 1 + random.below(4),
+    maxRuns: runCount(1 + random.below(4)),
     rabbitHunt: random.chance(50),
     smallBlind: chipCount(smallBlind),
     straddle: {
@@ -212,7 +215,9 @@ const answer = (state: TableState, random: Random): Option.Option<Command> =>
     ChooseRuns: ({ maxRuns, seats }) =>
       Option.some(
         Commands.ChooseRuns({
-          runs: random.chance(65) ? maxRuns : 1 + random.below(maxRuns),
+          runs: random.chance(65)
+            ? maxRuns
+            : runCount(1 + random.below(maxRuns)),
           seat: seats[0] ?? seatAt(0),
         })
       ),

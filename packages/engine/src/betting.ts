@@ -9,7 +9,7 @@ import type { Event, EventOf } from "./events.js";
 import type { Chips, SeatIndex } from "./primitives.js";
 import { SEAT_COUNT, chips } from "./primitives.js";
 import { IllegalAction, NoBettingRound, NotYourTurn } from "./rejection.js";
-import type { TableConfig } from "./rules.js";
+import type { RunCount, TableConfig } from "./rules.js";
 import { choosesRuns, runCap } from "./run-outs.js";
 import {
   Phases,
@@ -142,7 +142,7 @@ export const legalActions = (state: TableState): Option.Option<LegalActions> =>
 export type PendingDecision = Data.TaggedEnum<{
   Bet: { readonly legal: LegalActions };
   ChooseRuns: {
-    readonly maxRuns: number;
+    readonly maxRuns: RunCount;
     readonly seats: readonly SeatIndex[];
   };
   Nothing: { readonly handNumber: number };

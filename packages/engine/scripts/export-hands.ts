@@ -8,6 +8,7 @@ import {
   PendingDecisions,
   Phases,
   PlayerIdSchema,
+  RunCountSchema,
   SeatIndexSchema,
   Seats,
   TableStates,
@@ -64,6 +65,8 @@ const chipCount = (amount: number) => ChipsSchema.make(amount);
 
 const seatAt = (index: number) => SeatIndexSchema.make(index);
 
+const runCount = (count: number) => RunCountSchema.make(count);
+
 const anteOf = (random: Random, bigBlind: number): Ante => {
   const kind = random.below(3);
 
@@ -85,7 +88,7 @@ const randomConfig = (random: Random): TableConfig => {
   return {
     ante: anteOf(random, bigBlind),
     bigBlind: chipCount(bigBlind),
-    maxRuns: 1 + random.below(4),
+    maxRuns: runCount(1 + random.below(4)),
     rabbitHunt: random.chance(50),
     smallBlind: chipCount(smallBlind),
     straddle: {
@@ -289,9 +292,9 @@ const decision = (
       if (random.chance(8)) {
         return Option.some({
           command: random.chance(50)
-            ? Commands.ChooseRuns({ runs: maxRuns + 1, seat: owed })
+            ? Commands.ChooseRuns({ runs: runCount(maxRuns + 1), seat: owed })
             : Commands.ChooseRuns({
-                runs: 1,
+                runs: runCount(1),
                 seat: seatAt((owed + 1 + random.below(8)) % 9),
               }),
           probe: true,
@@ -300,7 +303,9 @@ const decision = (
 
       return Option.some({
         command: Commands.ChooseRuns({
-          runs: random.chance(55) ? maxRuns : 1 + random.below(maxRuns),
+          runs: random.chance(55)
+            ? maxRuns
+            : runCount(1 + random.below(maxRuns)),
           seat: random.pick(seats) ?? owed,
         }),
         probe: false,

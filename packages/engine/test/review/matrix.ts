@@ -4,6 +4,7 @@ import {
   Actions,
   Antes,
   Commands,
+  MAX_RUNS,
   PendingDecisions,
   SEAT_COUNT,
   Seats,
@@ -21,7 +22,13 @@ import type {
   TableConfig,
   TableState,
 } from "../../src/index.js";
-import { bankrollChange, chipCount, player, seat } from "../fixtures.js";
+import {
+  bankrollChange,
+  chipCount,
+  player,
+  runCount,
+  seat,
+} from "../fixtures.js";
 
 const seats = Array.from({ length: SEAT_COUNT }, (_, index) => seat(index));
 
@@ -40,7 +47,9 @@ const runCounts = (state: TableState) =>
     Bet: () => [1, 2],
     ChooseRuns: ({ maxRuns }) => [1, maxRuns, maxRuns + 1],
     Nothing: () => [1, 2],
-  });
+  })
+    .filter((count) => count <= MAX_RUNS)
+    .map((count) => runCount(count));
 
 const lastHandCards = (state: TableState) =>
   TableStates.$is("BetweenHands")(state)
@@ -71,7 +80,7 @@ const configs = (current: TableConfig): readonly TableConfig[] => [
     ...current,
     ante: Antes.BigBlindPays({ amount: chipCount(1000) }),
     bigBlind: chipCount(500),
-    maxRuns: 4,
+    maxRuns: runCount(4),
     rabbitHunt: true,
     smallBlind: chipCount(250),
     straddle: { button: true, underTheGun: 6 },

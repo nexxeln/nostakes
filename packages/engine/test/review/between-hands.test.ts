@@ -22,6 +22,7 @@ import {
   raisesTo,
   rejection,
   run,
+  runCount,
   seat,
   stacksOf,
   startHand,
@@ -203,7 +204,7 @@ describe("seating during a hand (rules 3 and 28)", () => {
       Commands.ChangeRules({ config: { ...baseConfig, rabbitHunt: true } }),
       Commands.StartHand({ deck, straddles: [] }),
       Commands.ShowCards({ cards: cards("Kh"), seat: seat(0) }),
-      Commands.ChooseRuns({ runs: 1, seat: seat(1) }),
+      Commands.ChooseRuns({ runs: runCount(1), seat: seat(1) }),
       Commands.Act({ action: checks, seat: seat(0) }),
     ].map((command) => rejection(folded, command)?._tag);
 

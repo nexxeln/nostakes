@@ -4,6 +4,7 @@ import {
   ChipsSchema,
   Events,
   NotYourTurn,
+  RunCountSchema,
   TableStates,
 } from "@nostakes/engine";
 import type { Action } from "@nostakes/engine";
@@ -46,7 +47,11 @@ const fold = Actions.Fold();
 const call = Actions.Call();
 
 const choose = (who: typeof ann, runs: number) =>
-  RoomCommands.ChooseRuns({ at: ms(5), by: as(who), runs });
+  RoomCommands.ChooseRuns({
+    at: ms(5),
+    by: as(who),
+    runs: RunCountSchema.make(runs),
+  });
 
 const tableEvents = (events: readonly RoomEvent[]) =>
   events.flatMap((event) =>
@@ -103,7 +108,7 @@ describe("play", () => {
     const allIn = runAll(
       openedBy(ann, {
         ...settings,
-        table: { ...settings.table, maxRuns: 2 },
+        table: { ...settings.table, maxRuns: RunCountSchema.make(2) },
       }),
       [
         join(bob),

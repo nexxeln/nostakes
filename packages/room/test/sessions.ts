@@ -4,11 +4,12 @@ import {
   CardSchema,
   ChipsSchema,
   PendingDecisions,
+  pendingDecisions,
   PlayerIdSchema,
+  RunCountSchema,
   SeatIndexSchema,
   Seats,
   TableStates,
-  pendingDecisions,
 } from "@nostakes/engine";
 import type {
   Action,
@@ -98,7 +99,7 @@ export const tableConfigFrom = (random: SeededRandom): TableConfig => {
   return {
     ante: anteOf(random.below(3), 1 + random.below(small * 2)),
     bigBlind: chips(small * (1 + random.below(2))),
-    maxRuns: 1 + random.below(3),
+    maxRuns: RunCountSchema.make(1 + random.below(3)),
     rabbitHunt: random.chance(1, 2),
     smallBlind: chips(small),
     straddle: { button: random.chance(1, 2), underTheGun: random.below(3) },
@@ -233,7 +234,9 @@ const answerPending = (
           RoomCommands.ChooseRuns({
             at: millis(at),
             by: member(owner),
-            runs: 1 + random.below(maxRuns + (random.chance(1, 10) ? 1 : 0)),
+            runs: RunCountSchema.make(
+              1 + random.below(maxRuns + (random.chance(1, 10) ? 1 : 0))
+            ),
           })
         )
       ),
@@ -575,7 +578,7 @@ const junk = (state: Open, random: SeededRandom, at: number): RoomCommand => {
 
   const choices: readonly RoomCommand[] = [
     RoomCommands.Act({ action: Actions.Fold(), at: when, by }),
-    RoomCommands.ChooseRuns({ at: when, by, runs: 1 }),
+    RoomCommands.ChooseRuns({ at: when, by, runs: RunCountSchema.make(1) }),
     RoomCommands.ApproveSeat({ at: when, by, player }),
     RoomCommands.ApproveChips({ at: when, by, player }),
     RoomCommands.ActForSeat({ at: when, by, player }),

@@ -4,12 +4,13 @@ import {
   ChipsSchema,
   Events,
   PendingDecisions,
+  pendingDecisions,
   PlayerIdSchema,
+  RunCountSchema,
   SeatIndexSchema,
   Seats,
   ShowdownEntries,
   TableStates,
-  pendingDecisions,
 } from "@nostakes/engine";
 import type {
   Action,
@@ -129,7 +130,7 @@ const tableConfig = (random: Random): TableConfig => {
   return {
     ante: anteOf(random, bigBlind),
     bigBlind: chips(bigBlind),
-    maxRuns: 1 + random.below(3),
+    maxRuns: RunCountSchema.make(1 + random.below(3)),
     rabbitHunt: random.chance(50),
     smallBlind: chips(smallBlind),
     straddle: {
@@ -618,7 +619,7 @@ const play = (run: Run, open: Open) => {
           RoomCommands.ChooseRuns({
             at: at(run),
             by: member(owner),
-            runs: 1 + run.random.below(maxRuns),
+            runs: RunCountSchema.make(1 + run.random.below(maxRuns)),
           })
       );
     },

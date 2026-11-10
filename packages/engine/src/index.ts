@@ -104,9 +104,11 @@ export {
   AnteSchema,
   Antes,
   MAX_RUNS,
+  RunCountSchema,
   StraddleRulesSchema,
   TableConfigSchema,
   type Ante,
+  type RunCount,
   type StraddleRules,
   type TableConfig,
 } from "./rules.js";

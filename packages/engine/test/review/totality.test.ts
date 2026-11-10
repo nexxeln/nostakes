@@ -1,9 +1,9 @@
-import { describe, expect, it } from "@effect/vitest";
-import { Effect, Option } from "effect";
+import { describe, expect, expectTypeOf, it } from "@effect/vitest";
+import { Effect, Option, Schema } from "effect";
 import * as Arbitrary from "effect/Arbitrary";
 
-import { TableStates } from "../../src/index.js";
-import type { TableState } from "../../src/index.js";
+import { RunCountSchema, TableStates } from "../../src/index.js";
+import type { Command, TableConfig, TableState } from "../../src/index.js";
 import { playSession, session } from "../sessions.js";
 import { commandMatrix, startCommands, totalityProblems } from "./matrix.js";
 
@@ -27,6 +27,23 @@ const probe = (
     ),
   };
 };
+
+type FieldOf<
+  Tag extends Command["_tag"],
+  Key extends keyof Extract<Command, { readonly _tag: Tag }>,
+> = Extract<Command, { readonly _tag: Tag }>[Key];
+
+describe("the Command type admits only what CommandSchema admits", () => {
+  it("Rule 19: a run count is an integer from 1 to MAX_RUNS, so ChooseRuns with 1.5 runs or a table with maxRuns 1.5 does not typecheck", () => {
+    expectTypeOf<number>().not.toExtend<FieldOf<"ChooseRuns", "runs">>();
+    expectTypeOf<number>().not.toExtend<TableConfig["maxRuns"]>();
+    expect(
+      [0, 1, 1.5, 9, 10, Number.NaN].map((count) =>
+        Schema.is(RunCountSchema)(count)
+      )
+    ).toStrictEqual([false, true, false, true, false, false]);
+  });
+});
 
 describe("totality of decide over every command in every resting phase", () => {
   it.prop(

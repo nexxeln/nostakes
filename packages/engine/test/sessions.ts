@@ -23,7 +23,7 @@ import type {
   TableConfig,
   TableState,
 } from "../src/index.js";
-import { chipCount, player, seat } from "./fixtures.js";
+import { chipCount, player, runCount, seat } from "./fixtures.js";
 import { seededRandom } from "./random.js";
 import type { SeededRandom } from "./random.js";
 
@@ -73,7 +73,7 @@ const anteOf = (kind: number, amount: number): Ante => {
 export const configOf = (source: Session): TableConfig => ({
   ante: anteOf(source.anteKind, source.anteAmount),
   bigBlind: chipCount(source.smallBlind + source.bigBlindExtra),
-  maxRuns: source.maxRuns,
+  maxRuns: runCount(source.maxRuns),
   rabbitHunt: source.rabbitHunt,
   smallBlind: chipCount(source.smallBlind),
   straddle: { button: source.button, underTheGun: source.underTheGun },
@@ -85,7 +85,7 @@ const randomConfig = (random: SeededRandom): TableConfig => {
   return {
     ante: anteOf(random.below(3), 1 + random.below(12)),
     bigBlind: chipCount(small + random.below(12)),
-    maxRuns: 1 + random.below(4),
+    maxRuns: runCount(1 + random.below(4)),
     rabbitHunt: random.chance(1, 2),
     smallBlind: chipCount(small),
     straddle: { button: random.chance(1, 2), underTheGun: random.below(4) },
@@ -188,7 +188,9 @@ export const answerPending = (
     ChooseRuns: ({ maxRuns, seats }) =>
       Option.some(
         Commands.ChooseRuns({
-          runs: random.chance(7, 10) ? maxRuns : 1 + random.below(maxRuns),
+          runs: random.chance(7, 10)
+            ? maxRuns
+            : runCount(1 + random.below(maxRuns)),
           seat: seats[random.below(seats.length)] ?? seat(0),
         })
       ),
@@ -228,7 +230,10 @@ const illegalInHand = (state: TableState, random: SeededRandom): Command => {
   }
 
   return PendingDecisions.$is("ChooseRuns")(pending)
-    ? Commands.ChooseRuns({ runs: pending.maxRuns + 1, seat: anySeat })
+    ? Commands.ChooseRuns({
+        runs: runCount(pending.maxRuns + 1),
+        seat: anySeat,
+      })
     : Commands.Act({ action: Actions.Fold(), seat: anySeat });
 };
 

@@ -20,12 +20,16 @@ import {
   raisesTo,
   rejection,
   runAll,
+  runCount,
   seat,
   stacksOf,
   startHand,
 } from "../fixtures.js";
 
-const runs = (maxRuns: number): TableConfig => ({ ...baseConfig, maxRuns });
+const runs = (maxRuns: number): TableConfig => ({
+  ...baseConfig,
+  maxRuns: runCount(maxRuns),
+});
 
 const everyoneChooses = (
   state: TableState,
@@ -34,7 +38,7 @@ const everyoneChooses = (
   runAll(
     state,
     choices.map(([index, count]) =>
-      Commands.ChooseRuns({ runs: count, seat: seat(index) })
+      Commands.ChooseRuns({ runs: runCount(count), seat: seat(index) })
     )
   );
 
@@ -82,13 +86,22 @@ describe("run-out edges (rules 18 to 22)", () => {
 
     expect(pendingDecisions(allIn)).toStrictEqual(
       PendingDecisions.ChooseRuns({
-        maxRuns: 6,
+        maxRuns: runCount(6),
         seats: [0, 1, 2, 3, 4, 5, 6, 7, 8].map((index) => seat(index)),
       })
     );
     expect(
-      rejection(allIn, Commands.ChooseRuns({ runs: 7, seat: seat(1) }))
-    ).toStrictEqual(new RunsOutOfRange({ maxRuns: 6, runs: 7, seat: seat(1) }));
+      rejection(
+        allIn,
+        Commands.ChooseRuns({ runs: runCount(7), seat: seat(1) })
+      )
+    ).toStrictEqual(
+      new RunsOutOfRange({
+        maxRuns: runCount(6),
+        runs: runCount(7),
+        seat: seat(1),
+      })
+    );
 
     const ran = everyoneChooses(
       allIn,
@@ -99,7 +112,7 @@ describe("run-out edges (rules 18 to 22)", () => {
 
     expect(
       ran.events.filter((event) => Events.$is("RunsAgreed")(event))
-    ).toStrictEqual([Events.RunsAgreed({ runs: 6 })]);
+    ).toStrictEqual([Events.RunsAgreed({ runs: runCount(6) })]);
     expect(
       ran.events.filter((event) => Events.$is("StreetDealt")(event)).length
     ).toBe(18);
@@ -219,7 +232,7 @@ describe("run-out edges (rules 18 to 22)", () => {
 
     expect(
       ran.events.filter((event) => Events.$is("RunsAgreed")(event))
-    ).toStrictEqual([Events.RunsAgreed({ runs: 2 })]);
+    ).toStrictEqual([Events.RunsAgreed({ runs: runCount(2) })]);
     expect(awardedParts(ran.events)).toStrictEqual([
       { amount: 450, pot: 1, run: 1, winners: [[0, 450]] },
       { amount: 700, pot: 2, run: 1, winners: [[0, 700]] },

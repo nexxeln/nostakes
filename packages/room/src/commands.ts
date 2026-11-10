@@ -2,6 +2,7 @@ import {
   ActionSchema,
   CardSchema,
   PlayerIdSchema,
+  RunCountSchema,
   SeatIndexSchema,
 } from "@nostakes/engine";
 import { Data, Schema } from "effect";
@@ -20,10 +21,7 @@ export const RoomCommandSchema = Schema.TaggedUnion({
   ApproveChips: naming,
   ApproveSeat: naming,
   ChangeSettings: { ...envelope, settings: RoomSettingsSchema },
-  ChooseRuns: {
-    ...envelope,
-    runs: Schema.Int.check(Schema.isGreaterThanOrEqualTo(1)),
-  },
+  ChooseRuns: { ...envelope, runs: RunCountSchema },
   CloseRoom: envelope,
   Deal: { ...envelope, shuffleBytes: Schema.Uint8Array },
   DeclareStraddle: { ...envelope, on: Schema.Boolean },

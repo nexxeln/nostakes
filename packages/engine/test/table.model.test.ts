@@ -28,7 +28,7 @@ import type {
   SeatIndex,
   TableState,
 } from "../src/index.js";
-import { bankrollChange, chipCount, seat } from "./fixtures.js";
+import { bankrollChange, chipCount, runCount, seat } from "./fixtures.js";
 import { seededRandom } from "./random.js";
 import {
   answerPending,
@@ -149,7 +149,12 @@ const passive = (state: TableState) =>
         })
       ),
     ChooseRuns: ({ seats }) =>
-      Option.some(Commands.ChooseRuns({ runs: 1, seat: seats[0] ?? seat(0) })),
+      Option.some(
+        Commands.ChooseRuns({
+          runs: runCount(1),
+          seat: seats[0] ?? seat(0),
+        })
+      ),
     Nothing: () => Option.none(),
   });
 

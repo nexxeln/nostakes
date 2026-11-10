@@ -8,6 +8,7 @@ import {
   Commands,
   DeckSchema,
   PlayerIdSchema,
+  RunCountSchema,
   SeatIndexSchema,
   Seats,
   TableStates,
@@ -33,6 +34,8 @@ export const chipCount = (amount: number) => ChipsSchema.make(amount);
 
 export const player = (name: string) => PlayerIdSchema.make(name);
 
+export const runCount = (count: number) => RunCountSchema.make(count);
+
 const decodeCard = Schema.decodeSync(CardFromText);
 
 export const card = (text: string) => decodeCard(text);
@@ -46,7 +49,7 @@ export const cards = (text: string) =>
 export const baseConfig: TableConfig = {
   ante: Antes.NoAnte(),
   bigBlind: chipCount(10),
-  maxRuns: 1,
+  maxRuns: runCount(1),
   rabbitHunt: false,
   smallBlind: chipCount(5),
   straddle: { button: false, underTheGun: 0 },

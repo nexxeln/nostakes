@@ -1,13 +1,14 @@
 import { Schema } from "effect";
 
 import { SeatIndexSchema } from "../primitives.js";
+import { RunCountSchema } from "../rules.js";
 
 export class RunsOutOfRange extends Schema.TaggedError<
   RunsOutOfRange,
   { readonly brand: unique symbol }
 >()("RunsOutOfRange", {
-  maxRuns: Schema.Int,
-  runs: Schema.Int,
+  maxRuns: RunCountSchema,
+  runs: RunCountSchema,
   seat: SeatIndexSchema,
 }) {
   override get message() {

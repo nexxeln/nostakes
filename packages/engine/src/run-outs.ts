@@ -7,7 +7,8 @@ import type { Event, EventOf } from "./events.js";
 import { buildPots, handEnded, uncalledExcess } from "./pots.js";
 import { chips, splitEvenly } from "./primitives.js";
 import { NoRunChoiceOwed, RunsOutOfRange } from "./rejection.js";
-import type { TableConfig } from "./rules.js";
+import { RunCountSchema } from "./rules.js";
+import type { RunCount, TableConfig } from "./rules.js";
 import { ShowdownEntries, awardPart, rankOnBoard } from "./showdown.js";
 import {
   Phases,
@@ -19,7 +20,13 @@ import {
   whenInHand,
   withHand,
 } from "./state.js";
-import type { Hand, InHand, Street, TableState } from "./state.js";
+import type {
+  ChoosingRuns,
+  Hand,
+  InHand,
+  Street,
+  TableState,
+} from "./state.js";
 
 const BOARD_SIZE = 5;
 
@@ -42,7 +49,7 @@ const MISSING_STREETS: readonly (readonly {
   [],
 ];
 
-export const runCap = (config: TableConfig, hand: Hand) => {
+export const runCap = (config: TableConfig, hand: Hand): RunCount => {
   const missing = BOARD_SIZE - hand.board.length;
   let runs = 1;
 
@@ -50,7 +57,7 @@ export const runCap = (config: TableConfig, hand: Hand) => {
     runs += 1;
   }
 
-  return runs;
+  return RunCountSchema.make(runs);
 };
 
 export const choosesRuns = (hand: Hand, maxRuns: number) =>
@@ -109,7 +116,7 @@ export const recordRunChoice = (
       : inHand
   );
 
-const dealRuns = (hand: Hand, runs: number) => {
+const dealRuns = (hand: Hand, runs: RunCount) => {
   const streets = MISSING_STREETS[hand.board.length] ?? [];
   const events: Event[] = [];
   const boards: Card[][] = [];
@@ -132,7 +139,7 @@ const dealRuns = (hand: Hand, runs: number) => {
   return { boards, events };
 };
 
-export const runOut = (state: InHand, runs: number): readonly Event[] => {
+export const runOut = (state: InHand, runs: RunCount): readonly Event[] => {
   const contenders = playersClockwiseAfter(notFolded(state.hand), state.button);
   const pots = buildPots(state.hand);
   const parts = pots.map((pot) => splitEvenly(pot.amount, runs));
@@ -181,13 +188,23 @@ export const runOut = (state: InHand, runs: number): readonly Event[] => {
   ];
 };
 
-export const agreedRuns = (state: InHand) =>
-  Phases.$is("ChoosingRuns")(state.hand.phase) &&
-  state.hand.phase.pending.length === 0
-    ? Option.some(
-        Math.min(...state.hand.phase.choices.map((choice) => choice.runs))
-      )
+const fewestChosen = (choosing: ChoosingRuns) => {
+  let fewest = choosing.maxRuns;
+
+  for (const choice of choosing.choices) {
+    fewest = choice.runs < fewest ? choice.runs : fewest;
+  }
+
+  return fewest;
+};
+
+export const agreedRuns = (state: InHand): Option.Option<RunCount> => {
+  const { phase } = state.hand;
+
+  return Phases.$is("ChoosingRuns")(phase) && phase.pending.length === 0
+    ? Option.some(fewestChosen(phase))
     : Option.none();
+};
 
 export const startRunning = (state: TableState, event: EventOf<"RunsAgreed">) =>
   whenInHand(state, (inHand) =>

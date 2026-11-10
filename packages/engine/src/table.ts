@@ -32,6 +32,7 @@ import {
 import { awardPot, endHand, foldOut, uncalledExcess } from "./pots.js";
 import type { SeatIndex } from "./primitives.js";
 import type { Rejection } from "./rejection.js";
+import { ONE_RUN } from "./rules.js";
 import type { TableConfig } from "./rules.js";
 import {
   agreedRuns,
@@ -227,7 +228,9 @@ const afterStreet = (
     return showdown(state, lastAggressor);
   }
 
-  return streetIsOpen(state.hand) ? [nextStreet(state.hand)] : runOut(state, 1);
+  return streetIsOpen(state.hand)
+    ? [nextStreet(state.hand)]
+    : runOut(state, ONE_RUN);
 };
 
 const settle = (

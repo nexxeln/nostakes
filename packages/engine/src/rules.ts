@@ -7,6 +7,14 @@ export const MAX_RUNS = 9;
 
 export const MAX_UNDER_THE_GUN_STRADDLES = 6;
 
+export const RunCountSchema = Schema.Int.check(
+  Schema.isBetween({ maximum: MAX_RUNS, minimum: 1 })
+).pipe(Schema.brand("RunCount"));
+
+export type RunCount = typeof RunCountSchema.Type;
+
+export const ONE_RUN = RunCountSchema.make(1);
+
 export const AnteSchema = Schema.TaggedUnion({
   BigBlindPays: { amount: PositiveChipsSchema },
   EveryPlayer: { amount: PositiveChipsSchema },
@@ -29,9 +37,7 @@ export type StraddleRules = typeof StraddleRulesSchema.Type;
 export const TableConfigSchema = Schema.Struct({
   ante: AnteSchema,
   bigBlind: PositiveChipsSchema,
-  maxRuns: Schema.Int.check(
-    Schema.isBetween({ maximum: MAX_RUNS, minimum: 1 })
-  ),
+  maxRuns: RunCountSchema,
   rabbitHunt: Schema.Boolean,
   smallBlind: PositiveChipsSchema,
   straddle: StraddleRulesSchema,
