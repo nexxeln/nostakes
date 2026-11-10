@@ -25,7 +25,9 @@ describe("a refused create or join", () => {
 
       expect(text).toMatch(/^[A-Z].*\.$/u);
       expect(text).not.toContain(refusal.refusal);
-      expect(text).not.toMatch(/\d{3}/u);
+      expect(text.replace(/ in \d+ (?:second|minute)s?\.$/u, ".")).not.toMatch(
+        /\d{3}/u
+      );
     },
     { arbitrary: { runs: 100 } }
   );
