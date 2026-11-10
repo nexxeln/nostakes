@@ -36,7 +36,7 @@ export interface Connections {
 
 export type Origin = Data.TaggedEnum<{
   Member: { readonly player: PlayerId; readonly id: CommandId };
-  Server: { readonly trigger: "Alarm" | "Join" };
+  Server: { readonly trigger: "Alarm" | "Attendance" | "Join" };
 }>;
 
 export const Origins = Data.taggedEnum<Origin>();
@@ -556,6 +556,28 @@ export const hostRoom = <T extends RoomTypes>(
     return frame;
   };
 
+  const noteAttendance = (
+    connected: readonly PlayerId[],
+    at: number,
+    connections: Connections
+  ) =>
+    Option.isSome(current.halted)
+      ? Option.none()
+      : core.attendance(current.state, connected, at).pipe(
+          Option.map((command) => ({
+            command,
+            result: commit(
+              {
+                at,
+                command,
+                grant: Option.none(),
+                origin: Origins.Server({ trigger: "Attendance" }),
+              },
+              connections
+            ),
+          }))
+        );
+
   return {
     armAlarm,
     authenticate: (hash: Uint8Array) =>
@@ -564,6 +586,7 @@ export const hostRoom = <T extends RoomTypes>(
     commit,
     expiresAt,
     nextDeadline: () => core.nextDeadline(current.state),
+    noteAttendance,
     snapshot: () => current,
     welcome,
   };

@@ -16,6 +16,7 @@ import {
   SealedDealSources,
   SeenEventSchema,
   TimeBankRefills,
+  attendanceCommand,
   audienceOf,
   decide,
   evolve,
@@ -138,6 +139,8 @@ const replayLog = (events: Iterable<RoomEvent>): RoomState => {
 };
 
 export const pokerRoomOn = (chain: DrandChain): HostedRoom<PokerTypes> => ({
+  attendance: (state, connected, at) =>
+    attendanceCommand(state, connected, millis(at)),
   audienceOf,
   beaconRoundFor: (due) =>
     Deadlines.$is("SealedDealDue")(due)

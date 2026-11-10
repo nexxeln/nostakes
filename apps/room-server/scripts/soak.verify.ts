@@ -197,6 +197,9 @@ const FAIRNESS_EXPECTED: readonly FairnessCountName[] = [
 
 const INFORMATIONAL: ReadonlySet<CountName> = new Set([
   "catchUpsSkipped",
+  "quietPauses",
+  "quietResumes",
+  "tablesUnattended",
   "clientDropsDeafSilence",
   "clientDropsSilenceLimit",
   "clientDropsUnansweredOnClearLine",
@@ -276,6 +279,7 @@ const summarize = (
     `  commands ${counts.commands}, rejected ${counts.rejected}, illegal sent ${counts.illegal}, protocol violations ${counts.protocolViolations}`,
     `  reconnects ${counts.reconnects}, socket drops ${counts.drops}, second devices ${counts.secondDevices}, catch-ups ${counts.catchUps}, catch-ups past the window ${counts.catchUpsSkipped}`,
     `  restarts ${counts.restarts} mid-hand and ${counts.voteRestarts} mid-vote, resent after a drop ${counts.resent}`,
+    `  tables left with no seated player connected ${counts.tablesUnattended}, games paused while nobody was there ${counts.quietPauses}, resumed when someone came back ${counts.quietResumes}`,
     `  silences ${counts.silences}, time banks started ${counts.bankStarts}, timeouts ${counts.timeouts}, welcome clock checks ${counts.welcomeClockChecks}`,
     `  duplicates sent ${counts.duplicates}, duplicates with matching replies ${counts.duplicatesConfirmed}, reply timeouts ${counts.replyTimeouts}`,
     `  hands by ante: none ${counts.noAnteHands}, every player ${counts.everyPlayerAnteHands}, big blind ${counts.bigBlindAnteHands}; antes posted ${counts.antePosts}`,

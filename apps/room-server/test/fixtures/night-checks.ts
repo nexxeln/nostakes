@@ -126,6 +126,8 @@ export const COUNT_NAMES = [
   "multiRunHands",
   "noAnteHands",
   "protocolViolations",
+  "quietPauses",
+  "quietResumes",
   "rabbitHunts",
   "reconnects",
   "rejected",
@@ -141,6 +143,7 @@ export const COUNT_NAMES = [
   "shows",
   "silences",
   "straddles",
+  "tablesUnattended",
   "timeouts",
   "transfers",
   "unclockedVotesTimedOut",
@@ -202,6 +205,8 @@ export const emptyCounts = (): NightCounts => ({
   multiRunHands: 0,
   noAnteHands: 0,
   protocolViolations: 0,
+  quietPauses: 0,
+  quietResumes: 0,
   rabbitHunts: 0,
   reconnects: 0,
   rejected: 0,
@@ -217,6 +222,7 @@ export const emptyCounts = (): NightCounts => ({
   shows: 0,
   silences: 0,
   straddles: 0,
+  tablesUnattended: 0,
   timeouts: 0,
   transfers: 0,
   unclockedVotesTimedOut: 0,
@@ -305,6 +311,8 @@ interface Knowledge {
 }
 
 interface Ledger {
+  quiet: boolean;
+  lastTag: RoomEvent["_tag"];
   bought: number;
   cashed: number;
   deadline: number;
@@ -1103,6 +1111,45 @@ const observeShowdown = (
   }
 };
 
+const DEALT_FROM_A_SEAL = new Set<RoomEvent["_tag"]>([
+  "DealtFromBeacon",
+  "DealtWithoutBeacon",
+]);
+
+const observeAttendance = (
+  checker: Checker,
+  ledger: Ledger,
+  event: RoomEvent
+) => {
+  if (RoomEvents.$is("TableUnattended")(event)) {
+    checker.counts.tablesUnattended += 1;
+  }
+
+  if (RoomEvents.$is("TableWentQuiet")(event)) {
+    checker.counts.quietPauses += 1;
+    ledger.quiet = true;
+  }
+
+  if (RoomEvents.$is("TableAttended")(event)) {
+    checker.counts.quietResumes += Option.isSome(event.quietSince) ? 1 : 0;
+    ledger.quiet = false;
+  }
+
+  if (
+    ledger.quiet &&
+    RoomEvents.$is("Table")(event) &&
+    Events.$is("HandStarted")(event.event) &&
+    !DEALT_FROM_A_SEAL.has(ledger.lastTag)
+  ) {
+    report(
+      checker,
+      `hand ${event.event.handNumber} started at ${event.at} while the table was quiet, and not from a seal bound before the pause`
+    );
+  }
+
+  ledger.lastTag = event._tag;
+};
+
 const observeClocks = (checker: Checker, ledger: Ledger, event: RoomEvent) => {
   if (RoomEvents.$is("TurnClockStarted")(event)) {
     ledger.deadline = event.deadline;
@@ -1664,7 +1711,9 @@ export const checkNight = (evidence: NightEvidence): NightVerdict => {
     deadline: 0,
     decks: new Set(),
     known: { holes: new Map(), shown: new Set() },
+    lastTag: "RoomOpened",
     net: new Map(),
+    quiet: false,
     runDeadline: Option.none(),
     showdown: Option.none(),
     showdownDeadline: Option.none(),
@@ -1693,6 +1742,7 @@ export const checkNight = (evidence: NightEvidence): NightVerdict => {
 
     observeMoney(ledger, event);
     observeClocks(checker, ledger, event);
+    observeAttendance(checker, ledger, event);
     observeRunVote(checker, ledger, state, event);
     observeShowdown(checker, ledger, event);
     countRoomEvent(checker, event);

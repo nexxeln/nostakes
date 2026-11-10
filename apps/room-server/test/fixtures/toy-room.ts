@@ -470,6 +470,7 @@ const signalAllowed = (state: ToyState, sender: PlayerId, signal: ToySignal) =>
   });
 
 export const toyRoom: HostedRoom<ToyTypes> = {
+  attendance: () => Option.none(),
   audienceOf,
   beaconRoundFor: () => Option.none(),
   decide,

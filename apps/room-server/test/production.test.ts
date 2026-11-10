@@ -15,7 +15,7 @@ import {
   RoomViews,
   SeenEvents,
 } from "@nostakes/room";
-import type { Reaction, RoomSignal } from "@nostakes/room";
+import type { Reaction, RoomSignal, SeenEvent } from "@nostakes/room";
 import {
   Deferred,
   Effect,
@@ -30,7 +30,7 @@ import * as HttpClient from "effect/http/HttpClient";
 import * as HttpClientRequest from "effect/http/HttpClientRequest";
 
 import { ADDRESS_LIMITS } from "../src/address-limits.js";
-import { MemberCommandSchema } from "../src/poker-room.js";
+import { DEFAULT_SETTINGS, MemberCommandSchema } from "../src/poker-room.js";
 import type { MemberCommand } from "../src/poker-room.js";
 import {
   createPokerRoom,
@@ -487,6 +487,128 @@ test(
     });
 
     yield* ana.socket.disconnect;
+  }).pipe(Effect.provide(FetchHttpClient.layer)),
+  { timeout: 60_000 }
+);
+
+const carries =
+  (tag: SeenEvent["_tag"]) =>
+  (
+    message: PokerServerMessage
+  ): message is typeof pokerCodec.server.cases.Events.Type =>
+    guards.Events(message) && message.events.some(({ _tag }) => _tag === tag);
+
+const QUIET_SETTINGS = {
+  ...DEFAULT_SETTINGS,
+  betweenHandsSeconds: 0,
+  pauseWhenAwaySeconds: 1,
+  runChoiceSeconds: 1,
+  showdownSeconds: 1,
+  shuffle: "Plain" as const,
+  sitOutAfterTimeouts: 0,
+  timeBankSeconds: 0,
+  turnSeconds: 1,
+};
+
+test(
+  "the production Worker pauses a game once its seated players have all closed their sockets, keeps a spectator's socket from holding it open, writes nothing while it is quiet, and deals again when a seated player is back",
+  Effect.gen(function* quietTable() {
+    const { url } = yield* deployed;
+    const base = yield* Effect.fromNullishOr(url).pipe(Effect.orDie);
+
+    const anaPass = yield* createPokerRoom(base, {
+      avatar: "fox",
+      name: "Ana",
+      settings: QUIET_SETTINGS,
+    });
+
+    const benPass = yield* joinPokerRoom(base, anaPass.code, {
+      avatar: "owl",
+      name: "Ben",
+    });
+
+    const cyPass = yield* joinPokerRoom(base, anaPass.code, {
+      avatar: "cat",
+      name: "Cy",
+    });
+
+    const ana = yield* greet(base, anaPass, "ana");
+    const ben = yield* greet(base, benPass, "ben");
+    const cy = yield* greet(base, cyPass, "cy");
+
+    for (const [socket, seat] of [
+      [ana.socket, 0],
+      [ben.socket, 1],
+    ] as const) {
+      yield* ask(
+        socket,
+        `sit-${seat}`,
+        Commands.RequestSeat.make({
+          buyIn: ChipAmountSchema.make(100),
+          seat: SeatIndexSchema.make(seat),
+        })
+      );
+    }
+
+    yield* ask(ana.socket, "start", Commands.StartGame.make({}));
+    yield* awaitArrival(cy.socket, "the first deal", carries("Table"));
+    yield* ana.socket.disconnect;
+    yield* ben.socket.disconnect;
+
+    const unattended = cy.socket.arrivals.length;
+
+    yield* awaitArrival(
+      cy.socket,
+      "the table left unattended",
+      carries("TableUnattended")
+    );
+    yield* awaitArrival(
+      cy.socket,
+      "the table going quiet",
+      carries("TableWentQuiet"),
+      unattended
+    );
+
+    const quietAt = cy.socket.arrivals.length;
+
+    yield* Effect.sleep("3 seconds");
+    yield* cy.socket.pingIfQuiet;
+
+    const whileQuiet = cy.socket.arrivals
+      .slice(quietAt)
+      .filter(({ message }) => guards.Events(message));
+
+    const benBack = yield* greet(base, benPass, "ben again");
+
+    yield* awaitArrival(
+      cy.socket,
+      "the table attended again",
+      carries("TableAttended"),
+      quietAt
+    );
+
+    const resumed = yield* awaitArrival(
+      benBack.socket,
+      "the next deal",
+      isDeal
+    );
+
+    expect({
+      dealtTo: dealtCards(resumed).length,
+      eventsWhileQuiet: whileQuiet.length,
+      problems: [...cy.socket.problems, ...benBack.socket.problems],
+      quietInWelcome: RoomViews.$is("Open")(benBack.welcome.view)
+        ? benBack.welcome.view.attendance._tag
+        : "Closed",
+    }).toEqual({
+      dealtTo: 2,
+      eventsWhileQuiet: 0,
+      problems: [],
+      quietInWelcome: "Quiet",
+    });
+
+    yield* cy.socket.disconnect;
+    yield* benBack.socket.disconnect;
   }).pipe(Effect.provide(FetchHttpClient.layer)),
   { timeout: 60_000 }
 );

@@ -5,6 +5,7 @@ import {
   ChipAmountSchema,
   Deadlines,
   RoomCommands,
+  RoomEvents,
   SealedDealSources,
   RoomSettingsSchema,
   RoomViews,
@@ -289,6 +290,111 @@ const holeCardsIn = (room: ReturnType<typeof openPokerHost>, frame: string) => {
       )
     : [];
 };
+
+const eventTags = (room: ReturnType<typeof openPokerHost>, from: number) =>
+  room.memory.storage
+    .eventsAfter(from)
+    .map((row) => room.host.codec.decodeEvent(row.event))
+    .map((event) =>
+      RoomEvents.$is("Table")(event) ? event.event._tag : event._tag
+    );
+
+const answerEveryDeadline = (room: ReturnType<typeof openPokerHost>) => {
+  let alarms = 0;
+
+  for (
+    let deadline = room.host.nextDeadline();
+    Option.isSome(deadline) && alarms < 200;
+    deadline = room.host.nextDeadline()
+  ) {
+    room.runDue(deadline.value.at);
+    alarms += 1;
+  }
+
+  return alarms;
+};
+
+describe("a table nobody is at", () => {
+  const awayRoom = {
+    avatar: "fox",
+    name: "Ana",
+    settings: {
+      ...DEFAULT_SETTINGS,
+      pauseWhenAwaySeconds: 60,
+      shuffle: "Plain" as const,
+      sitOutAfterTimeouts: 0,
+      timeBankSeconds: 0,
+    },
+  };
+
+  it("deals on through the pause after the last seated player leaves, then goes quiet once the hand in play ends, and stops its log until a seated player is back", () => {
+    const room = openPokerHost(awayRoom);
+
+    seatTwoPlayers(room);
+    room.join(cy, 1004, "Cy");
+    room.send(ana, "start", 1005, Commands.StartGame.make({}));
+
+    const started = room.host.snapshot().headSeq;
+
+    const left = room.host.noteAttendance([cy], 1006, room.connections());
+
+    const alarms = answerEveryDeadline(room);
+    const quietHead = room.host.snapshot().headSeq;
+
+    const stillAway = room.host.noteAttendance(
+      [cy],
+      90_000_000,
+      room.connections()
+    );
+
+    const back = room.host.noteAttendance(
+      [ben, cy],
+      90_000_000,
+      room.connections()
+    );
+
+    const backHead = room.host.snapshot().headSeq;
+
+    room.runDue(Option.getOrThrow(room.host.nextDeadline()).at);
+
+    const whileAway = eventTags(room, started).slice(0, quietHead - started);
+
+    expect({
+      alarmsUntilQuiet: alarms < 200,
+      back: back.pipe(Option.map(({ result }) => result.note._tag)),
+      handsWhileAway: whileAway.filter((tag) => tag === "HandStarted").length,
+      left: left.pipe(Option.map(({ result }) => result.note._tag)),
+      nextDeadlineWhileQuiet: stillAway,
+      quietEnds: whileAway.slice(-1),
+      resumed: eventTags(room, backHead - 1).slice(0, 2),
+    }).toStrictEqual({
+      alarmsUntilQuiet: true,
+      back: Option.some("Committed"),
+      handsWhileAway: 2,
+      left: Option.some("Committed"),
+      nextDeadlineWhileQuiet: Option.none(),
+      quietEnds: ["TableWentQuiet"],
+      resumed: ["TableAttended", "HandStarted"],
+    });
+    expect(whileAway.slice(0, 1)).toStrictEqual(["TableUnattended"]);
+  });
+
+  it("tells the core who is connected only when that changes whether the table is attended", () => {
+    const room = openPokerHost(awayRoom);
+
+    seatTwoPlayers(room);
+
+    expect(
+      [
+        room.host.noteAttendance([ana, ben], 1004, room.connections()),
+        room.host.noteAttendance([ana], 1005, room.connections()),
+        room.host.noteAttendance([], 1006, room.connections()),
+        room.host.noteAttendance([], 1007, room.connections()),
+        room.host.noteAttendance([ben], 1008, room.connections()),
+      ].map((noted) => Option.isSome(noted))
+    ).toStrictEqual([false, false, true, false, true]);
+  });
+});
 
 describe("catching up after a reconnect", () => {
   it("redacts each missed event for the audience the player had when it happened, not the seat the player holds now", () => {

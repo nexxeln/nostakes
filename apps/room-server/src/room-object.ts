@@ -312,9 +312,28 @@ export const roomObject = <T extends RoomTypes>(
           }
         };
 
+        const attend = (except: Option.Option<cf.WebSocket>) =>
+          Effect.gen(function* noteAttendance() {
+            const at = yield* Clock.currentTimeMillis;
+
+            for (const room of Option.toArray(host)) {
+              for (const { command, result } of Option.toArray(
+                room.noteAttendance(
+                  connectedPlayers(except),
+                  at,
+                  connectionsOf(room, except)
+                )
+              )) {
+                yield* logCommit(result, command);
+              }
+            }
+          });
+
         for (const room of Option.toArray(host)) {
           armAlarm(room);
         }
+
+        yield* attend(Option.none());
 
         const welcomeSocket = (
           room: RoomHost<T>,
@@ -639,6 +658,7 @@ export const roomObject = <T extends RoomTypes>(
 
           expireHellos(at);
           dropSilent(at);
+          yield* attend(Option.none());
 
           const due = room
             .nextDeadline()
@@ -888,12 +908,21 @@ export const roomObject = <T extends RoomTypes>(
           inspect,
           join,
           open,
-          webSocketClose: (socket: Cloudflare.WebSocket) => release(socket.ws),
-          webSocketError: (socket: Cloudflare.WebSocket) => release(socket.ws),
+          webSocketClose: (socket: Cloudflare.WebSocket) =>
+            release(socket.ws).pipe(
+              Effect.andThen(attend(Option.some(socket.ws)))
+            ),
+          webSocketError: (socket: Cloudflare.WebSocket) =>
+            release(socket.ws).pipe(
+              Effect.andThen(attend(Option.some(socket.ws)))
+            ),
           webSocketMessage: (
             socket: Cloudflare.WebSocket,
             message: string | ArrayBuffer
-          ) => receive(socket.ws, message),
+          ) =>
+            receive(socket.ws, message).pipe(
+              Effect.andThen(attend(Option.none()))
+            ),
         };
       });
     })

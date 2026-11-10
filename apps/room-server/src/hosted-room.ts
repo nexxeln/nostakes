@@ -49,6 +49,11 @@ export interface HostedRoom<T extends RoomTypes> {
     command: T["MemberCommand"]
   ) => T["Command"];
   readonly entropyFor: (due: T["Due"]) => number;
+  readonly attendance: (
+    state: T["State"],
+    connected: readonly PlayerId[],
+    at: number
+  ) => Option.Option<T["Command"]>;
   readonly beaconRoundFor: (due: T["Due"]) => Option.Option<number>;
   readonly serverCommand: (
     due: T["Due"],

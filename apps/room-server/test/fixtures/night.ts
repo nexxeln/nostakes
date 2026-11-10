@@ -5,7 +5,12 @@ import {
   RoomCodeSchema,
 } from "@nostakes/protocol";
 import type { RoomCode, RoomPass } from "@nostakes/protocol";
-import { RoomSettingsSchema, RoomViews, TimeBankRefills } from "@nostakes/room";
+import {
+  DEFAULT_PAUSE_WHEN_AWAY_SECONDS,
+  RoomSettingsSchema,
+  RoomViews,
+  TimeBankRefills,
+} from "@nostakes/room";
 import type { RoomSettings, RoomView, Shuffle } from "@nostakes/room";
 import { SEALING_MARGIN_MS } from "@nostakes/shuffle";
 import { Duration, Effect, Option, Schema } from "effect";
@@ -274,6 +279,7 @@ export const planNight = (
     betweenHandsSeconds: recipe.betweenHandsSeconds,
     buyIn: { max: big * 50, min: big * 10 },
     leavingMidHand: random.chance(40) ? "PlaysOn" : "ActedFor",
+    pauseWhenAwaySeconds: seed % 4 === 0 ? 0 : DEFAULT_PAUSE_WHEN_AWAY_SECONDS,
     runChoiceSeconds: random.between(1, 2),
     seats: random.chance(50)
       ? 9
