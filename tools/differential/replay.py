@@ -81,6 +81,19 @@ CONFIGURATIONS = {
         "example the big blind's option against seats that are all in. Brief rule 13 ends "
         "the street without asking. The replay checks for that seat in PokerKit."
     ),
+    "uncontested-winner-unshown": (
+        "The interactive showdown never asks a seat that is the last claimant of every pot "
+        "it can win, and its cards stay hidden. PokerKit asks every seat in its showdown "
+        "order, so the replay shows that hand in PokerKit after checking that no other live "
+        "seat shares a pot with it. Showing it changes no award."
+    ),
+    "interactive-show-or-muck": (
+        "With showdown Interactive each seat asked tables or mucks by its own choice. The "
+        "replay passes the engine's choice to PokerKit's show_or_muck_hole_cards in "
+        "PokerKit's own showdown order, compares whose turn it is and the seat's "
+        "beatenInEveryPot fact against PokerKit's can_win_now, and pays the pots among the "
+        "seats PokerKit still has live."
+    ),
     "heads-up-equal-blinds-opener": (
         "PokerKit breaks a tie between equal blinds toward the higher player index, so "
         "heads-up with equal blinds it opens with the big blind. Brief rule 2 and TDA "
@@ -115,6 +128,12 @@ EXCLUSIONS = {
         "raise is replayed in PokerKit as a call, and a river showdown order after it is "
         "not compared."
     ),
+    "muck-keeps-uncontested-pot": (
+        "The interactive showdown lets a seat muck the pots other seats still contest and "
+        "keep a pot every other claimant has already mucked (rule 4 of the showdown brief). "
+        "PokerKit's muck forfeits every pot, so that pot would have no live seat. The rest "
+        "of the hand is not compared."
+    ),
     "odd-chip-spread": (
         "PokerKit gives a pot's whole remainder to the first run and to the first winner. "
         "Brief rules 17 and 22 hand leftover chips out one at a time. Awards and final "
@@ -128,6 +147,10 @@ REPLAY_ONLY = {
     "run-cap": "Brief rule 19's cap of maxRuns and the remaining deck. PokerKit has no cap.",
     "rabbit-hunt": "Brief rule 27, the next undealt cards from the exported deck. PokerKit has no rabbit hunt.",
     "voluntary-show": "Brief rule 26, legality of after-hand shows. PokerKit has no after-hand shows.",
+    "showdown-must-table": (
+        "Showdown brief rule 3, that a seat must table a hand that beats or ties the tabled "
+        "hands of a pot another live seat contests. PokerKit lets any seat muck."
+    ),
 }
 
 
@@ -148,6 +171,13 @@ class Hand:
         self.stopped = None
         self.state = None
         self.showdown = []
+        engine_events = list(self.events())
+        started_showdowns = [e for e in engine_events if e["_tag"] == "ShowdownStarted"]
+        self.interactive = started_showdowns[0]["order"] if started_showdowns else None
+        self.engine_choices = {
+            e["seat"]: e["_tag"] == "HandTabled" for e in engine_events if e["_tag"] in ("HandTabled", "HandMucked")
+        }
+        self.order_checked = False
         self.board_deals = []
         self.pushes = []
         self.pots = None
@@ -203,6 +233,8 @@ class Hand:
                 self.act(step)
             elif tag == "ChooseRuns":
                 self.choose(step)
+            elif tag in ("TableHand", "MuckHand"):
+                self.choose_at_showdown(step)
             self.note_engine_events(step["events"])
             self.advance()
         if self.stopped is None:
@@ -284,9 +316,19 @@ class Hand:
         if any(len({w["amount"] for w in e["winners"]}) > 1 for e in awards):
             self.features.add("odd-chips")
         showdowns = [e for e in events if e["_tag"] == "ShowdownReached"]
-        self.features.add("showdown" if showdowns else "fold-out")
+        self.features.add("showdown" if showdowns or self.interactive is not None else "fold-out")
         if any(entry["_tag"] == "Mucked" for e in showdowns for entry in e["order"]):
             self.features.add("mucks")
+        if self.interactive is not None:
+            self.features.add("interactive-showdown")
+            choices = [e for e in events if e["_tag"] in ("HandTabled", "HandMucked")]
+            if any(e["_tag"] == "HandMucked" for e in choices):
+                self.features.add("mucks")
+            if choices and choices[0]["_tag"] == "HandMucked":
+                self.features.add("concession")
+            tabled_seats = {e["seat"] for e in choices if e["_tag"] == "HandTabled"}
+            if any(w["seat"] not in tabled_seats for e in awards for w in e["winners"]):
+                self.features.add("unshown-winner")
         if any(not step["accepted"] for step in self.record["steps"]):
             self.features.add("rejected-commands")
         if not any(e["_tag"] == "BlindPosted" and e["blind"] == "Big" and e["amount"] == self.big_blind for e in events):
@@ -409,6 +451,13 @@ class Hand:
             if state.showdown_index is not None:
                 player = state.showdown_index
                 tabling = state.all_in_status and state.street is not state.streets[-1]
+                if self.interactive is not None and not tabling:
+                    if not self.check_showdown_order():
+                        return
+                    if self.order[player] in self.engine_choices:
+                        return
+                    self.show_unasked(player)
+                    continue
                 shows = True if tabling else state.can_win_now(player)
                 if not tabling and state.all_in_status and not shows:
                     self.configured.add("complete-board-show-or-muck")
@@ -673,6 +722,102 @@ class Hand:
             elif rejection == "RunsOutOfRange" and not owed:
                 self.differ("run-choice", f"engine said out of range for a seat that owes nothing")
 
+    def check_showdown_order(self):
+        if self.order_checked:
+            return self.stopped is None
+        self.order_checked = True
+        self.configured.add("interactive-show-or-muck")
+        pokerkit_order = [self.order[i] for i in self.state.showdown_indices]
+        if pokerkit_order == self.interactive:
+            return True
+        if self.river_call_for_raise:
+            self.excluded.add("pokerkit-refuses-raise-nobody-can-call")
+            self.stop("pokerkit-refuses-raise-nobody-can-call")
+        else:
+            self.differ("show-or-muck", f"engine showdown order {self.interactive}, pokerkit {pokerkit_order}")
+            self.stop("show-or-muck")
+        return False
+
+    def live_pots(self):
+        return [tuple(pot.player_indices) for pot in self.state.pots]
+
+    def show_unasked(self, player):
+        seat = self.order[player]
+        shared = [[self.order[i] for i in pot] for pot in self.live_pots() if player in pot and len(pot) > 1]
+        if shared:
+            self.differ("showdown-turn", f"engine never asks seat {seat}, pokerkit has it in contested pots {shared}")
+        self.configured.add("uncontested-winner-unshown")
+        self.state.show_or_muck_hole_cards(True, player)
+        self.showdown.append((seat, True, False))
+
+    def shown_hand(self, player):
+        statuses = self.state.hole_card_statuses[player]
+        return self.state.get_hand(player, 0, 0) if statuses and all(statuses) else None
+
+    def must_table(self, player):
+        own = self.state.get_hand(player, 0, 0)
+        for pot in self.live_pots():
+            if player not in pot or len(pot) < 2:
+                continue
+            shown = [hand for hand in (self.shown_hand(i) for i in pot if i != player) if hand is not None]
+            if shown and all(hand <= own for hand in shown):
+                return True
+        return False
+
+    def keeps_uncontested(self, player):
+        return any(pot == (player,) for pot in self.live_pots())
+
+    def choose_at_showdown(self, step):
+        state = self.state
+        self.skip_dead_checks(None)
+        pending = step["pending"]
+        command = step["command"]
+        player = state.showdown_index
+        pokerkit_seat = None if player is None else self.order[player]
+        rejection = None if step["accepted"] else step["rejection"]["tag"]
+        if pending["kind"] != "Show":
+            if step["accepted"]:
+                self.differ("showdown-turn", f"engine accepted {command} with no showdown turn")
+            elif pokerkit_seat is not None and pokerkit_seat == command["seat"] and self.interactive is not None:
+                self.differ("showdown-turn", f"engine refused seat {command['seat']}, pokerkit waits for it")
+            return
+        if not self.check_showdown_order():
+            return
+        if pending["seat"] != pokerkit_seat:
+            self.differ("showdown-turn", f"engine asks seat {pending['seat']}, pokerkit {pokerkit_seat}")
+            self.stop("showdown-turn")
+            return
+        must = self.must_table(player)
+        self.replay_checked.add("showdown-must-table")
+        if pending["canMuck"] == must or not pending["canTable"]:
+            self.differ(
+                "showdown-must-table",
+                f"seat {pending['seat']}: engine may muck {pending['canMuck']}, replay must table {must}",
+            )
+        can_win = state.can_win_now(player)
+        if pending["beatenInEveryPot"] == can_win:
+            self.differ(
+                "showdown-beaten",
+                f"seat {pending['seat']}: engine beaten in every pot {pending['beatenInEveryPot']}, pokerkit can_win_now {can_win}",
+            )
+        if command["seat"] != pending["seat"]:
+            if rejection != "NoShowdownChoiceOwed":
+                self.differ("showdown-turn", f"engine answered {command} with {rejection} while seat {pending['seat']} was asked")
+            return
+        mucks = command["_tag"] == "MuckHand"
+        if rejection is not None:
+            if not (mucks and rejection == "WinningHandMustTable" and must):
+                self.differ("showdown-must-table", f"engine refused {command} with {rejection}, replay must table {must}")
+            return
+        if mucks and must:
+            self.differ("showdown-must-table", f"engine let seat {command['seat']} muck a hand that beats or ties the tabled hands")
+        if mucks and self.keeps_uncontested(player):
+            self.excluded.add("muck-keeps-uncontested-pot")
+            self.stop("muck-keeps-uncontested-pot")
+            return
+        state.show_or_muck_hole_cards(not mucks, player)
+        self.showdown.append((command["seat"], not mucks, False))
+
     def finish(self):
         state = self.state
         self.skip_dead_checks(None)
@@ -702,6 +847,12 @@ class Hand:
             return
         if pokerkit_tabled:
             self.differ("tabling", f"pokerkit tabled {pokerkit_tabled}, engine tabled nothing")
+        if self.interactive is not None:
+            engine_order = [(seat, self.engine_choices.get(seat, True)) for seat in self.interactive]
+            pokerkit_order = [(seat, shows) for seat, shows, _ in self.showdown]
+            if engine_order != pokerkit_order:
+                self.differ("show-or-muck", f"engine {engine_order}, pokerkit {pokerkit_order}")
+            return
         if not showdowns:
             if self.showdown:
                 self.differ("showdown", f"pokerkit showed down {self.showdown}, engine folded out")
@@ -720,7 +871,7 @@ class Hand:
         final = self.record["final"]
         engine_final = [final[seat]["stack"] for seat in self.order]
         pokerkit_final = list(self.state.stacks)
-        showdown = any(e["_tag"] == "ShowdownReached" for e in events)
+        showdown = any(e["_tag"] in ("ShowdownReached", "ShowdownStarted") for e in events)
         if not showdown:
             if engine_final != pokerkit_final:
                 self.differ("final-stacks", f"fold-out: engine {self.stacks_text(engine_final)}, pokerkit {self.stacks_text(pokerkit_final)}")
@@ -780,6 +931,8 @@ class Hand:
         return self.winner_cache[key]
 
     def best_hands(self, eligible, board):
+        mucked = {seat for seat, shows, _ in self.showdown if not shows}
+        eligible = [seat for seat in eligible if seat not in mucked]
         cards = list(self.state.get_board_cards(board))
         hands = {
             seat: StandardHighHand.from_game(tuple(CARDS[c] for c in self.hole[self.index[seat]]), cards)
@@ -802,6 +955,8 @@ class Hand:
                 for entry in event["order"]:
                     if entry["_tag"] == "Shown":
                         public[entry["seat"]].update(entry["cards"])
+            elif event["_tag"] == "HandTabled":
+                public[event["seat"]].update(event["cards"])
         board = sum(len(e["cards"]) for e in events if e["_tag"] == "StreetDealt" and e["run"] == 1)
         ran_out = any(e["_tag"] == "RunsAgreed" for e in events) or any(e["_tag"] == "HandsTabled" for e in events)
         undealt = [] if ran_out else self.deck[2 * self.count + board : 2 * self.count + 5]
@@ -949,6 +1104,7 @@ def summarize(results, path, report):
         + [f"runs-{n}" for n in range(1, 5)]
         + ["short-all-in", "short-big-blind", "side-pots", "split-pots", "odd-chips"]
         + ["fold-out", "showdown", "mucks", "rejected-commands", "rabbit-hunt", "voluntary-show"]
+        + ["interactive-showdown", "concession", "unshown-winner"]
     )
     for feature in order + sorted(set(features) - set(order)):
         counts = features.get(feature, Counter())

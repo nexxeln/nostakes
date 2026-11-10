@@ -27,6 +27,7 @@ import type {
   LegalActions,
   PendingDecision,
   Rejection,
+  ShowdownChoices,
   TableConfig,
   TableState,
 } from "@nostakes/engine";
@@ -92,7 +93,7 @@ const randomConfig = (random: Random): TableConfig => {
     bigBlind: chipCount(bigBlind),
     maxRuns: runCount(1 + random.below(4)),
     rabbitHunt: random.chance(50),
-    showdown: "Automatic",
+    showdown: random.chance(50) ? "Interactive" : "Automatic",
     smallBlind: chipCount(smallBlind),
     straddle: {
       button: random.chance(50),
@@ -272,6 +273,30 @@ const illegalAction = (
   });
 };
 
+const showdownChoice = (choices: ShowdownChoices, random: Random) => {
+  const { canMuck, seat } = choices;
+
+  if (random.chance(10)) {
+    const other = seatAt((seat + 1 + random.below(8)) % 9);
+
+    return {
+      command:
+        canMuck || random.chance(30)
+          ? Commands.TableHand({ seat: other })
+          : Commands.MuckHand({ seat }),
+      probe: true,
+    };
+  }
+
+  return {
+    command:
+      canMuck && random.chance(45)
+        ? Commands.MuckHand({ seat })
+        : Commands.TableHand({ seat }),
+    probe: false,
+  };
+};
+
 const decision = (
   state: TableState,
   random: Random
@@ -315,7 +340,7 @@ const decision = (
       });
     },
     Nothing: () => Option.none(),
-    Show: () => Option.none(),
+    Show: ({ choices }) => Option.some(showdownChoice(choices, random)),
   });
 
 const churn = (state: TableState, random: Random, nextPlayer: () => string) => {
@@ -409,7 +434,11 @@ const pendingRecord = (pending: PendingDecision) =>
       seats,
     }),
     Nothing: () => ({ kind: "Nothing" }),
-    Show: ({ choices }) => ({ ...choices, kind: "Show" }),
+    Show: ({ beatenInEveryPot, choices }) => ({
+      ...choices,
+      beatenInEveryPot,
+      kind: "Show",
+    }),
   });
 
 const seatsRecord = (state: TableState) =>
