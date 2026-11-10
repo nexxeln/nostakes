@@ -75,6 +75,7 @@ export const Messages = defineMessageUnion({
   },
   PickedAvatar: { avatar: AvatarSchema },
   ReleasedConnection: {},
+  StartedReload: {},
   SubmittedCreate: {},
   SubmittedInvite: {},
   SubmittedJoin: {},

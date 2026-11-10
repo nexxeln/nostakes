@@ -1,7 +1,9 @@
 import { AvatarSchema } from "@nostakes/avatar";
 import {
+  BuildIdSchema,
   CloseReasonSchema,
   PlayerIdSchema,
+  ProtocolVersionSchema,
   RoomCodeSchema,
 } from "@nostakes/protocol";
 import { RoomViewSchema } from "@nostakes/room";
@@ -50,6 +52,7 @@ export const ConnectionPhaseSchema = Schema.Literals([
 export type ConnectionPhase = typeof ConnectionPhaseSchema.Type;
 
 export const LinkSchema = Schema.Struct({
+  newBuild: Schema.Option(BuildIdSchema),
   phase: ConnectionPhaseSchema,
   presence: Schema.Array(PlayerIdSchema),
   receivedAt: Schema.Int,
@@ -58,6 +61,20 @@ export const LinkSchema = Schema.Struct({
 });
 
 export type Link = typeof LinkSchema.Type;
+
+export const ReloadTargets = defineTaggedUnion({
+  NewBuild: { build: BuildIdSchema },
+  NewProtocol: { outdated: ProtocolVersionSchema },
+});
+
+export type ReloadTarget = typeof ReloadTargets.Type;
+
+export const PageUpdateSchema = Schema.Struct({
+  stage: Schema.Literals(["AfterThisHand", "Reloading", "Stuck"]),
+  target: ReloadTargets,
+});
+
+export type PageUpdate = typeof PageUpdateSchema.Type;
 
 export const ShownViewSchema = Schema.Struct({
   receivedAt: Schema.Int,
@@ -104,6 +121,7 @@ export const InRoomSchema = Schema.Struct({
   player: PlayerIdSchema,
   settings: Schema.Option(SettingsDraftSchema),
   shown: Schema.Option(ShownViewSchema),
+  update: Schema.Option(PageUpdateSchema),
 });
 
 export type InRoom = typeof InRoomSchema.Type;
@@ -131,6 +149,7 @@ export const ModelSchema = Schema.Struct({
   nextKey: Schema.Int,
   now: Schema.Int,
   profile: ProfileSchema,
+  reloadedFor: Schema.Option(ReloadTargets),
   screen: Screens,
   sound: Schema.Boolean,
   theme: Schema.Option(ThemeSchema),
@@ -149,6 +168,7 @@ export const FlagsSchema = Schema.Struct({
   invite: Schema.Option(RoomCodeSchema),
   learned: Schema.Array(HintSchema),
   profile: ProfileSchema,
+  reloadedFor: Schema.Option(ReloadTargets),
   saved: Schema.Option(SavedPassSchema),
   sound: Schema.Boolean,
   theme: Schema.Option(ThemeSchema),

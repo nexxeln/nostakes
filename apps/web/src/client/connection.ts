@@ -1,6 +1,7 @@
 import { roomClient, webSocketTransport } from "@nostakes/client";
 import type { RoomClient } from "@nostakes/client";
-import { Effect, Schema } from "effect";
+import { BuildIdSchema } from "@nostakes/protocol";
+import { Effect, Option, Schema } from "effect";
 import { ManagedResource } from "foldkit";
 
 import { Messages } from "../features/message.js";
@@ -14,6 +15,13 @@ import { storedPass } from "./storage.js";
 
 export const RoomConnection =
   ManagedResource.tag<RoomClient<PokerClientTypes>>()("RoomConnection");
+
+const pageBuild = () =>
+  Option.fromNullishOr(
+    globalThis.document
+      .querySelector('meta[name="nostakes-build"]')
+      ?.getAttribute("content")
+  ).pipe(Option.flatMap(Schema.decodeOption(BuildIdSchema)));
 
 const socketUrl = (code: string) => {
   const url = new URL(socketPath(code), globalThis.location.href);
@@ -33,6 +41,10 @@ export const managedResources = ManagedResource.make<Model, Message>()(
           const client = yield* roomClient(pokerClientSchemas, {
             token: pass.token,
             url: socketUrl(code),
+            ...Option.match(pageBuild(), {
+              onNone: () => ({}),
+              onSome: (build) => ({ build }),
+            }),
           }).pipe(Effect.provide(webSocketTransport()));
 
           yield* client.start;

@@ -50,61 +50,72 @@ const started = (label: string, ready: RegExp, command: ChildProcess.Command) =>
     );
   });
 
+export const localRoomServer = (
+  webPort: number,
+  stage: string,
+  build: Option.Option<string> = Option.none()
+) =>
+  started(
+    "start the room server",
+    ROOM_SERVER_READY,
+    ChildProcess.make(
+      "pnpm",
+      [
+        "--filter",
+        "@nostakes/room-server",
+        "exec",
+        "alchemy",
+        "dev",
+        "--no-input",
+        "--stage",
+        stage,
+        "scripts/local.run.ts",
+      ],
+      {
+        cwd: REPO,
+        env: {
+          ALLOWED_ORIGINS: `http://localhost:${webPort}`,
+          CLOUDFLARE_ACCOUNT_ID: "00000000000000000000000000000000",
+          NO_COLOR: "1",
+          ...Option.match(build, {
+            onNone: () => ({}),
+            onSome: (served) => ({ WEB_BUILD: served }),
+          }),
+        },
+        extendEnv: true,
+        killSignal: "SIGINT",
+      }
+    )
+  );
+
+export const localWebApp = (webPort: number, roomServer: string) =>
+  started(
+    "start the web app",
+    WEB_READY,
+    ChildProcess.make(
+      "pnpm",
+      [
+        "--filter",
+        "@nostakes/web",
+        "exec",
+        "vite",
+        "dev",
+        "--port",
+        String(webPort),
+        "--strictPort",
+      ],
+      {
+        cwd: REPO,
+        env: { NO_COLOR: "1", ROOM_SERVER_URL: roomServer },
+        extendEnv: true,
+      }
+    )
+  );
+
 export const localSite = (webPort: number, stage: string) =>
   Effect.gen(function* startLocalSite() {
-    const web = `http://localhost:${webPort}`;
-
-    const roomServer = yield* started(
-      "start the room server",
-      ROOM_SERVER_READY,
-      ChildProcess.make(
-        "pnpm",
-        [
-          "--filter",
-          "@nostakes/room-server",
-          "exec",
-          "alchemy",
-          "dev",
-          "--no-input",
-          "--stage",
-          stage,
-          "scripts/local.run.ts",
-        ],
-        {
-          cwd: REPO,
-          env: {
-            ALLOWED_ORIGINS: web,
-            CLOUDFLARE_ACCOUNT_ID: "00000000000000000000000000000000",
-            NO_COLOR: "1",
-          },
-          extendEnv: true,
-          killSignal: "SIGINT",
-        }
-      )
-    );
-
-    const app = yield* started(
-      "start the web app",
-      WEB_READY,
-      ChildProcess.make(
-        "pnpm",
-        [
-          "--filter",
-          "@nostakes/web",
-          "exec",
-          "vite",
-          "dev",
-          "--port",
-          String(webPort),
-          "--strictPort",
-        ],
-        {
-          cwd: REPO,
-          env: { NO_COLOR: "1", ROOM_SERVER_URL: roomServer },
-          extendEnv: true,
-        }
-      )
-    );
+    const roomServer = yield* localRoomServer(webPort, stage);
+    const app = yield* localWebApp(webPort, roomServer);
 
     return { app, roomServer };
   });

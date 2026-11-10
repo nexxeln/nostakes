@@ -11,6 +11,7 @@ import { face } from "./face-builder.js";
 import { Messages } from "./message.js";
 import type { Message } from "./message.js";
 import type { InRoom, Model } from "./model.js";
+import { updateLine } from "./page-update.js";
 import { hasLeft, isLive, isYou, nameOf, viewOf } from "./room.js";
 import type { ClosedView, OpenView } from "./room.js";
 import { settingsPanel } from "./settings-view.js";
@@ -49,6 +50,13 @@ const connectionLine = (room: InRoom, h: H): Html =>
     onSome: ({ phase, refusal }) => {
       if (phase === "Live") {
         return h.empty;
+      }
+
+      if (phase === "Outdated") {
+        return h.span(
+          [h.Class("connection"), h.Role("status")],
+          ["Out of date"]
+        );
       }
 
       if (phase === "Refused") {
@@ -127,6 +135,14 @@ const noticeLine = (room: InRoom, h: H): Html =>
   h.div(
     [h.Class("status-line"), h.AriaLive("polite")],
     [
+      Option.match(room.update, {
+        onNone: () => h.empty,
+        onSome: (update) =>
+          h.span(
+            [h.Class(update.stage === "Stuck" ? "problem" : "update-line")],
+            [updateLine(update)]
+          ),
+      }),
       Option.match(room.notice, {
         onNone: () => h.empty,
         onSome: (text) => h.span([h.Class("problem")], [text]),

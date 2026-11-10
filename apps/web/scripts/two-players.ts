@@ -1,9 +1,9 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
-import { Console, Effect, Option, Schedule, Schema } from "effect";
+import { Console, Effect, Exit, Option, Schedule, Schema, Scope } from "effect";
 import { chromium } from "playwright-core";
 import type { Browser, Page } from "playwright-core";
 
-import { localSite, mutedBrowser } from "./local-site.ts";
+import { localRoomServer, localWebApp, mutedBrowser } from "./local-site.ts";
 
 const WEB_PORT = 5199;
 
@@ -28,6 +28,51 @@ const attempt = <A>(step: string, run: () => Promise<A>) =>
   });
 
 const MUTED_PAGE = "?mute=1";
+
+const FIRST_BUILD = "e2e-build-1";
+
+const SECOND_BUILD = "e2e-build-2";
+
+const STAGE = "verify_web";
+
+const BUILD_META = "nostakes-build";
+
+const stampPage = ({ build, meta }: { build: string; meta: string }) => {
+  const stamp = () => {
+    const head = globalThis.document.querySelector("head");
+
+    if (head === null) {
+      return false;
+    }
+
+    for (const old of head.querySelectorAll(`meta[name="${meta}"]`)) {
+      old.remove();
+    }
+
+    const tag = globalThis.document.createElement("meta");
+
+    tag.name = meta;
+    tag.content = build;
+    head.append(tag);
+
+    return true;
+  };
+
+  if (!stamp()) {
+    const watcher = new MutationObserver(() => {
+      if (stamp()) {
+        watcher.disconnect();
+      }
+    });
+
+    watcher.observe(globalThis.document, { childList: true, subtree: true });
+  }
+};
+
+const serveBuild = (page: Page, build: string) =>
+  attempt(`serve ${build} to the next page load`, () =>
+    page.context().addInitScript(stampPage, { build, meta: BUILD_META })
+  );
 
 const player = (opened: Browser) =>
   attempt("open a window", () => opened.newContext()).pipe(
@@ -218,15 +263,91 @@ const playHand = (pages: readonly Page[], watcher: Page) =>
     ).pipe(Effect.map((text) => text?.trim() ?? ""));
   });
 
-const night = Effect.gen(function* playOneHand() {
-  const { app, roomServer } = yield* localSite(WEB_PORT, "verify_web");
+const holds = (truth: boolean, failure: NightFailed) =>
+  truth ? Effect.void : Effect.fail(failure);
 
-  yield* Console.log(`room server at ${roomServer}`);
+const deployed = (build: string) =>
+  localRoomServer(WEB_PORT, STAGE, Option.some(build)).pipe(
+    Effect.tap((roomServer) =>
+      Console.log(`room server at ${roomServer} serves ${build}`)
+    )
+  );
+
+const pageBuild = (page: Page) =>
+  attempt("read the page's build", () =>
+    page
+      .locator(`meta[name="${BUILD_META}"]`)
+      .getAttribute("content", { timeout: 1000 })
+  ).pipe(Effect.orElseSucceed(() => null));
+
+const stackOf = (page: Page, who: string) =>
+  attempt(`read ${who}'s stack`, () =>
+    page.locator(`${TABLE} .self .st`).textContent()
+  ).pipe(
+    Effect.map((text) => Number((text ?? "").replaceAll(",", ""))),
+    Effect.delay("1 second")
+  );
+
+const onBuild = (page: Page, who: string, build: string) =>
+  pageBuild(page).pipe(
+    Effect.repeat({
+      schedule: Schedule.spaced("250 millis"),
+      times: 240,
+      until: (seen) => seen === build,
+    }),
+    Effect.flatMap((seen) =>
+      holds(
+        seen === build,
+        new NightFailed({
+          detail: `still on ${String(seen)}`,
+          step: `${who} reloads into ${build}`,
+        })
+      )
+    )
+  );
+
+const seated = (page: Page, who: string) =>
+  attempt(`${who} is back in the seat`, () =>
+    page
+      .locator(`${TABLE} .self:not(.gone)`)
+      .waitFor({ state: "attached", timeout: 30_000 })
+  );
+
+const toldToWait = (page: Page, who: string) =>
+  attempt(`${who} is told the new version loads after this hand`, () =>
+    page
+      .locator(".update-line")
+      .filter({ hasText: "It loads after this hand." })
+      .waitFor({ state: "attached", timeout: 60_000 })
+  );
+
+const night = Effect.gen(function* playOneHand() {
+  const firstDeploy = yield* Scope.make();
+
+  yield* Effect.addFinalizer(() => Scope.close(firstDeploy, Exit.void));
+
+  const roomServer = yield* deployed(FIRST_BUILD).pipe(
+    Scope.provide(firstDeploy)
+  );
+
+  const app = yield* localWebApp(WEB_PORT, roomServer);
+
   yield* Console.log(`web app at ${app}`);
 
   const opened = yield* mutedBrowser(chromium);
   const ana = yield* player(opened);
   const ben = yield* player(opened);
+  const loads = { ana: 0, ben: 0 };
+
+  yield* serveBuild(ana, FIRST_BUILD);
+  yield* serveBuild(ben, FIRST_BUILD);
+
+  ana.on("load", () => {
+    loads.ana += 1;
+  });
+  ben.on("load", () => {
+    loads.ben += 1;
+  });
 
   yield* attempt("Ana opens the home page", () =>
     ana.goto(`${WEB}/${MUTED_PAGE}`)
@@ -254,6 +375,68 @@ const night = Effect.gen(function* playOneHand() {
   const result = yield* playHand([ana, ben], ana);
 
   yield* Console.log(`hand 1 played with gestures, pot: ${result}`);
+
+  const chipsBefore =
+    (yield* stackOf(ana, "Ana")) + (yield* stackOf(ben, "Ben"));
+
+  yield* whoseTurn([ana, ben]);
+  yield* Console.log("hand 2 is dealt");
+  yield* click(ana, "Ana opens the menu", "Menu");
+  yield* click(ana, "Ana pauses after this hand", "Pause after this hand");
+  yield* click(ana, "Ana closes the menu", "Close");
+
+  yield* Scope.close(firstDeploy, Exit.void);
+  yield* Console.log(`deploying ${SECOND_BUILD} in the middle of hand 2`);
+
+  const redeployed = yield* deployed(SECOND_BUILD);
+
+  yield* serveBuild(ana, SECOND_BUILD);
+  yield* serveBuild(ben, SECOND_BUILD);
+
+  yield* holds(
+    redeployed === roomServer,
+    new NightFailed({
+      detail: `it came back at ${redeployed}, not ${roomServer}, so the web app's proxy cannot reach it`,
+      step: "restart the room server with the new build",
+    })
+  );
+  yield* toldToWait(ana, "Ana");
+  yield* toldToWait(ben, "Ben");
+  yield* Console.log(
+    "both players are told the new version loads after this hand"
+  );
+
+  const folder = yield* whoseTurn([ana, ben]);
+
+  yield* drag(folder, HAND, 170, "flick the cards up to end hand 2");
+  yield* onBuild(ana, "Ana", SECOND_BUILD);
+  yield* onBuild(ben, "Ben", SECOND_BUILD);
+  yield* seated(ana, "Ana");
+  yield* seated(ben, "Ben");
+
+  const chipsAfter =
+    (yield* stackOf(ana, "Ana")) + (yield* stackOf(ben, "Ben"));
+
+  yield* holds(
+    chipsAfter === chipsBefore && chipsBefore > 0,
+    new NightFailed({
+      detail: `the seats held ${chipsBefore} chips before the new build and ${chipsAfter} after`,
+      step: "keep every chip through the reload",
+    })
+  );
+  yield* Console.log(
+    `both players are back in their seats with ${chipsAfter} chips between them`
+  );
+  yield* click(ana, "Ana starts the game again", "Start the game");
+  yield* whoseTurn([ana, ben]);
+  yield* Console.log("hand 3 is dealt on the new build");
+  yield* holds(
+    loads.ana === 2 && loads.ben === 2,
+    new NightFailed({
+      detail: `Ana's page loaded ${loads.ana} times and Ben's ${loads.ben}`,
+      step: "reload each page exactly once for the new build",
+    })
+  );
 });
 
 await Effect.runPromise(

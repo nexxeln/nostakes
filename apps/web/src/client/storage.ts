@@ -5,10 +5,11 @@ import { Effect, Option, Random, Schema } from "effect";
 
 import {
   ProfileSchema,
+  ReloadTargets,
   SavedPassSchema,
   ThemeSchema,
 } from "../features/model.js";
-import type { Flags, Profile, Theme } from "../features/model.js";
+import type { Flags, Profile, ReloadTarget, Theme } from "../features/model.js";
 import { HintSchema } from "../features/table/snapshot.js";
 import type { Hint } from "../features/table/snapshot.js";
 
@@ -23,6 +24,10 @@ const SOUND_OFF = "off";
 const LEARNED_KEY = "nostakes.learned";
 
 const learnedJson = Schema.fromJsonString(Schema.Array(HintSchema));
+
+const RELOADED_KEY = "nostakes.reloaded";
+
+const reloadJson = Schema.fromJsonString(ReloadTargets);
 
 const passKey = (code: string) => `nostakes.pass.${code}`;
 
@@ -84,6 +89,27 @@ export const forgetPass = (code: string) =>
     globalThis.localStorage.removeItem(passKey(code));
   });
 
+export const reloadFor = (target: ReloadTarget) =>
+  Schema.encodeEffect(reloadJson)(target).pipe(
+    Effect.orDie,
+    Effect.flatMap((text) =>
+      Effect.sync(() => {
+        globalThis.sessionStorage.setItem(RELOADED_KEY, text);
+        globalThis.location.reload();
+      })
+    )
+  );
+
+const takeReloadedFor = Effect.sync(() => {
+  const stored = Option.fromNullishOr(
+    globalThis.sessionStorage.getItem(RELOADED_KEY)
+  );
+
+  globalThis.sessionStorage.removeItem(RELOADED_KEY);
+
+  return stored.pipe(Option.flatMap(Schema.decodeOption(reloadJson)));
+});
+
 const SEED_LIMIT = 2_147_483_646;
 
 export const randomSeed = Random.nextIntBetween(0, SEED_LIMIT);
@@ -135,7 +161,17 @@ export const readFlags = Effect.gen(function* readFlags() {
     Option.getOrElse((): readonly Hint[] => [])
   );
 
-  const flags: Flags = { invite, learned, profile, saved, sound, theme };
+  const reloadedFor = yield* takeReloadedFor;
+
+  const flags: Flags = {
+    invite,
+    learned,
+    profile,
+    reloadedFor,
+    saved,
+    sound,
+    theme,
+  };
 
   return flags;
 });

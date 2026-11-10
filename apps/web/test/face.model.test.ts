@@ -35,6 +35,7 @@ const home = init({
   invite: Option.none(),
   learned: [],
   profile: { avatar: "🦊", name: "" },
+  reloadedFor: Option.none(),
   saved: Option.none(),
   sound: false,
   theme: Option.none(),
@@ -47,12 +48,14 @@ const inRoom = (worn: Avatar, table: OpenView): Model =>
         invite: Option.some(CODE),
         learned: [],
         profile: { avatar: codeFor(DEFAULT_AVATAR), name: NAME },
+        reloadedFor: Option.none(),
         saved: Option.some({ code: CODE, player: PLAYER }),
         sound: false,
         theme: Option.none(),
       }).model,
       Messages.GotLink({
         link: {
+          newBuild: Option.none(),
           phase: "Live",
           presence: [],
           receivedAt: 0,

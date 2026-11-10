@@ -7,7 +7,7 @@ import RoomWorker from "../src/worker.js";
 
 export default Alchemy.Stack(
   "RoomServerLocal",
-  { providers: Cloudflare.providers(), state: State.inMemoryState() },
+  { providers: Cloudflare.providers(), state: State.localState() },
   Effect.gen(function* localStack() {
     const worker = yield* RoomWorker;
 

@@ -20,6 +20,12 @@ const REPO = new URL("../../..", import.meta.url).pathname;
 
 const STACK = "scripts/production.run.ts";
 
+const WEB_BUILD_FILE = `${REPO}apps/web/dist/build.json`;
+
+const WebBuildSchema = Schema.fromJsonString(
+  Schema.Struct({ build: Schema.NonEmptyString })
+);
+
 const PASSED_TO_ALCHEMY = {
   deploy: new Set(["--yes", "--detailed"]),
   plan: new Set(["--detailed"]),
@@ -93,6 +99,19 @@ const credential = (name: string, file: string) =>
     );
   });
 
+const webBuild = Effect.gen(function* readWebBuild() {
+  const fs = yield* FileSystem.FileSystem;
+  const text = yield* fs.readFileString(WEB_BUILD_FILE);
+
+  return (yield* Schema.decodeEffect(WebBuildSchema)(text)).build;
+}).pipe(
+  Effect.mapError(() =>
+    refuse(
+      `${WEB_BUILD_FILE} is missing or unreadable. The web build writes it, and the Worker tells open pages which build it serves from it. Run pnpm build, then try again.`
+    )
+  )
+);
+
 const run = (
   step: string,
   command: string,
@@ -140,6 +159,10 @@ const alchemy = (
       "cloudflare-account-id"
     );
 
+    const build = yield* webBuild;
+
+    yield* Console.log(`\nThe web build is ${build}.`);
+
     yield* run(
       `alchemy ${mode} --stage ${stage}`,
       "pnpm",
@@ -151,6 +174,7 @@ const alchemy = (
         CLOUDFLARE_ACCOUNT_ID: account,
         CLOUDFLARE_API_TOKEN: token,
         NOSTAKES_FIRST_PLAN: first ? "true" : "false",
+        WEB_BUILD: build,
       }
     );
   });

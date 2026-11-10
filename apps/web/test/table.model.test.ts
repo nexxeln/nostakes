@@ -34,6 +34,7 @@ const start = init({
   invite: Option.some(CODE),
   learned: [],
   profile: { avatar: "🦊", name: "Ana" },
+  reloadedFor: Option.none(),
   saved: Option.some({ code: CODE, player: PLAYER }),
   sound: false,
   theme: Option.none(),
@@ -75,6 +76,7 @@ const messagesFor = (
     Link: ({ legal, live }) => [
       Messages.GotLink({
         link: {
+          newBuild: Option.none(),
           phase: live ? "Live" : "Waiting",
           presence: [],
           receivedAt: 0,
@@ -183,6 +185,7 @@ describe("the table's view and events", () => {
             model,
             Messages.GotLink({
               link: {
+                newBuild: Option.none(),
                 phase: arrival.live ? "Live" : "Waiting",
                 presence: [],
                 receivedAt: arrival.receivedAt,

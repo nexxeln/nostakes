@@ -12,7 +12,11 @@ import * as HttpClientRequest from "effect/http/HttpClientRequest";
 import { Command, Navigation } from "foldkit";
 
 import { Messages, ReplyOutcomes } from "../features/message.js";
-import { ProfileSchema, ThemeSchema } from "../features/model.js";
+import {
+  ProfileSchema,
+  ReloadTargets,
+  ThemeSchema,
+} from "../features/model.js";
 import { refusalText } from "../features/refusals.js";
 import { HintSchema } from "../features/table/snapshot.js";
 import { roomPath } from "../features/wire.js";
@@ -20,6 +24,7 @@ import { RoomConnection } from "./connection.js";
 import {
   forgetPass,
   randomSeed,
+  reloadFor,
   storeLearned,
   storePass,
   storeProfile,
@@ -138,6 +143,13 @@ export const WakeRoom = Command.define("WakeRoom", {
     Effect.as(Messages.CompletedWake())
   ),
   messages: [Messages.CompletedWake],
+});
+
+export const ReloadPage = Command.define("ReloadPage", {
+  args: { target: ReloadTargets },
+  execute: ({ target }) =>
+    reloadFor(target).pipe(Effect.as(Messages.StartedReload())),
+  messages: [Messages.StartedReload],
 });
 
 export const CopyRoomLink = Command.define("CopyRoomLink", {

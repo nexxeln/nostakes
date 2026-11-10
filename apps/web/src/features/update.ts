@@ -26,6 +26,7 @@ import {
   CreateRoom,
   ForgetRoom,
   JoinRoom,
+  ReloadPage,
   SaveLearned,
   SaveProfile,
   SaveSound,
@@ -39,6 +40,7 @@ import { Messages, ReplyOutcomes } from "./message.js";
 import type { Message, ReplyOutcome } from "./message.js";
 import { Screens } from "./model.js";
 import type { Flags, InRoom, Model } from "./model.js";
+import { considerUpdate } from "./page-update.js";
 import { rejectionText } from "./rejections.js";
 import {
   isActing,
@@ -84,6 +86,7 @@ const freshRoom = (code: InRoom["code"], player: InRoom["player"]): InRoom => ({
   player,
   settings: Option.none(),
   shown: Option.none(),
+  update: Option.none(),
 });
 
 export const init = (flags: Flags): Return => {
@@ -95,6 +98,7 @@ export const init = (flags: Flags): Return => {
     nextKey: 1,
     now: 0,
     profile: flags.profile,
+    reloadedFor: flags.reloadedFor,
     sound: flags.sound,
     theme: flags.theme,
   };
@@ -143,6 +147,22 @@ const inRoom = (model: Model, step: (room: InRoom) => Return): Return =>
 
 const editRoom = (model: Model, edit: (room: InRoom) => InRoom): Return =>
   inRoom(model, (room) => ({ model: withRoom(model, edit(room)) }));
+
+const editRoomThenUpdate = (
+  model: Model,
+  edit: (room: InRoom) => InRoom
+): Return =>
+  inRoom(model, (before) => {
+    const room = edit(before);
+    const step = considerUpdate(room, model.reloadedFor);
+
+    return {
+      commands: Option.toArray(step.reload).map((target) =>
+        ReloadPage({ target })
+      ),
+      model: withRoom(model, { ...room, update: step.update }),
+    };
+  });
 
 const send = (
   model: Model,
@@ -558,7 +578,7 @@ export const update = (model: Model, message: Message): Return =>
       },
     }),
     GotLink: ({ link }) =>
-      editRoom({ ...model, now: link.receivedAt }, (room) => ({
+      editRoomThenUpdate({ ...model, now: link.receivedAt }, (room) => ({
         ...room,
         link: Option.some(link),
       })),
@@ -566,7 +586,7 @@ export const update = (model: Model, message: Message): Return =>
       editRoom(model, (room) => settle(room, key, outcome)),
     GotTableIntent: ({ intent }) => fromTable(model, intent),
     GotUpdate: ({ events, receivedAt, seq, view }) =>
-      editRoom({ ...model, now: receivedAt }, (room) => ({
+      editRoomThenUpdate({ ...model, now: receivedAt }, (room) => ({
         ...remember(room, events),
         clockSamples: RoomViews.$is("Open")(view)
           ? [...room.clockSamples, clockSampleOf(view, receivedAt)].slice(
@@ -589,6 +609,7 @@ export const update = (model: Model, message: Message): Return =>
     },
     ReleasedConnection: () =>
       editRoom(model, (room) => ({ ...room, connected: false })),
+    StartedReload: () => ({ model }),
     SubmittedCreate: () => {
       const name = model.profile.name.trim();
 

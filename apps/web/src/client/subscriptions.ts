@@ -17,6 +17,7 @@ const linkOf = (
   state: ClientState<PokerClientTypes>,
   receivedAt: number
 ): Link => ({
+  newBuild: state.newBuild,
   phase: state.connection,
   presence: state.presence,
   receivedAt,

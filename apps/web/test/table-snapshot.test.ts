@@ -31,6 +31,7 @@ const roomWith = (
   drafts: { buyIn: "", chips: "", seat: Option.none() },
   events: [],
   link: Option.some({
+    newBuild: Option.none(),
     phase: live ? "Live" : "Waiting",
     presence: [],
     receivedAt: 0,
@@ -44,6 +45,7 @@ const roomWith = (
   player: PLAYER,
   settings: Option.none(),
   shown: Option.some({ receivedAt: 0, seq: 1, view }),
+  update: Option.none(),
 });
 
 const spots = Arbitrary.schema(
