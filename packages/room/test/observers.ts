@@ -17,11 +17,14 @@ import {
   RoomViewSchema,
   SEATS,
   SeenEventSchema,
+  evolve,
   nextDeadline,
   timeBankLeft,
 } from "../src/index.js";
 import type {
   Audience,
+  RoomView,
+  SeenEvent,
   Open,
   RoomCommand,
   RoomEvent,
@@ -80,11 +83,10 @@ export const cardsIn = (
     : [];
 };
 
-export const encodeSeen = Schema.encodeSync(
-  Schema.toCodecJson(SeenEventSchema)
-);
+const decodeJson = Schema.decodeSync(Schema.fromJsonString(Schema.Json));
 
-export const encodeView = Schema.encodeSync(Schema.toCodecJson(RoomViewSchema));
+export const asSent = (value: RoomView | SeenEvent): Schema.Json =>
+  decodeJson(JSON.stringify(value));
 
 export interface Knowledge {
   readonly hands: number;
@@ -528,35 +530,53 @@ const expiryProblems = (step: Step, before: Open): readonly string[] => {
   return after === before ? [] : ["a refused expiry changed the room"];
 };
 
+const bankProblem = (
+  during: Open,
+  event: RoomEvent,
+  banks: Set<PlayerId>
+): readonly string[] => {
+  if (RoomEvents.$is("TimeBankStarted")(event)) {
+    const again = banks.has(event.player);
+
+    banks.add(event.player);
+
+    return again ? [`${event.player} started a second bank`] : [];
+  }
+
+  if (!RoomEvents.$is("TimeBankSpent")(event)) {
+    return [];
+  }
+
+  const left = timeBankLeft(during, event.player);
+
+  return [
+    ...(banks.delete(event.player)
+      ? []
+      : [`${event.player} spent a bank that never started`]),
+    ...(event.seconds >= 0 && event.seconds <= left
+      ? []
+      : [`${event.player} spent ${event.seconds} of ${left}`]),
+  ];
+};
+
 const bankProblems = (
   step: Step,
   before: Open,
   banks: Set<PlayerId>
-): readonly string[] =>
-  step.events.flatMap((event) => {
-    if (RoomEvents.$is("TimeBankStarted")(event)) {
-      const again = banks.has(event.player);
+): readonly string[] => {
+  const problems: string[] = [];
+  let during: RoomState = before;
 
-      banks.add(event.player);
-
-      return again ? [`${event.player} started a second bank`] : [];
+  for (const event of step.events) {
+    if (isOpen(during)) {
+      problems.push(...bankProblem(during, event, banks));
     }
 
-    if (!RoomEvents.$is("TimeBankSpent")(event)) {
-      return [];
-    }
+    during = evolve(during, event);
+  }
 
-    const left = timeBankLeft(before, event.player);
-
-    return [
-      ...(banks.delete(event.player)
-        ? []
-        : [`${event.player} spent a bank that never started`]),
-      ...(event.seconds >= 0 && event.seconds <= left
-        ? []
-        : [`${event.player} spent ${event.seconds} of ${left}`]),
-    ];
-  });
+  return problems;
+};
 
 const unclocked = (step: Step): readonly string[] =>
   isOpen(step.after) &&

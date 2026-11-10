@@ -21,8 +21,7 @@ import {
   cardsIn,
   commandRoundTrips,
   deadlineRoundTrips,
-  encodeSeen,
-  encodeView,
+  asSent,
   eventRoundTrips,
   inHand,
   isOpen,
@@ -117,7 +116,7 @@ describe("generated rooms", () => {
 
         for (const audience of audiencesOf(state)) {
           const leaked = leaks(
-            cardsIn(encodeSeen(redact(event, audience)), false),
+            cardsIn(asSent(redact(event, audience)), false),
             allowedFor(known, audience)
           );
 
@@ -140,9 +139,7 @@ describe("generated rooms", () => {
         }
 
         for (const audience of audiencesOf(step.after)) {
-          const view = encodeView(
-            viewFor(step.after, audience, step.command.at)
-          );
+          const view = asSent(viewFor(step.after, audience, step.command.at));
 
           const leaked = leaks(
             cardsIn(view, false),

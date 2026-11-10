@@ -3,7 +3,12 @@ import { PlayerIdSchema } from "@nostakes/engine";
 import { Option, Result, Schema } from "effect";
 
 import { fromHost, fromMember, fromServer, fromSomeone } from "./authority.js";
-import { actForSeat, clockEvents, expireClock } from "./clocks.js";
+import {
+  actForSeat,
+  clockEvents,
+  expireClock,
+  timeBankUsed,
+} from "./clocks.js";
 import { closeRoom } from "./closing.js";
 import { RoomCommands } from "./commands.js";
 import type { RoomCommand } from "./commands.js";
@@ -19,6 +24,7 @@ import { answerChips, leaveSeat, requestChips } from "./money.js";
 import { play } from "./play.js";
 import { actForLeavingSeat, endOfHand } from "./queue.js";
 import { RoomIsClosed } from "./rejection.js";
+import type { RoomRejection } from "./rejection.js";
 import { changeSettings } from "./rules.js";
 import { answerSeat, declareStraddle, requestSeat, sitOut } from "./seats.js";
 import { RoomSettingsSchema } from "./settings.js";
@@ -127,42 +133,75 @@ const decideOpen = (state: Open, command: RoomCommand): Decision =>
       byHost(state, transfer, () => transferHost(state, transfer)),
   });
 
-const consequence = (state: Open, at: Millis) =>
-  Option.orElse(endOfHand(state, at), () => actForLeavingSeat(state, at));
+interface Batch {
+  readonly events: readonly RoomEvent[];
+  readonly state: RoomState;
+}
+
+const drain = (
+  batch: Batch,
+  consequenceOf: (state: Open) => Option.Option<Decision>
+): Result.Result<Batch, RoomRejection> => {
+  const events = [...batch.events];
+  let current = batch.state;
+
+  while (isOpen(current)) {
+    const decided = consequenceOf(current);
+
+    if (Option.isNone(decided)) {
+      break;
+    }
+
+    if (Result.isFailure(decided.value)) {
+      return Result.fail(decided.value.failure);
+    }
+
+    if (decided.value.success.length === 0) {
+      break;
+    }
+
+    events.push(...decided.value.success);
+    current = evolveAll(current, decided.value.success);
+  }
+
+  return Result.succeed({ events, state: current });
+};
+
+const appended = (
+  batch: Batch,
+  more: (state: Open) => readonly RoomEvent[]
+): Batch => {
+  if (!isOpen(batch.state)) {
+    return batch;
+  }
+
+  const added = more(batch.state);
+
+  return {
+    events: [...batch.events, ...added],
+    state: evolveAll(batch.state, added),
+  };
+};
 
 const followThrough = (
   before: Open,
   caused: readonly RoomEvent[],
   at: Millis
-): Decision => {
-  const events = [...caused];
-  let current = evolveAll(before, caused);
-
-  while (isOpen(current)) {
-    const next = consequence(current, at);
-
-    if (Option.isNone(next)) {
-      break;
-    }
-
-    if (Result.isFailure(next.value)) {
-      return next.value;
-    }
-
-    if (next.value.success.length === 0) {
-      break;
-    }
-
-    events.push(...next.value.success);
-    current = evolveAll(current, next.value.success);
-  }
-
-  return Result.succeed(
-    isOpen(current)
-      ? [...events, ...clockEvents(before, current, events, at)]
-      : events
+): Decision =>
+  drain({ events: caused, state: evolveAll(before, caused) }, (state) =>
+    actForLeavingSeat(state, at)
+  ).pipe(
+    Result.map((played) =>
+      appended(played, (state) =>
+        timeBankUsed(before, state, played.events, at)
+      )
+    ),
+    Result.flatMap((spent) => drain(spent, (state) => endOfHand(state, at))),
+    Result.map(
+      (ended) =>
+        appended(ended, (state) => clockEvents(state, ended.events, at)).events
+    )
   );
-};
 
 export const decide = (state: RoomState, command: RoomCommand): Decision =>
   RoomStates.$match(state, {

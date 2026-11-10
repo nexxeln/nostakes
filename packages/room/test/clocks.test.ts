@@ -265,3 +265,28 @@ describe("run-choice clock", () => {
     expect(openOf(expired.state).clocks.decision).toStrictEqual(Option.none());
   });
 });
+
+describe("a time bank when the room closes", () => {
+  it("spends the bank of the seat whose turn ends the hand before the room closes", () => {
+    const closing = runAll(dealt.state, [
+      RoomCommands.CloseRoom({ at: ms(1500), by: as(ann) }),
+      act(ann, Actions.Fold(), 2000),
+      expire(32_000),
+    ]);
+
+    const closed = run(closing, act(bob, Actions.Fold(), 34_100));
+
+    expect(
+      closed.events
+        .filter(
+          (event) =>
+            RoomEvents.$is("TimeBankSpent")(event) ||
+            RoomEvents.$is("RoomClosed")(event)
+        )
+        .map((event) => event._tag)
+    ).toStrictEqual(["TimeBankSpent", "RoomClosed"]);
+    expect(closed.events.find(RoomEvents.$is("TimeBankSpent"))).toStrictEqual(
+      RoomEvents.TimeBankSpent({ at: ms(34_100), player: bob, seconds: 3 })
+    );
+  });
+});

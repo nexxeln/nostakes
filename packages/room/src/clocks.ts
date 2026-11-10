@@ -20,7 +20,12 @@ import { clockRuns } from "./settings.js";
 import { DecisionClocks, RoomStates, heldSeat, occupantAt } from "./state.js";
 import type { DecisionClock, Open, RoomState } from "./state.js";
 import { onTable } from "./table.js";
-import { MillisSchema, secondsAfter, wholeSecondsBetween } from "./time.js";
+import {
+  MillisSchema,
+  earliest,
+  secondsAfter,
+  wholeSecondsBetween,
+} from "./time.js";
 import type { Millis } from "./time.js";
 
 export const DeadlineSchema = Schema.TaggedUnion({
@@ -200,7 +205,7 @@ const bankSpent = (
     onSome: (clock) =>
       DecisionClocks.$match(clock, {
         RunChoice: () => [],
-        Turn: ({ bankFrom, player }) =>
+        Turn: ({ bankFrom, deadline, player }) =>
           Option.match(bankFrom, {
             onNone: () => [],
             onSome: (from) => [
@@ -209,7 +214,7 @@ const bankSpent = (
                 player,
                 seconds: Math.min(
                   timeBankLeft(after, player),
-                  wholeSecondsBetween(from, at)
+                  wholeSecondsBetween(from, earliest(at, deadline))
                 ),
               }),
             ],
@@ -267,20 +272,24 @@ const wantedClock = (
   });
 };
 
-export const clockEvents = (
+export const timeBankUsed = (
   before: Open,
   after: Open,
   events: readonly RoomEvent[],
   at: Millis
-): readonly RoomEvent[] => {
-  const moved = events.some(movesTheAction);
-  const wanted = wantedClock(after, moved, at);
+): readonly RoomEvent[] =>
+  events.some(movesTheAction) ||
+  !clockRuns(after.settings) ||
+  Option.isNone(after.clocks.decision)
+    ? bankSpent(before, after, at)
+    : [];
 
-  const turnEnded =
-    moved || Option.isSome(wanted) || Option.isNone(after.clocks.decision);
-
-  return [
-    ...(turnEnded ? bankSpent(before, after, at) : []),
-    ...Option.getOrElse(wanted, () => []),
-  ];
-};
+export const clockEvents = (
+  after: Open,
+  events: readonly RoomEvent[],
+  at: Millis
+): readonly RoomEvent[] =>
+  Option.getOrElse(
+    wantedClock(after, events.some(movesTheAction), at),
+    () => []
+  );

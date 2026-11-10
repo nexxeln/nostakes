@@ -18,3 +18,6 @@ export const wholeSecondsBetween = (start: Millis, end: Millis) =>
 
 export const latest = (left: Millis, right: Millis) =>
   left >= right ? left : right;
+
+export const earliest = (left: Millis, right: Millis) =>
+  left <= right ? left : right;
