@@ -157,12 +157,6 @@ const foldedSinceStart = (events: readonly TableEvent[]) =>
       )
   );
 
-export const initialsOf = (name: string) => {
-  const [first] = new Intl.Segmenter().segment(name.trim());
-
-  return (first?.segment ?? "").toLocaleUpperCase();
-};
-
 const PLAYER_STATUS = {
   Active: "In",
   AllIn: "AllIn",
@@ -278,7 +272,6 @@ const occupiedSeat = (
       ownCards,
       status,
     }),
-    initials: initialsOf(member?.name ?? "?"),
     name: mine ? "You" : (member?.name ?? "Someone"),
     note: noteOf(occupant, here),
     seat,
@@ -296,7 +289,6 @@ const emptySeat = (seat: number): SeatSnapshot => ({
   away: false,
   bet: 0,
   cardsHeld: 0,
-  initials: "Sit",
   name: "",
   note: "",
   seat,

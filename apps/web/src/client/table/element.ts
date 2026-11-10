@@ -1,3 +1,6 @@
+import { avatarFor, render } from "@nostakes/avatar";
+import type { Expression } from "@nostakes/avatar";
+
 import { raiseDetents, raiseLadder } from "../../features/table/sizing.js";
 import type { Detent, RaiseSpot } from "../../features/table/sizing.js";
 import {
@@ -584,6 +587,47 @@ const keyParts = (
   return bettingKeys(legal, me);
 };
 
+const expressionFor = (mood: {
+  readonly folded: boolean;
+  readonly happy: boolean;
+  readonly gutted: boolean;
+  readonly thinking: boolean;
+  readonly lookingDown: boolean;
+}): Expression => {
+  if (mood.happy) {
+    return "Happy";
+  }
+
+  if (mood.gutted) {
+    return "Gutted";
+  }
+
+  if (mood.folded) {
+    return "Folded";
+  }
+
+  if (mood.lookingDown) {
+    return "LookingDown";
+  }
+
+  return mood.thinking ? "Thinking" : "Resting";
+};
+
+const paintFace = (
+  pic: HTMLElement,
+  avatar: string,
+  expression: Expression,
+  size: number
+) => {
+  const pixels = Math.max(24, Math.round(size));
+  const key = `${avatar}|${expression}|${pixels}`;
+
+  if (pic.dataset.face !== key) {
+    pic.dataset.face = key;
+    pic.innerHTML = render(avatarFor(avatar), { expression, size: pixels });
+  }
+};
+
 const renderNote = (host: HTMLElement, node: HTMLElement, note: string) => {
   if (node.textContent !== note) {
     node.textContent = note;
@@ -662,6 +706,7 @@ export class NostakesTable extends HTMLElement {
   #lockedAt = 0;
   #winner = -1;
   #heroWinUntil = 0;
+  #heroGuttedUntil = 0;
   #hushBeat = 0;
   #lastTick = -1;
   readonly #taught = new Set<Hint>();
@@ -970,7 +1015,7 @@ export class NostakesTable extends HTMLElement {
     this.#room.insertBefore(root, this.#fx);
 
     const frame = el("div", "frame", root);
-    const pic = el("div", "pic", frame, info.initials);
+    const pic = el("div", "pic", frame, info.status === "Empty" ? "Sit" : "");
     const label = el("div", "label", root);
     const name = el("div", "name", label, info.name);
     const line = el("div", "line", label);
@@ -1397,10 +1442,6 @@ export class NostakesTable extends HTMLElement {
       tile.name.textContent = info.name;
     }
 
-    if (tile.pic.textContent !== info.initials) {
-      tile.pic.textContent = info.initials;
-    }
-
     toggle(
       tile.root,
       "folded",
@@ -1531,10 +1572,6 @@ export class NostakesTable extends HTMLElement {
   #renderSelf(me: SeatSnapshot, now: number) {
     if (!this.#held(`stack:${me.seat}`)) {
       this.#selfStack.set(me.stack, now);
-    }
-
-    if (this.#selfPic.textContent !== me.initials) {
-      this.#selfPic.textContent = me.initials;
     }
 
     toggle(this.#self, "folded", me.status === "Folded" || me.status === "Out");
@@ -2297,6 +2334,8 @@ export class NostakesTable extends HTMLElement {
       ).done(land);
     }
 
+    this.#gutLosers(seat);
+
     if (hero) {
       this.#heroWins(amount, geo);
     } else {
@@ -2309,6 +2348,26 @@ export class NostakesTable extends HTMLElement {
 
       this.#tag(seat, `+${formatChips(amount)}`, "win", 3600);
       this.#sound.chips(10, 0.2, 0.7);
+    }
+  }
+
+  #gutLosers(winner: number) {
+    const snapshot = this.#snap;
+    const now = performance.now();
+
+    if (snapshot === null) {
+      return;
+    }
+
+    for (const info of snapshot.seats) {
+      const lost = info.seat !== winner && info.shown.length > 0;
+      const tile = this.#tiles.get(info.seat);
+
+      if (lost && info.seat === snapshot.heroSeat) {
+        this.#heroGuttedUntil = now + 2600;
+      } else if (lost && tile !== undefined) {
+        tile.surpriseUntil = now + 2600;
+      }
     }
   }
 
@@ -3249,9 +3308,12 @@ export class NostakesTable extends HTMLElement {
   }
 
   #ghostHint(on: boolean, geo: Geo) {
-    if (on && this.#ghostAnim === null) {
+    if (on) {
       this.#ghost.style.left = `${geo.chip.x}px`;
       this.#ghost.style.top = `${geo.chip.y}px`;
+    }
+
+    if (on && this.#ghostAnim === null) {
       this.#ghostAnim = this.#ghost.animate(
         [
           { opacity: 0, transform: "translateY(0) scale(.8)" },
@@ -3417,6 +3479,21 @@ export class NostakesTable extends HTMLElement {
         active &&
         info !== undefined;
 
+      if (info !== undefined && info.status !== "Empty") {
+        paintFace(
+          target.pic,
+          info.avatar,
+          expressionFor({
+            folded: info.status === "Folded" || info.status === "Out",
+            gutted: target.surpriseUntil > now,
+            happy: target.joyUntil > now,
+            lookingDown: false,
+            thinking: active,
+          }),
+          geo.tile
+        );
+      }
+
       toggle(target.root, "on-clock", onClock);
 
       if (onClock) {
@@ -3505,6 +3582,23 @@ export class NostakesTable extends HTMLElement {
       snapshot.toAct !== null && !mine && this.#winner !== snapshot.heroSeat
     );
     toggle(this.#self, "peeking", this.#peekOn);
+
+    const me = this.#seat(snapshot.heroSeat);
+
+    if (me !== undefined) {
+      paintFace(
+        this.#selfPic,
+        me.avatar,
+        expressionFor({
+          folded: me.status === "Folded" || me.status === "Out",
+          gutted: this.#heroGuttedUntil > now,
+          happy: this.#heroWinUntil > now,
+          lookingDown: this.#peekOn,
+          thinking: false,
+        }),
+        this.#geo?.self.size ?? 0
+      );
+    }
 
     const onClock =
       snapshot.clock !== null &&

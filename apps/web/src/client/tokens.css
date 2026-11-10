@@ -83,6 +83,8 @@
   --color-face-ink-unlit: #5b544a;
   --color-face-ink-folded: #a39b8e;
   --opacity-away: 0.55;
+  --filter-face-unlit: none;
+  --filter-face-folded: grayscale(0.7) opacity(0.7);
   --color-card: #ffffff;
   --color-card-ink: #1c1a17;
   --color-card-red: #c63f27;
@@ -147,6 +149,8 @@
     --shadow-face: inset 0 0 0 1px rgb(255 255 255 / 0.06);
     --color-face-ink-unlit: #6f6d6a;
     --color-face-ink-folded: #6f6d6a;
+    --filter-face-unlit: brightness(0.62);
+    --filter-face-folded: grayscale(0.7) brightness(0.55);
     --color-card: #f2f0eb;
     --color-card-ink: #18191c;
     --color-card-red: #c63b2c;
@@ -205,6 +209,8 @@
   --shadow-face: inset 0 0 0 1px rgb(255 255 255 / 0.06);
   --color-face-ink-unlit: #6f6d6a;
   --color-face-ink-folded: #6f6d6a;
+  --filter-face-unlit: brightness(0.62);
+  --filter-face-folded: grayscale(0.7) brightness(0.55);
   --color-card: #f2f0eb;
   --color-card-ink: #18191c;
   --color-card-red: #c63b2c;

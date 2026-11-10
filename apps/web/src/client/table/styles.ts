@@ -35,6 +35,9 @@ export const tableCss = `
 .pic svg { width: 100%; height: 100%; display: block; }
 .unlit .pic { color: var(--color-face-ink-unlit); }
 .folded .pic { color: var(--color-face-ink-folded); }
+.pic svg { transition: filter var(--duration-3) var(--ease); }
+.unlit .pic svg { filter: var(--filter-face-unlit); }
+.folded .pic svg { filter: var(--filter-face-folded); }
 .away .frame { opacity: var(--opacity-away); }
 .tile.empty, .tile.pickable { cursor: pointer; }
 .tile.empty .frame { background: transparent; box-shadow: inset 0 0 0 1.5px var(--color-line-strong); }

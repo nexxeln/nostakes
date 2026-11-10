@@ -18,7 +18,6 @@ export const SeatSnapshotSchema = Schema.Struct({
   away: Schema.Boolean,
   bet: Schema.Int,
   cardsHeld: Schema.Int,
-  initials: Schema.String,
   name: Schema.String,
   note: Schema.String,
   seat: Schema.Int,
