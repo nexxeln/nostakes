@@ -72,6 +72,8 @@ export const WATCHDOG_MARGIN_MS = 6000;
 
 export const CLOSE_GRACE_MS = 30_000;
 
+export const SETTLE_LIMIT_MS = 30_000;
+
 interface Watched {
   readonly latest: () => Option.Option<RoomView>;
   readonly lastSeq: () => number;
@@ -444,6 +446,39 @@ export const runNight = (base: string, opened: OpenedNight) =>
         : Option.none();
     };
 
+    const unsettledClients = () =>
+      clients.flatMap((client) =>
+        Option.toArray(client.unsettled()).map(
+          (why) => `${client.label} ${why}`
+        )
+      );
+
+    let settlingSince = Option.none<number>();
+
+    const settle = (now: number): Option.Option<string> => {
+      const unsettled = unsettledClients();
+
+      if (unsettled.length === 0) {
+        note("every client bot is live with nothing pending; the night stops");
+        control.stop = true;
+
+        return Option.none();
+      }
+
+      if (Option.isNone(settlingSince)) {
+        note(`waiting for client bots to settle: ${unsettled.join("; ")}`);
+        settlingSince = Option.some(now);
+      }
+
+      return settlingSince.pipe(
+        Option.filter((since) => now - since > SETTLE_LIMIT_MS),
+        Option.map(
+          () =>
+            `the room closed, but ${SETTLE_LIMIT_MS} ms later these client bots were still not live with nothing pending: ${unsettled.join("; ")}`
+        )
+      );
+    };
+
     const supervise = Effect.gen(function* superviseNight() {
       let progress = wallClock();
       let problem = Option.none<string>();
@@ -461,8 +496,7 @@ export const runNight = (base: string, opened: OpenedNight) =>
         );
 
         if (nightOver(now)) {
-          note("the night stops");
-          control.stop = true;
+          problem = settle(now);
 
           continue;
         }

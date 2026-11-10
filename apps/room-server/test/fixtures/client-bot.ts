@@ -127,6 +127,7 @@ export interface ClientBotRecord {
   readonly lastSeq: () => number;
   readonly lastTableAt: () => number;
   readonly timeline: () => readonly Moment[];
+  readonly unsettled: () => Option.Option<string>;
 }
 
 export interface ClientBotSetup {
@@ -160,6 +161,10 @@ const STOP_GRACE_MS = 15_000;
 const NAP_LIMIT_MS = 60_000;
 
 const NAP_MIN_SEATED = 4;
+
+const MEND_POLL_MS = 100;
+
+const MEND_WAKE_GAP_MS = 1000;
 
 const causeOf = (reason: DropReason, line: Line | undefined): DropCause => {
   if (reason === "SocketClosed") {
@@ -369,6 +374,30 @@ export const startClientBot = (setup: ClientBotSetup) => {
     }
   };
 
+  const unsettled = (): Option.Option<string> => {
+    const line = wire.lastLine();
+
+    const reasons = Option.match(current, {
+      onNone: () => ["never started"],
+      onSome: (state) => [
+        ...(state.connection === "Live" ? [] : [`phase ${state.connection}`]),
+        ...(state.pending.length === 0
+          ? []
+          : [`pending ${state.pending.join(" ")}`]),
+        ...(line === undefined || line.mode === "Clear"
+          ? []
+          : [`line ${line.number} ${line.mode}`]),
+        ...(state.view.pipe(Option.exists(RoomViews.$is("Closed")))
+          ? []
+          : ["the room is not closed in its view"]),
+      ],
+    });
+
+    return reasons.length === 0
+      ? Option.none()
+      : Option.some(reasons.join(", "));
+  };
+
   const record: ClientBotRecord = {
     activity,
     commands,
@@ -388,6 +417,7 @@ export const startClientBot = (setup: ClientBotSetup) => {
     role: setup.role,
     stats,
     timeline: journal.moments,
+    unsettled,
   };
 
   const beforeDrop = (open: OpenView): Option.Option<Intent> =>
@@ -642,21 +672,44 @@ export const startClientBot = (setup: ClientBotSetup) => {
         : Option.none();
     };
 
-    let wokeForClose = false;
+    const mend = Effect.gen(function* mendAtClose() {
+      while (!control.closing && !control.stop) {
+        yield* Effect.sleep(Duration.millis(MEND_POLL_MS));
+      }
 
-    while (!control.stop) {
-      yield* Effect.sleep(Duration.millis(random.between(30, 120)));
+      note("saw the room closing");
 
-      if (control.closing && !wokeForClose) {
-        wokeForClose = true;
-        note("saw the room closing");
+      let wokeAt = 0;
 
-        if (wire.lastLine()?.mode !== "Clear") {
+      while (!control.stop) {
+        const line = wire.lastLine();
+
+        if (
+          line !== undefined &&
+          line.mode !== "Clear" &&
+          line.raw.readyState <= WebSocket.OPEN
+        ) {
+          note(`mending line ${line.number}, which is ${line.mode}`);
           wire.closeFromBot();
         }
 
-        yield* wake;
+        const waiting = current.pipe(
+          Option.exists(({ connection }) => connection === "Waiting")
+        );
+
+        if (waiting && wallClock() - wokeAt >= MEND_WAKE_GAP_MS) {
+          wokeAt = wallClock();
+          yield* wake;
+        }
+
+        yield* Effect.sleep(Duration.millis(MEND_POLL_MS));
       }
+    });
+
+    yield* Effect.forkScoped(mend);
+
+    while (!control.stop) {
+      yield* Effect.sleep(Duration.millis(random.between(30, 120)));
 
       const state = yield* client.state;
 
