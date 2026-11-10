@@ -771,3 +771,142 @@ export const computeGeo = (w: number, h: number, count: number): Geo =>
   w > h * WIDE_RATIO
     ? wideGeo(w, h, Math.max(1, count))
     : tallGeo(w, h, Math.max(1, count));
+
+export interface RunLane {
+  readonly x: number;
+  readonly y: number;
+  readonly cardW: number;
+  readonly gap: number;
+}
+
+const RUN_SCALES = [0.62, 0.52, 0.44] as const;
+
+const RUN_GAP = 4;
+
+const RUN_MARGIN = 10;
+
+const RUN_CROWDING_ALLOWED = 0.05;
+
+const RUN_COVERING_YOURS = 40;
+
+const overlap = (a: Box, b: Box) =>
+  Math.max(0, Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x)) *
+  Math.max(0, Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y));
+
+const outside = (box: Box, geo: Geo) =>
+  box.w * box.h -
+  overlap(box, { h: geo.h - geo.top, w: geo.w, x: 0, y: geo.top });
+
+export const tableObstacles = (geo: Geo): readonly Box[] => {
+  const handW = geo.handCardW * 2.2;
+  const handH = geo.handCardW * 1.4;
+
+  return [
+    ...geo.seats.map(({ x, y }) => ({
+      h: geo.tile + geo.caption,
+      w: geo.tile * 1.3,
+      x: x - geo.tile * 0.65,
+      y: y - geo.tile / 2,
+    })),
+    {
+      h: geo.self.size + geo.caption,
+      w: geo.self.size,
+      x: geo.self.x - geo.self.size / 2,
+      y: geo.self.y - geo.self.size / 2,
+    },
+    {
+      h: handH + 30,
+      w: handW,
+      x: geo.hand.x - handW / 2,
+      y: geo.hand.y - handH / 2 - 30,
+    },
+    {
+      h: geo.chip.size,
+      w: geo.chip.size,
+      x: geo.chip.x - geo.chip.size / 2,
+      y: geo.chip.y - geo.chip.size / 2,
+    },
+    geo.strip,
+  ];
+};
+
+export const runLanesBox = (lanes: readonly RunLane[]): Box => {
+  const [first] = lanes;
+  const last = lanes.at(-1);
+
+  if (first === undefined || last === undefined) {
+    return { h: 0, w: 0, x: 0, y: 0 };
+  }
+
+  return {
+    h: last.y + last.cardW * 1.4 - first.y,
+    w: first.cardW * BOARD_CARDS + first.gap * (BOARD_CARDS - 1),
+    x: first.x,
+    y: first.y,
+  };
+};
+
+const runLanesArea = (lanes: readonly RunLane[]) => {
+  const box = runLanesBox(lanes);
+
+  return box.w * box.h;
+};
+
+const stackAt = (origin: Pt, rows: number, cardW: number): readonly RunLane[] =>
+  Array.from({ length: rows }, (_, row) => ({
+    cardW,
+    gap: RUN_GAP,
+    x: origin.x,
+    y: origin.y + row * (cardW * 1.4 + RUN_GAP + 2),
+  }));
+
+export const runLanes = (geo: Geo, rows: number): readonly RunLane[] => {
+  if (rows === 0) {
+    return [];
+  }
+
+  const group = geo.strip;
+  const blocked = tableObstacles(geo);
+
+  const tries = RUN_SCALES.flatMap((scale) => {
+    const cardW = Math.round(geo.cardW * scale);
+    const rowW = cardW * BOARD_CARDS + RUN_GAP * (BOARD_CARDS - 1);
+    const stackH = rows * (cardW * 1.4 + RUN_GAP + 2) - RUN_GAP - 2;
+    const cx = group.x + group.w / 2;
+    const cy = group.y + group.h / 2;
+
+    return [
+      { x: cx - rowW / 2, y: group.y - RUN_MARGIN - stackH },
+      { x: cx - rowW / 2, y: group.y + group.h + RUN_MARGIN },
+      { x: group.x + group.w + RUN_MARGIN, y: cy - stackH / 2 },
+      { x: group.x - RUN_MARGIN - rowW, y: cy - stackH / 2 },
+    ].map((origin) => {
+      const lanes = stackAt(origin, rows, cardW);
+      const box = runLanesBox(lanes);
+      let crowding = outside(box, geo) * RUN_COVERING_YOURS;
+
+      for (const [index, other] of blocked.entries()) {
+        crowding +=
+          overlap(box, other) *
+          (index < geo.seats.length ? 1 : RUN_COVERING_YOURS);
+      }
+
+      return { crowding, lanes };
+    });
+  });
+
+  const roomy = tries.find(
+    ({ crowding, lanes }) =>
+      crowding <= runLanesArea(lanes) * RUN_CROWDING_ALLOWED
+  );
+
+  let best = roomy ?? tries[0];
+
+  for (const next of roomy === undefined ? tries : []) {
+    if (best === undefined || next.crowding < best.crowding) {
+      best = next;
+    }
+  }
+
+  return best?.lanes ?? [];
+};

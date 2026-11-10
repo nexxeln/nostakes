@@ -3,7 +3,7 @@ import { Option } from "effect";
 import type { Document, Html, HtmlBuilder } from "foldkit/html";
 
 import { themeSwitch } from "./chrome.js";
-import { faceBuilder, faceSheet } from "./face-builder.js";
+import { face, faceSheet } from "./face-builder.js";
 import { Messages } from "./message.js";
 import type { Message } from "./message.js";
 import { Screens } from "./model.js";
@@ -16,6 +16,14 @@ const problemLine = (problem: Option.Option<string>, h: H): Html =>
   Option.match(problem, {
     onNone: () => h.empty,
     onSome: (text) => h.p([h.Class("problem"), h.Role("alert")], [text]),
+  });
+
+const FACE_ROW_PX = 56;
+
+const faceSheetOf = (model: Model, h: H): Html =>
+  Option.match(model.faceDraft, {
+    onNone: () => h.empty,
+    onSome: (draft) => faceSheet(draft, model.facePart, h),
   });
 
 const profileFields = (model: Model, h: H): readonly Html[] => [
@@ -33,11 +41,27 @@ const profileFields = (model: Model, h: H): readonly Html[] => [
       ]),
     ]
   ),
-  h.div(
-    [h.Class("field")],
+  h.button(
     [
-      h.span([h.Class("field-label")], ["Your face"]),
-      faceBuilder(avatarFor(model.profile.avatar), model.facePart, h),
+      h.Type("button"),
+      h.Class("face-row"),
+      h.OnClick(Messages.ClickedEditFace()),
+    ],
+    [
+      face(
+        avatarFor(model.profile.avatar),
+        "Resting",
+        FACE_ROW_PX,
+        "face-frame",
+        h
+      ),
+      h.span(
+        [h.Class("face-row-text")],
+        [
+          h.span([h.Class("face-row-title")], ["Your face"]),
+          h.span([h.Class("field-label")], ["Tap to change it"]),
+        ]
+      ),
     ]
   ),
 ];
@@ -141,19 +165,20 @@ const invitedView = (
 
 export const view = (model: Model, h: H): Document => ({
   body: Screens.match(model.screen, {
-    Home: ({ busy, problem }) => homeView(model, busy, problem, h),
+    Home: ({ busy, problem }) =>
+      h.div(
+        [h.Class("screen")],
+        [homeView(model, busy, problem, h), faceSheetOf(model, h)]
+      ),
     Invited: ({ busy, code, problem }) =>
-      invitedView(model, code, busy, problem, h),
+      h.div(
+        [h.Class("screen")],
+        [invitedView(model, code, busy, problem, h), faceSheetOf(model, h)]
+      ),
     Room: ({ room }) =>
       h.div(
         [h.Class("screen")],
-        [
-          roomView(model, room, h),
-          Option.match(model.faceDraft, {
-            onNone: () => h.empty,
-            onSome: (draft) => faceSheet(draft, model.facePart, h),
-          }),
-        ]
+        [roomView(model, room, h), faceSheetOf(model, h)]
       ),
   }),
   title: Screens.match(model.screen, {

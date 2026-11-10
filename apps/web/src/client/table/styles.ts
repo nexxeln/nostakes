@@ -94,6 +94,7 @@ export const tableCss = `
 .card.rabbit { opacity: 0.55; }
 .runs { position: absolute; inset: 0; pointer-events: none; z-index: 1; }
 .runs .card { position: absolute; }
+.runs .card.shared { opacity: 0.45; }
 
 .card { position: relative; width: var(--w); height: calc(var(--w) * 1.4); font-size: var(--w); transform-style: preserve-3d; }
 .card .face, .card .back { position: absolute; inset: 0; border-radius: 0.09em; backface-visibility: hidden; -webkit-backface-visibility: hidden; }
@@ -208,6 +209,7 @@ kbd {
   font: 600 var(--text-1)/1 var(--font-body); color: var(--color-ink); box-shadow: inset 0 0 0 1px var(--color-line-strong);
 }
 @media (hover: hover) and (pointer: fine) { .keys { display: flex; } }
+@media (any-pointer: coarse), (max-width: 30rem) { .keys { display: none; } }
 @media (prefers-reduced-motion: reduce) {
   .hand .hc, .hand .hc .card, .hand .hc .face, .hand .hc .back, .chipctl, .chipctl .disc, .hint, .label .st, .label .act, .pic { transition-duration: 0.01ms !important; }
   .hand.beckon { animation: none; }

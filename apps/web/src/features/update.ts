@@ -404,7 +404,20 @@ const ownMember = (room: InRoom) =>
     )
   );
 
-const saveFace = (model: Model): Return =>
+const keepFace = (model: Model): Return =>
+  Option.match(model.faceDraft, {
+    onNone: () => ({ model }),
+    onSome: (draft) => {
+      const profile = { ...model.profile, avatar: codeFor(draft) };
+
+      return {
+        commands: [SaveProfile({ profile })],
+        model: { ...model, faceDraft: Option.none(), profile },
+      };
+    },
+  });
+
+const sendFace = (model: Model): Return =>
   inRoom(model, (room) =>
     Option.match(Option.all([model.faceDraft, ownMember(room)]), {
       onNone: () => ({ model: { ...model, faceDraft: Option.none() } }),
@@ -428,6 +441,12 @@ const saveFace = (model: Model): Return =>
       },
     })
   );
+
+const saveFace = (model: Model): Return =>
+  Option.match(roomOf(model), {
+    onNone: () => keepFace(model),
+    onSome: () => sendFace(model),
+  });
 
 export const update = (model: Model, message: Message): Return =>
   Messages.match(message, {
@@ -479,20 +498,20 @@ export const update = (model: Model, message: Message): Return =>
           }
         )
       ),
-    ClickedEditFace: () =>
-      inRoom(model, (room) => ({
-        model: {
-          ...model,
-          faceDraft: Option.some(
-            avatarFor(
-              ownMember(room).pipe(
-                Option.map(({ avatar }) => avatar),
-                Option.getOrElse(() => model.profile.avatar)
-              )
+    ClickedEditFace: () => ({
+      model: {
+        ...model,
+        faceDraft: Option.some(
+          avatarFor(
+            roomOf(model).pipe(
+              Option.flatMap(ownMember),
+              Option.map(({ avatar }) => avatar),
+              Option.getOrElse(() => model.profile.avatar)
             )
-          ),
-        },
-      })),
+          )
+        ),
+      },
+    }),
     ClickedHome: () =>
       inRoom(model, (room) => ({
         commands: [ShowPath({ path: "/" }), ForgetRoom({ code: room.code })],

@@ -19,7 +19,7 @@ import type {
 } from "../../features/table/snapshot.js";
 import { Counter, formatChips } from "./counter.js";
 import { cardEl, el, svgEl, toggle } from "./dom.js";
-import { clamp, computeGeo } from "./layout.js";
+import { clamp, computeGeo, runLanes } from "./layout.js";
 import type { Geo, Pt } from "./layout.js";
 import { TableSound } from "./sound.js";
 import { Spring } from "./spring.js";
@@ -711,6 +711,7 @@ export class NostakesTable extends HTMLElement {
   #lastTick = -1;
   readonly #taught = new Set<Hint>();
   readonly #fine = globalThis.matchMedia("(hover: hover) and (pointer: fine)");
+  readonly #touch = globalThis.matchMedia("(any-pointer: coarse)");
   readonly #motion = globalThis.matchMedia("(prefers-reduced-motion: reduce)");
 
   constructor() {
@@ -942,7 +943,7 @@ export class NostakesTable extends HTMLElement {
   }
 
   #buildHints() {
-    const fine = this.#fine.matches;
+    const fine = this.#fine.matches && !this.#touch.matches;
 
     for (const [name, text] of [
       ["Peek", fine ? "Hover your cards to peek" : "Hold your cards to peek"],
@@ -1761,45 +1762,48 @@ export class NostakesTable extends HTMLElement {
 
   #renderRuns(snapshot: TableSnapshot, geo: Geo) {
     const [first = [], ...extra] = snapshot.boards;
-    const key = JSON.stringify(extra);
+    const key = JSON.stringify([extra, Math.round(geo.w), Math.round(geo.h)]);
 
     if (this.#runs.dataset.key === key) {
       return;
     }
 
+    const fresh = this.#runs.dataset.runs !== JSON.stringify(extra);
+
     this.#runs.dataset.key = key;
+    this.#runs.dataset.runs = JSON.stringify(extra);
     this.#runs.replaceChildren();
 
-    const width = Math.round(geo.cardW * 0.62);
+    const lanes = runLanes(geo, extra.length);
 
     for (const [row, board] of extra.entries()) {
+      const lane = lanes[row];
+
       for (const [index, card] of board.entries()) {
-        const spot = geo.board[index];
-
-        if (spot !== undefined && first[index] !== card) {
-          const node = cardEl(card, width, true);
-          const step = width * 1.4 + 6;
-
-          const top = geo.boardInStrip
-            ? geo.strip.y - 8 - (row + 1) * step
-            : spot.y + geo.cardW * 0.7 + 10 + row * step;
+        if (lane !== undefined) {
+          const node = cardEl(card, lane.cardW, true);
+          const dealt = first[index] !== card;
 
           node.classList.add("run");
-          node.style.left = `${spot.x - width / 2}px`;
-          node.style.top = `${top}px`;
+          toggle(node, "shared", !dealt);
+          node.style.left = `${lane.x + index * (lane.cardW + lane.gap)}px`;
+          node.style.top = `${lane.y}px`;
           this.#runs.append(node);
-          node.animate(
-            [
-              { opacity: 0, translate: "0 -8px" },
-              { opacity: 1, translate: "0 0" },
-            ],
-            {
-              delay: index * 120,
-              duration: this.#reduced ? 120 : 360,
-              fill: "backwards",
-            }
-          );
-          this.#sound.card((index * 120) / 1000);
+
+          if (fresh && dealt) {
+            node.animate(
+              [
+                { opacity: 0, translate: "0 -8px" },
+                { opacity: 1, translate: "0 0" },
+              ],
+              {
+                delay: index * 120,
+                duration: this.#reduced ? 120 : 360,
+                fill: "backwards",
+              }
+            );
+            this.#sound.card((index * 120) / 1000);
+          }
         }
       }
     }
@@ -3302,7 +3306,11 @@ export class NostakesTable extends HTMLElement {
 
     this.#showHint("Raise", raiseOn && !busy, {
       x: clamp(geo.chip.x - 40, 110, geo.w - 110),
-      y: geo.chip.y - geo.chip.size / 2 - 92,
+      y: clamp(
+        geo.strip.y + geo.strip.h + 12,
+        geo.chip.y - geo.chip.size / 2 - 92,
+        geo.chip.y - geo.chip.size / 2 - 24
+      ),
     });
     this.#ghostHint(raiseOn && !busy && !this.#reduced, geo);
   }

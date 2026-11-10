@@ -39,7 +39,11 @@ const linkPreviews = (): Plugin => ({
     });
   },
   name: "nostakes-link-previews",
-  transformIndexHtml: (html) => {
+  transformIndexHtml: (html, { path }) => {
+    if (path !== `/${HOME_PAGE}`) {
+      return html;
+    }
+
     if (!html.includes(PLAIN_TITLE)) {
       throw new Error(
         `index.html needs ${PLAIN_TITLE} for the link preview to replace.`

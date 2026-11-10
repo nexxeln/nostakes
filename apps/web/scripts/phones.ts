@@ -366,6 +366,20 @@ const checkEngine = (engine: BrowserType, app: string) =>
       yield* style(host, TABLE, "touch-action")
     );
 
+    const keyHints = yield* attempt("read the key hints", () =>
+      host
+        .locator(`${TABLE} .keys`)
+        .evaluateAll((nodes) =>
+          nodes.map((node) => getComputedStyle(node).display)
+        )
+    );
+
+    yield* note(
+      "a touch phone shows no key hints",
+      keyHints.length > 0 && keyHints.every((display) => display === "none"),
+      keyHints.join(",")
+    );
+
     const callout = yield* style(host, ".room", "-webkit-touch-callout");
 
     yield* note(

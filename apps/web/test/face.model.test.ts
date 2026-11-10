@@ -206,6 +206,40 @@ describe("the face builder", () => {
     }
   );
 
+  it.prop(
+    "on the home screen a face is drafted in the sheet and kept on the device only when saved",
+    { draft: avatars, worn: avatars },
+    ({ draft, worn }) => {
+      const before = update(
+        home,
+        Messages.PickedAvatar({ avatar: worn })
+      ).model;
+
+      const opened = update(before, Messages.ClickedEditFace());
+
+      expect(opened.model.faceDraft).toStrictEqual(Option.some({ ...worn }));
+
+      const drafted = update(
+        opened.model,
+        Messages.PickedAvatar({ avatar: draft })
+      );
+
+      expect(drafted.commands ?? []).toStrictEqual([]);
+      expect(drafted.model.profile).toStrictEqual(before.profile);
+
+      const cancelled = update(drafted.model, Messages.ClickedCancelFace());
+
+      expect(cancelled.model.profile).toStrictEqual(before.profile);
+      expect(cancelled.model.faceDraft).toStrictEqual(Option.none());
+
+      const saved = update(drafted.model, Messages.ClickedSaveFace());
+
+      expect(namesOf(saved.commands)).toStrictEqual(["SaveProfile"]);
+      expect(saved.model.faceDraft).toStrictEqual(Option.none());
+      expect(saved.model.profile.avatar).toBe(codeFor(draft));
+    }
+  );
+
   it("asks for a random face when shuffled and changes nothing itself", () => {
     const shuffled = update(home, Messages.ClickedShuffleFace());
 
@@ -217,7 +251,10 @@ describe("the face builder", () => {
     "marks exactly the parts the face wears as picked",
     { avatar: avatars },
     ({ avatar }) => {
-      const wearing = update(home, Messages.PickedAvatar({ avatar })).model;
+      const wearing = playAll(home, [
+        Messages.PickedAvatar({ avatar }),
+        Messages.ClickedEditFace(),
+      ]).model;
 
       expect(checkedLabels(onPart(wearing, "Species"))).toStrictEqual([
         spaced(avatar.species),
