@@ -1,6 +1,5 @@
-import { Antes, Commands } from "@nostakes/engine";
-import type { Ante, TableConfig } from "@nostakes/engine";
-import { Option, Result } from "effect";
+import { Commands, TableConfigSchema } from "@nostakes/engine";
+import { Option, Result, Schema } from "effect";
 
 import type { RoomCommandOf } from "./commands.js";
 import type { Decision } from "./decision.js";
@@ -9,22 +8,7 @@ import { handInProgress } from "./state.js";
 import type { Open } from "./state.js";
 import { onTable } from "./table.js";
 
-const anteKey = (ante: Ante) =>
-  Antes.$match(ante, {
-    BigBlindPays: ({ amount }) => `big blind pays ${amount}`,
-    EveryPlayer: ({ amount }) => `every player ${amount}`,
-    NoAnte: () => "no ante",
-  });
-
-export const sameTableRules = (left: TableConfig, right: TableConfig) =>
-  anteKey(left.ante) === anteKey(right.ante) &&
-  left.bigBlind === right.bigBlind &&
-  left.smallBlind === right.smallBlind &&
-  left.maxRuns === right.maxRuns &&
-  left.rabbitHunt === right.rabbitHunt &&
-  left.showdown === right.showdown &&
-  left.straddle.button === right.straddle.button &&
-  left.straddle.underTheGun === right.straddle.underTheGun;
+export const sameTableRules = Schema.toEquivalence(TableConfigSchema);
 
 export const changeSettings = (
   state: Open,
