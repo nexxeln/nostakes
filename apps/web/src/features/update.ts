@@ -50,7 +50,12 @@ import {
   viewOf,
 } from "./room.js";
 import { draftOf, settingsFrom } from "./settings.js";
-import { KEPT_EVENTS, happeningsOf } from "./table/from-room.js";
+import {
+  KEPT_CLOCK_SAMPLES,
+  KEPT_EVENTS,
+  clockSampleOf,
+  happeningsOf,
+} from "./table/from-room.js";
 import type { Hint, TableIntent } from "./table/snapshot.js";
 import { roomPath } from "./wire.js";
 
@@ -63,6 +68,7 @@ type Return = Update.Return<Model, Message, Services>;
 const Commands = MemberCommandSchema.cases;
 
 const freshRoom = (code: InRoom["code"], player: InRoom["player"]): InRoom => ({
+  clockSamples: [],
   code,
   connected: false,
   copied: "Nothing",
@@ -560,6 +566,11 @@ export const update = (model: Model, message: Message): Return =>
     GotUpdate: ({ events, receivedAt, seq, view }) =>
       editRoom({ ...model, now: receivedAt }, (room) => ({
         ...remember(room, events),
+        clockSamples: RoomViews.$is("Open")(view)
+          ? [...room.clockSamples, clockSampleOf(view, receivedAt)].slice(
+              -KEPT_CLOCK_SAMPLES
+            )
+          : room.clockSamples,
         shown: Option.some({ receivedAt, seq, view }),
       })),
     PickedAvatar: ({ avatar }) => {

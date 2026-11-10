@@ -46,7 +46,7 @@ export const HeroLegalSchema = Schema.Struct({
 export type HeroLegal = typeof HeroLegalSchema.Type;
 
 export const ActionClockSchema = Schema.Struct({
-  key: Schema.Int,
+  key: Schema.String,
   remainingMs: Schema.Int,
   seat: Schema.Int,
   totalMs: Schema.Int,

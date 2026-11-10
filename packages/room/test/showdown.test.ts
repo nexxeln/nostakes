@@ -287,7 +287,12 @@ describe("showdown views", () => {
     ).toStrictEqual([
       Option.some({ canMuck: true, canTable: true, seat: seat(1) }),
       Option.some(Option.some(seat(1))),
-      Option.some({ remainingMs: 10_000, seat: seat(1), totalMs: 15_000 }),
+      Option.some({
+        deadline: ms(15_022),
+        remainingMs: 10_000,
+        seat: seat(1),
+        totalMs: 15_000,
+      }),
     ]);
     expect(RoomViews.$is("Open")(catView) && catView.showdown).toStrictEqual(
       Option.none()

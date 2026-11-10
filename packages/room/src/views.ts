@@ -42,7 +42,7 @@ import {
   seatOf,
 } from "./state.js";
 import type { Closed, Open, RoomState, Sealed } from "./state.js";
-import { MillisSchema, latest } from "./time.js";
+import { MillisSchema, latest, millis } from "./time.js";
 import type { Millis } from "./time.js";
 
 export const AudienceSchema = Schema.TaggedUnion({
@@ -176,13 +176,16 @@ const absentAs = <S extends Schema.Top & Schema.WithoutConstructorDefault>(
   fallback: S["Type"]
 ) => schema.pipe(Schema.withDecodingDefaultTypeKey(Effect.succeed(fallback)));
 
-const remaining = Schema.Struct({ remainingMs: Schema.Int });
+const serverTime = absentAs(MillisSchema, millis(0));
 
-const fullLength = absentAs(Schema.Int, 0);
+const remaining = Schema.Struct({
+  deadline: serverTime,
+  remainingMs: Schema.Int,
+});
 
 const decision = Schema.Struct({
-  remainingMs: Schema.Int,
-  totalMs: fullLength,
+  ...remaining.fields,
+  totalMs: absentAs(Schema.Int, 0),
 });
 
 export const AwardSchema = Schema.Struct({
@@ -260,6 +263,7 @@ export const LastHandViewSchema = Schema.Struct({
 });
 
 export const ClocksViewSchema = Schema.Struct({
+  at: serverTime,
   nextDeal: Schema.Option(remaining),
   runChoice: Schema.Option(decision),
   showdown: Schema.Option(
@@ -504,6 +508,7 @@ const lastHandView = (
 };
 
 const remainingAt = (deadline: Millis, at: Millis) => ({
+  deadline,
   remainingMs: Math.max(0, deadline - at),
 });
 
@@ -513,6 +518,7 @@ const decisionAt = (startedAt: Millis, deadline: Millis, at: Millis) => ({
 });
 
 const clocksView = (state: Open, at: Millis) => ({
+  at,
   nextDeal: Option.map(nextDealAt(state), (due) => remainingAt(due, at)),
   runChoice: state.clocks.decision.pipe(
     Option.filter(DecisionClocks.$is("RunChoice")),

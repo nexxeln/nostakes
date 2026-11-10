@@ -181,6 +181,7 @@ describe("views", () => {
     );
     expect(view.clocks.turn).toStrictEqual(
       Option.some({
+        deadline: ms(31_000),
         inTimeBank: false,
         remainingMs: 20_000,
         seat: seat(0),
@@ -247,6 +248,7 @@ describe("clock lengths", () => {
   it("gives the turn clock its full length, and a time bank the seconds it held when it started, not the room's setting", () => {
     expect(annTurn(dealt.state, 11_000)).toStrictEqual(
       Option.some({
+        deadline: ms(31_000),
         inTimeBank: false,
         remainingMs: 20_000,
         seat: seat(0),
@@ -258,6 +260,7 @@ describe("clock lengths", () => {
 
     expect(annTurn(banked, 41_000)).toStrictEqual(
       Option.some({
+        deadline: ms(51_000),
         inTimeBank: true,
         remainingMs: 10_000,
         seat: seat(0),
@@ -276,11 +279,27 @@ describe("clock lengths", () => {
 
     expect(annTurn(onTheFlop, 70_000)).toStrictEqual(
       Option.some({
+        deadline: ms(84_000),
         inTimeBank: true,
         remainingMs: 14_000,
         seat: seat(0),
         totalMs: 17_000,
       })
     );
+  });
+
+  it("stamps the clocks with the server time the view was computed at and each deadline, so a copy that arrives late still counts down to the same moment", () => {
+    const early = openView(viewFor(dealt.state, annSees, ms(11_000))).clocks;
+    const late = openView(viewFor(dealt.state, annSees, ms(21_000))).clocks;
+
+    expect([early.at, late.at]).toStrictEqual([ms(11_000), ms(21_000)]);
+    expect(
+      [early, late].map(({ at, turn }) =>
+        turn.pipe(Option.map(({ deadline }) => [deadline, deadline - at]))
+      )
+    ).toStrictEqual([
+      Option.some([ms(31_000), 20_000]),
+      Option.some([ms(31_000), 10_000]),
+    ]);
   });
 });

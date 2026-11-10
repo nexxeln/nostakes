@@ -89,6 +89,7 @@ export type Drafts = typeof DraftsSchema.Type;
 export const CopiedSchema = Schema.Literals(["Nothing", "Link", "Settlement"]);
 
 export const InRoomSchema = Schema.Struct({
+  clockSamples: Schema.Array(Schema.Int),
   code: RoomCodeSchema,
   connected: Schema.Boolean,
   copied: CopiedSchema,

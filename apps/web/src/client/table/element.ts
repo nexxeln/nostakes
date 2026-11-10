@@ -649,7 +649,7 @@ export class NostakesTable extends HTMLElement {
   #lastEventId = -1;
   #handId = -1;
   #legalKey = "";
-  #clockKey = -1;
+  #clockKey = "";
   #clockAt = 0;
   #frameId = 0;
   #last = 0;

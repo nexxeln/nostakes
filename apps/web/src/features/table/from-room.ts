@@ -309,23 +309,38 @@ const canTakeASeat = (view: OpenView, room: InRoom) =>
   !view.requests.seats.some(({ player }) => player === room.player) &&
   Option.isNone(room.drafts.seat);
 
-const clockOf = (view: OpenView, room: InRoom): ActionClock | null => {
-  const key = Option.match(room.shown, {
-    onNone: () => 0,
-    onSome: ({ receivedAt }) => receivedAt,
+export const KEPT_CLOCK_SAMPLES = 8;
+
+export const clockSampleOf = (view: OpenView, receivedAt: number) =>
+  view.clocks.at - receivedAt;
+
+const serverTimeAtArrival = (view: OpenView, room: InRoom) => {
+  const receivedAt = Option.match(room.shown, {
+    onNone: () => view.clocks.at,
+    onSome: (shown) => shown.receivedAt,
   });
 
+  return (
+    receivedAt + Math.max(clockSampleOf(view, receivedAt), ...room.clockSamples)
+  );
+};
+
+const clockOf = (view: OpenView, room: InRoom): ActionClock | null => {
+  const serverNow = serverTimeAtArrival(view, room);
+
   const ring = ({
+    deadline,
     remainingMs,
     seat,
     totalMs,
   }: {
+    readonly deadline: number;
     readonly remainingMs: number;
     readonly seat: number;
     readonly totalMs: number;
   }): ActionClock => ({
-    key,
-    remainingMs,
+    key: `${deadline}:${seat}`,
+    remainingMs: Math.max(0, deadline - serverNow),
     seat,
     totalMs: Math.max(remainingMs, totalMs),
   });

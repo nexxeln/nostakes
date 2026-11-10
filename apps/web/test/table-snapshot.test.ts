@@ -1,6 +1,7 @@
 import { describe, expect, it } from "@effect/vitest";
+import { SeatIndexSchema } from "@nostakes/engine";
 import { PlayerIdSchema, RoomCodeSchema } from "@nostakes/protocol";
-import { RoomViewSchema } from "@nostakes/room";
+import { MillisSchema, RoomViewSchema } from "@nostakes/room";
 import { Option, Schema } from "effect";
 import * as Arbitrary from "effect/Arbitrary";
 
@@ -14,6 +15,8 @@ import {
 
 const PLAYER = PlayerIdSchema.make("player-0000000ab");
 
+const ms = (amount: number) => MillisSchema.make(amount);
+
 const views = Arbitrary.schema(RoomViewSchema.cases.Open);
 
 const roomWith = (
@@ -21,6 +24,7 @@ const roomWith = (
   live: boolean,
   acting: boolean
 ): InRoom => ({
+  clockSamples: [],
   code: RoomCodeSchema.make("ABC234"),
   connected: true,
   copied: "Nothing",
@@ -139,7 +143,7 @@ const ringOf = ({
   readonly remainingMs: number;
   readonly seat: number;
   readonly totalMs: number;
-}) => ({ remainingMs, seat, totalMs: Math.max(remainingMs, totalMs) });
+}) => ({ seat, totalMs: Math.max(remainingMs, totalMs) });
 
 describe("the ring around a face", () => {
   it.prop(
@@ -161,14 +165,47 @@ describe("the ring around a face", () => {
       expect(
         clock === null
           ? Option.none()
-          : Option.some({
-              remainingMs: clock.remainingMs,
-              seat: clock.seat,
-              totalMs: clock.totalMs,
-            })
+          : Option.some({ seat: clock.seat, totalMs: clock.totalMs })
       ).toEqual(wanted);
     },
     { arbitrary: { runs: 200 } }
+  );
+
+  it.prop(
+    "counts down to the server's deadline, judged by the quickest update the page has had, so a late or repeated copy of the view gives back no time",
+    { view: views },
+    ({ view }) => {
+      const late = {
+        ...view,
+        clocks: {
+          ...view.clocks,
+          at: ms(10_000),
+          showdown: Option.none(),
+          turn: Option.some({
+            deadline: ms(40_000),
+            inTimeBank: false,
+            remainingMs: 30_000,
+            seat: SeatIndexSchema.make(0),
+            totalMs: 30_000,
+          }),
+        },
+      };
+
+      const arrivedAt = (receivedAt: number): InRoom => ({
+        ...roomWith(late, true, false),
+        clockSamples: [5000 - 995_000, 10_000 - 1_003_000],
+        shown: Option.some({ receivedAt, seq: 2, view: late }),
+      });
+
+      const first = tableSnapshot(arrivedAt(1_003_000), late, [], []).clock;
+      const again = tableSnapshot(arrivedAt(1_009_000), late, [], []).clock;
+
+      expect(first?.remainingMs).toBe(27_000);
+      expect(again?.remainingMs).toBe(21_000);
+      expect(again?.key).toBe(first?.key);
+      expect(first?.totalMs).toBe(30_000);
+    },
+    { arbitrary: { runs: 20 } }
   );
 });
 
