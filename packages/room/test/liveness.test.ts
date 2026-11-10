@@ -54,6 +54,8 @@ const night = Arbitrary.schema(NightSchema);
 
 const STEP_LIMIT = 5000;
 
+const KEPT_IN_STEPS = 400;
+
 const host = POOL[0] ?? PlayerIdSchema.make("p0");
 
 const serverAnswer = (deadline: Deadline, seed: number): RoomCommand =>
@@ -176,7 +178,8 @@ const silentNight = (
   settings: RoomSettings,
   players: number,
   returns: number,
-  below: (bound: number) => number
+  below: (bound: number) => number,
+  limit = STEP_LIMIT
 ) => {
   let state = startedRoom(settings, players, below);
 
@@ -196,7 +199,7 @@ const silentNight = (
   let comebacks = returns;
   let steps = 0;
 
-  for (; steps < STEP_LIMIT; steps += 1) {
+  for (; steps < limit; steps += 1) {
     const deadline = nextDeadline(state);
 
     if (
@@ -318,7 +321,8 @@ describe("liveness", () => {
         settings,
         players,
         0,
-        random.below
+        random.below,
+        KEPT_IN_STEPS
       );
 
       expect(refused).toStrictEqual([]);
