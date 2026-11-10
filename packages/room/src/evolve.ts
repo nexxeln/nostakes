@@ -5,6 +5,7 @@ import { Option } from "effect";
 import { RoomEvents } from "./events.js";
 import type { RoomEvent, RoomEventOf } from "./events.js";
 import { boughtIn, cashedOut, withEntry } from "./money.js";
+import { recorded } from "./record.js";
 import {
   DecisionClocks,
   EMPTY_QUEUE,
@@ -52,7 +53,11 @@ const vacated = (state: Open, player: PlayerId, seat: SeatIndex): Open => ({
 });
 
 const onTable = (state: Open, event: Event, at: Millis): Open => {
-  const next = { ...state, table: evolveTable(state.table, event) };
+  const next = {
+    ...state,
+    record: recorded(state.record, event),
+    table: evolveTable(state.table, event),
+  };
 
   if (Events.$is("PlayerStood")(event)) {
     return vacated(next, event.player, event.seat);

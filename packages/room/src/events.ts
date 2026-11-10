@@ -13,7 +13,7 @@ import { MillisSchema } from "./time.js";
 
 const at = MillisSchema;
 
-export const RoomEventSchema = Schema.TaggedUnion({
+export const roomEventFields = {
   BoughtIn: {
     amount: ChipAmountSchema,
     at,
@@ -69,7 +69,6 @@ export const RoomEventSchema = Schema.TaggedUnion({
   },
   SettingsChanged: { at, settings: RoomSettingsSchema },
   StraddleDeclared: { at, on: Schema.Boolean, player: PlayerIdSchema },
-  Table: { at, event: EventSchema },
   TimeBankSpent: {
     at,
     player: PlayerIdSchema,
@@ -82,6 +81,11 @@ export const RoomEventSchema = Schema.TaggedUnion({
     player: PlayerIdSchema,
     seat: SeatIndexSchema,
   },
+};
+
+export const RoomEventSchema = Schema.TaggedUnion({
+  ...roomEventFields,
+  Table: { at, event: EventSchema },
 });
 
 export type RoomEvent = typeof RoomEventSchema.Type;

@@ -97,3 +97,24 @@ export type { Member, Open, RoomState } from "./state.js";
 export { MillisSchema, millis } from "./time.js";
 
 export type { Millis } from "./time.js";
+
+export {
+  AudienceSchema,
+  Audiences,
+  AwardSchema,
+  ClocksViewSchema,
+  HandViewSchema,
+  LastHandViewSchema,
+  PublicHandStartedSchema,
+  RoomViewSchema,
+  RoomViews,
+  SeatViewSchema,
+  SeenEventSchema,
+  SeenEvents,
+  SeenTableEventSchema,
+  audienceOf,
+  redact,
+  viewFor,
+} from "./views.js";
+
+export type { Audience, RoomView, SeenEvent, SeenTableEvent } from "./views.js";
