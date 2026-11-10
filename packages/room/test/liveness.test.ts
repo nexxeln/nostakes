@@ -30,14 +30,14 @@ import {
   replay,
 } from "../src/index.js";
 import type {
-  Deadline,
   Decision,
   Open,
   RoomCommand,
   RoomSettings,
   RoomState,
 } from "../src/index.js";
-import { bytesFrom } from "./fixtures.js";
+import { serverAnswer } from "./beacon.js";
+import { drand } from "./fixtures.js";
 import { seededRandom } from "./random.js";
 import { POOL, settingsFrom } from "./sessions.js";
 
@@ -57,22 +57,6 @@ const STEP_LIMIT = 5000;
 const KEPT_IN_STEPS = 400;
 
 const host = POOL[0] ?? PlayerIdSchema.make("p0");
-
-const serverAnswer = (deadline: Deadline, seed: number): RoomCommand =>
-  Deadlines.$match(deadline, {
-    DealDue: ({ at }) =>
-      RoomCommands.Deal({
-        at,
-        by: Actors.Server(),
-        shuffleBytes: bytesFrom(seed),
-      }),
-    RunChoiceClock: ({ at }) =>
-      RoomCommands.ExpireClock({ at, by: Actors.Server(), deadline: at }),
-    ShowdownClock: ({ at }) =>
-      RoomCommands.ExpireClock({ at, by: Actors.Server(), deadline: at }),
-    TurnClock: ({ at }) =>
-      RoomCommands.ExpireClock({ at, by: Actors.Server(), deadline: at }),
-  });
 
 const awayPlayers = (state: RoomState) =>
   RoomStates.$is("Open")(state)
@@ -127,6 +111,7 @@ const startedRoom = (
     openRoom({
       at: millis(0),
       avatar: "",
+      chain: drand.chain,
       code: RoomCodeSchema.make("liveness"),
       host,
       name: "host",

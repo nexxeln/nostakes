@@ -1,3 +1,5 @@
+import { Schema } from "effect";
+
 import { EpochMillisSchema } from "./schemas.js";
 import type { BeaconRound, EpochMillis } from "./schemas.js";
 
@@ -5,15 +7,19 @@ export const SIGNATURE_SCHEME = "bls-unchained-g1-rfc9380";
 
 export const SIGNATURE_DST = "BLS_SIG_BLS12381G1_XMD:SHA-256_SSWU_RO_NUL_";
 
-export interface DrandChain {
-  readonly beaconId: string;
-  readonly chainHash: string;
-  readonly genesisSeed: string;
-  readonly genesisSeconds: number;
-  readonly periodSeconds: number;
-  readonly publicKey: string;
-  readonly scheme: typeof SIGNATURE_SCHEME;
-}
+const hexText = Schema.String.check(Schema.isPattern(/^(?:[0-9a-f]{2})+$/u));
+
+export const DrandChainSchema = Schema.Struct({
+  beaconId: Schema.String.check(Schema.isMinLength(1)),
+  chainHash: hexText,
+  genesisSeconds: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
+  genesisSeed: hexText,
+  periodSeconds: Schema.Int.check(Schema.isGreaterThanOrEqualTo(1)),
+  publicKey: hexText,
+  scheme: Schema.Literal(SIGNATURE_SCHEME),
+});
+
+export type DrandChain = typeof DrandChainSchema.Type;
 
 export const QUICKNET: DrandChain = {
   beaconId: "quicknet",

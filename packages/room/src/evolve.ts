@@ -6,19 +6,29 @@ import { RoomEvents } from "./events.js";
 import type { RoomEvent, RoomEventOf } from "./events.js";
 import { boughtIn, cashedOut, withEntry } from "./money.js";
 import { recorded } from "./record.js";
+import { beaconOf, planOf } from "./sealed-hand.js";
 import {
   DecisionClocks,
   EMPTY_QUEUE,
+  ProofDeals,
   RoomStates,
   occupantAt,
 } from "./state.js";
-import type { DecisionClock, Open, Queue, RoomState } from "./state.js";
+import type {
+  DecisionClock,
+  Open,
+  ProofDeal,
+  Queue,
+  RoomState,
+  Sealed,
+} from "./state.js";
 import { latest } from "./time.js";
 import type { Millis } from "./time.js";
 
 export const opened = (event: RoomEventOf<"RoomOpened">): Open =>
   RoomStates.Open({
     away: [],
+    chain: event.chain,
     clocks: {
       bankRefilled: new Map(),
       bankSpent: new Map(),
@@ -34,9 +44,11 @@ export const opened = (event: RoomEventOf<"RoomOpened">): Open =>
     host: event.host,
     members: [],
     now: event.at,
+    proof: Option.none(),
     queued: EMPTY_QUEUE,
     record: Option.none(),
     requests: { chips: [], seats: [] },
+    sealed: Option.none(),
     settings: event.settings,
     straddlers: [],
     table: initialTable(event.settings.table),
@@ -84,10 +96,18 @@ const dealtInto = (state: Open, seats: readonly SeatIndex[]): Open => {
   return { ...state, clocks: { ...state.clocks, handsDealt } };
 };
 
+const proofFor = (state: Open, handNumber: number): Open =>
+  Option.exists(state.proof, (proof) => proof.sealed.hand === handNumber)
+    ? state
+    : { ...state, proof: Option.none() };
+
 const onTable = (state: Open, event: Event, at: Millis): Open => {
   const next = {
     ...(Events.$is("HandStarted")(event)
-      ? { ...dealtInto(state, event.dealtIn), dealCalled: false }
+      ? {
+          ...proofFor(dealtInto(state, event.dealtIn), event.handNumber),
+          dealCalled: false,
+        }
       : state),
     record: recorded(state.record, event),
     table: evolveTable(state.table, event),
@@ -172,6 +192,19 @@ const bankStarted = (state: Open, deadline: Millis): Open =>
     )
   );
 
+const dealtFromSeal = (
+  state: Open,
+  deal: (sealed: Sealed) => ProofDeal
+): Open =>
+  Option.match(state.sealed, {
+    onNone: () => state,
+    onSome: (sealed) => ({
+      ...state,
+      proof: Option.some({ deal: deal(sealed), opened: [], sealed }),
+      sealed: Option.none(),
+    }),
+  });
+
 const evolveOpen = (state: Open, event: RoomEvent): RoomState =>
   RoomEvents.$match(event, {
     BoughtIn: ({ amount, player, seat }) => ({
@@ -183,6 +216,18 @@ const evolveOpen = (state: Open, event: RoomEvent): RoomState =>
         Option.isSome(occupantAt(state.table, seat))
           ? Events.ChipsAdded({ amount, seat })
           : Events.PlayerSat({ buyIn: amount, player, seat })
+      ),
+    }),
+    CardsOpened: ({ holder, openings }) => ({
+      ...state,
+      proof: state.proof.pipe(
+        Option.map((proof) => ({
+          ...proof,
+          opened: [
+            ...proof.opened,
+            ...openings.map((card) => ({ card, holder })),
+          ],
+        }))
       ),
     }),
     CashedOut: ({ amount, at, player, seat }) =>
@@ -215,8 +260,23 @@ const evolveOpen = (state: Open, event: RoomEvent): RoomState =>
       ...state,
       queued: { ...state.queued, close: true },
     }),
+    DealtFromBeacon: ({ round, signature, spare }) =>
+      dealtFromSeal(state, (sealed) =>
+        ProofDeals.FromBeacon({
+          plan: planOf(state.code, sealed, beaconOf(round, signature)),
+          round,
+          signature,
+          spare,
+        })
+      ),
+    DealtWithoutBeacon: ({ reason }) =>
+      dealtFromSeal(state, () => ProofDeals.WithoutBeacon({ reason })),
     GamePaused: (): Open => ({ ...state, dealCalled: false, game: "Waiting" }),
     GameStarted: (): Open => ({ ...state, game: "Running" }),
+    HandSealed: ({ at, decks, hand, roots, round, seats, secret }) => ({
+      ...state,
+      sealed: Option.some({ at, decks, hand, roots, round, seats, secret }),
+    }),
     HostChanged: ({ host }) => ({ ...state, host }),
     LeaveQueued: ({ player }) => ({
       ...state,
@@ -271,6 +331,7 @@ const evolveOpen = (state: Open, event: RoomEvent): RoomState =>
     }),
     RunClockStarted: ({ deadline }) =>
       withDecision(state, Option.some(DecisionClocks.RunChoice({ deadline }))),
+    SealWithdrawn: () => ({ ...state, sealed: Option.none() }),
     SeatApproved: ({ player }) => withoutSeatRequest(state, player),
     SeatDenied: ({ player }) => withoutSeatRequest(state, player),
     SeatRequested: ({ buyIn, player, seat }) => ({

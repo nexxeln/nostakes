@@ -22,9 +22,10 @@ import {
   sealHand,
   SEALING_MARGIN_MS,
   seedOf,
+  selfSignedChain,
   sha256,
-  verifyBeacon,
   Verdicts,
+  verifyBeacon,
 } from "../src/index.js";
 import type {
   Beacon,
@@ -36,14 +37,13 @@ import type {
   Verdict,
 } from "../src/index.js";
 import { between, deck, handContext, saltSecret } from "./arbitraries.js";
-import { signingChain } from "./beacons.js";
 import { QUICKNET_ROUNDS } from "./fixtures/drand-rounds.js";
 import { dealHonestly, keepFlags, pickedFrom, seats } from "./hands.js";
 import type { HonestHand } from "./hands.js";
 
-const drand = signingChain("test beacon");
+const drand = selfSignedChain("test beacon");
 
-const serversOwn = signingChain("a key the server holds");
+const serversOwn = selfSignedChain("a key the server holds");
 
 const at = (millis: number) => EpochMillisSchema.make(millis);
 

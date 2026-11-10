@@ -9,6 +9,7 @@ import {
   TableStates,
 } from "@nostakes/engine";
 import type { Command, Event, PlayerId, SeatIndex } from "@nostakes/engine";
+import { BeaconRoundSchema } from "@nostakes/shuffle";
 import { Data, Option, Result, Schema } from "effect";
 
 import { andThen } from "./batch.js";
@@ -18,6 +19,7 @@ import type { Decision } from "./decision.js";
 import { RoomEvents } from "./events.js";
 import type { RoomEvent } from "./events.js";
 import { ActionNotOnSeat, ClockNotDue, NoSuchDeadline } from "./rejection.js";
+import { sealDue, sealedDealDue } from "./sealing.js";
 import { TimeBankRefills, turnClockRuns } from "./settings.js";
 import { DecisionClocks, RoomStates, heldSeat, occupantAt } from "./state.js";
 import type { DecisionClock, Open, RoomState } from "./state.js";
@@ -33,6 +35,8 @@ import type { Millis } from "./time.js";
 export const DeadlineSchema = Schema.TaggedUnion({
   DealDue: { at: MillisSchema },
   RunChoiceClock: { at: MillisSchema },
+  SealDue: { at: MillisSchema },
+  SealedDealDue: { at: MillisSchema, round: BeaconRoundSchema },
   ShowdownClock: { at: MillisSchema, seat: SeatIndexSchema },
   TurnClock: { at: MillisSchema, seat: SeatIndexSchema },
 });
@@ -41,13 +45,34 @@ export type Deadline = typeof DeadlineSchema.Type;
 
 export const Deadlines = Data.taggedEnum<Deadline>();
 
+const dealingDeadline = (state: Open): Option.Option<Deadline> =>
+  sealedDealDue(state).pipe(
+    Option.map(({ at, round }): Deadline =>
+      Deadlines.SealedDealDue({ at, round })
+    ),
+    Option.orElse(() =>
+      state.settings.shuffle === "Checked"
+        ? Option.map(sealDue(state), (at): Deadline =>
+            Deadlines.SealDue({ at })
+          )
+        : Option.map(dealDue(state), (at): Deadline =>
+            Deadlines.DealDue({ at })
+          )
+    )
+  );
+
+export const nextDealAt = (state: Open): Option.Option<Millis> =>
+  sealedDealDue(state).pipe(
+    Option.map(({ at }) => at),
+    Option.orElse(() => dealDue(state))
+  );
+
 export const nextDeadline = (state: RoomState): Option.Option<Deadline> =>
   RoomStates.$match(state, {
     Closed: () => Option.none(),
     Open: (open) =>
       Option.match(open.clocks.decision, {
-        onNone: () =>
-          Option.map(dealDue(open), (at) => Deadlines.DealDue({ at })),
+        onNone: () => dealingDeadline(open),
         onSome: (clock) =>
           Option.some(
             DecisionClocks.$match(clock, {

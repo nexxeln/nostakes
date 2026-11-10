@@ -71,7 +71,7 @@ export const dealableSeats = (table: TableState) =>
     )
   );
 
-const dueAt = (state: Open): Millis =>
+export const betweenHandsDue = (state: Open): Millis =>
   Option.match(state.clocks.lastHandEndedAt, {
     onNone: () => state.now,
     onSome: (ended) => secondsAfter(ended, state.settings.betweenHandsSeconds),
@@ -85,7 +85,7 @@ export const dealDue = (state: Open) =>
   !handInProgress(state) &&
   !waitingForHost(state) &&
   dealableSeats(state.table).length >= 2
-    ? Option.some(dueAt(state))
+    ? Option.some(betweenHandsDue(state))
     : Option.none();
 
 const cannotDeal = (state: Open) => {
@@ -109,6 +109,18 @@ const cannotDeal = (state: Open) => {
 };
 
 const notDue = (state: Open, at: Millis) => {
+  if (Option.isSome(state.sealed)) {
+    return Option.some(
+      new DealNotDue({ due: Option.none(), reason: "Sealed" })
+    );
+  }
+
+  if (state.settings.shuffle === "Checked") {
+    return Option.some(
+      new DealNotDue({ due: Option.none(), reason: "NotSealed" })
+    );
+  }
+
   const blocked = cannotDeal(state);
 
   if (Option.isSome(blocked)) {
@@ -121,7 +133,7 @@ const notDue = (state: Open, at: Millis) => {
     );
   }
 
-  const due = dueAt(state);
+  const due = betweenHandsDue(state);
 
   return at < due
     ? Option.some(new DealNotDue({ due: Option.some(due), reason: "TooEarly" }))

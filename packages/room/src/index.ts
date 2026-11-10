@@ -1,6 +1,15 @@
-export { RoomCommandSchema, RoomCommands } from "./commands.js";
+export {
+  RoomCommandSchema,
+  RoomCommands,
+  SealedDealSourceSchema,
+  SealedDealSources,
+} from "./commands.js";
 
-export type { RoomCommand, RoomCommandOf } from "./commands.js";
+export type {
+  RoomCommand,
+  RoomCommandOf,
+  SealedDealSource,
+} from "./commands.js";
 
 export {
   JoinRequestSchema,
@@ -14,9 +23,22 @@ export type {
   OpenRequest,
 } from "./member-commands.js";
 
-export { RoomEventSchema, RoomEvents } from "./events.js";
+export {
+  HolderSchema,
+  OpenedCardSchema,
+  RoomEventSchema,
+  RoomEvents,
+  WithdrawalReasonSchema,
+  sealFields,
+} from "./events.js";
 
-export type { RoomEvent, RoomEventOf } from "./events.js";
+export type {
+  Holder,
+  OpenedCard,
+  RoomEvent,
+  RoomEventOf,
+  WithdrawalReason,
+} from "./events.js";
 
 export { evolve, evolveAll, replay } from "./evolve.js";
 
@@ -38,6 +60,8 @@ export {
   AlreadyLeaving,
   AlreadySeated,
   AlreadyTheHost,
+  BeaconRejected,
+  BeaconRoundWrong,
   BuyInOutOfRange,
   ChipRequestPending,
   ChipsOverMax,
@@ -53,8 +77,13 @@ export {
   NotAMember,
   NotSeated,
   NotTheHost,
+  NothingSealed,
   RoomIsClosed,
   RoomRejectionSchema,
+  SaltSecretSize,
+  SealNotDue,
+  SealRoundTooSoon,
+  SealedSeatsMoved,
   SeatBeyondTable,
   SeatNotFree,
   SeatRequestPending,
@@ -124,7 +153,13 @@ export { chipsOnTable, settlement } from "./money.js";
 
 export type { Balance, Settlement, Transfer } from "./settlement.js";
 
-export { DecisionClocks, RoomStates, SEATS, seatOf } from "./state.js";
+export {
+  DecisionClocks,
+  ProofDeals,
+  RoomStates,
+  SEATS,
+  seatOf,
+} from "./state.js";
 
 export type { Member, Open, RoomState } from "./state.js";
 
@@ -133,15 +168,36 @@ export { MillisSchema, millis } from "./time.js";
 export type { Millis } from "./time.js";
 
 export {
+  DealSights,
+  MissingEvidences,
+  emptyWitness,
+  evidenceFor,
+  handsWitnessed,
+  sealsSeen,
+  witnessEvent,
+  witnessView,
+} from "./witness.js";
+
+export type {
+  DealSight,
+  HandSight,
+  MissingEvidence,
+  Witness,
+} from "./witness.js";
+
+export {
   AudienceSchema,
   Audiences,
   AwardSchema,
   ClocksViewSchema,
+  DealtViewSchema,
+  FairnessViewSchema,
   HandViewSchema,
   LastHandViewSchema,
   PublicHandStartedSchema,
   RoomViewSchema,
   RoomViews,
+  SealViewSchema,
   SeatViewSchema,
   SeenEventSchema,
   SeenEvents,

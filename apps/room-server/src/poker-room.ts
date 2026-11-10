@@ -11,6 +11,7 @@ import {
   RoomRejectionSchema,
   RoomSettingsSchema,
   RoomViewSchema,
+  SealedDealSources,
   SeenEventSchema,
   TimeBankRefills,
   audienceOf,
@@ -38,6 +39,12 @@ import type {
   RoomView,
   SeenEvent,
 } from "@nostakes/room";
+import {
+  DIGEST_BYTES,
+  EpochMillisSchema,
+  QUICKNET,
+  roundToSeal,
+} from "@nostakes/shuffle";
 import { Option, Schema } from "effect";
 
 import type { HostedRoom } from "./hosted-room.js";
@@ -51,6 +58,8 @@ export {
 export type { JoinRequest, MemberCommand, OpenRequest } from "@nostakes/room";
 
 export const DEAL_SHUFFLE_BYTES = 128;
+
+export const SEAL_BYTES = 2 * DEAL_SHUFFLE_BYTES + DIGEST_BYTES;
 
 export const DEFAULT_SETTINGS: RoomSettings = Schema.decodeSync(
   RoomSettingsSchema
@@ -120,7 +129,15 @@ const replayLog = (events: Iterable<RoomEvent>): RoomState => {
 export const pokerRoom: HostedRoom<PokerTypes> = {
   audienceOf,
   decide,
-  entropyFor: (due) => (Deadlines.$is("DealDue")(due) ? DEAL_SHUFFLE_BYTES : 0),
+  entropyFor: (due) =>
+    Deadlines.$match(due, {
+      DealDue: () => DEAL_SHUFFLE_BYTES,
+      RunChoiceClock: () => 0,
+      SealDue: () => SEAL_BYTES,
+      SealedDealDue: () => DEAL_SHUFFLE_BYTES,
+      ShowdownClock: () => 0,
+      TurnClock: () => 0,
+    }),
   evolve,
   invariants: (state) =>
     invariants(state).map(({ detail, invariant }) => `${invariant}: ${detail}`),
@@ -160,6 +177,25 @@ export const pokerRoom: HostedRoom<PokerTypes> = {
           at: millis(at),
           by: Actors.Server(),
           deadline: clock.at,
+        }),
+      SealDue: () =>
+        RoomCommands.SealHand({
+          at: millis(at),
+          by: Actors.Server(),
+          decks: [
+            entropy.slice(0, DEAL_SHUFFLE_BYTES),
+            entropy.slice(DEAL_SHUFFLE_BYTES, 2 * DEAL_SHUFFLE_BYTES),
+          ],
+          round: roundToSeal(QUICKNET, EpochMillisSchema.make(at)),
+          secret: entropy.slice(2 * DEAL_SHUFFLE_BYTES, SEAL_BYTES),
+        }),
+      SealedDealDue: () =>
+        RoomCommands.DealSealed({
+          at: millis(at),
+          by: Actors.Server(),
+          source: SealedDealSources.BeaconUnavailable({
+            shuffleBytes: entropy,
+          }),
         }),
       ShowdownClock: (clock) =>
         RoomCommands.ExpireClock({

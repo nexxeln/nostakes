@@ -7,6 +7,7 @@ import {
   TableConfigSchema,
 } from "@nostakes/engine";
 import type { PlayerId } from "@nostakes/engine";
+import { selfSignedChain } from "@nostakes/shuffle";
 import { Result } from "effect";
 
 import {
@@ -76,11 +77,19 @@ export const settings: RoomSettings = {
 
 export const roomCode = RoomCodeSchema.make("night");
 
+const signer = selfSignedChain("room tests");
+
+export const drand = {
+  ...signer,
+  chain: { ...signer.chain, genesisSeconds: 0 },
+};
+
 export const openedBy = (host: PlayerId, chosen: RoomSettings = settings) =>
   replay(
     openRoom({
       at: ms(0),
       avatar: "spade",
+      chain: drand.chain,
       code: roomCode,
       host,
       name: host,

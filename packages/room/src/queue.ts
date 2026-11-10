@@ -47,7 +47,9 @@ export const queuedSteps = (state: Open, at: Millis): readonly Step[] => [
 export const endOfHand = (state: Open, at: Millis): Option.Option<Decision> => {
   const steps = queuedSteps(state, at);
 
-  return handInProgress(state) || steps.length === 0
+  return handInProgress(state) ||
+    Option.isSome(state.sealed) ||
+    steps.length === 0
     ? Option.none()
     : Option.some(inSequence(state, steps));
 };

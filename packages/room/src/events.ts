@@ -4,7 +4,18 @@ import {
   SeatIndexSchema,
   TableConfigSchema,
 } from "@nostakes/engine";
-import { Data, Schema } from "effect";
+import {
+  BeaconRoundSchema,
+  DeckOpeningSchema,
+  DeckSchema as SealedDeckSchema,
+  DigestSchema,
+  DrandChainSchema,
+  OpeningSchema as CardOpeningSchema,
+  QUICKNET,
+  RoleSchema,
+  SaltSecretSchema,
+} from "@nostakes/shuffle";
+import { Data, Effect, Schema } from "effect";
 
 import { AvatarSchema, NameSchema, RoomCodeSchema } from "./identity.js";
 import { ChipAmountSchema, RoomSettingsSchema } from "./settings.js";
@@ -13,12 +24,54 @@ import { MillisSchema } from "./time.js";
 
 const at = MillisSchema;
 
+export const HandNumberSchema = Schema.Int.check(
+  Schema.isGreaterThanOrEqualTo(1)
+);
+
+export const sealFields = {
+  at,
+  hand: HandNumberSchema,
+  roots: Schema.Tuple([DigestSchema, DigestSchema]),
+  round: BeaconRoundSchema,
+  seats: Schema.Array(SeatIndexSchema),
+};
+
+export const HolderSchema = Schema.Struct({
+  player: PlayerIdSchema,
+  seat: SeatIndexSchema,
+});
+
+export type Holder = typeof HolderSchema.Type;
+
+export const OpenedCardSchema = Schema.Struct({
+  opening: CardOpeningSchema,
+  role: RoleSchema,
+});
+
+export type OpenedCard = typeof OpenedCardSchema.Type;
+
+export const WithdrawalReasonSchema = Schema.Literals([
+  "GamePaused",
+  "RoomClosing",
+  "SeatsChanged",
+]);
+
+export type WithdrawalReason = typeof WithdrawalReasonSchema.Type;
+
+const chainWhenAbsent = Effect.succeed(QUICKNET);
+
 export const roomEventFields = {
   BoughtIn: {
     amount: ChipAmountSchema,
     at,
     player: PlayerIdSchema,
     seat: SeatIndexSchema,
+  },
+  CardsOpened: {
+    at,
+    hand: HandNumberSchema,
+    holder: Schema.Option(HolderSchema),
+    openings: Schema.Array(OpenedCardSchema),
   },
   CashedOut: {
     amount: ChipAmountSchema,
@@ -32,6 +85,19 @@ export const roomEventFields = {
   ChipsRequested: { amount: ChipAmountSchema, at, player: PlayerIdSchema },
   ClockStopped: { at },
   CloseQueued: { at },
+  DealtFromBeacon: {
+    at,
+    hand: HandNumberSchema,
+    round: BeaconRoundSchema,
+    signature: Schema.Uint8Array,
+    spare: DeckOpeningSchema,
+  },
+  DealtWithoutBeacon: {
+    at,
+    hand: HandNumberSchema,
+    reason: Schema.Literal("BeaconUnavailable"),
+    round: BeaconRoundSchema,
+  },
   GamePaused: { at },
   GameStarted: { at },
   HostChanged: { at, host: PlayerIdSchema },
@@ -54,12 +120,22 @@ export const roomEventFields = {
   RoomClosed: { at, settlement: SettlementSchema },
   RoomOpened: {
     at,
+    chain: DrandChainSchema.pipe(
+      Schema.withConstructorDefault(chainWhenAbsent),
+      Schema.withDecodingDefaultTypeKey(chainWhenAbsent)
+    ),
     code: RoomCodeSchema,
     host: PlayerIdSchema,
     settings: RoomSettingsSchema,
   },
   RulesQueued: { at, config: TableConfigSchema },
   RunClockStarted: { at, deadline: MillisSchema },
+  SealWithdrawn: {
+    at,
+    hand: HandNumberSchema,
+    reason: WithdrawalReasonSchema,
+    round: BeaconRoundSchema,
+  },
   SeatApproved: { at, player: PlayerIdSchema },
   SeatDenied: { at, player: PlayerIdSchema },
   SeatRequested: {
@@ -94,6 +170,11 @@ export const roomEventFields = {
 
 export const RoomEventSchema = Schema.TaggedUnion({
   ...roomEventFields,
+  HandSealed: {
+    ...sealFields,
+    decks: Schema.Tuple([SealedDeckSchema, SealedDeckSchema]),
+    secret: SaltSecretSchema,
+  },
   Table: { at, event: EventSchema },
 });
 

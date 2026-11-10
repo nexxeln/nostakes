@@ -6,6 +6,8 @@ import { AlreadyAMember } from "./rejections/already-a-member.js";
 import { AlreadyLeaving } from "./rejections/already-leaving.js";
 import { AlreadySeated } from "./rejections/already-seated.js";
 import { AlreadyTheHost } from "./rejections/already-the-host.js";
+import { BeaconRejected } from "./rejections/beacon-rejected.js";
+import { BeaconRoundWrong } from "./rejections/beacon-round-wrong.js";
 import { BuyInOutOfRange } from "./rejections/buy-in-out-of-range.js";
 import { ChipRequestPending } from "./rejections/chip-request-pending.js";
 import { ChipsOverMax } from "./rejections/chips-over-max.js";
@@ -21,7 +23,12 @@ import { NoSuchDeadline } from "./rejections/no-such-deadline.js";
 import { NotAMember } from "./rejections/not-a-member.js";
 import { NotSeated } from "./rejections/not-seated.js";
 import { NotTheHost } from "./rejections/not-the-host.js";
+import { NothingSealed } from "./rejections/nothing-sealed.js";
 import { RoomIsClosed } from "./rejections/room-is-closed.js";
+import { SaltSecretSize } from "./rejections/salt-secret-size.js";
+import { SealNotDue } from "./rejections/seal-not-due.js";
+import { SealRoundTooSoon } from "./rejections/seal-round-too-soon.js";
+import { SealedSeatsMoved } from "./rejections/sealed-seats-moved.js";
 import { SeatBeyondTable } from "./rejections/seat-beyond-table.js";
 import { SeatNotFree } from "./rejections/seat-not-free.js";
 import { SeatRequestPending } from "./rejections/seat-request-pending.js";
@@ -64,6 +71,13 @@ export const RoomRejectionSchema = Schema.Union([
   TableRejected,
   TopUpNotAllowed,
   Unbalanced,
+  BeaconRejected,
+  BeaconRoundWrong,
+  NothingSealed,
+  SaltSecretSize,
+  SealNotDue,
+  SealRoundTooSoon,
+  SealedSeatsMoved,
 ]);
 
 export type RoomRejection = typeof RoomRejectionSchema.Type;
@@ -127,5 +141,19 @@ export { ShuffleRanOut } from "./rejections/shuffle-ran-out.js";
 export { TableRejected } from "./rejections/table-rejected.js";
 
 export { TopUpNotAllowed } from "./rejections/top-up-not-allowed.js";
+
+export { BeaconRejected } from "./rejections/beacon-rejected.js";
+
+export { BeaconRoundWrong } from "./rejections/beacon-round-wrong.js";
+
+export { NothingSealed } from "./rejections/nothing-sealed.js";
+
+export { SaltSecretSize } from "./rejections/salt-secret-size.js";
+
+export { SealNotDue } from "./rejections/seal-not-due.js";
+
+export { SealRoundTooSoon } from "./rejections/seal-round-too-soon.js";
+
+export { SealedSeatsMoved } from "./rejections/sealed-seats-moved.js";
 
 export { Unbalanced } from "@nostakes/ledger";

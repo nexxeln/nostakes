@@ -64,14 +64,18 @@ export const audiencesOf = (state: RoomState): readonly Audience[] =>
 const CARD_KEYS = new Set([
   "board",
   "boards",
+  "card",
   "cards",
   "deck",
+  "decks",
   "holeCards",
   "rabbit",
   "shown",
   "undealt",
   "yourCards",
 ]);
+
+const SPARE_DECK_KEY = "spare";
 
 const isJsonArray = (value: Schema.Json): value is Schema.JsonArray =>
   Array.isArray(value);
@@ -93,7 +97,7 @@ export const cardsIn = (
 
   return isJsonObject(value)
     ? Object.entries(value).flatMap(([key, item]) =>
-        cardsIn(item, CARD_KEYS.has(key))
+        key === SPARE_DECK_KEY ? [] : cardsIn(item, CARD_KEYS.has(key))
       )
     : [];
 };
@@ -208,7 +212,12 @@ const HOSTING = new Set<RoomCommand["_tag"]>([
   "TransferHost",
 ]);
 
-const SERVER_ONLY = new Set<RoomCommand["_tag"]>(["Deal", "ExpireClock"]);
+const SERVER_ONLY = new Set<RoomCommand["_tag"]>([
+  "Deal",
+  "DealSealed",
+  "ExpireClock",
+  "SealHand",
+]);
 
 const HOSTING_EVENTS = new Set<RoomEvent["_tag"]>([
   "ChipsApproved",
@@ -224,6 +233,9 @@ const HOSTING_EVENTS = new Set<RoomEvent["_tag"]>([
 ]);
 
 const SERVER_EVENTS = new Set<RoomEvent["_tag"]>([
+  "DealtFromBeacon",
+  "DealtWithoutBeacon",
+  "HandSealed",
   "MarkedAway",
   "TimeBankStarted",
 ]);

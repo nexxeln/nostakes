@@ -17,24 +17,31 @@ import {
 } from "@nostakes/engine";
 import type { Card, Event, Hand, PlayerId, SeatIndex } from "@nostakes/engine";
 import { balances } from "@nostakes/ledger";
+import { DeckOpeningSchema } from "@nostakes/shuffle";
 import { Data, Option, Schema } from "effect";
 
-import { timeBankLeft } from "./clocks.js";
-import { dealDue } from "./dealing.js";
-import { RoomEvents, roomEventFields } from "./events.js";
-import type { RoomEvent } from "./events.js";
+import { nextDealAt, timeBankLeft } from "./clocks.js";
+import {
+  HandNumberSchema,
+  OpenedCardSchema,
+  RoomEvents,
+  roomEventFields,
+  sealFields,
+} from "./events.js";
+import type { Holder, RoomEvent } from "./events.js";
 import { AvatarSchema, NameSchema, RoomCodeSchema } from "./identity.js";
 import { allEntries } from "./money.js";
 import { ChipAmountSchema, RoomSettingsSchema } from "./settings.js";
 import { BalanceSchema, SettlementSchema } from "./settlement.js";
 import {
   DecisionClocks,
+  ProofDeals,
   RoomStates,
   SEATS,
   occupantAt,
   seatOf,
 } from "./state.js";
-import type { Closed, Open, RoomState } from "./state.js";
+import type { Closed, Open, RoomState, Sealed } from "./state.js";
 import { MillisSchema, latest } from "./time.js";
 import type { Millis } from "./time.js";
 
@@ -101,6 +108,7 @@ export type SeenTableEvent = typeof SeenTableEventSchema.Type;
 
 export const SeenEventSchema = Schema.TaggedUnion({
   ...roomEventFields,
+  HandSealed: sealFields,
   Table: { at: MillisSchema, event: SeenTableEventSchema },
 });
 
@@ -129,13 +137,37 @@ const seenTableEvent = (event: Event, audience: Audience): SeenTableEvent => {
   return event;
 };
 
-export const redact = (event: RoomEvent, audience: Audience): SeenEvent =>
-  RoomEvents.$is("Table")(event)
-    ? SeenEvents.Table({
-        at: event.at,
-        event: seenTableEvent(event.event, audience),
-      })
+const holds = (audience: Audience, holder: Option.Option<Holder>) =>
+  Option.match(holder, {
+    onNone: () => true,
+    onSome: ({ player, seat }) =>
+      Audiences.$is("Seated")(audience) &&
+      audience.seat === seat &&
+      audience.player === player,
+  });
+
+export const redact = (event: RoomEvent, audience: Audience): SeenEvent => {
+  if (RoomEvents.$is("Table")(event)) {
+    return SeenEvents.Table({
+      at: event.at,
+      event: seenTableEvent(event.event, audience),
+    });
+  }
+
+  if (RoomEvents.$is("HandSealed")(event)) {
+    return SeenEvents.HandSealed({
+      at: event.at,
+      hand: event.hand,
+      roots: event.roots,
+      round: event.round,
+      seats: event.seats,
+    });
+  }
+
+  return RoomEvents.$is("CardsOpened")(event) && !holds(audience, event.holder)
+    ? SeenEvents.CardsOpened({ ...event, openings: [] })
     : event;
+};
 
 const cards = Schema.Array(CardSchema);
 
@@ -227,6 +259,31 @@ export const ClocksViewSchema = Schema.Struct({
   ),
 });
 
+export const SealViewSchema = Schema.Struct({
+  hand: HandNumberSchema,
+  roots: sealFields.roots,
+  round: sealFields.round,
+  seats: sealFields.seats,
+});
+
+export const DealtViewSchema = Schema.Struct({
+  deal: Schema.TaggedUnion({
+    FromBeacon: {
+      round: sealFields.round,
+      signature: Schema.Uint8Array,
+      spare: DeckOpeningSchema,
+    },
+    WithoutBeacon: { reason: Schema.Literal("BeaconUnavailable") },
+  }),
+  openings: Schema.Array(OpenedCardSchema),
+  seal: SealViewSchema,
+});
+
+export const FairnessViewSchema = Schema.Struct({
+  dealt: Schema.Option(DealtViewSchema),
+  sealed: Schema.Option(SealViewSchema),
+});
+
 const MemberViewSchema = Schema.Struct({
   avatar: AvatarSchema,
   name: NameSchema,
@@ -243,6 +300,7 @@ export const RoomViewSchema = Schema.TaggedUnion({
     balances: Schema.Array(BalanceSchema),
     clocks: ClocksViewSchema,
     code: RoomCodeSchema,
+    fairness: FairnessViewSchema,
     game: Schema.Literals(["Running", "Waiting"]),
     hand: Schema.Option(HandViewSchema),
     holeCards: cards,
@@ -278,6 +336,10 @@ export const RoomViewSchema = Schema.TaggedUnion({
 });
 
 export type RoomView = typeof RoomViewSchema.Type;
+
+type FairnessDeal = typeof DealtViewSchema.Type.deal;
+
+const FairnessDeals = Data.taggedEnum<FairnessDeal>();
 
 export const RoomViews = Data.taggedEnum<RoomView>();
 
@@ -426,7 +488,7 @@ const remainingAt = (deadline: Millis, at: Millis) => ({
 });
 
 const clocksView = (state: Open, at: Millis) => ({
-  nextDeal: Option.map(dealDue(state), (due) => remainingAt(due, at)),
+  nextDeal: Option.map(nextDealAt(state), (due) => remainingAt(due, at)),
   runChoice: state.clocks.decision.pipe(
     Option.filter(DecisionClocks.$is("RunChoice")),
     Option.map(({ deadline }) => remainingAt(deadline, at))
@@ -455,6 +517,47 @@ const clocksView = (state: Open, at: Millis) => ({
     }))
   ),
 });
+
+const sealView = (sealed: Sealed) => ({
+  hand: sealed.hand,
+  roots: sealed.roots,
+  round: sealed.round,
+  seats: sealed.seats,
+});
+
+const fairnessView = (state: Open, audience: Audience) => {
+  const viewer = viewerSeat(state, audience);
+
+  return {
+    dealt: state.proof.pipe(
+      Option.map((proof) => ({
+        deal: ProofDeals.$match(proof.deal, {
+          FromBeacon: ({ round, signature, spare }) =>
+            FairnessDeals.FromBeacon({ round, signature, spare }),
+          WithoutBeacon: ({ reason }) =>
+            FairnessDeals.WithoutBeacon({ reason }),
+        }),
+        openings: proof.opened.flatMap((opened) =>
+          Option.match(opened.holder, {
+            onNone: () => [opened.card],
+            onSome: (holder) =>
+              Option.exists(
+                viewer,
+                (seated) =>
+                  Audiences.$is("Seated")(seated) &&
+                  seated.seat === holder.seat &&
+                  seated.player === holder.player
+              )
+                ? [opened.card]
+                : [],
+          })
+        ),
+        seal: sealView(proof.sealed),
+      }))
+    ),
+    sealed: state.sealed.pipe(Option.map(sealView)),
+  };
+};
 
 const membersView = (state: Open | Closed) =>
   state.members.map(({ avatar, name, player }) => ({ avatar, name, player }));
@@ -491,6 +594,7 @@ const openView = (state: Open, audience: Audience, at: Millis): RoomView => {
     balances: balances(allEntries(state.entries)),
     clocks: clocksView(state, latest(at, state.now)),
     code: state.code,
+    fairness: fairnessView(state, audience),
     game: state.game,
     hand: handView(state),
     holeCards: TableStates.$is("InHand")(table)

@@ -21,6 +21,7 @@ import {
   SettlesAfterHand,
   TopUpNotAllowed,
 } from "./rejection.js";
+import { sealBinds } from "./sealed-hand.js";
 import type { Settlement } from "./settlement.js";
 import { RoomStates, SEATS, heldSeat, occupantAt } from "./state.js";
 import type { Entries, Open, RoomState } from "./state.js";
@@ -196,7 +197,7 @@ export const leaveSeat = (
   at: Millis
 ): Decision =>
   Result.flatMap(heldSeat(state, player), (seat): Decision => {
-    if (!dealtIn(state, seat)) {
+    if (!dealtIn(state, seat) && !sealBinds(state, seat, at)) {
       return standUp(state, seat, at);
     }
 

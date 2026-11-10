@@ -1,4 +1,5 @@
 import { describe, expect, it } from "@effect/vitest";
+import { QUICKNET } from "@nostakes/shuffle";
 
 import {
   AlreadyAMember,
@@ -56,7 +57,13 @@ describe("members", () => {
     });
 
     expect(log).toStrictEqual([
-      RoomEvents.RoomOpened({ at: ms(5), code: roomCode, host: ann, settings }),
+      RoomEvents.RoomOpened({
+        at: ms(5),
+        chain: QUICKNET,
+        code: roomCode,
+        host: ann,
+        settings,
+      }),
       RoomEvents.MemberJoined({
         at: ms(5),
         avatar: "spade",

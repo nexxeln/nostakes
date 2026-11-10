@@ -31,6 +31,7 @@ import {
   RoomStates,
   TimeBankRefills,
   SEATS,
+  SealedDealSources,
   decide,
   evolve,
   millis,
@@ -50,7 +51,8 @@ import type {
   RoomState,
   TopUpRule,
 } from "../src/index.js";
-import { bytesFrom } from "./fixtures.js";
+import { dealFromBeacon, sealAt } from "./beacon.js";
+import { bytesFrom, drand } from "./fixtures.js";
 import { seededRandom } from "./random.js";
 import type { SeededRandom } from "./random.js";
 
@@ -138,7 +140,7 @@ export const settingsFrom = (random: SeededRandom): RoomSettings => ({
   runChoiceSeconds: 1 + random.below(10),
   seats: random.chance(1, 2) ? 9 : 2 + random.below(8),
   showdownSeconds: 1 + random.below(20),
-  shuffle: "Plain",
+  shuffle: random.chance(1, 6) ? "Checked" : "Plain",
   sitOutAfterTimeouts: [1, 1, 0, 2, 3][random.below(5)] ?? 1,
   table: tableConfigFrom(random),
   timeBankRefill: random.chance(1, 2)
@@ -388,14 +390,26 @@ const playOrDeal = (
             })
           : toDealIn(state, random, at);
       },
-      onSome: (deadline) =>
-        Deadlines.$is("DealDue")(deadline)
+      onSome: (deadline) => {
+        const when = Math.max(at, deadline.at);
+        const seed = random.below(1_000_000_000);
+
+        if (Deadlines.$is("SealDue")(deadline)) {
+          return sealAt(when, seed);
+        }
+
+        if (Deadlines.$is("SealedDealDue")(deadline)) {
+          return dealFromBeacon(when, deadline.round);
+        }
+
+        return Deadlines.$is("DealDue")(deadline)
           ? RoomCommands.Deal({
-              at: millis(Math.max(at, deadline.at)),
+              at: millis(when),
               by: server,
-              shuffleBytes: bytesFrom(random.below(1_000_000_000)),
+              shuffleBytes: bytesFrom(seed),
             })
-          : toDealIn(state, random, at),
+          : toDealIn(state, random, at);
+      },
     })
   );
 
@@ -428,6 +442,37 @@ const serverCommand = (
           : deadline.at + (style < 7 ? 0 : random.below(5000));
 
       const sent = millis(Math.max(0, when));
+
+      if (Deadlines.$is("SealDue")(deadline)) {
+        const sealed = sealAt(sent, random.below(1_000_000_000));
+
+        return {
+          ...sealed,
+          by,
+          round: Math.max(1, sealed.round - (random.chance(1, 8) ? 1 : 0)),
+        };
+      }
+
+      if (Deadlines.$is("SealedDealDue")(deadline)) {
+        const variant = random.below(8);
+
+        if (variant === 0) {
+          return {
+            ...dealFromBeacon(sent, deadline.round + 1),
+            by,
+          };
+        }
+
+        return variant === 1
+          ? RoomCommands.DealSealed({
+              at: sent,
+              by,
+              source: SealedDealSources.BeaconUnavailable({
+                shuffleBytes: bytesFrom(random.below(1_000_000_000)),
+              }),
+            })
+          : { ...dealFromBeacon(sent, deadline.round), by };
+      }
 
       if (Deadlines.$is("DealDue")(deadline)) {
         return RoomCommands.Deal({
@@ -772,15 +817,17 @@ export const openingCommands = (
 
 export const playSession = (
   source: Session,
-  onEvent?: (state: RoomState, event: RoomEvent) => void
+  onEvent?: (state: RoomState, event: RoomEvent) => void,
+  adjust: (settings: RoomSettings) => RoomSettings = (same) => same
 ): Played => {
-  const settings = settingsFrom(seededRandom(source.setup));
+  const settings = adjust(settingsFrom(seededRandom(source.setup)));
   const host = POOL[0] ?? PlayerIdSchema.make("p0");
 
   const log: [RoomLog[0], ...RoomEvent[]] = [
     ...openRoom({
       at: millis(0),
       avatar: "",
+      chain: drand.chain,
       code: RoomCodeSchema.make("generated"),
       host,
       name: "host",

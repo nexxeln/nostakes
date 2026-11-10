@@ -13,6 +13,8 @@ export class DealNotDue extends Schema.TaggedError<
     "TooFewPlayers",
     "TooEarly",
     "WaitingForHost",
+    "Sealed",
+    "NotSealed",
   ]),
 }) {
   override get message() {

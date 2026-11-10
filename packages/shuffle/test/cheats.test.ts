@@ -14,8 +14,8 @@ import {
   DeckSchema,
   EpochMillisSchema,
   judgeHand,
-  OpeningMismatch,
   openDeck,
+  OpeningMismatch,
   PHONE_CLOCK_TOLERANCE_MS,
   RandomnessSchema,
   roundTime,
@@ -29,12 +29,13 @@ import {
   sealHand,
   sealsWithNoDeal,
   seedOf,
+  selfSignedChain,
   sha256,
   ShownCardDiffers,
   SpareDeckMismatch,
   SpareDeckRepeatsCard,
-  verifyBeacon,
   Verdicts,
+  verifyBeacon,
   verifyHand,
   WrongPosition,
 } from "../src/index.js";
@@ -50,7 +51,6 @@ import type {
   Sighting,
   Verdict,
 } from "../src/index.js";
-import { signingChain } from "./beacons.js";
 import { dealHonestly, sawOf } from "./hands.js";
 import type { HonestHand } from "./hands.js";
 
@@ -105,9 +105,9 @@ const board = (hand: HonestHand) =>
 
 const RIVER = 2 * DEALT_IN + 4;
 
-const drand = signingChain("test beacon");
+const drand = selfSignedChain("test beacon");
 
-const serversOwn = signingChain("a key the server holds");
+const serversOwn = selfSignedChain("a key the server holds");
 
 const dueAt = (round: number) => roundTime(drand.chain, round);
 

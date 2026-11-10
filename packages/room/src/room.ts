@@ -1,5 +1,6 @@
 import type { PlayerId } from "@nostakes/engine";
 import { PlayerIdSchema } from "@nostakes/engine";
+import { DrandChainSchema, QUICKNET } from "@nostakes/shuffle";
 import { Option, Result, Schema } from "effect";
 
 import { fromHost, fromMember, fromServer, fromSomeone } from "./authority.js";
@@ -22,11 +23,13 @@ import type { RoomLog } from "./evolve.js";
 import { AvatarSchema, NameSchema, RoomCodeSchema } from "./identity.js";
 import { joinRoom, leaveRoom, setProfile, transferHost } from "./members.js";
 import { answerChips, leaveSeat, requestChips } from "./money.js";
+import { withOpenings } from "./openings.js";
 import { play } from "./play.js";
 import { actForLeavingSeat, endOfHand } from "./queue.js";
 import { RoomIsClosed } from "./rejection.js";
 import type { RoomRejection } from "./rejection.js";
 import { changeSettings } from "./rules.js";
+import { dealSealed, sealNextHand, withdrawStale } from "./sealing.js";
 import { answerSeat, declareStraddle, requestSeat, sitOut } from "./seats.js";
 import { RoomSettingsSchema } from "./settings.js";
 import { RoomStates, isOpen } from "./state.js";
@@ -37,6 +40,7 @@ import type { Millis } from "./time.js";
 export const OpeningSchema = Schema.Struct({
   at: MillisSchema,
   avatar: AvatarSchema,
+  chain: Schema.optionalKey(DrandChainSchema),
   code: RoomCodeSchema,
   host: PlayerIdSchema,
   name: NameSchema,
@@ -48,6 +52,7 @@ export type Opening = typeof OpeningSchema.Type;
 export const openRoom = (opening: Opening): RoomLog => [
   RoomEvents.RoomOpened({
     at: opening.at,
+    chain: opening.chain ?? QUICKNET,
     code: opening.code,
     host: opening.host,
     settings: opening.settings,
@@ -90,6 +95,8 @@ const decideOpen = (state: Open, command: RoomCommand): Decision =>
       Result.flatMap(fromServer(dealing), () => deal(state, dealing)),
     DealNextHand: (call) =>
       byHost(state, call, () => callNextHand(state, call.at)),
+    DealSealed: (dealing) =>
+      Result.flatMap(fromServer(dealing), () => dealSealed(state, dealing)),
     DeclareStraddle: (declare) =>
       byMember(state, declare, (player) =>
         declareStraddle(state, player, declare)
@@ -122,6 +129,8 @@ const decideOpen = (state: Open, command: RoomCommand): Decision =>
       ),
     RequestSeat: (request) =>
       byMember(state, request, (player) => requestSeat(state, player, request)),
+    SealHand: (sealing) =>
+      Result.flatMap(fromServer(sealing), () => sealNextHand(state, sealing)),
     SetProfile: (profile) =>
       byMember(state, profile, (player) => setProfile(player, profile)),
     ShowCards: (show) =>
@@ -207,6 +216,7 @@ const followThrough = (
       appended(spent, (state) => timeBankRefills(state, spent.events, at))
     ),
     Result.flatMap((spent) => drain(spent, (state) => endOfHand(state, at))),
+    Result.map((ended) => appended(ended, (state) => withdrawStale(state, at))),
     Result.map(
       (ended) =>
         appended(ended, (state) => clockEvents(state, ended.events, at)).events
@@ -220,7 +230,9 @@ export const decide = (state: RoomState, command: RoomCommand): Decision =>
       const at = latest(command.at, open.now);
 
       return Result.flatMap(decideOpen(open, { ...command, at }), (events) =>
-        followThrough(open, events, at)
+        Result.map(followThrough(open, events, at), (all) =>
+          withOpenings(open, all)
+        )
       );
     },
   });

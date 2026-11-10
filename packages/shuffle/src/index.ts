@@ -113,6 +113,7 @@ export { seedOf } from "./seed.js";
 export { beaconMessage, verifyBeacon } from "./beacon.js";
 
 export {
+  DrandChainSchema,
   firstFutureRound,
   QUICKNET,
   roundTime,
@@ -121,6 +122,10 @@ export {
 } from "./drand.js";
 
 export type { DrandChain } from "./drand.js";
+
+export { selfSignedChain } from "./self-signed.js";
+
+export type { SigningChain } from "./self-signed.js";
 
 export {
   BEACON_EARLY_MS,

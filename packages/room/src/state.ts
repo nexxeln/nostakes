@@ -14,8 +14,18 @@ import type {
   TableState,
 } from "@nostakes/engine";
 import type { LedgerEntry } from "@nostakes/ledger";
+import type {
+  BeaconRound,
+  DealingPlan,
+  Deck as SealedDeck,
+  DeckOpening,
+  Digest,
+  DrandChain,
+  SaltSecret,
+} from "@nostakes/shuffle";
 import { Data, Option, Result } from "effect";
 
+import type { Holder, OpenedCard } from "./events.js";
 import type { RoomCode } from "./identity.js";
 import { NotSeated } from "./rejection.js";
 import type { RoomSettings } from "./settings.js";
@@ -93,6 +103,39 @@ export interface HandRecord {
   readonly rabbit: readonly Card[];
 }
 
+export interface Sealed {
+  readonly at: Millis;
+  readonly hand: number;
+  readonly round: BeaconRound;
+  readonly roots: readonly [Digest, Digest];
+  readonly seats: readonly SeatIndex[];
+  readonly decks: readonly [SealedDeck, SealedDeck];
+  readonly secret: SaltSecret;
+}
+
+export type ProofDeal = Data.TaggedEnum<{
+  FromBeacon: {
+    readonly round: BeaconRound;
+    readonly signature: Uint8Array;
+    readonly plan: DealingPlan;
+    readonly spare: DeckOpening;
+  };
+  WithoutBeacon: { readonly reason: "BeaconUnavailable" };
+}>;
+
+export const ProofDeals = Data.taggedEnum<ProofDeal>();
+
+export interface Opened {
+  readonly holder: Option.Option<Holder>;
+  readonly card: OpenedCard;
+}
+
+export interface Proof {
+  readonly sealed: Sealed;
+  readonly deal: ProofDeal;
+  readonly opened: readonly Opened[];
+}
+
 export type Game = "Running" | "Waiting";
 
 export type Entries = ReadonlyMap<PlayerId, readonly LedgerEntry<PlayerId>[]>;
@@ -107,6 +150,7 @@ export type RoomState = Data.TaggedEnum<{
   };
   Open: {
     readonly away: readonly SeatIndex[];
+    readonly chain: DrandChain;
     readonly clocks: Clocks;
     readonly code: RoomCode;
     readonly dealCalled: boolean;
@@ -115,9 +159,11 @@ export type RoomState = Data.TaggedEnum<{
     readonly host: PlayerId;
     readonly members: readonly Member[];
     readonly now: Millis;
+    readonly proof: Option.Option<Proof>;
     readonly queued: Queue;
     readonly record: Option.Option<HandRecord>;
     readonly requests: Requests;
+    readonly sealed: Option.Option<Sealed>;
     readonly settings: RoomSettings;
     readonly straddlers: readonly PlayerId[];
     readonly table: TableState;

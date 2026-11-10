@@ -8,12 +8,20 @@ import type { Decision } from "./decision.js";
 import { RoomEvents } from "./events.js";
 import { settlementOf } from "./money.js";
 import { CloseAlreadyQueued } from "./rejection.js";
+import { sealIsBinding, withdrawal } from "./sealed-hand.js";
 import { SEATS, occupantAt } from "./state.js";
 import type { Open } from "./state.js";
 import { onTable } from "./table.js";
 import type { Millis } from "./time.js";
 
 export const closingSteps = (state: Open, at: Millis): readonly Step[] => [
+  (current) =>
+    Result.succeed(
+      Option.match(current.sealed, {
+        onNone: () => [],
+        onSome: (sealed) => [withdrawal(sealed, "RoomClosing", at)],
+      })
+    ),
   ...SEATS.filter((seat) => Option.isSome(occupantAt(state.table, seat))).map(
     (seat): Step =>
       (current) =>
@@ -31,7 +39,7 @@ export const closeRoom = (
 ): Decision => {
   const { table } = state;
 
-  if (TableStates.$is("InHand")(table)) {
+  if (TableStates.$is("InHand")(table) || sealIsBinding(state, command.at)) {
     return state.queued.close
       ? Result.fail(new CloseAlreadyQueued({ handNumber: table.handNumber }))
       : Result.succeed([RoomEvents.CloseQueued({ at: command.at })]);
