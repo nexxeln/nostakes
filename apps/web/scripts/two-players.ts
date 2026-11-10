@@ -1,4 +1,6 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
+import { CardFromText } from "@nostakes/engine";
+import { nothingOfItsOwn } from "@nostakes/room";
 import { Console, Effect, Exit, Option, Schedule, Schema, Scope } from "effect";
 import { chromium } from "playwright-core";
 import type { Browser, Page } from "playwright-core";
@@ -354,6 +356,166 @@ const showsOneCardThenTheOther = (page: Page, other: Page) =>
 const holds = (truth: boolean, failure: NightFailed) =>
   truth ? Effect.void : Effect.fail(failure);
 
+interface SeenCards {
+  readonly board: readonly string[];
+  readonly hole: readonly string[];
+}
+
+const cardsOn = (page: Page) =>
+  attempt("read the cards on the table", () =>
+    page.evaluate((): SeenCards => {
+      const root =
+        globalThis.document.querySelector("nostakes-table")?.shadowRoot;
+
+      return {
+        board: [
+          ...(root?.querySelectorAll(".slot .card:not(.rabbit) .face") ?? []),
+        ].map((face) => {
+          const suit =
+            [...face.classList].find((name) => name.startsWith("suit-")) ?? "";
+
+          const rank = (face.textContent ?? "").trim();
+
+          return `${rank === "10" ? "T" : rank}${suit.slice(5)}`;
+        }),
+        hole: [...(root?.querySelectorAll(".hand .hc[data-card]") ?? [])].map(
+          (node) =>
+            node instanceof HTMLElement ? (node.dataset.card ?? "") : ""
+        ),
+      };
+    })
+  );
+
+const decodeCard = Schema.decodeUnknownOption(CardFromText);
+
+const decodedCards = (texts: readonly string[]) =>
+  texts.flatMap((text) => Option.toArray(decodeCard(text)));
+
+const hasNothing = (hole: readonly string[], board: readonly string[]) =>
+  hole.length === 2 &&
+  board.length === 5 &&
+  nothingOfItsOwn(decodedCards(hole), decodedCards(board));
+
+const passes = (page: Page, step: string) =>
+  Effect.gen(function* tapAndWait() {
+    yield* attempt(step, () => page.locator(`${CHIP}.live`).click());
+    yield* attempt(`${step}, and the turn moves on`, () =>
+      page
+        .locator(`${CHIP}.live`)
+        .waitFor({ state: "detached", timeout: 15_000 })
+    );
+  });
+
+const toRiver = (pages: readonly Page[]) =>
+  Effect.gen(function* checkItDown() {
+    for (let step = 0; step < 8; step += 1) {
+      const page = yield* whoseTurn(pages);
+      const { board } = yield* cardsOn(page);
+
+      if (board.length === 5) {
+        return page;
+      }
+
+      yield* passes(page, "call or check to see the next card");
+    }
+
+    return yield* new NightFailed({
+      detail: "the river never came after eight calls and checks",
+      step: "check the hand down to the river",
+    });
+  });
+
+const MOMENT = "nostakes-moment[data-moment]";
+
+const bluffs = (bettor: Page, caller: Page) =>
+  Effect.gen(function* shoveFoldShow() {
+    const chip = yield* centre(bettor, `${CHIP}.live`, "find the live chip");
+
+    yield* drag(
+      bettor,
+      `${CHIP}.live`,
+      chip.y - 6,
+      "shove the chip to the top"
+    );
+    yield* heard(
+      bettor,
+      /^(?:All in|Bet|Raise to) \d+/u,
+      "the table hears a bet"
+    );
+    yield* whoseTurn([caller]);
+    yield* drag(caller, HAND, 170, "flick the cards up to fold");
+    yield* attempt("the bettor is offered a show", () =>
+      bettor
+        .locator(`${HAND}.offering`)
+        .waitFor({ state: "attached", timeout: 15_000 })
+    );
+    yield* attempt("the bettor taps the cards to show them", () =>
+      bettor.locator(HAND).click()
+    );
+  });
+
+const momentOn = (page: Page, who: string) =>
+  attempt(`${who} sees the bluff called out`, () =>
+    page
+      .locator(MOMENT)
+      .first()
+      .getAttribute("data-moment", { timeout: 20_000 })
+  ).pipe(Effect.map((id) => id ?? ""));
+
+const showsABluff = (ana: Page, ben: Page) =>
+  Effect.gen(function* playUntilABluff() {
+    let bluffed = false;
+
+    for (let hand = 0; hand < 8 && !bluffed; hand += 1) {
+      const page = yield* toRiver([ana, ben]);
+      const other = page === ana ? ben : ana;
+      const mine = yield* cardsOn(page);
+      const theirs = yield* cardsOn(other);
+
+      if (hasNothing(mine.hole, mine.board)) {
+        yield* bluffs(page, other);
+        bluffed = true;
+      } else {
+        yield* passes(page, "check the river");
+
+        if (hasNothing(theirs.hole, mine.board)) {
+          yield* whoseTurn([other]);
+          yield* bluffs(other, page);
+          bluffed = true;
+        } else {
+          yield* passes(other, "check the river behind");
+          yield* Console.log("  nobody could bluff that board; dealing again");
+        }
+      }
+    }
+
+    return yield* bluffed
+      ? Effect.void
+      : Effect.fail(
+          new NightFailed({
+            detail:
+              "eight hands passed without a player holding nothing on the river",
+            step: "find a hand to bluff with",
+          })
+        );
+  });
+
+const sameMoment = (ana: Page, ben: Page) =>
+  Effect.gen(function* compareMoments() {
+    const seenByAna = yield* momentOn(ana, "Ana");
+    const seenByBen = yield* momentOn(ben, "Ben");
+
+    yield* holds(
+      seenByAna.includes(":Bluff:") && seenByAna === seenByBen,
+      new NightFailed({
+        detail: `Ana saw "${seenByAna}" and Ben saw "${seenByBen}"`,
+        step: "see the same bluff on both screens",
+      })
+    );
+
+    return seenByAna;
+  });
+
 const deployed = (build: string) =>
   localRoomServer(WEB_PORT, STAGE, Option.some(build)).pipe(
     Effect.tap((roomServer) =>
@@ -566,6 +728,10 @@ const night = Effect.gen(function* playOneHand() {
   yield* click(ana, "Ana starts the game again", "Start the game");
   yield* whoseTurn([ana, ben]);
   yield* Console.log("hand 3 is dealt on the new build");
+  yield* showsABluff(ana, ben);
+  yield* Console.log(
+    `both players see the same moment: ${yield* sameMoment(ana, ben)}`
+  );
   yield* holds(
     loads.ana === 2 && loads.ben === 2,
     new NightFailed({

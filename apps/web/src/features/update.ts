@@ -39,6 +39,7 @@ import {
   CreateRoom,
   ForgetRoom,
   JoinRoom,
+  KeepMoment,
   ReloadPage,
   SaveLearned,
   SaveProfile,
@@ -53,8 +54,9 @@ import {
 import type { RoomConnection } from "../client/connection.js";
 import { Messages, ReplyOutcomes } from "./message.js";
 import type { Message, ReplyOutcome } from "./message.js";
-import { FairMarks, Screens } from "./model.js";
+import { FairMarks, Screens, pageTheme } from "./model.js";
 import type { Flags, InRoom, Link, Model, RulesSheet } from "./model.js";
+import { NO_MOMENTS, watchedMoments } from "./moments/watch.js";
 import { considerUpdate } from "./page-update.js";
 import { rejectionText } from "./rejections.js";
 import {
@@ -114,6 +116,7 @@ const freshRoom = (code: InRoom["code"], player: InRoom["player"]): InRoom => ({
   link: Option.none(),
   member: Option.none(),
   menu: false,
+  moments: NO_MOMENTS,
   notice: Option.none(),
   peeks: [],
   pending: [],
@@ -884,6 +887,7 @@ export const update = (model: Model, message: Message): Return =>
     CompletedCopy: ({ copied }) =>
       editRoom(model, (room) => ({ ...room, copied })),
     CompletedForget: () => ({ model }),
+    CompletedKeep: () => ({ model }),
     CompletedNavigation: () => ({ model }),
     CompletedPreference: () => ({ model }),
     CompletedWake: () => ({ model }),
@@ -938,6 +942,7 @@ export const update = (model: Model, message: Message): Return =>
                 -KEPT_CLOCK_SAMPLES
               )
             : room.clockSamples,
+          moments: watchedMoments(room.moments, events),
           resumed: Option.orElse(
             Option.fromUndefinedOr(
               events.findLast(
@@ -998,6 +1003,12 @@ export const update = (model: Model, message: Message): Return =>
           }
         : kept;
     },
+    KeptMoment: ({ picture }) => ({
+      commands: [
+        KeepMoment({ deck: model.deck, picture, theme: pageTheme(model) }),
+      ],
+      model,
+    }),
     PickedAvatar: ({ avatar }) => wearFace(model, avatar, false),
     ReleasedConnection: () =>
       editRoom(model, (room) => ({ ...room, connected: false })),

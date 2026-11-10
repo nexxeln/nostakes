@@ -14,6 +14,7 @@ import {
 import { Option, Schema } from "effect";
 import { defineTaggedUnion } from "foldkit/schema";
 
+import { MomentWatchSchema } from "./moments/watch.js";
 import { RuleGroupSchema } from "./rules-copy.js";
 import { HintSchema, TableEventSchema } from "./table/snapshot.js";
 
@@ -173,6 +174,7 @@ export const InRoomSchema = Schema.Struct({
   link: Schema.Option(LinkSchema),
   member: Schema.Option(PlayerIdSchema),
   menu: Schema.Boolean,
+  moments: MomentWatchSchema,
   notice: Schema.Option(Schema.String),
   peeks: Schema.Array(
     Schema.Struct({ player: PlayerIdSchema, until: Schema.Int })

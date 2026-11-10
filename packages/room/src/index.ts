@@ -184,6 +184,7 @@ export {
   LONG_SHOT_PERCENTS,
   MOMENT_KINDS,
   MOST_MOMENTS,
+  MomentKindSchema,
   Moments,
   REAL_BET_BLINDS,
   TIERS,

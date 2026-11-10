@@ -26,6 +26,7 @@ import {
   RoomRecordSchema,
   ThemeSchema,
 } from "../features/model.js";
+import { MomentPictureSchema } from "../features/moments/schema.js";
 import { refusalText } from "../features/refusals.js";
 import { ClientReportSchema, REPORTS_PATH } from "../features/reports.js";
 import { HintSchema } from "../features/table/snapshot.js";
@@ -203,6 +204,19 @@ export const CopyRoomLink = Command.define("CopyRoomLink", {
       })
     ),
   messages: [Messages.CompletedCopy],
+});
+
+export const KeepMoment = Command.define("KeepMoment", {
+  args: { deck: DeckSchema, picture: MomentPictureSchema, theme: ThemeSchema },
+  execute: ({ deck, picture, theme }) =>
+    Effect.promise(() => import("./moments/share.js")).pipe(
+      Effect.flatMap(({ keepMoment }) => keepMoment(picture, { deck, theme })),
+      Effect.match({
+        onFailure: () => Messages.CompletedKeep({ kept: false }),
+        onSuccess: () => Messages.CompletedKeep({ kept: true }),
+      })
+    ),
+  messages: [Messages.CompletedKeep],
 });
 
 export const CopyText = Command.define("CopyText", {

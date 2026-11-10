@@ -23,6 +23,8 @@ import { Messages } from "./message.js";
 import type { Message } from "./message.js";
 import { FairMarks, pageTheme } from "./model.js";
 import type { InRoom, Model } from "./model.js";
+import { momentElement } from "./moments/element.js";
+import { handEnded } from "./moments/watch.js";
 import { updateLine } from "./page-update.js";
 import { hasLeft, isLive, isYou, nameOf, openViewOf, viewOf } from "./room.js";
 import type { ClosedView, OpenView } from "./room.js";
@@ -411,6 +413,7 @@ const tableView = (
   h: H
 ): Html => {
   const table = tableElement.withMessage(h);
+  const moment = momentElement.withMessage(h);
 
   return h.div(
     [h.Class("table-stage")],
@@ -422,6 +425,29 @@ const tableView = (
           table.Snapshot(tableSnapshot(room, view, presence, model.learned)),
           table.Sound(model.sound),
           table.OnIntent((intent) => Messages.GotTableIntent({ intent })),
+        ],
+        []
+      ),
+      moment(
+        [
+          h.Class("moment-host"),
+          moment.Hand(
+            view.lastHand.pipe(
+              Option.filter(() => handEnded(room.moments.record)),
+              Option.map((lastHand) => ({
+                callouts: view.settings.moments,
+                deck: model.deck,
+                lastHand,
+                people: [...view.members, ...view.departed],
+                record: room.moments.record,
+                theme: pageTheme(model),
+              })),
+              Option.getOrNull
+            )
+          ),
+          moment.Sound(model.sound),
+          moment.OnKeep((picture) => Messages.KeptMoment({ picture })),
+          moment.Dealing(Option.isSome(view.legal)),
         ],
         []
       ),

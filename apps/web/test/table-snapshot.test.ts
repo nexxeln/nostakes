@@ -6,6 +6,7 @@ import { Option, Schema } from "effect";
 import * as Arbitrary from "effect/Arbitrary";
 
 import type { InRoom } from "../src/features/model.js";
+import { NO_MOMENTS } from "../src/features/moments/watch.js";
 import { postsOf, tableSnapshot } from "../src/features/table/from-room.js";
 import {
   halfRoundedDown,
@@ -46,6 +47,7 @@ const roomWith = (
   }),
   member: Option.none(),
   menu: false,
+  moments: NO_MOMENTS,
   notice: Option.none(),
   peeks: [],
   pending: acting ? [{ acting: true, key: 1, label: "Calling" }] : [],

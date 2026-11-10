@@ -27,3 +27,7 @@ Runtime.run(application, { flags: readFlags });
 const { defineTable } = await import("./table/element.js");
 
 defineTable();
+
+const { defineMoment } = await import("./moments/element.js");
+
+defineMoment();

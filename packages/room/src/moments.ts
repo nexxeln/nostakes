@@ -15,7 +15,7 @@ import type {
   SeatIndex,
   Street,
 } from "@nostakes/engine";
-import { Data, Option } from "effect";
+import { Data, Option, Schema } from "effect";
 
 import { atLeast, atMost, equities, percentOf } from "./equity.js";
 import type { Equity } from "./equity.js";
@@ -68,11 +68,7 @@ export type Moment = Data.TaggedEnum<{
   Suckout: Shared & { readonly odds: Odds; readonly street: Street };
 }>;
 
-export type MomentKind = Moment["_tag"];
-
-export const Moments = Data.taggedEnum<Moment>();
-
-export const MOMENT_KINDS: readonly MomentKind[] = [
+export const MomentKindSchema = Schema.Literals([
   "BigHand",
   "BadBeat",
   "Cooler",
@@ -82,7 +78,13 @@ export const MOMENT_KINDS: readonly MomentKind[] = [
   "SevenDeuce",
   "SameHand",
   "SplitRuns",
-];
+]);
+
+export type MomentKind = typeof MomentKindSchema.Type;
+
+export const Moments = Data.taggedEnum<Moment>();
+
+export const MOMENT_KINDS: readonly MomentKind[] = MomentKindSchema.literals;
 
 export const TIERS: Readonly<Record<MomentKind, readonly Tier[]>> = {
   BadBeat: [1, 2, 3],

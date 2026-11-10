@@ -14,7 +14,8 @@
     "check": "pnpm run typecheck",
     "verify": "node scripts/two-players.ts && PHONE_ENGINES=chromium node scripts/phones.ts",
     "phones": "node scripts/phones.ts",
-    "shots": "node scripts/phone-shots.ts"
+    "shots": "node scripts/phone-shots.ts",
+    "moments": "node scripts/moment-pictures.ts"
   },
   "dependencies": {
     "@effect/platform-browser": "4.1.2",
