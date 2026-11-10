@@ -134,11 +134,7 @@ const firstNewSeq = (message: Arrival["message"]): Option.Option<number> => {
 
   const { catchUp } = message;
 
-  if (pokerCodec.catchUp.guards.Missed(catchUp)) {
-    return Option.some(catchUp.from);
-  }
-
-  return pokerCodec.catchUp.guards.Skipped(catchUp)
+  return pokerCodec.catchUp.guards.Missed(catchUp)
     ? Option.some(catchUp.from)
     : Option.some(message.seq + 1);
 };
