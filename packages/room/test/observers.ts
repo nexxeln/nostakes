@@ -216,6 +216,7 @@ const SERVER_ONLY = new Set<RoomCommand["_tag"]>([
   "Deal",
   "DealSealed",
   "ExpireClock",
+  "RunQueue",
   "SealHand",
 ]);
 

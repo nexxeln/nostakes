@@ -24,6 +24,7 @@ import { NotAMember } from "./rejections/not-a-member.js";
 import { NotSeated } from "./rejections/not-seated.js";
 import { NotTheHost } from "./rejections/not-the-host.js";
 import { NothingSealed } from "./rejections/nothing-sealed.js";
+import { QueueNotDue } from "./rejections/queue-not-due.js";
 import { RoomIsClosed } from "./rejections/room-is-closed.js";
 import { SaltSecretSize } from "./rejections/salt-secret-size.js";
 import { SealNotDue } from "./rejections/seal-not-due.js";
@@ -78,6 +79,7 @@ export const RoomRejectionSchema = Schema.Union([
   SealNotDue,
   SealRoundTooSoon,
   SealedSeatsMoved,
+  QueueNotDue,
 ]);
 
 export type RoomRejection = typeof RoomRejectionSchema.Type;
@@ -155,5 +157,7 @@ export { SealNotDue } from "./rejections/seal-not-due.js";
 export { SealRoundTooSoon } from "./rejections/seal-round-too-soon.js";
 
 export { SealedSeatsMoved } from "./rejections/sealed-seats-moved.js";
+
+export { QueueNotDue } from "./rejections/queue-not-due.js";
 
 export { Unbalanced } from "@nostakes/ledger";

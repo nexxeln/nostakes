@@ -306,6 +306,58 @@ describe("the seats a seal deals in", () => {
   });
 });
 
+describe("a player who leaves once the seal binds, heads-up", () => {
+  const twoSeated = run(
+    runAll(openedBy(ann, checked), [join(bob), sit(ann, 0), sit(bob, 1)]),
+    RoomCommands.StartGame({ at: ms(START), by: as(ann) })
+  ).state;
+
+  const sealed = run(twoSeated, sealAt(START, 1)).state;
+
+  const button = Option.getOrThrow(
+    Option.fromUndefinedOr(
+      sealedEvent(run(twoSeated, sealAt(START, 1)).events).seats.at(-1)
+    )
+  );
+
+  const leaver = Option.getOrThrow(
+    Option.fromUndefinedOr(openOf(sealed).table.seats[button]).pipe(
+      Option.filter(Seats.$is("Occupied"))
+    )
+  ).player;
+
+  const left = run(
+    sealed,
+    RoomCommands.LeaveSeat({ at: ms(START + 2000), by: as(leaver) })
+  ).state;
+
+  const dealt = run(left, dealFromBeacon(ROUND_DUE, SEALED_ROUND));
+
+  it("is dealt in and acted for, and stands only in a later batch, so the deal never changes who holds a seat", () => {
+    expect(
+      dealt.events.some(
+        (event) =>
+          RoomEvents.$is("Table")(event) && Events.$is("HandEnded")(event.event)
+      )
+    ).toBe(true);
+    expect(dealt.events.some(RoomEvents.$is("CashedOut"))).toBe(false);
+    expect(nextDeadline(dealt.state)).toStrictEqual(
+      Option.some(Deadlines.QueueDue({ at: ms(ROUND_DUE) }))
+    );
+
+    const ran = run(
+      dealt.state,
+      RoomCommands.RunQueue({ at: ms(ROUND_DUE), by: Actors.Server() })
+    );
+
+    expect(
+      ran.events
+        .filter(RoomEvents.$is("CashedOut"))
+        .map((event) => event.player)
+    ).toStrictEqual([leaver]);
+  });
+});
+
 describe("a sealed hand that will not be dealt", () => {
   it("is withdrawn when the game pauses in time, and dealt when the pause comes after the seal binds", () => {
     const early = run(

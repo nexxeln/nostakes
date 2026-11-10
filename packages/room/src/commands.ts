@@ -49,6 +49,7 @@ export const RoomCommandSchema = Schema.TaggedUnion({
   RemoveFromSeat: naming,
   RequestChips: { ...envelope, amount: ChipAmountSchema },
   RequestSeat: { ...envelope, buyIn: ChipAmountSchema, seat: SeatIndexSchema },
+  RunQueue: envelope,
   SealHand: {
     ...envelope,
     decks: Schema.Tuple([Schema.Uint8Array, Schema.Uint8Array]),

@@ -21,7 +21,13 @@ import type { RoomEvent } from "./events.js";
 import { ActionNotOnSeat, ClockNotDue, NoSuchDeadline } from "./rejection.js";
 import { sealDue, sealedDealDue } from "./sealing.js";
 import { TimeBankRefills, turnClockRuns } from "./settings.js";
-import { DecisionClocks, RoomStates, heldSeat, occupantAt } from "./state.js";
+import {
+  DecisionClocks,
+  RoomStates,
+  heldSeat,
+  occupantAt,
+  queueWaiting,
+} from "./state.js";
 import type { DecisionClock, Open, RoomState } from "./state.js";
 import { onTable } from "./table.js";
 import {
@@ -34,6 +40,7 @@ import type { Millis } from "./time.js";
 
 export const DeadlineSchema = Schema.TaggedUnion({
   DealDue: { at: MillisSchema },
+  QueueDue: { at: MillisSchema },
   RunChoiceClock: { at: MillisSchema },
   SealDue: { at: MillisSchema },
   SealedDealDue: { at: MillisSchema, round: BeaconRoundSchema },
@@ -72,7 +79,10 @@ export const nextDeadline = (state: RoomState): Option.Option<Deadline> =>
     Closed: () => Option.none(),
     Open: (open) =>
       Option.match(open.clocks.decision, {
-        onNone: () => dealingDeadline(open),
+        onNone: () =>
+          queueWaiting(open)
+            ? Option.some(Deadlines.QueueDue({ at: open.now }))
+            : dealingDeadline(open),
         onSome: (clock) =>
           Option.some(
             DecisionClocks.$match(clock, {

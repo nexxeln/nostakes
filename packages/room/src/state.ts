@@ -221,6 +221,14 @@ export const seatOf = (state: Open, player: PlayerId) =>
 export const handInProgress = (state: Open) =>
   TableStates.$is("InHand")(state.table);
 
+export const queueWaiting = (state: Open) =>
+  !handInProgress(state) &&
+  Option.isNone(state.sealed) &&
+  (state.queued.chips.length > 0 ||
+    state.queued.leaving.length > 0 ||
+    Option.isSome(state.queued.rules) ||
+    state.queued.close);
+
 export const heldSeat = (state: Open, player: PlayerId) =>
   Option.match(seatOf(state, player), {
     onNone: () => Result.fail(new NotSeated({ player })),

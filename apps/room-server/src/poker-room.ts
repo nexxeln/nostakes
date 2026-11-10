@@ -139,6 +139,7 @@ export const pokerRoomOn = (chain: DrandChain): HostedRoom<PokerTypes> => ({
   entropyFor: (due) =>
     Deadlines.$match(due, {
       DealDue: () => DEAL_SHUFFLE_BYTES,
+      QueueDue: () => 0,
       RunChoiceClock: () => 0,
       SealDue: () => SEAL_BYTES,
       SealedDealDue: () => DEAL_SHUFFLE_BYTES,
@@ -180,6 +181,8 @@ export const pokerRoomOn = (chain: DrandChain): HostedRoom<PokerTypes> => ({
           by: Actors.Server(),
           shuffleBytes: entropy,
         }),
+      QueueDue: () =>
+        RoomCommands.RunQueue({ at: millis(at), by: Actors.Server() }),
       RunChoiceClock: (clock) =>
         RoomCommands.ExpireClock({
           at: millis(at),

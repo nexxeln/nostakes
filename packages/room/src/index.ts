@@ -78,6 +78,7 @@ export {
   NotSeated,
   NotTheHost,
   NothingSealed,
+  QueueNotDue,
   RoomIsClosed,
   RoomRejectionSchema,
   SaltSecretSize,

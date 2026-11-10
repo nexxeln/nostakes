@@ -7,7 +7,7 @@ import type { Step } from "./batch.js";
 import { actAutomatically } from "./clocks.js";
 import { closingSteps } from "./closing.js";
 import type { Decision } from "./decision.js";
-import { handInProgress, isMember, occupantAt, seatOf } from "./state.js";
+import { isMember, occupantAt, queueWaiting, seatOf } from "./state.js";
 import type { ChipRequest, Open } from "./state.js";
 import { onTable } from "./table.js";
 import type { Millis } from "./time.js";
@@ -44,15 +44,10 @@ export const queuedSteps = (state: Open, at: Millis): readonly Step[] => [
     : []),
 ];
 
-export const endOfHand = (state: Open, at: Millis): Option.Option<Decision> => {
-  const steps = queuedSteps(state, at);
-
-  return handInProgress(state) ||
-    Option.isSome(state.sealed) ||
-    steps.length === 0
-    ? Option.none()
-    : Option.some(inSequence(state, steps));
-};
+export const endOfHand = (state: Open, at: Millis): Option.Option<Decision> =>
+  queueWaiting(state)
+    ? Option.some(inSequence(state, queuedSteps(state, at)))
+    : Option.none();
 
 const isLeaving = (state: Open, seat: SeatIndex) =>
   Option.exists(

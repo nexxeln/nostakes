@@ -404,6 +404,10 @@ const playOrDeal = (
           return dealFromBeacon(when, deadline.round);
         }
 
+        if (Deadlines.$is("QueueDue")(deadline)) {
+          return RoomCommands.RunQueue({ at: millis(when), by: server });
+        }
+
         return Deadlines.$is("DealDue")(deadline)
           ? RoomCommands.Deal({
               at: millis(when),
@@ -444,6 +448,10 @@ const serverCommand = (
           : deadline.at + (style < 7 ? 0 : random.below(5000));
 
       const sent = millis(Math.max(0, when));
+
+      if (Deadlines.$is("QueueDue")(deadline)) {
+        return RoomCommands.RunQueue({ at: sent, by });
+      }
 
       if (Deadlines.$is("SealDue")(deadline)) {
         const sealed = sealAt(sent, random.below(1_000_000_000));

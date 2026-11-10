@@ -37,6 +37,7 @@ export const serverAnswer = (deadline: Deadline, seed: number): RoomCommand =>
         by: Actors.Server(),
         shuffleBytes: bytesFrom(seed),
       }),
+    QueueDue: ({ at }) => RoomCommands.RunQueue({ at, by: Actors.Server() }),
     RunChoiceClock: ({ at }) =>
       RoomCommands.ExpireClock({ at, by: Actors.Server(), deadline: at }),
     SealDue: ({ at }) => sealAt(at, seed),

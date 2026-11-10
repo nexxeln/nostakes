@@ -1,5 +1,5 @@
 import type { PlayerId } from "@nostakes/engine";
-import { PlayerIdSchema } from "@nostakes/engine";
+import { Events, PlayerIdSchema } from "@nostakes/engine";
 import { DrandChainSchema, QUICKNET } from "@nostakes/shuffle";
 import { Option, Result, Schema } from "effect";
 
@@ -26,13 +26,13 @@ import { answerChips, leaveSeat, requestChips } from "./money.js";
 import { withOpenings } from "./openings.js";
 import { play } from "./play.js";
 import { actForLeavingSeat, endOfHand } from "./queue.js";
-import { RoomIsClosed } from "./rejection.js";
+import { QueueNotDue, RoomIsClosed } from "./rejection.js";
 import type { RoomRejection } from "./rejection.js";
 import { changeSettings } from "./rules.js";
 import { dealSealed, sealNextHand, withdrawStale } from "./sealing.js";
 import { answerSeat, declareStraddle, requestSeat, sitOut } from "./seats.js";
 import { RoomSettingsSchema } from "./settings.js";
-import { RoomStates, isOpen } from "./state.js";
+import { RoomStates, handInProgress, isOpen, queueWaiting } from "./state.js";
 import type { Open, RoomState } from "./state.js";
 import { MillisSchema, latest } from "./time.js";
 import type { Millis } from "./time.js";
@@ -129,6 +129,14 @@ const decideOpen = (state: Open, command: RoomCommand): Decision =>
       ),
     RequestSeat: (request) =>
       byMember(state, request, (player) => requestSeat(state, player, request)),
+    RunQueue: (running) =>
+      Result.flatMap(fromServer(running), () =>
+        queueWaiting(state)
+          ? Result.succeed([])
+          : Result.fail(
+              new QueueNotDue({ handInProgress: handInProgress(state) })
+            )
+      ),
     SealHand: (sealing) =>
       Result.flatMap(fromServer(sealing), () => sealNextHand(state, sealing)),
     SetProfile: (profile) =>
@@ -199,6 +207,13 @@ const appended = (
   };
 };
 
+const dealsHoleCards = (events: readonly RoomEvent[]) =>
+  events.some(
+    (event) =>
+      RoomEvents.$is("Table")(event) &&
+      Events.$is("HoleCardsDealt")(event.event)
+  );
+
 const followThrough = (
   before: Open,
   caused: readonly RoomEvent[],
@@ -215,7 +230,11 @@ const followThrough = (
     Result.map((spent) =>
       appended(spent, (state) => timeBankRefills(state, spent.events, at))
     ),
-    Result.flatMap((spent) => drain(spent, (state) => endOfHand(state, at))),
+    Result.flatMap((spent) =>
+      dealsHoleCards(spent.events)
+        ? Result.succeed(spent)
+        : drain(spent, (state) => endOfHand(state, at))
+    ),
     Result.map((ended) => appended(ended, (state) => withdrawStale(state, at))),
     Result.map(
       (ended) =>
