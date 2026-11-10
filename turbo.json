@@ -68,6 +68,10 @@
         "$TURBO_ROOT$/scripts/**",
         "$TURBO_ROOT$/tools/oxlint/**"
       ]
+    },
+    "@nostakes/room-server#test": {
+      "dependsOn": ["build", "^build", "^test"],
+      "outputs": []
     }
   }
 }
