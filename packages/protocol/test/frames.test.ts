@@ -8,6 +8,8 @@ import {
   clientFrame,
   clientMessage,
   closingFrame,
+  PING_FRAME,
+  PONG_FRAME,
   ROOM_CODE_ALPHABET,
   RoomCodeSchema,
   serverFrame,
@@ -147,6 +149,15 @@ describe("closing frames", () => {
     expect(closingFrame("NotFound")).toBe(
       '{"_tag":"Closing","reason":"NotFound"}'
     );
+  });
+
+  it("ping and pong encode to the exact texts a runtime can answer without waking the room", () => {
+    expect(
+      Schema.encodeSync(ClientFrames)(ClientMessages.cases.Ping.make({}))
+    ).toBe(PING_FRAME);
+    expect(
+      Schema.encodeSync(ServerFrames)(ServerMessages.cases.Pong.make({}))
+    ).toBe(PONG_FRAME);
   });
 
   it("give each reason its own close code, all in the ranges a server may send", () => {

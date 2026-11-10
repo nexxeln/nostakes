@@ -50,7 +50,7 @@ export const openPokerHost = (request: OpenRequest) => {
     closeAll: () => {
       viewers.length = 0;
     },
-    helloDeadline: Option.none(),
+    socketDeadline: Option.none(),
     viewers,
   });
 

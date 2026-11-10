@@ -966,6 +966,14 @@ export const startBot = (setup: BotSetup) => {
     }
   });
 
+  const keepAlive = Effect.gen(function* keepAlive() {
+    for (const device of [main, second]) {
+      for (const { socket } of Option.toArray(currentOf(device))) {
+        yield* socket.pingIfQuiet;
+      }
+    }
+  });
+
   const loop = Effect.gen(function* botLoop() {
     yield* connect(main, Option.none());
     absorb();
@@ -977,6 +985,7 @@ export const startBot = (setup: BotSetup) => {
       }
 
       yield* wait(random.between(30, 120));
+      yield* keepAlive;
       absorb();
 
       const current = view.pipe(Option.filter(RoomViews.$is("Open")));

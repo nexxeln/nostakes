@@ -7,3 +7,7 @@ export const FRAME_BURST = 10;
 export const HELLO_TIMEOUT_MS = 5000;
 
 export const MAX_MISSED_EVENTS = 200;
+
+export const PING_INTERVAL_MS = 15_000;
+
+export const SOCKET_SILENCE_LIMIT_MS = 4 * PING_INTERVAL_MS;

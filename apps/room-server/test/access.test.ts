@@ -5,6 +5,8 @@ import {
   HELLO_TIMEOUT_MS,
   HttpRefusalSchema,
   MAX_FRAME_BYTES,
+  PING_FRAME,
+  PONG_FRAME,
   ROOM_CODE_ALPHABET,
   RoomCodeSchema,
   TOKEN_BYTES,
@@ -409,14 +411,13 @@ test(
   }).pipe(Effect.provide(FetchHttpClient.layer))
 );
 
-const paddedPing = (bytes: number) => {
-  const ping = '{"_tag":"Ping"}';
+const paddedPing = (bytes: number) =>
+  `${PING_FRAME}${" ".repeat(bytes - PING_FRAME.length)}`;
 
-  return `${ping}${" ".repeat(bytes - ping.length)}`;
-};
+const isPong = codec.server.guards.Pong;
 
 test(
-  "11. limits: frame size, frames per second, and sockets per room are each enforced",
+  "11. limits: frame size, frames per second, and sockets per room are each enforced, and exact pings are answered without counting",
   Effect.gen(function* limits() {
     const base = yield* baseUrl;
     const [anaPass] = yield* openRoomWith(base, ["Ana"]);
@@ -438,10 +439,25 @@ test(
     const chatty = yield* joinAs(base, anaPass, "chatty");
 
     for (let frame = 0; frame < 30; frame += 1) {
-      yield* chatty.client.sendText(paddedPing(15));
+      yield* chatty.client.sendText(paddedPing(PING_FRAME.length + 1));
     }
 
     const tooMany = yield* chatty.client.waitClosed;
+
+    const heartbeat = yield* joinAs(base, anaPass, "exact pings");
+
+    for (let frame = 0; frame < 30; frame += 1) {
+      yield* heartbeat.client.sendText(PING_FRAME);
+    }
+
+    for (let frame = 0; frame < 30; frame += 1) {
+      yield* heartbeat.client.next(`pong ${frame}`, isPong);
+    }
+
+    expect(yield* heartbeat.client.closed).toEqual(Option.none());
+    expect(
+      heartbeat.client.frames.filter((text) => text === PONG_FRAME)
+    ).toHaveLength(30);
 
     const pongs = chatty.client.messages.filter(
       codec.server.guards.Pong
@@ -452,7 +468,7 @@ test(
     expect(pongs).toBeLessThan(30);
 
     const sockets = yield* pipe(
-      Array.from({ length: MAX_SOCKETS }, (_, index) => index),
+      Array.from({ length: MAX_SOCKETS - 1 }, (_, index) => index),
       Effect.forEach((index) => connect(base, anaPass.code, `socket ${index}`))
     );
 
@@ -465,9 +481,10 @@ test(
     expect(extra.messages).toEqual([
       codec.server.cases.Closing.make({ reason: "TooManySockets" }),
     ]);
-    expect((yield* inspect(base, anaPass.code)).sockets.pending).toBe(
-      MAX_SOCKETS
-    );
+    expect((yield* inspect(base, anaPass.code)).sockets).toEqual({
+      live: 1,
+      pending: MAX_SOCKETS - 1,
+    });
 
     yield* pipe(
       sockets,

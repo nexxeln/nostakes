@@ -1,5 +1,6 @@
 import * as Cloudflare from "@alchemy.run/cloudflare";
 import * as Test from "@alchemy.run/test/Vitest";
+import { PING_FRAME, PONG_FRAME } from "@nostakes/protocol";
 import { Console, Effect } from "effect";
 import * as FetchHttpClient from "effect/http/FetchHttpClient";
 
@@ -29,10 +30,14 @@ const deployed = beforeAll(deploy(ToyStack));
 
 afterAll(destroy(ToyStack));
 
-const IDLE = "25 seconds";
+const PING_EVERY = "5 seconds";
+
+const PINGS = 5;
+
+const IDLE = "30 seconds";
 
 test(
-  "3. hibernation: an idle room hibernates, and its sockets keep their players and get the next commit",
+  "3. hibernation: a room whose only traffic is pings hibernates, the pings are answered, and its sockets keep their players and get the next commit",
   Effect.gen(function* hibernation() {
     const { url } = yield* deployed;
     const base = yield* Effect.fromNullishOr(url).pipe(Effect.orDie);
@@ -50,8 +55,13 @@ test(
     const ben = yield* joinAs(base, benPass, "ben");
     const before = yield* inspect(base, anaPass.code);
 
-    yield* Console.log(`idling ${IDLE} with two sockets open`);
-    yield* Effect.sleep(IDLE);
+    yield* Console.log(
+      `idling ${IDLE} with two sockets open, one sending a ping every ${PING_EVERY}`
+    );
+    yield* ana.client
+      .sendText(PING_FRAME)
+      .pipe(Effect.delay(PING_EVERY), Effect.repeat({ times: PINGS - 1 }));
+    yield* Effect.sleep(PING_EVERY);
 
     yield* ana.client.send(
       command(
@@ -70,6 +80,8 @@ test(
     const [event] = seen.events;
 
     const report = {
+      answeredPings: ana.client.frames.filter((text) => text === PONG_FRAME)
+        .length,
       instanceAfter: after.instance,
       instanceBefore: before.instance,
       liveSockets: after.sockets.live,
@@ -83,6 +95,7 @@ test(
     yield* Console.log(JSON.stringify(report));
 
     const kept =
+      report.answeredPings === PINGS &&
       report.instanceAfter !== report.instanceBefore &&
       report.replied &&
       report.seenBy === anaPass.player &&

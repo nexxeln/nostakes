@@ -49,9 +49,9 @@ const isReplyFrame = (text: string) =>
     onSuccess: toyClientCodec.server.guards.Reply,
   });
 
-const PING_FRAME = Result.getOrThrow(
+const WAKING_PING_FRAME = `${Result.getOrThrow(
   toyClientCodec.encodeClientFrame(toyClientCodec.client.cases.Ping.make({}))
-);
+)} `;
 
 export interface Wire {
   readonly label: string;
@@ -139,7 +139,7 @@ export const tappedWire = (label: string) => {
       const tapped = latest();
 
       for (let frame = 0; frame <= FRAME_BURST + 2; frame += 1) {
-        tapped?.raw.send(PING_FRAME);
+        tapped?.raw.send(WAKING_PING_FRAME);
       }
     }),
     goSilent: Effect.sync(() => {

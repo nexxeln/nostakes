@@ -75,7 +75,7 @@ export const openToyHost = (
     closeAll: (reason) => {
       closings.push(closingFrame(reason));
     },
-    helloDeadline: Option.none(),
+    socketDeadline: Option.none(),
     viewers,
   });
 

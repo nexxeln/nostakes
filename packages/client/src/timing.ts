@@ -1,5 +1,7 @@
 import { FRAME_BURST } from "@nostakes/protocol";
 
+export { PING_INTERVAL_MS } from "@nostakes/protocol";
+
 export const BACKOFF_FIRST_MS = 250;
 
 export const BACKOFF_CAP_MS = 10_000;
@@ -7,8 +9,6 @@ export const BACKOFF_CAP_MS = 10_000;
 export const CONNECT_TIMEOUT_MS = 10_000;
 
 export const GREETING_TIMEOUT_MS = 5000;
-
-export const PING_INTERVAL_MS = 15_000;
 
 export const SILENCE_LIMIT_MS = 30_000;
 

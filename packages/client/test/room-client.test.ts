@@ -640,6 +640,7 @@ describe("room client against a fake socket", () => {
         "ProtocolViolation",
         "NotFound",
         "TooManySockets",
+        "Unresponsive",
       ];
 
       for (const reason of reasons) {
@@ -665,6 +666,7 @@ describe("room client against a fake socket", () => {
         RoomHalted: "Refused RoomHalted",
         TooManyFrames: "Waiting TooManyFrames",
         TooManySockets: "Waiting TooManySockets",
+        Unresponsive: "Waiting Unresponsive",
       });
     }).pipe(Effect.scoped, lowestJitter)
   );

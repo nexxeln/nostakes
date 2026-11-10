@@ -14,6 +14,7 @@ export const CLOSE_VERDICTS: Readonly<Record<CloseReason, CloseVerdict>> = {
   RoomHalted: "Refuse",
   TooManyFrames: "Retry",
   TooManySockets: "Retry",
+  Unresponsive: "Retry",
 };
 
 const decodeCloseReason = Schema.decodeUnknownOption(CloseReasonSchema);

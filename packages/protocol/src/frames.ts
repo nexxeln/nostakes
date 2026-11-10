@@ -20,6 +20,7 @@ export const CloseReasonSchema = Schema.Literals([
   "RoomHalted",
   "NotFound",
   "TooManySockets",
+  "Unresponsive",
 ]);
 
 export type CloseReason = typeof CloseReasonSchema.Type;
@@ -33,7 +34,12 @@ export const CLOSE_CODES: Readonly<Record<CloseReason, number>> = {
   RoomHalted: 4010,
   TooManyFrames: 4008,
   TooManySockets: 4029,
+  Unresponsive: 4007,
 };
+
+export const PING_FRAME = '{"_tag":"Ping"}';
+
+export const PONG_FRAME = '{"_tag":"Pong"}';
 
 export const ClosingSchema = Schema.TaggedStruct("Closing", {
   reason: CloseReasonSchema,

@@ -1,4 +1,8 @@
-import { FRAMES_PER_SECOND } from "@nostakes/protocol";
+import {
+  FRAMES_PER_SECOND,
+  PING_FRAME,
+  PING_INTERVAL_MS,
+} from "@nostakes/protocol";
 import { Duration, Effect, Option, Queue, Result, Schema } from "effect";
 
 import { pokerRoom } from "../../src/poker-room.js";
@@ -45,6 +49,7 @@ export interface PokerSocket {
   readonly closed: () => Option.Option<Closed>;
   readonly sendText: (text: string) => Effect.Effect<number>;
   readonly send: (message: PokerClientMessage) => Effect.Effect<number>;
+  readonly pingIfQuiet: Effect.Effect<void>;
   readonly disconnect: Effect.Effect<void>;
 }
 
@@ -127,6 +132,11 @@ export const openSocket = (base: string, code: string, label: string) =>
         socket.close(1000, "done");
       }),
       label,
+      pingIfQuiet: Effect.suspend(() =>
+        Option.isNone(closed) && wallClock() - lastSent >= PING_INTERVAL_MS
+          ? Effect.asVoid(sendText(PING_FRAME))
+          : Effect.void
+      ),
       problems,
       send: (message) => sendText(encodeClientFrame(message)),
       sendText,

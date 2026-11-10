@@ -5,6 +5,8 @@ export {
   ClosingSchema,
   clientFrame,
   closingFrame,
+  PING_FRAME,
+  PONG_FRAME,
   clientMessage,
   replyResult,
   serverFrame,
@@ -30,6 +32,8 @@ export {
   HELLO_TIMEOUT_MS,
   MAX_FRAME_BYTES,
   MAX_MISSED_EVENTS,
+  PING_INTERVAL_MS,
+  SOCKET_SILENCE_LIMIT_MS,
 } from "./limits.js";
 
 export {

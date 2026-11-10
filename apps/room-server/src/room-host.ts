@@ -21,7 +21,7 @@ export interface Viewer {
 
 export interface Connections {
   readonly viewers: readonly Viewer[];
-  readonly helloDeadline: Option.Option<number>;
+  readonly socketDeadline: Option.Option<number>;
   readonly closeAll: (reason: CloseReason) => void;
 }
 
@@ -165,14 +165,14 @@ export const hostRoom = <T extends RoomTypes>(
   const codec = roomCodec(core);
   let current = loaded;
 
-  const alarmAt = (helloDeadline: Option.Option<number>) =>
+  const alarmAt = (socketDeadline: Option.Option<number>) =>
     earliest([
       core.nextDeadline(current.state).pipe(Option.map(({ at }) => at)),
-      helloDeadline,
+      socketDeadline,
     ]);
 
-  const armAlarm = (helloDeadline: Option.Option<number>) => {
-    storage.setAlarm(alarmAt(helloDeadline));
+  const armAlarm = (socketDeadline: Option.Option<number>) => {
+    storage.setAlarm(alarmAt(socketDeadline));
   };
 
   const halt = (reason: string, connections: Connections) => {
@@ -419,7 +419,7 @@ export const hostRoom = <T extends RoomTypes>(
       }
     }
 
-    armAlarm(connections.helloDeadline);
+    armAlarm(connections.socketDeadline);
 
     return { note: CommitNotes.Committed({ from, to }), reply };
   };
