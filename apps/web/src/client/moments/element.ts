@@ -15,6 +15,7 @@ import {
   transformOf,
 } from "../../features/moments/timeline.js";
 import type { Plan, Pose } from "../../features/moments/timeline.js";
+import { KEPT_FRAMES } from "../../features/pictures/paper.js";
 import type { KeptFrame } from "../../features/pictures/paper.js";
 import { Keeper } from "../pictures/keeper.js";
 import { noiseFor, perform } from "./synth.js";
@@ -31,6 +32,7 @@ const STYLE = `
 .keeping button { pointer-events: auto; font: 700 var(--text-2, 15px)/1 var(--font-body, sans-serif); color: var(--color-raised-ink, #1f1c31); background: var(--color-raised, #fffdf8); border: 0; border-radius: var(--radius-3, 10px); padding: 8px 12px; box-shadow: var(--shadow-sheet-1); display: flex; gap: 6px; align-items: center; min-height: 36px; }
 .keeping button:active { transform: translate(var(--press-1, 1px 1.8px)); }
 .keeping b { color: var(--color-accent-ink, #d63a00); }
+.keeping .story { color: var(--color-ink-muted, #716a79); font-weight: 600; padding: 8px 10px; }
 .gone { display: none; }
 `;
 
@@ -92,6 +94,7 @@ class NostakesMoment extends HTMLElement {
   readonly #card: HTMLDivElement;
   readonly #keeping: HTMLDivElement;
   readonly #keep: HTMLButtonElement;
+  readonly #story: HTMLButtonElement;
   #keeper: Keeper | null = null;
   readonly #motion = globalThis.matchMedia("(prefers-reduced-motion: reduce)");
   #scene: MomentScene | null = null;
@@ -119,7 +122,10 @@ class NostakesMoment extends HTMLElement {
     this.#keeping = document.createElement("div");
     this.#keeping.className = "keeping gone";
     this.#keep = this.#keepButton("keep", "Chat");
-    this.#keeping.append(this.#keep);
+    this.#story = this.#keepButton("story", "Story");
+    this.#story.textContent = "Story";
+    this.#story.title = "A tall picture for a story";
+    this.#keeping.append(this.#keep, this.#story);
     this.#root.append(style, this.#card, this.#keeping);
   }
 
@@ -214,7 +220,7 @@ class NostakesMoment extends HTMLElement {
         this.dataset.drawn = frames.join(" ");
       }
     );
-    this.#keeper.prepare(["Chat"]);
+    this.#keeper.prepare(KEPT_FRAMES);
     this.#show(scene);
   }
 

@@ -16,7 +16,7 @@ const STAGE = `http://localhost:${STAGE_PORT}/scripts/moments/stage.html`;
 
 const SMALLEST_PNG_BYTES = 20_000;
 
-const SHARES = 1;
+const SHARES = 2;
 
 class KeepCheckFailed extends Schema.TaggedError<
   KeepCheckFailed,
@@ -161,7 +161,7 @@ const checkEngine = (engine: BrowserType, dir: Option.Option<string>) =>
     );
     yield* attempt("wait for both pictures to be drawn before any tap", () =>
       page
-        .locator('nostakes-moment[data-drawn="Chat"]')
+        .locator('nostakes-moment[data-drawn="Chat Story"]')
         .waitFor({ state: "attached", timeout: 30_000 })
     );
     yield* attempt("tap the moment away", () =>
@@ -170,7 +170,10 @@ const checkEngine = (engine: BrowserType, dir: Option.Option<string>) =>
     yield* attempt("tap Keep", () =>
       page.locator("nostakes-moment .keep").click()
     );
-    yield* attempt("wait for the tap to reach the share sheet", () =>
+    yield* attempt("tap Story", () =>
+      page.locator("nostakes-moment .story").click()
+    );
+    yield* attempt("wait for both taps to reach the share sheet", () =>
       page.waitForFunction(`window.__shared.length >= ${SHARES}`, undefined, {
         timeout: 15_000,
       })
@@ -181,6 +184,7 @@ const checkEngine = (engine: BrowserType, dir: Option.Option<string>) =>
 
     for (const [name, width, height] of [
       ["nostakes-bad-beat.png", 1080, 1350],
+      ["nostakes-bad-beat-story.png", 1080, 1920],
     ] as const) {
       Option.match(keptAs(found, name), {
         onNone: () => {
