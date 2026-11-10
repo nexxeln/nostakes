@@ -88,6 +88,7 @@ const roomServer = started(
       env: {
         ALLOWED_ORIGINS: WEB,
         CLOUDFLARE_ACCOUNT_ID: "00000000000000000000000000000000",
+        NO_COLOR: "1",
       },
       extendEnv: true,
       killSignal: "SIGINT",
@@ -113,7 +114,7 @@ const webServer = (roomServerUrl: string) =>
       ],
       {
         cwd: REPO,
-        env: { ROOM_SERVER_URL: roomServerUrl },
+        env: { NO_COLOR: "1", ROOM_SERVER_URL: roomServerUrl },
         extendEnv: true,
       }
     )
