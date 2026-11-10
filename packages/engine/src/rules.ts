@@ -1,6 +1,7 @@
-import { Data, Schema } from "effect";
+import { Data, Option, Schema } from "effect";
 
-import { PositiveChipsSchema } from "./primitives.js";
+import { CHIP_LIMIT, PositiveChipsSchema, chips } from "./primitives.js";
+import type { Chips } from "./primitives.js";
 
 export const MAX_RUNS = 9;
 
@@ -43,3 +44,23 @@ export const TableConfigSchema = Schema.Struct({
 );
 
 export type TableConfig = typeof TableConfigSchema.Type;
+
+export const straddleAmount = (
+  config: TableConfig,
+  position: number
+): Option.Option<Chips> => {
+  let amount: number = config.bigBlind;
+
+  for (let doubling = 0; doubling <= position; doubling += 1) {
+    if (amount > CHIP_LIMIT - amount) {
+      return Option.none();
+    }
+
+    amount += amount;
+  }
+
+  return Option.some(chips(amount));
+};
+
+export const longestStraddleChain = (config: TableConfig) =>
+  Math.max(config.straddle.underTheGun, config.straddle.button ? 1 : 0);

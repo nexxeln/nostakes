@@ -13,8 +13,10 @@ import {
   SeatEmpty,
   SeatInHand,
   SeatTaken,
+  StraddleAboveChipLimit,
 } from "./rejection.js";
 import type { Rejection } from "./rejection.js";
+import { longestStraddleChain, straddleAmount } from "./rules.js";
 import {
   EMPTY_SEAT,
   Seats,
@@ -147,10 +149,20 @@ export const setSittingOut = (
 export const changeRules = (
   state: TableState,
   command: CommandOf<"ChangeRules">
-) =>
-  isInHand(state)
-    ? Result.fail(new HandInProgress({ handNumber: state.handNumber }))
-    : accept(Events.RulesChanged({ config: command.config }));
+): Result.Result<readonly Event[], Rejection> => {
+  const { config } = command;
+  const straddles = longestStraddleChain(config);
+
+  if (isInHand(state)) {
+    return Result.fail(new HandInProgress({ handNumber: state.handNumber }));
+  }
+
+  return straddles > 0 && Option.isNone(straddleAmount(config, straddles - 1))
+    ? Result.fail(
+        new StraddleAboveChipLimit({ bigBlind: config.bigBlind, straddles })
+      )
+    : accept(Events.RulesChanged({ config }));
+};
 
 const updateOccupant = (
   state: TableState,

@@ -94,6 +94,7 @@ export {
   SeatEmpty,
   SeatInHand,
   SeatTaken,
+  StraddleAboveChipLimit,
   StraddleNotAllowed,
   StraddleProblemSchema,
   type StraddleProblem,

@@ -13,7 +13,7 @@ import {
   StraddleNotAllowed,
 } from "./rejection.js";
 import type { StraddleProblem } from "./rejection.js";
-import { Antes } from "./rules.js";
+import { Antes, straddleAmount } from "./rules.js";
 import type { TableConfig } from "./rules.js";
 import {
   Phases,
@@ -28,7 +28,7 @@ import {
   withHand,
   withStackChange,
 } from "./state.js";
-import type { HandPlayer, InHand, TableState } from "./state.js";
+import type { HandPlayer, InHand, Straddle, TableState } from "./state.js";
 
 export const dealtInSeats = (state: TableState) =>
   SEAT_INDEXES.filter((seat) => {
@@ -68,9 +68,6 @@ export const blindSeats = (
   return { big: nextAmong(dealtIn, small), small };
 };
 
-export const straddleAmount = (config: TableConfig, position: number) =>
-  chips(config.bigBlind * 2 ** (position + 1));
-
 const anteFrom = (config: TableConfig, stack: number) =>
   Antes.$is("EveryPlayer")(config.ante)
     ? Math.min(config.ante.amount, stack)
@@ -91,7 +88,20 @@ const isPrefixOf = (
   line: readonly SeatIndex[]
 ) => straddles.every((seat, position) => line[position] === seat);
 
-const straddleProblem = (
+const coveredStraddle = (
+  state: TableState,
+  seat: SeatIndex,
+  position: number
+): Option.Option<Straddle> => {
+  const stack = stackOf(state, seat);
+
+  return straddleAmount(state.config, position).pipe(
+    Option.filter((amount) => stack - anteFrom(state.config, stack) > amount),
+    Option.map((amount) => ({ amount, seat }))
+  );
+};
+
+const lineProblem = (
   state: TableState,
   dealtIn: Arr.NonEmptyReadonlyArray<SeatIndex>,
   button: SeatIndex,
@@ -99,10 +109,6 @@ const straddleProblem = (
 ): Option.Option<StraddleProblem> => {
   const rules = state.config.straddle;
   const bigBlind = blindSeats(dealtIn, button).big;
-
-  if (straddles.length === 0) {
-    return Option.none();
-  }
 
   if (dealtIn.length === 2) {
     return Option.some("HeadsUp");
@@ -114,37 +120,52 @@ const straddleProblem = (
 
   const buttonAlone = straddles.length === 1 && straddles[0] === button;
 
-  if (!underTheGun && !(buttonAlone && rules.button)) {
-    if (buttonAlone) {
-      return Option.some("ButtonStraddleOff");
-    }
-
-    if (rules.underTheGun === 0) {
-      return Option.some("UnderTheGunOff");
-    }
-
-    return Option.some(
-      straddles.length > rules.underTheGun ? "TooMany" : "OutOfTurn"
-    );
+  if (underTheGun || (buttonAlone && rules.button)) {
+    return Option.none();
   }
 
-  const covered = straddles.every((seat, position) => {
-    const stack = stackOf(state, seat);
+  if (buttonAlone) {
+    return Option.some("ButtonStraddleOff");
+  }
 
-    return (
-      stack - anteFrom(state.config, stack) >
-      straddleAmount(state.config, position)
-    );
-  });
+  if (rules.underTheGun === 0) {
+    return Option.some("UnderTheGunOff");
+  }
 
-  return covered ? Option.none() : Option.some("CannotCover");
+  return Option.some(
+    straddles.length > rules.underTheGun ? "TooMany" : "OutOfTurn"
+  );
+};
+
+const validStraddles = (
+  state: TableState,
+  dealtIn: Arr.NonEmptyReadonlyArray<SeatIndex>,
+  button: SeatIndex,
+  straddles: readonly SeatIndex[]
+): Result.Result<readonly Straddle[], StraddleProblem> => {
+  if (straddles.length === 0) {
+    return Result.succeed([]);
+  }
+
+  const problem = lineProblem(state, dealtIn, button, straddles);
+
+  if (Option.isSome(problem)) {
+    return Result.fail(problem.value);
+  }
+
+  return Result.fromOption(
+    Option.all(
+      straddles.map((seat, position) => coveredStraddle(state, seat, position))
+    ),
+    (): StraddleProblem => "CannotCover"
+  );
 };
 
 const postings = (
   state: TableState,
   dealOrder: readonly SeatIndex[],
   blinds: { readonly big: SeatIndex; readonly small: SeatIndex },
-  straddles: readonly SeatIndex[]
+  straddles: readonly Straddle[]
 ): readonly Event[] => {
   const remaining = new Map(
     dealOrder.map((seat) => [seat, stackOf(state, seat)])
@@ -192,10 +213,10 @@ const postings = (
     ...antes,
     ...blind(blinds.small, "Small", state.config.smallBlind),
     ...blind(blinds.big, "Big", state.config.bigBlind),
-    ...straddles.map((seat, position) =>
+    ...straddles.map((straddle) =>
       Events.StraddlePosted({
-        amount: take(seat, straddleAmount(state.config, position)).amount,
-        seat,
+        amount: take(straddle.seat, straddle.amount).amount,
+        seat: straddle.seat,
       })
     ),
   ];
@@ -227,12 +248,12 @@ export const startHand = (
 
   const button = nextButton(state.button, dealtIn);
   const blinds = blindSeats(dealtIn, button);
-  const problem = straddleProblem(state, dealtIn, button, command.straddles);
+  const straddles = validStraddles(state, dealtIn, button, command.straddles);
 
-  if (Option.isSome(problem)) {
+  if (Result.isFailure(straddles)) {
     return Result.fail(
       new StraddleNotAllowed({
-        reason: problem.value,
+        reason: straddles.failure,
         straddles: command.straddles,
       })
     );
@@ -249,7 +270,7 @@ export const startHand = (
       handNumber: state.handNumber + 1,
       smallBlindSeat: blinds.small,
     }),
-    ...postings(state, dealOrder, blinds, command.straddles),
+    ...postings(state, dealOrder, blinds, straddles.success),
     ...holeCards(command.deck, dealOrder),
   ]);
 };

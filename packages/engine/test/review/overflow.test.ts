@@ -4,8 +4,12 @@ import {
   ChipLimitExceeded,
   Commands,
   Events,
+  StraddleAboveChipLimit,
+  StraddleNotAllowed,
+  initialTable,
   invariants,
 } from "../../src/index.js";
+import type { TableConfig } from "../../src/index.js";
 import {
   baseConfig,
   calls,
@@ -80,6 +84,96 @@ describe("the table holds at most Number.MAX_SAFE_INTEGER chips", () => {
       rejection(inHand, buyIn(4, 1)),
       rejection(inHand, addChips(3, 1)),
     ]).toStrictEqual([limitExceeded(4, 1, 0), limitExceeded(3, 1, 0)]);
+  });
+});
+
+const straddling = (
+  bigBlind: number,
+  underTheGun: number,
+  button: boolean
+): TableConfig => ({
+  ...baseConfig,
+  bigBlind: chipCount(bigBlind),
+  smallBlind: chipCount(1),
+  straddle: { button, underTheGun },
+});
+
+const straddle = (seats: readonly number[]) =>
+  Commands.StartHand({
+    deck: deckStartingWith(""),
+    straddles: seats.map((index) => seat(index)),
+  });
+
+describe("straddles that double past Number.MAX_SAFE_INTEGER", () => {
+  it("Rule 8: a straddle chain whose second straddle would pass the limit is rejected as CannotCover, not thrown", () => {
+    const table = occupiedTable(straddling(2 ** 51, 2, false), {
+      0: 1000,
+      1: 1000,
+      2: 1000,
+      3: 2 ** 52 + 1,
+      4: 1000,
+    });
+
+    expect(rejection(table, straddle([3, 4]))).toStrictEqual(
+      new StraddleNotAllowed({
+        reason: "CannotCover",
+        straddles: [seat(3), seat(4)],
+      })
+    );
+  });
+
+  it("Rule 8: a first straddle past the limit, under the gun or on the button, is rejected as CannotCover", () => {
+    const deep = 2 ** 52 + 5;
+
+    expect([
+      rejection(
+        occupiedTable(straddling(2 ** 52, 1, false), {
+          0: 1000,
+          1: 1000,
+          2: 1000,
+          3: deep,
+        }),
+        straddle([3])
+      ),
+      rejection(
+        occupiedTable(straddling(2 ** 52, 0, true), {
+          0: deep,
+          1: 1000,
+          2: 1000,
+        }),
+        straddle([0])
+      ),
+    ]).toStrictEqual([
+      new StraddleNotAllowed({ reason: "CannotCover", straddles: [seat(3)] }),
+      new StraddleNotAllowed({ reason: "CannotCover", straddles: [seat(0)] }),
+    ]);
+  });
+
+  it("ChangeRules refuses rules whose longest straddle chain doubles past the limit and accepts one that stays within it", () => {
+    const table = initialTable(baseConfig);
+
+    const change = (config: TableConfig) =>
+      rejection(table, Commands.ChangeRules({ config }));
+
+    expect([
+      change(straddling(2 ** 51, 2, false)),
+      change(straddling(2 ** 52, 0, true)),
+      change(straddling(2 ** 46, 6, true)),
+      change(straddling(2 ** 52 - 1, 1, true)),
+      change(straddling(LIMIT, 0, false)),
+    ]).toStrictEqual([
+      new StraddleAboveChipLimit({
+        bigBlind: chipCount(2 ** 51),
+        straddles: 2,
+      }),
+      new StraddleAboveChipLimit({
+        bigBlind: chipCount(2 ** 52),
+        straddles: 1,
+      }),
+      undefined,
+      undefined,
+      undefined,
+    ]);
   });
 });
 

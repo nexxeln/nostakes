@@ -19,6 +19,7 @@ import { RunsOutOfRange } from "./rejections/runs-out-of-range.js";
 import { SeatEmpty } from "./rejections/seat-empty.js";
 import { SeatInHand } from "./rejections/seat-in-hand.js";
 import { SeatTaken } from "./rejections/seat-taken.js";
+import { StraddleAboveChipLimit } from "./rejections/straddle-above-chip-limit.js";
 import { StraddleNotAllowed } from "./rejections/straddle-not-allowed.js";
 
 export const RejectionSchema = Schema.Union([
@@ -41,6 +42,7 @@ export const RejectionSchema = Schema.Union([
   SeatEmpty,
   SeatInHand,
   SeatTaken,
+  StraddleAboveChipLimit,
   StraddleNotAllowed,
 ]);
 
@@ -71,6 +73,8 @@ export { SeatEmpty } from "./rejections/seat-empty.js";
 export { SeatInHand } from "./rejections/seat-in-hand.js";
 
 export { SeatTaken } from "./rejections/seat-taken.js";
+
+export { StraddleAboveChipLimit } from "./rejections/straddle-above-chip-limit.js";
 
 export {
   StraddleNotAllowed,
