@@ -115,11 +115,13 @@ const actionOf = (intent: TableIntent): Option.Option<Action> =>
       HuntRabbit: () => Option.none(),
       Learned: () => Option.none(),
       Muck: () => Option.none(),
+      Peek: () => Option.none(),
       Pick: () => Option.none(),
       Raise: ({ to }) =>
         Schema.decodeOption(ChipsSchema)(to).pipe(
           Option.map((amount) => Actions.RaiseTo({ to: amount }))
         ),
+      React: () => Option.none(),
       Runs: () => Option.none(),
       Show: () => Option.none(),
       ShowCards: () => Option.none(),

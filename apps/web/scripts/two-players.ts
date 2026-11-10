@@ -222,7 +222,22 @@ const whoseTurn = (pages: readonly Page[]) =>
     )
   );
 
-const peeks = (page: Page) =>
+const LOOKING_DOWN = `${TABLE} .tile:not(.empty) .pic[data-face*="|LookingDown|"]`;
+
+const RISING_CLAP = `${TABLE} .reaction[data-reaction="Clap"]`;
+
+const shotsDir = Option.fromNullishOr(process.env.SIGNAL_SHOTS_DIR);
+
+const shoot = (page: Page, name: string) =>
+  Option.match(shotsDir, {
+    onNone: () => Effect.void,
+    onSome: (dir) =>
+      attempt(`save ${name}`, () =>
+        page.screenshot({ path: `${dir}/${name}` })
+      ).pipe(Effect.asVoid),
+  });
+
+const peeksWhileWatched = (page: Page, other: Page) =>
   Effect.gen(function* hoverToPeek() {
     const hand = yield* centre(page, HAND, "find the cards");
 
@@ -230,7 +245,26 @@ const peeks = (page: Page) =>
     yield* attempt("see the cards turn up", () =>
       page.locator(`${HAND}.peek`).waitFor({ state: "attached", timeout: 5000 })
     );
+    yield* attempt("the other player sees that face look down", () =>
+      other.locator(LOOKING_DOWN).waitFor({ state: "attached", timeout: 5000 })
+    );
+    yield* shoot(other, "peeking.png");
+    yield* Console.log("  peeks, and the other player sees the face look down");
     yield* attempt("move away", () => page.mouse.move(4, 4));
+    yield* attempt("the other player sees the face look up again", () =>
+      other.locator(LOOKING_DOWN).waitFor({ state: "detached", timeout: 5000 })
+    );
+  });
+
+const reactsWhileWatched = (page: Page, other: Page) =>
+  Effect.gen(function* reactWithKeys() {
+    yield* press(page, ["e", "1"], "open the reactions with E and pick 1");
+    yield* attempt("the other player sees the clap rise", () =>
+      other.locator(RISING_CLAP).waitFor({ state: "attached", timeout: 5000 })
+    );
+    yield* Effect.sleep("500 millis");
+    yield* shoot(other, "reaction.png");
+    yield* Console.log("  claps, and the other player sees it rise");
   });
 
 const heard = (page: Page, said: RegExp, step: string) =>
@@ -247,7 +281,10 @@ const playHand = (pages: readonly Page[], watcher: Page) =>
       const page = yield* whoseTurn(pages);
 
       if (index === 0) {
-        yield* peeks(page);
+        const other = pages.find((candidate) => candidate !== page) ?? watcher;
+
+        yield* peeksWhileWatched(page, other);
+        yield* reactsWhileWatched(page, other);
       }
 
       yield* gesture.play(page);

@@ -3,6 +3,7 @@ import { PlayerIdSchema, RoomCodeSchema } from "@nostakes/protocol";
 import {
   MemberCommandSchema,
   RoomRejectionSchema,
+  RoomSignalSchema,
   RoomViewSchema,
   SeenEventSchema,
 } from "@nostakes/room";
@@ -75,8 +76,18 @@ export const Messages = defineMessageUnion({
     seq: Schema.Int,
     view: RoomViewSchema,
   },
+  HeardSignal: {
+    from: PlayerIdSchema,
+    receivedAt: Schema.Int,
+    signal: RoomSignalSchema,
+  },
   PickedAvatar: { avatar: AvatarSchema },
   ReleasedConnection: {},
+  SentSignal: {
+    at: Schema.Int,
+    sent: Schema.Boolean,
+    signal: RoomSignalSchema,
+  },
   StartedReload: {},
   SubmittedCreate: {},
   SubmittedInvite: {},

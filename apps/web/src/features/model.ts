@@ -6,7 +6,7 @@ import {
   ProtocolVersionSchema,
   RoomCodeSchema,
 } from "@nostakes/protocol";
-import { RoomViewSchema } from "@nostakes/room";
+import { ReactionSchema, RoomViewSchema } from "@nostakes/room";
 import { Schema } from "effect";
 import { defineTaggedUnion } from "foldkit/schema";
 
@@ -116,9 +116,20 @@ export const InRoomSchema = Schema.Struct({
   link: Schema.Option(LinkSchema),
   menu: Schema.Boolean,
   notice: Schema.Option(Schema.String),
+  peeks: Schema.Array(
+    Schema.Struct({ player: PlayerIdSchema, until: Schema.Int })
+  ),
   pending: Schema.Array(PendingSchema),
   picked: Schema.Option(Schema.Int),
   player: PlayerIdSchema,
+  reactions: Schema.Array(
+    Schema.Struct({
+      id: Schema.Int,
+      player: PlayerIdSchema,
+      reaction: ReactionSchema,
+      until: Schema.Int,
+    })
+  ),
   resumed: Schema.Option(
     Schema.Struct({ player: PlayerIdSchema, receivedAt: Schema.Int })
   ),

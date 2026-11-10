@@ -8,6 +8,7 @@ import { Messages } from "../features/message.js";
 import type { Message } from "../features/message.js";
 import type { Link, Model } from "../features/model.js";
 import { clockRunning, keepsScreenAwake, roomOf } from "../features/room.js";
+import { signalsShowing } from "../features/signals.js";
 import type { PokerClientTypes } from "../features/wire.js";
 import { RoomConnection } from "./connection.js";
 
@@ -59,6 +60,22 @@ const roomUpdates = RoomConnection.get.pipe(
               seq,
               view,
             })
+          )
+        )
+      )
+    )
+  ),
+  Effect.catchTag("ResourceNotAvailable", () => Effect.succeed(Stream.empty)),
+  Stream.unwrap
+);
+
+const roomSignals = RoomConnection.get.pipe(
+  Effect.map((client) =>
+    client.signals.pipe(
+      Stream.mapEffect(({ from, signal }) =>
+        Clock.currentTimeMillis.pipe(
+          Effect.map((receivedAt) =>
+            Messages.HeardSignal({ from, receivedAt, signal })
           )
         )
       )
@@ -132,7 +149,10 @@ export const subscriptions = Subscription.make<
     {
       dependenciesToStream: ({ ticking }) => (ticking ? ticks : Stream.empty),
       modelToDependencies: (model) => ({
-        ticking: Option.exists(roomOf(model), clockRunning),
+        ticking: Option.exists(
+          roomOf(model),
+          (room) => clockRunning(room) || signalsShowing(room)
+        ),
       }),
     }
   ),
@@ -155,6 +175,19 @@ export const subscriptions = Subscription.make<
       dependenciesToStream: ({ awake }) => (awake ? screenAwake : Stream.empty),
       modelToDependencies: (model) => ({
         awake: Option.exists(roomOf(model), keepsScreenAwake),
+      }),
+    }
+  ),
+  signals: entry(
+    { connected: Schema.Option(Schema.String) },
+    {
+      dependenciesToStream: ({ connected }) =>
+        Option.isSome(connected) ? roomSignals : Stream.empty,
+      modelToDependencies: (model) => ({
+        connected: roomOf(model).pipe(
+          Option.filter(({ connected }) => connected),
+          Option.map(({ code }) => code)
+        ),
       }),
     }
   ),

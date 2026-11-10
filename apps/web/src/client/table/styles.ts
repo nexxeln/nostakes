@@ -185,6 +185,12 @@ export const tableCss = `
 .fly { position: absolute; left: 0; top: 0; will-change: transform; }
 .fchip { width: 14px; height: 14px; margin: -7px 0 0 -7px; border-radius: 50%; background: var(--color-chip); box-shadow: var(--shadow-chip); }
 .fcard { width: 30px; height: 42px; margin: -21px 0 0 -15px; }
+.reaction { position: absolute; font-size: var(--text-5); line-height: 1; opacity: 0; will-change: transform, opacity; }
+.reactions { position: absolute; z-index: 8; display: flex; gap: var(--space-1); padding: var(--space-1); transform: translate(-50%, calc(-100% - var(--space-2))); border-radius: var(--radius-round); background: var(--color-raised); box-shadow: var(--shadow-card); }
+.reactions.gone { display: none; }
+.reaction-choice { font: inherit; font-size: var(--text-4); line-height: 1; padding: var(--space-1); border: 0; border-radius: var(--radius-round); background: transparent; cursor: pointer; }
+.reaction-choice:focus-visible { outline: var(--width-ring) solid var(--color-accent); }
+.self .frame { cursor: pointer; }
 .banner { position: absolute; left: 50%; z-index: 9; transform: translate(-50%, -50%); text-align: center; pointer-events: none; opacity: 0; white-space: nowrap; }
 .banner .v { font-size: var(--text-6); line-height: 1.05; font-weight: 600; letter-spacing: -0.02em; color: var(--color-win); }
 .banner .k { font-size: var(--text-2); color: var(--color-ink-muted); margin: 2px 0; }

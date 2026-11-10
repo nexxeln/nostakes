@@ -1,6 +1,9 @@
 import { avatarFor, render } from "@nostakes/avatar";
 import type { Expression } from "@nostakes/avatar";
+import { REACTIONS } from "@nostakes/room";
+import type { Reaction } from "@nostakes/room";
 
+import { PEEK_REFRESH_MS } from "../../features/signals.js";
 import { raiseDetents, raiseLadder } from "../../features/table/sizing.js";
 import type { Detent, RaiseSpot } from "../../features/table/sizing.js";
 import {
@@ -587,6 +590,23 @@ const keyParts = (
   return bettingKeys(legal, me);
 };
 
+const REACTION_GLYPHS: Record<Reaction, string> = {
+  Clap: "👏",
+  Cry: "😢",
+  Fire: "🔥",
+  Laugh: "😂",
+  Wow: "😮",
+};
+
+const PEEK_SETTLE_MS = 120;
+
+const REACTION_RISE_MS = 1800;
+
+const REACTION_KEY = "e";
+
+const isShortcutOrTyping = (event: KeyboardEvent) =>
+  event.metaKey || event.ctrlKey || event.altKey || isTyping(event);
+
 const expressionFor = (mood: {
   readonly folded: boolean;
   readonly happy: boolean;
@@ -696,6 +716,12 @@ export class NostakesTable extends HTMLElement {
   #keysEl!: HTMLDivElement;
   #handKeysEl!: HTMLDivElement;
   #peekOn = false;
+  #peekChangedAt = 0;
+  #peekShared = false;
+  #peekSharedAt = 0;
+  #lastReactionId: number | null = null;
+  #picker!: HTMLDivElement;
+  #pickerOpen = false;
   #pressPeek = false;
   #hoverPeek = false;
   #keyPeek = false;
@@ -723,11 +749,23 @@ export class NostakesTable extends HTMLElement {
     this.#buildSelf();
     this.#buildHand();
     this.#fx = el("div", "fx", this.#room);
+    this.#buildPicker();
     this.#buildRail();
     this.#buildChip();
     this.#buildHints();
-    this.#room.addEventListener("pointerdown", () => {
+    this.#room.addEventListener("pointerdown", (event) => {
       this.#sound.unlock();
+
+      if (
+        this.#pickerOpen &&
+        !event
+          .composedPath()
+          .some(
+            (target) => target === this.#picker || target === this.#selfFrame
+          )
+      ) {
+        this.#closePicker();
+      }
     });
   }
 
@@ -781,6 +819,7 @@ export class NostakesTable extends HTMLElement {
     }
 
     this.#playFresh(next.events);
+    this.#playReactions(next.reactions);
     this.#render();
 
     if (myTurn(next) && (previous === null || !myTurn(previous))) {
@@ -893,6 +932,153 @@ export class NostakesTable extends HTMLElement {
     this.#selfRing = svgEl("rect", this.#selfRingSvg);
     this.#selfRing.setAttribute("pathLength", "100");
     this.#dealer = el("div", "dealer gone", this.#room, "D");
+  }
+
+  #buildPicker() {
+    this.#picker = el("div", "reactions gone", this.#room);
+    this.#picker.setAttribute("role", "toolbar");
+    this.#picker.setAttribute("aria-label", "React");
+
+    for (const [index, reaction] of REACTIONS.entries()) {
+      const choice = el(
+        "button",
+        "reaction-choice",
+        this.#picker,
+        REACTION_GLYPHS[reaction]
+      );
+
+      choice.type = "button";
+      choice.title = `${reaction} (${index + 1})`;
+      choice.setAttribute("aria-label", reaction);
+      choice.addEventListener("click", () => {
+        this.#react(reaction);
+      });
+    }
+
+    this.#selfFrame.addEventListener("click", () => {
+      if (this.#pickerOpen) {
+        this.#closePicker();
+      } else {
+        this.#openPicker();
+      }
+    });
+  }
+
+  #openPicker() {
+    this.#pickerOpen = true;
+    toggle(this.#picker, "gone", false);
+  }
+
+  #closePicker() {
+    this.#pickerOpen = false;
+    toggle(this.#picker, "gone", true);
+  }
+
+  #react(reaction: Reaction) {
+    this.#closePicker();
+    this.#emit(TableIntents.React.make({ reaction }));
+  }
+
+  #playReactions(reactions: TableSnapshot["reactions"]) {
+    const newest = Math.max(0, ...reactions.map(({ id }) => id));
+
+    if (this.#lastReactionId === null) {
+      this.#lastReactionId = newest;
+
+      return;
+    }
+
+    const last = this.#lastReactionId;
+
+    for (const shown of reactions) {
+      if (shown.id > last) {
+        this.#rise(shown);
+      }
+    }
+
+    this.#lastReactionId = Math.max(last, newest);
+  }
+
+  #rise(shown: TableSnapshot["reactions"][number]) {
+    const geo = this.#geo;
+
+    if (geo === null) {
+      return;
+    }
+
+    const from =
+      shown.seat === null
+        ? { x: geo.pot.x, y: geo.pot.y }
+        : this.#tilePoint(shown.seat);
+
+    const node = el(
+      "div",
+      "reaction",
+      this.#fx,
+      REACTION_GLYPHS[shown.reaction]
+    );
+
+    node.dataset.reaction = shown.reaction;
+    node.style.left = `${from.x}px`;
+    node.style.top = `${from.y}px`;
+
+    const keyframes = this.#reduced
+      ? [
+          { opacity: 0 },
+          { offset: 0.15, opacity: 1 },
+          { offset: 0.8, opacity: 1 },
+          { opacity: 0 },
+        ]
+      : [
+          {
+            easing: "ease-out",
+            opacity: 0,
+            transform: "translate(-50%, -50%) scale(0.6)",
+          },
+          {
+            easing: "ease-out",
+            offset: 0.15,
+            opacity: 1,
+            transform: "translate(-50%, -120%) scale(1)",
+          },
+          {
+            easing: "ease-in",
+            offset: 0.7,
+            opacity: 1,
+            transform: "translate(-50%, -260%) scale(1)",
+          },
+          { opacity: 0, transform: "translate(-50%, -320%) scale(1)" },
+        ];
+
+    const flight = node.animate(keyframes, {
+      duration: REACTION_RISE_MS,
+      easing: "linear",
+      fill: "forwards",
+    });
+
+    flight.addEventListener("finish", () => {
+      node.remove();
+    });
+  }
+
+  #sharePeek(now: number) {
+    const settled = now - this.#peekChangedAt >= PEEK_SETTLE_MS;
+
+    if (this.#peekOn && !this.#peekShared && settled) {
+      this.#peekShared = true;
+      this.#peekSharedAt = now;
+      this.#emit(TableIntents.Peek.make({ looking: true }));
+    } else if (
+      this.#peekOn &&
+      this.#peekShared &&
+      now - this.#peekSharedAt >= PEEK_REFRESH_MS
+    ) {
+      this.#peekSharedAt = now;
+      this.#emit(TableIntents.Peek.make({ looking: true }));
+    } else if (!this.#peekOn && this.#peekShared) {
+      this.#peekShared = false;
+      this.#emit(TableIntents.Peek.make({ looking: false }));
+    }
   }
 
   #buildHand() {
@@ -1181,6 +1367,11 @@ export class NostakesTable extends HTMLElement {
 
   #layoutHero(geo: Geo) {
     const { size } = geo.self;
+
+    Object.assign(this.#picker.style, {
+      left: `${geo.self.x}px`,
+      top: `${geo.self.y - size / 2}px`,
+    });
 
     Object.assign(this.#self.style, {
       height: `${size}px`,
@@ -2658,6 +2849,7 @@ export class NostakesTable extends HTMLElement {
     }
 
     this.#peekOn = on;
+    this.#peekChangedAt = performance.now();
     toggle(this.#hand, "peek", on);
 
     if (on) {
@@ -2680,14 +2872,40 @@ export class NostakesTable extends HTMLElement {
     }
   };
 
+  #reactionKey(event: KeyboardEvent) {
+    if (this.#pickerOpen) {
+      const chosen = REACTIONS[Number(event.key) - 1];
+
+      if (event.key === "Escape" || event.key.toLowerCase() === REACTION_KEY) {
+        this.#closePicker();
+      } else if (chosen !== undefined) {
+        this.#react(chosen);
+      }
+
+      return true;
+    }
+
+    if (event.key.toLowerCase() === REACTION_KEY && !event.repeat) {
+      this.#openPicker();
+
+      return true;
+    }
+
+    return false;
+  }
+
   readonly #onKeyDown = (event: KeyboardEvent) => {
-    if (
-      event.metaKey ||
-      event.ctrlKey ||
-      event.altKey ||
-      isTyping(event) ||
-      this.#snap?.heroSeat === null
-    ) {
+    if (isShortcutOrTyping(event)) {
+      return;
+    }
+
+    if (this.#snap !== null && this.#reactionKey(event)) {
+      event.preventDefault();
+
+      return;
+    }
+
+    if (this.#snap?.heroSeat === null) {
       return;
     }
 
@@ -3385,6 +3603,7 @@ export class NostakesTable extends HTMLElement {
 
     this.#selfStack.tick(now);
     this.#pot.tick(now);
+    this.#sharePeek(now);
   }
 
   #clockFraction(snapshot: TableSnapshot, now: number) {
@@ -3495,7 +3714,7 @@ export class NostakesTable extends HTMLElement {
             folded: info.status === "Folded" || info.status === "Out",
             gutted: target.surpriseUntil > now,
             happy: target.joyUntil > now,
-            lookingDown: false,
+            lookingDown: info.peeking,
             thinking: active,
           }),
           geo.tile
@@ -3601,7 +3820,7 @@ export class NostakesTable extends HTMLElement {
           folded: me.status === "Folded" || me.status === "Out",
           gutted: this.#heroGuttedUntil > now,
           happy: this.#heroWinUntil > now,
-          lookingDown: this.#peekOn,
+          lookingDown: this.#peekOn || me.peeking,
           thinking: false,
         }),
         this.#geo?.self.size ?? 0

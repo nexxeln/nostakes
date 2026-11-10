@@ -4,9 +4,13 @@ import {
   RoomCodeSchema,
   RoomPassSchema,
 } from "@nostakes/protocol";
-import { JoinRequestSchema, MemberCommandSchema } from "@nostakes/room";
+import {
+  JoinRequestSchema,
+  MemberCommandSchema,
+  RoomSignalSchema,
+} from "@nostakes/room";
 import type { JoinRequest } from "@nostakes/room";
-import { Effect, Match, Option, Schema } from "effect";
+import { Clock, Effect, Match, Option, Schema } from "effect";
 import * as HttpClient from "effect/http/HttpClient";
 import * as HttpClientRequest from "effect/http/HttpClientRequest";
 import { Command, Navigation } from "foldkit";
@@ -137,6 +141,22 @@ export const SendToRoom = Command.define("SendToRoom", {
       })
     ),
   messages: [Messages.GotReply],
+});
+
+export const SignalRoom = Command.define("SignalRoom", {
+  args: { signal: RoomSignalSchema },
+  execute: ({ signal }) =>
+    RoomConnection.get.pipe(
+      Effect.flatMap((client) => client.signal(signal)),
+      Effect.map((outcome) => outcome === "Sent"),
+      Effect.orElseSucceed(() => false),
+      Effect.flatMap((sent) =>
+        Clock.currentTimeMillis.pipe(
+          Effect.map((at) => Messages.SentSignal({ at, sent, signal }))
+        )
+      )
+    ),
+  messages: [Messages.SentSignal],
 });
 
 export const WakeRoom = Command.define("WakeRoom", {

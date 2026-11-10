@@ -97,6 +97,7 @@ const seat = (
   cardsHeld: 2,
   name,
   note: "",
+  peeking: false,
   seat: index,
   shown: [],
   stack,
@@ -164,6 +165,7 @@ const opening: TableSnapshot = {
   },
   pots: [OPENING_POT],
   rabbit: [],
+  reactions: [],
   runVote: null,
   seats: [
     HERO,

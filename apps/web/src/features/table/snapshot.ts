@@ -1,3 +1,4 @@
+import { ReactionSchema } from "@nostakes/room";
 import { Schema } from "effect";
 import { CustomElement } from "foldkit";
 
@@ -20,6 +21,7 @@ export const SeatSnapshotSchema = Schema.Struct({
   cardsHeld: Schema.Int,
   name: Schema.String,
   note: Schema.String,
+  peeking: Schema.Boolean,
   seat: Schema.Int,
   shown: Schema.Array(CardTextSchema),
   stack: Schema.Int,
@@ -98,6 +100,14 @@ export const AfterHandSchema = Schema.Struct({
 
 export type AfterHand = typeof AfterHandSchema.Type;
 
+export const ShownReactionSchema = Schema.Struct({
+  id: Schema.Int,
+  reaction: ReactionSchema,
+  seat: Schema.NullOr(Schema.Int),
+});
+
+export type ShownReaction = typeof ShownReactionSchema.Type;
+
 export const HintSchema = Schema.Literals(["Peek", "Fold", "Raise", "Keys"]);
 
 export type Hint = typeof HintSchema.Type;
@@ -117,6 +127,7 @@ export const TableSnapshotSchema = Schema.Struct({
   legal: Schema.NullOr(HeroLegalSchema),
   pots: Schema.Array(Schema.Int),
   rabbit: Schema.Array(CardTextSchema),
+  reactions: Schema.Array(ShownReactionSchema),
   runVote: Schema.NullOr(Schema.Int),
   seats: Schema.Array(SeatSnapshotSchema),
   toAct: Schema.NullOr(Schema.Int),
@@ -132,8 +143,10 @@ export const TableIntentSchema = Schema.TaggedUnion({
   HuntRabbit: {},
   Learned: { hint: HintSchema },
   Muck: {},
+  Peek: { looking: Schema.Boolean },
   Pick: { seat: Schema.Int },
   Raise: { to: Schema.Int },
+  React: { reaction: ReactionSchema },
   Runs: { runs: Schema.Int },
   Show: {},
   ShowCards: { cards: Schema.Array(CardTextSchema) },

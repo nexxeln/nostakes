@@ -8,6 +8,7 @@ import { Match, Option } from "effect";
 import type { InRoom } from "../model.js";
 import { isActing, isLive, isYou } from "../room.js";
 import type { OpenView } from "../room.js";
+import { isPeeking } from "../signals.js";
 import { Happenings } from "./snapshot.js";
 import type {
   ActionClock,
@@ -264,6 +265,14 @@ const occupiedSeat = (
 
   const ownCards = mine ? heroCards : othersCards;
 
+  const cardsHeld = heldCards({
+    between: Option.isNone(view.hand),
+    heroCards,
+    mine,
+    ownCards,
+    status,
+  });
+
   return {
     avatar: member?.avatar ?? "",
     away: occupant.away || !here,
@@ -271,15 +280,14 @@ const occupiedSeat = (
       onNone: () => 0,
       onSome: ({ committedThisStreet }) => committedThisStreet,
     }),
-    cardsHeld: heldCards({
-      between: Option.isNone(view.hand),
-      heroCards,
-      mine,
-      ownCards,
-      status,
-    }),
+    cardsHeld,
     name: mine ? "You" : (member?.name ?? "Someone"),
     note: noteOf(occupant, here),
+    peeking:
+      view.settings.peeking &&
+      (status === "In" || status === "AllIn") &&
+      cardsHeld > 0 &&
+      isPeeking(context.room, occupant.player),
     seat,
     shown: Option.match(inHand, {
       onNone: () => lastShown,
@@ -297,11 +305,17 @@ const emptySeat = (seat: number): SeatSnapshot => ({
   cardsHeld: 0,
   name: "",
   note: "",
+  peeking: false,
   seat,
   shown: [],
   stack: 0,
   status: "Empty",
 });
+
+const seatHeldBy = (view: OpenView, player: PlayerId) =>
+  view.seats.find(({ occupant }) =>
+    Option.exists(occupant, (seated) => seated.player === player)
+  )?.seat ?? null;
 
 export const heroSeatOf = (view: OpenView) =>
   Option.fromNullishOr(
@@ -520,6 +534,11 @@ export const tableSnapshot = (
     hostTools: isYou(view, view.host),
     learned,
     legal: free ? legalOfView(view) : null,
+    reactions: room.reactions.map(({ id, player, reaction }) => ({
+      id,
+      reaction,
+      seat: seatHeldBy(view, player),
+    })),
     runVote: free ? runVoteOf(view, heroSeat) : null,
     seats,
     waiting: waitingLine(room, view),

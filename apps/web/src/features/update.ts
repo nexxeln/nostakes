@@ -12,10 +12,16 @@ import { RoomCodeSchema } from "@nostakes/protocol";
 import {
   ChipAmountSchema,
   MemberCommandSchema,
+  RoomSignalSchema,
   RoomViews,
   SeenEvents,
 } from "@nostakes/room";
-import type { MemberCommand, RoomView, SeenEvent } from "@nostakes/room";
+import type {
+  MemberCommand,
+  Reaction,
+  RoomView,
+  SeenEvent,
+} from "@nostakes/room";
 import { Match, Option, Result, Schema } from "effect";
 import type * as HttpClient from "effect/http/HttpClient";
 import type { ManagedResource, Update } from "foldkit";
@@ -36,6 +42,7 @@ import {
   SendToRoom,
   ShowPath,
   ShuffleFace,
+  SignalRoom,
   WakeRoom,
 } from "../client/commands.js";
 import type { RoomConnection } from "../client/connection.js";
@@ -59,6 +66,7 @@ import {
   viewOf,
 } from "./room.js";
 import { draftOf, settingsFrom } from "./settings.js";
+import { forgetExpired, heard, reacted } from "./signals.js";
 import {
   KEPT_CLOCK_SAMPLES,
   KEPT_EVENTS,
@@ -86,9 +94,11 @@ const freshRoom = (code: InRoom["code"], player: InRoom["player"]): InRoom => ({
   link: Option.none(),
   menu: false,
   notice: Option.none(),
+  peeks: [],
   pending: [],
   picked: Option.none(),
   player,
+  reactions: [],
   resumed: Option.none(),
   settings: Option.none(),
   shown: Option.none(),
@@ -356,6 +366,34 @@ const learn = (model: Model, hint: Hint): Return => {
   return { commands: [SaveLearned({ learned })], model: { ...model, learned } };
 };
 
+const Signals = RoomSignalSchema.cases;
+
+const peeksShown = (room: InRoom) =>
+  isLive(room) &&
+  Option.exists(openViewOf(room), ({ settings }) => settings.peeking);
+
+const peek = (model: Model, looking: boolean): Return =>
+  inRoom(model, (room) =>
+    peeksShown(room)
+      ? {
+          commands: [SignalRoom({ signal: Signals.Peeking.make({ looking }) })],
+          model,
+        }
+      : { model }
+  );
+
+const react = (model: Model, reaction: Reaction): Return =>
+  inRoom(model, (room) =>
+    isLive(room)
+      ? {
+          commands: [
+            SignalRoom({ signal: Signals.Reaction.make({ reaction }) }),
+          ],
+          model,
+        }
+      : { model }
+  );
+
 const fromTable = (model: Model, intent: TableIntent): Return =>
   Match.value(intent).pipe(
     Match.tagsExhaustive({
@@ -366,6 +404,7 @@ const fromTable = (model: Model, intent: TableIntent): Return =>
         afterHand(model, Commands.RabbitHunt.make({}), "Hunting the rabbit"),
       Learned: ({ hint }) => learn(model, hint),
       Muck: () => showdownChoice(model, Commands.MuckHand.make({}), "Mucking"),
+      Peek: ({ looking }) => peek(model, looking),
       Pick: ({ seat }) =>
         editRoom(model, (room) => ({ ...room, picked: Option.some(seat) })),
       Raise: ({ to }) =>
@@ -373,6 +412,7 @@ const fromTable = (model: Model, intent: TableIntent): Return =>
           onNone: () => ({ model }),
           onSome: (amount) => act(model, Actions.RaiseTo({ to: amount })),
         }),
+      React: ({ reaction }) => react(model, reaction),
       Runs: ({ runs }) =>
         Option.match(RunCountSchema.makeOption(runs), {
           onNone: () => ({ model }),
@@ -696,6 +736,22 @@ export const update = (model: Model, message: Message): Return =>
         view,
         receivedAt
       ),
+    HeardSignal: ({ from, receivedAt, signal }) =>
+      inRoom(model, (room) => ({
+        model: {
+          ...withRoom(
+            { ...model, now: receivedAt },
+            heard(
+              forgetExpired(room, receivedAt),
+              from,
+              signal,
+              receivedAt,
+              model.nextKey
+            )
+          ),
+          nextKey: model.nextKey + 1,
+        },
+      })),
     PickedAvatar: ({ avatar }) => {
       if (Option.isSome(model.faceDraft)) {
         return { model: { ...model, faceDraft: Option.some(avatar) } };
@@ -710,6 +766,24 @@ export const update = (model: Model, message: Message): Return =>
     },
     ReleasedConnection: () =>
       editRoom(model, (room) => ({ ...room, connected: false })),
+    SentSignal: ({ at, sent, signal }) =>
+      sent && RoomSignalSchema.guards.Reaction(signal)
+        ? inRoom(model, (room) => ({
+            model: {
+              ...withRoom(
+                { ...model, now: at },
+                reacted(
+                  forgetExpired(room, at),
+                  room.player,
+                  signal.reaction,
+                  at,
+                  model.nextKey
+                )
+              ),
+              nextKey: model.nextKey + 1,
+            },
+          }))
+        : { model },
     StartedReload: () => ({ model }),
     SubmittedCreate: () => {
       const name = model.profile.name.trim();
@@ -816,7 +890,13 @@ export const update = (model: Model, message: Message): Return =>
       commands: [SaveSound({ on })],
       model: { ...model, sound: on },
     }),
-    Ticked: ({ now }) => ({ model: { ...model, now } }),
+    Ticked: ({ now }) =>
+      Option.match(roomOf(model), {
+        onNone: () => ({ model: { ...model, now } }),
+        onSome: (room) => ({
+          model: withRoom({ ...model, now }, forgetExpired(room, now)),
+        }),
+      }),
     WokePage: ({ visible }) =>
       inRoom(model, () =>
         visible ? { commands: [WakeRoom()], model } : { model }
