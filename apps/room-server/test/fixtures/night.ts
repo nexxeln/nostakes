@@ -217,6 +217,7 @@ const tableFrom = (
   allInHands: random.chance(40) ? "Hidden" : "FaceUp",
   ante: Antes.NoAnte(),
   bigBlind: small * 2,
+  blindPosting: random.chance(30) ? "Casino" : "HomeGame",
   maxRuns: random.between(1, 3),
   rabbitHunt: random.chance(50),
   rabbitHunters: random.chance(30) ? "StillIn" : "DealtIn",

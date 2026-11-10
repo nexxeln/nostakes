@@ -1,5 +1,13 @@
 import { describe, expect, it } from "@effect/vitest";
-import { DeckSchema, Events, TableStates } from "@nostakes/engine";
+import {
+  Actions,
+  DeckSchema,
+  Events,
+  PendingDecisions,
+  Seats,
+  TableStates,
+  pendingDecisions,
+} from "@nostakes/engine";
 import { Option, Result, Schema } from "effect";
 
 import {
@@ -15,6 +23,9 @@ import {
   ShuffleRanOut,
   deckFromBytes,
   nextDeadline,
+  Audiences,
+  RoomViews,
+  viewFor,
 } from "../src/index.js";
 import type { RoomState } from "../src/index.js";
 import {
@@ -29,6 +40,7 @@ import {
   ms,
   openOf,
   openedBy,
+  player,
   rejection,
   run,
   runAll,
@@ -179,7 +191,7 @@ describe("sitting out and straddles", () => {
 
     expect(
       TableStates.$is("InHand")(table) &&
-        table.hand.players.map((player) => player.seat)
+        table.hand.players.map((hand) => hand.seat)
     ).toStrictEqual([seat(0), seat(1)]);
   });
 
@@ -261,5 +273,110 @@ describe("the host dealing each hand", () => {
     ]);
 
     expect(nextDeadline(paused)).toStrictEqual(Option.none());
+  });
+});
+
+const eve = player("eve");
+
+const foldedOut = (state: RoomState, at: number) => {
+  let current = state;
+
+  for (let turn = 0; turn < 9; turn += 1) {
+    const open = openOf(current);
+    const pending = pendingDecisions(open.table);
+
+    if (PendingDecisions.$is("Bet")(pending)) {
+      const occupant = open.table.seats[pending.legal.seat];
+
+      current =
+        occupant !== undefined && Seats.$is("Occupied")(occupant)
+          ? run(
+              current,
+              RoomCommands.Act({
+                action: Actions.Fold(),
+                at: ms(at + turn),
+                by: as(occupant.player),
+              })
+            ).state
+          : current;
+    }
+  }
+
+  return current;
+};
+
+describe("casino blinds in a room", () => {
+  it("lets a new player choose to post and deals them in with a live big blind", () => {
+    const casino = {
+      ...settings,
+      table: { ...settings.table, blindPosting: "Casino" as const },
+    };
+
+    const firstHand = foldedOut(
+      run(
+        runAll(openedBy(ann, casino), [
+          join(bob),
+          join(cat),
+          join(dan),
+          join(eve),
+          sit(ann, 0),
+          sit(bob, 2),
+          sit(cat, 4),
+          sit(eve, 6),
+          start(3),
+        ]),
+        dealAt(10)
+      ).state,
+      20
+    );
+
+    const joined = run(firstHand, sit(dan, 7, 200, 30)).state;
+
+    const chose = run(
+      joined,
+      RoomCommands.ChoosePosting({ at: ms(31), by: as(dan), post: true })
+    );
+
+    expect(chose.events).toStrictEqual([
+      RoomEvents.PostingChosen({ at: ms(31), player: dan, post: true }),
+    ]);
+
+    const danSees = viewFor(
+      chose.state,
+      Audiences.Seated({ player: dan, seat: seat(7) }),
+      ms(31)
+    );
+
+    expect(
+      RoomViews.$is("Open")(danSees)
+        ? (danSees.seats[7]?.occupant ?? Option.none()).pipe(
+            Option.map((held) => ({ owes: held.owes, posts: held.posts }))
+          )
+        : Option.none()
+    ).toStrictEqual(
+      Option.some({
+        owes: { big: false, entry: true, small: false },
+        posts: true,
+      })
+    );
+
+    const dealt = run(chose.state, dealAt(40));
+
+    expect(
+      dealt.events.flatMap((event) =>
+        RoomEvents.$is("Table")(event) &&
+        Events.$is("BlindPosted")(event.event) &&
+        event.event.seat === seat(7)
+          ? [event.event.amount]
+          : []
+      )
+    ).toStrictEqual([10]);
+    expect(
+      dealt.events.find(
+        (event) =>
+          RoomEvents.$is("Table")(event) &&
+          Events.$is("HandStarted")(event.event)
+      )
+    ).toMatchObject({ event: { bigBlindSeat: seat(6) } });
   });
 });

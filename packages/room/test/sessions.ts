@@ -106,6 +106,7 @@ export const tableConfigFrom = (random: SeededRandom): TableConfig => {
     allInHands: random.chance(1, 2) ? "Hidden" : "FaceUp",
     ante: anteOf(random.below(3), 1 + random.below(small * 2)),
     bigBlind: chips(small * (1 + random.below(2))),
+    blindPosting: random.chance(1, 2) ? "Casino" : "HomeGame",
     maxRuns: RunCountSchema.make(1 + random.below(3)),
     rabbitHunt: random.chance(1, 2),
     rabbitHunters: random.chance(1, 3) ? "StillIn" : "DealtIn",
@@ -614,6 +615,14 @@ const seating = (
     return random.chance(1, 2)
       ? RoomCommands.SitOut({ at: when, by: member(seatedPlayer) })
       : RoomCommands.SitIn({ at: when, by: member(seatedPlayer) });
+  }
+
+  if (roll < 12) {
+    return RoomCommands.ChoosePosting({
+      at: when,
+      by: member(seatedPlayer),
+      post: random.chance(1, 2),
+    });
   }
 
   return RoomCommands.DeclareStraddle({

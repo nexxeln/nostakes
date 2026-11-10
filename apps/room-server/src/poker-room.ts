@@ -79,6 +79,7 @@ export const DEFAULT_SETTINGS: RoomSettings = Schema.decodeSync(
     allInHands: "FaceUp",
     ante: Antes.NoAnte(),
     bigBlind: 2,
+    blindPosting: "HomeGame",
     maxRuns: 1,
     rabbitHunt: false,
     rabbitHunters: "DealtIn",

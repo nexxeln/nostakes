@@ -45,6 +45,15 @@ export const buildPots = (hand: Hand): readonly Pot[] => {
   const contenders = notFolded(hand);
   const levels = potLevels(hand);
 
+  if (levels.length === 0 && hand.deadMoney > 0) {
+    return [
+      {
+        amount: hand.deadMoney,
+        eligible: contenders.map((player) => player.seat),
+      },
+    ];
+  }
+
   return levels.map((level, index) => {
     const floor = levels[index - 1] ?? 0;
     const dead = index === 0 ? hand.deadMoney : 0;
@@ -168,6 +177,10 @@ export const endHand = (state: TableState) =>
       button: Option.some(inHand.button),
       config: inHand.config,
       handNumber: inHand.handNumber,
+      lastBlinds: Option.some({
+        big: inHand.hand.bigBlindSeat,
+        small: inHand.hand.smallBlindSeat,
+      }),
       lastHand: Option.some({
         hunted: false,
         players: inHand.hand.players.map((player) => ({

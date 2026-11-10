@@ -16,11 +16,13 @@ import type { StraddleProblem } from "./rejection.js";
 import { Antes, straddleAmount } from "./rules.js";
 import type { TableConfig } from "./rules.js";
 import {
+  NO_DEBT,
   Phases,
   TableStates,
   commit,
   isInHand,
   isOccupied,
+  owesNothing,
   seatAtIndex,
   stackOf,
   updatePlayer,
@@ -28,7 +30,17 @@ import {
   withHand,
   withStackChange,
 } from "./state.js";
-import type { HandPlayer, InHand, Straddle, TableState } from "./state.js";
+import type {
+  BetweenHands,
+  BlindDebt,
+  Blinds,
+  HandPlayer,
+  InHand,
+  Occupied,
+  Seat,
+  Straddle,
+  TableState,
+} from "./state.js";
 
 export const dealtInSeats = (state: TableState) =>
   SEAT_INDEXES.filter((seat) => {
@@ -73,6 +85,192 @@ const anteFrom = (config: TableConfig, stack: number) =>
     ? Math.min(config.ante.amount, stack)
     : 0;
 
+interface Positions {
+  readonly big: SeatIndex;
+  readonly button: SeatIndex;
+  readonly small: SeatIndex;
+}
+
+const movingPositions = (
+  state: BetweenHands,
+  dealtIn: Arr.NonEmptyReadonlyArray<SeatIndex>
+): Positions => {
+  const button = nextButton(state.button, dealtIn);
+
+  return { button, ...blindSeats(dealtIn, button) };
+};
+
+const deadButtonPositions = (
+  state: BetweenHands,
+  dealtIn: Arr.NonEmptyReadonlyArray<SeatIndex>,
+  last: Blinds
+): Positions => {
+  const big = nextAmong(dealtIn, last.big);
+
+  if (dealtIn.length === 2) {
+    const other = dealtIn.find((seat) => seat !== big) ?? big;
+
+    return { big, button: other, small: other };
+  }
+
+  return big === last.small
+    ? movingPositions(state, dealtIn)
+    : { big, button: last.small, small: last.big };
+};
+
+const positionsAmong = (
+  state: BetweenHands,
+  dealtIn: Arr.NonEmptyReadonlyArray<SeatIndex>
+): Positions =>
+  state.config.blindPosting === "Casino"
+    ? Option.match(state.lastBlinds, {
+        onNone: () => movingPositions(state, dealtIn),
+        onSome: (last) => deadButtonPositions(state, dealtIn, last),
+      })
+    : movingPositions(state, dealtIn);
+
+export interface EntryPost {
+  readonly dead: Chips;
+  readonly live: Chips;
+  readonly seat: SeatIndex;
+}
+
+const owedPosts = (config: TableConfig, debt: BlindDebt) => ({
+  dead: chips(debt.small ? config.smallBlind : 0),
+  live: chips(debt.big || debt.entry ? config.bigBlind : 0),
+});
+
+const occupantAt = (
+  state: TableState,
+  seat: SeatIndex
+): Occupied | undefined => {
+  const occupant = seatAtIndex(state, seat);
+
+  return isOccupied(occupant) ? occupant : undefined;
+};
+
+const postsToEnter = (
+  state: TableState,
+  posting: readonly SeatIndex[],
+  seat: SeatIndex
+) => {
+  const occupant = occupantAt(state, seat);
+
+  if (occupant === undefined || !posting.includes(seat)) {
+    return false;
+  }
+
+  const { dead, live } = owedPosts(state.config, occupant.owes);
+
+  return occupant.stack - anteFrom(state.config, occupant.stack) > dead + live;
+};
+
+const clockwiseDistance = (from: SeatIndex, to: SeatIndex) =>
+  (to - from + SEAT_INDEXES.length) % SEAT_INDEXES.length;
+
+const strictlyBetween = (from: SeatIndex, to: SeatIndex, seat: SeatIndex) =>
+  clockwiseDistance(from, seat) > 0 &&
+  clockwiseDistance(from, seat) < clockwiseDistance(from, to);
+
+const behindTheBlinds = (at: Positions, seat: SeatIndex) =>
+  seat === at.button ||
+  seat === at.small ||
+  strictlyBetween(at.button, at.small, seat);
+
+const placedWell = (
+  state: TableState,
+  posting: readonly SeatIndex[],
+  seat: SeatIndex,
+  at: Positions
+) =>
+  postsToEnter(state, posting, seat)
+    ? !behindTheBlinds(at, seat)
+    : seat === at.big;
+
+const sortedSeats = (seats: readonly SeatIndex[]) =>
+  seats.toSorted((left, right) => left - right);
+
+const owesSomething = (state: TableState, seat: SeatIndex) =>
+  !owesNothing(occupantAt(state, seat)?.owes ?? NO_DEBT);
+
+const settled = (
+  state: BetweenHands,
+  posting: readonly SeatIndex[],
+  dealt: Arr.NonEmptyReadonlyArray<SeatIndex>
+): Arr.NonEmptyReadonlyArray<SeatIndex> => {
+  const at = positionsAmong(state, dealt);
+
+  const kept = dealt.filter(
+    (seat) =>
+      !owesSomething(state, seat) || placedWell(state, posting, seat, at)
+  );
+
+  return kept.length === dealt.length || !Arr.isReadonlyArrayNonEmpty(kept)
+    ? dealt
+    : settled(state, posting, kept);
+};
+
+export interface Deal {
+  readonly dealtIn: readonly SeatIndex[];
+  readonly forgiven: boolean;
+}
+
+const casinoDeal = (
+  state: BetweenHands,
+  posting: readonly SeatIndex[]
+): Deal => {
+  const playable = dealtInSeats(state);
+  const square = playable.filter((seat) => !owesSomething(state, seat));
+
+  if (!Arr.isReadonlyArrayNonEmpty(square) || square.length < 2) {
+    return { dealtIn: playable, forgiven: true };
+  }
+
+  const owing = playable.filter((seat) => !square.includes(seat));
+
+  if (!Arr.isReadonlyArrayNonEmpty(owing)) {
+    return { dealtIn: square, forgiven: false };
+  }
+
+  const start = positionsAmong(state, square).small;
+  let dealt: Arr.NonEmptyReadonlyArray<SeatIndex> = square;
+
+  for (const seat of clockwiseFrom(owing, start)) {
+    const trial = sortedSeats([...dealt, seat]);
+
+    if (
+      Arr.isReadonlyArrayNonEmpty(trial) &&
+      placedWell(state, posting, seat, positionsAmong(state, trial))
+    ) {
+      dealt = trial;
+    }
+  }
+
+  return { dealtIn: settled(state, posting, dealt), forgiven: false };
+};
+
+const dealFor = (state: BetweenHands, posting: readonly SeatIndex[]): Deal =>
+  state.config.blindPosting === "Casino"
+    ? casinoDeal(state, posting)
+    : { dealtIn: dealtInSeats(state), forgiven: false };
+
+const entryPosts = (
+  state: TableState,
+  deal: Deal,
+  big: SeatIndex
+): readonly EntryPost[] =>
+  deal.forgiven
+    ? []
+    : deal.dealtIn.flatMap((seat) => {
+        const occupant = occupantAt(state, seat);
+
+        return occupant === undefined ||
+          seat === big ||
+          owesNothing(occupant.owes)
+          ? []
+          : [{ ...owedPosts(state.config, occupant.owes), seat }];
+      });
+
 const underTheGunLine = (
   dealtIn: Arr.NonEmptyReadonlyArray<SeatIndex>,
   bigBlind: SeatIndex,
@@ -104,11 +302,11 @@ const coveredStraddle = (
 const lineProblem = (
   state: TableState,
   dealtIn: Arr.NonEmptyReadonlyArray<SeatIndex>,
-  button: SeatIndex,
+  at: Positions,
   straddles: readonly SeatIndex[]
 ): Option.Option<StraddleProblem> => {
   const rules = state.config.straddle;
-  const bigBlind = blindSeats(dealtIn, button).big;
+  const { big: bigBlind, button } = at;
 
   if (dealtIn.length === 2) {
     return Option.some("HeadsUp");
@@ -118,7 +316,10 @@ const lineProblem = (
     straddles.length <= rules.underTheGun &&
     isPrefixOf(straddles, underTheGunLine(dealtIn, bigBlind, button));
 
-  const buttonAlone = straddles.length === 1 && straddles[0] === button;
+  const buttonAlone =
+    straddles.length === 1 &&
+    straddles[0] === button &&
+    dealtIn.includes(button);
 
   if (underTheGun || (buttonAlone && rules.button)) {
     return Option.none();
@@ -140,14 +341,14 @@ const lineProblem = (
 const validStraddles = (
   state: TableState,
   dealtIn: Arr.NonEmptyReadonlyArray<SeatIndex>,
-  button: SeatIndex,
+  at: Positions,
   straddles: readonly SeatIndex[]
 ): Result.Result<readonly Straddle[], StraddleProblem> => {
   if (straddles.length === 0) {
     return Result.succeed([]);
   }
 
-  const problem = lineProblem(state, dealtIn, button, straddles);
+  const problem = lineProblem(state, dealtIn, at, straddles);
 
   if (Option.isSome(problem)) {
     return Result.fail(problem.value);
@@ -165,7 +366,8 @@ const postings = (
   state: TableState,
   dealOrder: readonly SeatIndex[],
   blinds: { readonly big: SeatIndex; readonly small: SeatIndex },
-  straddles: readonly Straddle[]
+  straddles: readonly Straddle[],
+  entries: readonly EntryPost[]
 ): readonly Event[] => {
   const remaining = new Map(
     dealOrder.map((seat) => [seat, stackOf(state, seat)])
@@ -205,7 +407,7 @@ const postings = (
   });
 
   const blind = (seat: SeatIndex, kind: "Small" | "Big", wanted: Chips) =>
-    left(seat) > 0
+    left(seat) > 0 && dealOrder.includes(seat)
       ? [Events.BlindPosted({ ...take(seat, wanted), blind: kind, seat })]
       : [];
 
@@ -219,6 +421,27 @@ const postings = (
         seat: straddle.seat,
       })
     ),
+    ...entries.flatMap((entry) => [
+      ...(entry.live > 0
+        ? [
+            Events.BlindPosted({
+              ...take(entry.seat, entry.live),
+              blind: "Big",
+              seat: entry.seat,
+            }),
+          ]
+        : []),
+      ...(entry.dead > 0
+        ? [
+            Events.BlindPosted({
+              ...take(entry.seat, entry.dead),
+              blind: "Small",
+              dead: true,
+              seat: entry.seat,
+            }),
+          ]
+        : []),
+    ]),
   ];
 };
 
@@ -240,15 +463,22 @@ export const startHand = (
     return Result.fail(new HandInProgress({ handNumber: state.handNumber }));
   }
 
-  const dealtIn = dealtInSeats(state);
+  const deal = dealFor(state, command.posts ?? []);
+  const { dealtIn } = deal;
 
   if (!Arr.isReadonlyArrayNonEmpty(dealtIn) || dealtIn.length < 2) {
     return Result.fail(new NotEnoughPlayers({ dealtIn }));
   }
 
-  const button = nextButton(state.button, dealtIn);
-  const blinds = blindSeats(dealtIn, button);
-  const straddles = validStraddles(state, dealtIn, button, command.straddles);
+  const at = positionsAmong(state, dealtIn);
+  const { button, ...blinds } = at;
+  const entries = entryPosts(state, deal, blinds.big);
+
+  const straddles = command.straddles.some((seat) =>
+    entries.some((entry) => entry.seat === seat)
+  )
+    ? Result.fail<StraddleProblem>("PostingToEnter")
+    : validStraddles(state, dealtIn, at, command.straddles);
 
   if (Result.isFailure(straddles)) {
     return Result.fail(
@@ -270,7 +500,7 @@ export const startHand = (
       handNumber: state.handNumber + 1,
       smallBlindSeat: blinds.small,
     }),
-    ...postings(state, dealOrder, blinds, straddles.success),
+    ...postings(state, dealOrder, blinds, straddles.success, entries),
     ...holeCards(command.deck, dealOrder),
   ]);
 };
@@ -295,6 +525,63 @@ const dealtInPlayer = (state: TableState, seat: SeatIndex): HandPlayer[] => {
     : [];
 };
 
+const lastBigOf = (state: TableState, event: EventOf<"HandStarted">) =>
+  TableStates.$is("BetweenHands")(state)
+    ? Option.match(state.lastBlinds, {
+        onNone: () => event.smallBlindSeat,
+        onSome: (last) => last.big,
+      })
+    : event.smallBlindSeat;
+
+const debtAfter = (
+  state: TableState,
+  event: EventOf<"HandStarted">,
+  seat: SeatIndex,
+  owes: BlindDebt
+): BlindDebt => {
+  if (event.dealtIn.includes(seat)) {
+    return NO_DEBT;
+  }
+
+  if (state.config.blindPosting !== "Casino" || owes.entry) {
+    return owes;
+  }
+
+  const passed = strictlyBetween(
+    lastBigOf(state, event),
+    event.bigBlindSeat,
+    seat
+  );
+
+  return {
+    ...owes,
+    big: owes.big || passed,
+    small: owes.small || passed || seat === event.smallBlindSeat,
+  };
+};
+
+const seatsAfterDeal = (
+  state: TableState,
+  event: EventOf<"HandStarted">
+): readonly Seat[] =>
+  state.seats.map((seat, index) => {
+    const at = SEAT_INDEXES[index];
+
+    return isOccupied(seat) && at !== undefined
+      ? { ...seat, owes: debtAfter(state, event, at, seat.owes) }
+      : seat;
+  });
+
+export const clearDebtsAtHome = (state: TableState): TableState =>
+  state.config.blindPosting === "HomeGame"
+    ? {
+        ...state,
+        seats: state.seats.map((seat) =>
+          isOccupied(seat) ? { ...seat, owes: NO_DEBT } : seat
+        ),
+      }
+    : state;
+
 export const beginHand = (
   state: TableState,
   event: EventOf<"HandStarted">
@@ -315,7 +602,7 @@ export const beginHand = (
       street: "Preflop",
     },
     handNumber: event.handNumber,
-    seats: state.seats,
+    seats: seatsAfterDeal(state, event),
   });
 
 export const postAnte = (state: TableState, event: EventOf<"AntePosted">) =>
@@ -335,7 +622,18 @@ export const postAnte = (state: TableState, event: EventOf<"AntePosted">) =>
   });
 
 export const postBlind = (state: TableState, event: EventOf<"BlindPosted">) =>
-  whenInHand(state, (inHand) => commit(inHand, event.seat, event.amount, true));
+  whenInHand(state, (inHand) =>
+    event.dead === true
+      ? {
+          ...inHand,
+          hand: {
+            ...inHand.hand,
+            deadMoney: chips(inHand.hand.deadMoney + event.amount),
+          },
+          seats: withStackChange(inHand.seats, event.seat, 0 - event.amount),
+        }
+      : commit(inHand, event.seat, event.amount, true)
+  );
 
 export const postStraddle = (
   state: TableState,

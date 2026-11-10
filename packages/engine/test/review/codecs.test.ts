@@ -6,6 +6,7 @@ import {
   CommandSchema,
   Commands,
   EventSchema,
+  Events,
   RejectionSchema,
   decide,
 } from "../../src/index.js";
@@ -237,6 +238,22 @@ describe("JSON codecs for phase 2 storage and transport", () => {
           "StreetDealt",
           "UncalledBetReturned",
         ]);
+
+        expect(
+          brokenRoundTrips({
+            commands: [],
+            events: [
+              Events.BlindPosted({
+                allIn: false,
+                amount: chipCount(5),
+                blind: "Small",
+                dead: true,
+                seat: seat(3),
+              }),
+            ],
+            rejections: [],
+          })
+        ).toStrictEqual([]);
 
         const rare = [
           decide(

@@ -19,13 +19,15 @@ import type { Rejection } from "./rejection.js";
 import { longestStraddleChain, straddleAmount } from "./rules.js";
 import {
   EMPTY_SEAT,
+  NO_DEBT,
   Seats,
   isInHand,
   isOccupied,
   occupantOf,
+  owesNothing,
   replaceSeat,
 } from "./state.js";
-import type { Occupied, TableState } from "./state.js";
+import type { BlindDebt, Occupied, TableState } from "./state.js";
 
 export const accept = (...events: readonly Event[]) => Result.succeed(events);
 
@@ -177,12 +179,33 @@ const updateOccupant = (
     }),
   });
 
+const entryDebt = (state: TableState): BlindDebt => {
+  const square = SEAT_INDEXES.filter((index) => {
+    const seat = state.seats[index];
+
+    return (
+      seat !== undefined &&
+      isOccupied(seat) &&
+      !seat.sittingOut &&
+      (seat.stack > 0 || dealtIntoCurrentHand(state, index)) &&
+      owesNothing(seat.owes)
+    );
+  });
+
+  return state.config.blindPosting === "Casino" &&
+    state.handNumber > 0 &&
+    square.length >= 2
+    ? { ...NO_DEBT, entry: true }
+    : NO_DEBT;
+};
+
 export const seatPlayer = (state: TableState, event: EventOf<"PlayerSat">) => ({
   ...state,
   seats: replaceSeat(
     state.seats,
     event.seat,
     Seats.Occupied({
+      owes: entryDebt(state),
       player: event.player,
       sittingOut: false,
       stack: event.buyIn,

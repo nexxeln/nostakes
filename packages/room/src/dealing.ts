@@ -140,11 +140,18 @@ const notDue = (state: Open, at: Millis) => {
     : Option.none();
 };
 
-const startHand = (
-  table: TableState,
-  deck: Deck,
-  straddles: readonly SeatIndex[]
-) => decideTable(table, Commands.StartHand({ deck, straddles }));
+export const postingSeats = (state: Open): readonly SeatIndex[] =>
+  SEATS.filter((seat) =>
+    Option.exists(occupantAt(state.table, seat), (occupant) =>
+      state.posters.includes(occupant.player)
+    )
+  );
+
+const startHand = (state: Open, deck: Deck, straddles: readonly SeatIndex[]) =>
+  decideTable(
+    state.table,
+    Commands.StartHand({ deck, posts: postingSeats(state), straddles })
+  );
 
 const clockwiseAfter = (seats: readonly SeatIndex[], after: SeatIndex) => [
   ...seats.filter((seat) => seat > after),
@@ -161,7 +168,7 @@ const leadingWhile = (
 };
 
 export const straddlesFor = (state: Open, deck: Deck): readonly SeatIndex[] => {
-  const dryRun = startHand(state.table, deck, []);
+  const dryRun = startHand(state, deck, []);
 
   const started = Result.isSuccess(dryRun)
     ? dryRun.success.find(Events.$is("HandStarted"))
@@ -193,20 +200,23 @@ export const straddlesFor = (state: Open, deck: Deck): readonly SeatIndex[] => {
 
   return (
     candidates.find((straddles) =>
-      Result.isSuccess(startHand(state.table, deck, straddles))
+      Result.isSuccess(startHand(state, deck, straddles))
     ) ?? []
   );
 };
+
+export const handStart = (state: Open, deck: Deck) =>
+  Commands.StartHand({
+    deck,
+    posts: postingSeats(state),
+    straddles: straddlesFor(state, deck),
+  });
 
 export const deal = (state: Open, command: RoomCommandOf<"Deal">): Decision =>
   Option.match(notDue(state, command.at), {
     onNone: () =>
       Result.flatMap(deckFromBytes(command.shuffleBytes), (deck) =>
-        onTable(
-          state.table,
-          Commands.StartHand({ deck, straddles: straddlesFor(state, deck) }),
-          command.at
-        )
+        onTable(state.table, handStart(state, deck), command.at)
       ),
     onSome: (refusal) => Result.fail(refusal),
   });

@@ -133,3 +133,20 @@ export const seatsTakenFrom = (state: Open, first: number) =>
       (Option.isSome(occupantAt(state.table, seat)) ||
         state.requests.seats.some((request) => request.seat === seat))
   );
+
+export const choosePosting = (
+  state: Open,
+  player: PlayerId,
+  command: RoomCommandOf<"ChoosePosting">
+) =>
+  Result.map(heldSeat(state, player), () =>
+    state.posters.includes(player) === command.post
+      ? []
+      : [
+          RoomEvents.PostingChosen({
+            at: command.at,
+            player,
+            post: command.post,
+          }),
+        ]
+  );

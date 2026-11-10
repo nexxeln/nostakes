@@ -144,6 +144,7 @@ const tableConfig = (random: Random): TableConfig => {
     allInHands: random.chance(40) ? "Hidden" : "FaceUp",
     ante: anteOf(random, bigBlind),
     bigBlind: chips(bigBlind),
+    blindPosting: random.chance(40) ? "Casino" : "HomeGame",
     maxRuns: RunCountSchema.make(1 + random.below(3)),
     rabbitHunt: random.chance(50),
     rabbitHunters: random.chance(30) ? "StillIn" : "DealtIn",
@@ -207,9 +208,11 @@ const newCounts = () => ({
   bankStarts: 0,
   closedDuringHand: 0,
   closedRooms: 0,
+  deadBlindsPosted: 0,
   dealsWaitingForHost: 0,
   denials: 0,
   earlyExpiriesRefused: 0,
+  entryPosts: 0,
   fixedRunOuts: 0,
   hostChanges: 0,
   hostDeals: 0,
@@ -623,6 +626,15 @@ const COUNTED: readonly (readonly [
   ["timeoutStreaksEnded", RoomEvents.$is("TimeoutStreakEnded")],
   ["hostChanges", RoomEvents.$is("HostChanged")],
   ["hostDeals", RoomEvents.$is("NextHandCalled")],
+  [
+    "deadBlindsPosted",
+    (event) =>
+      tableEventIs(
+        event,
+        (tableEvent) =>
+          Events.$is("BlindPosted")(tableEvent) && tableEvent.dead === true
+      ),
+  ],
   ["rulesQueued", RoomEvents.$is("RulesQueued")],
   ["closedDuringHand", RoomEvents.$is("CloseQueued")],
   ["showdownTables", (event) => tableEventIs(event, Events.$is("HandTabled"))],
@@ -635,7 +647,17 @@ const seatCount = (state: RoomState) =>
 const fixedRuns = (state: RoomState) =>
   RoomStates.$is("Open")(state) && state.table.config.runCount === "Fixed";
 
+const postedToEnter = (before: RoomState, event: RoomEvent) =>
+  RoomEvents.$is("Table")(event) &&
+  Events.$is("BlindPosted")(event.event) &&
+  event.event.blind === "Big" &&
+  event.event.dead !== true &&
+  RoomStates.$is("Open")(before) &&
+  TableStates.$is("InHand")(before.table) &&
+  before.table.hand.bigBlindSeat !== event.event.seat;
+
 const observe = (run: Run, before: RoomState, event: RoomEvent) => {
+  run.counts.entryPosts += postedToEnter(before, event) ? 1 : 0;
   run.counts.fixedRunOuts +=
     fixedRuns(before) &&
     tableEventIs(
@@ -990,6 +1012,15 @@ const seatedMove = (run: Run, open: Open, seat: SeatIndex, roll: number) => {
       sittingOut
         ? RoomCommands.SitIn({ at: when, by: member(player) })
         : RoomCommands.SitOut({ at: when, by: member(player) })
+    );
+  } else if (roll < 14) {
+    send(
+      run,
+      RoomCommands.ChoosePosting({
+        at: when,
+        by: member(player),
+        post: run.random.chance(50),
+      })
     );
   } else if (roll < 15) {
     send(

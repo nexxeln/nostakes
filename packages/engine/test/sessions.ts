@@ -46,6 +46,7 @@ export const SessionSchema = Schema.Struct({
   anteKind: between(0, 2),
   bigBlindExtra: between(0, 12),
   button: Schema.Boolean,
+  casinoBlinds: Schema.Boolean,
   fixedRuns: Schema.Boolean,
   hiddenAllIns: Schema.Boolean,
   intents: Schema.Array(IntentSchema).check(
@@ -86,6 +87,7 @@ export const configOf = (source: Session): TableConfig =>
     allInHands: source.hiddenAllIns ? "Hidden" : "FaceUp",
     ante: anteOf(source.anteKind, source.anteAmount),
     bigBlind: chipCount(source.smallBlind + source.bigBlindExtra),
+    blindPosting: source.casinoBlinds ? "Casino" : "HomeGame",
     maxRuns: runCount(source.maxRuns),
     rabbitHunt: source.rabbitHunt,
     rabbitHunters: source.rabbitStillIn ? "StillIn" : "DealtIn",
@@ -107,6 +109,7 @@ const randomConfig = (random: SeededRandom): TableConfig => {
     allInHands: random.chance(1, 2) ? "Hidden" : "FaceUp",
     ante: anteOf(random.below(3), 1 + random.below(12)),
     bigBlind: chipCount(small + random.below(12)),
+    blindPosting: random.chance(1, 2) ? "Casino" : "HomeGame",
     maxRuns: runCount(1 + random.below(4)),
     rabbitHunt: random.chance(1, 2),
     rabbitHunters: random.chance(1, 3) ? "StillIn" : "DealtIn",
@@ -140,6 +143,11 @@ const occupiedSeats = (state: TableState) =>
   state.seats.flatMap((current, index) =>
     Seats.$is("Occupied")(current) ? [{ index, occupant: current }] : []
   );
+
+const postingSeats = (state: TableState, random: SeededRandom) =>
+  occupiedSeats(state)
+    .filter(() => random.chance(1, 2))
+    .map(({ index }) => seat(index));
 
 const plannedStraddles = (state: TableState, random: SeededRandom) => {
   const dealtIn = occupiedSeats(state)
@@ -275,7 +283,11 @@ const illegalInHand = (state: TableState, random: SeededRandom): Command => {
 
     return style === 2
       ? Commands.Act({ action: Actions.Check(), seat: legal.seat })
-      : Commands.StartHand({ deck: shuffledDeck(random), straddles: [] });
+      : Commands.StartHand({
+          deck: shuffledDeck(random),
+          posts: postingSeats(state, random),
+          straddles: [],
+        });
   }
 
   if (PendingDecisions.$is("Show")(pending) && random.chance(3, 4)) {
@@ -361,6 +373,7 @@ export const commandFor = (state: TableState, intent: Intent): Command => {
   if (intent.roll < 50) {
     return Commands.StartHand({
       deck: shuffledDeck(random),
+      posts: postingSeats(state, random),
       straddles: plannedStraddles(state, random).map((index) => seat(index)),
     });
   }

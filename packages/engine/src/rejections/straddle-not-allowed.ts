@@ -9,6 +9,7 @@ export const StraddleProblemSchema = Schema.Literals([
   "TooMany",
   "OutOfTurn",
   "CannotCover",
+  "PostingToEnter",
 ]);
 
 export type StraddleProblem = typeof StraddleProblemSchema.Type;

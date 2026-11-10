@@ -44,6 +44,7 @@ export const opened = (event: RoomEventOf<"RoomOpened">): Open =>
     host: event.host,
     members: [],
     now: event.at,
+    posters: [],
     proof: Option.none(),
     queued: EMPTY_QUEUE,
     record: Option.none(),
@@ -67,6 +68,7 @@ const withoutStreak = (state: Open, player: PlayerId): Open => ({
 const vacated = (state: Open, player: PlayerId, seat: SeatIndex): Open => ({
   ...withoutStreak(state, player),
   away: state.away.filter((awaySeat) => awaySeat !== seat),
+  posters: state.posters.filter((poster) => poster !== player),
   queued: {
     ...state.queued,
     leaving: state.queued.leaving.filter((leaving) => leaving !== player),
@@ -310,6 +312,12 @@ const evolveOpen = (state: Open, event: RoomEvent): RoomState =>
       },
     }),
     NextHandCalled: (): Open => ({ ...state, dealCalled: true }),
+    PostingChosen: ({ player, post }) => ({
+      ...state,
+      posters: post
+        ? [...state.posters, player]
+        : state.posters.filter((poster) => poster !== player),
+    }),
     ProfileChanged: ({ avatar, name, player }) => ({
       ...state,
       members: state.members.map((member) =>

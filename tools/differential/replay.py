@@ -155,6 +155,14 @@ EXCLUSIONS = {
         "compared; the pots and awards still are, except after an interactive showdown, "
         "whose choices PokerKit could not replay."
     ),
+    "casino-blind-posting": (
+        "With blindPosting Casino a seat that owes a blind waits for the big blind or posts "
+        "to come in, a missed small blind is posted dead, and the button is a dead button. "
+        "PokerKit has no seats outside the hand, no dead money but antes, and no dead "
+        "button. A hand whose dealt-in seats, button, or blinds differ from the moving "
+        "button, or that has a post to come in, is not compared; the table model and the "
+        "simulator check these rules. Other Casino hands are compared in full."
+    ),
     "odd-chip-spread": (
         "PokerKit gives a pot's whole remainder to the first run and to the first winner. "
         "Brief rules 17 and 22 hand leftover chips out one at a time. Awards and final "
@@ -183,6 +191,7 @@ REPLAY_ONLY = {
 
 SETTING_CHOICES = {
     "allInHands": {"FaceUp", "Hidden"},
+    "blindPosting": {"HomeGame", "Casino"},
     "rabbitHunters": {"DealtIn", "StillIn"},
     "runCount": {"Vote", "Fixed"},
     "showdown": {"Automatic", "Interactive"},
@@ -277,8 +286,32 @@ class Hand:
     def started(self):
         return self.record["start"][0]
 
+    def casino_differs(self, started):
+        if self.config.get("blindPosting") != "Casino":
+            return False
+        seats = self.record["seats"]
+        dealt = [i for i, seat in enumerate(seats) if seat is not None and not seat["sittingOut"] and seat["stack"] > 0]
+        posted = any(
+            e["_tag"] == "BlindPosted"
+            and (e.get("dead", False) or (e["blind"] == "Big" and e["seat"] != started["bigBlindSeat"]))
+            for e in self.record["start"]
+        )
+        if dealt != started["dealtIn"] or posted:
+            return True
+        previous = self.record["previousButton"]
+        button = dealt[0] if previous is None else next_after(dealt, previous)
+        small = button if len(dealt) == 2 else next_after(dealt, button)
+        big = next_after(dealt, small)
+        return (button, small, big) != (started["button"], started["smallBlindSeat"], started["bigBlindSeat"])
+
     def run(self):
         started = self.started()
+        if self.config.get("blindPosting") == "Casino":
+            self.features.add("casino-blinds")
+            if self.casino_differs(started):
+                self.excluded.add("casino-blind-posting")
+                self.stop("casino-blind-posting")
+                return
         self.button = started["button"]
         self.check_table(started)
         self.check_rejected_starts()
@@ -333,6 +366,9 @@ class Hand:
 
     def check_rejected_starts(self):
         for rejected in self.record["rejectedStarts"]:
+            if rejected["config"].get("blindPosting") == "Casino":
+                self.excluded.add("casino-blind-posting")
+                continue
             seats = rejected["seats"]
             dealt = [i for i, seat in enumerate(seats) if seat is not None and not seat["sittingOut"] and seat["stack"] > 0]
             tag = rejected["rejection"]["tag"]
@@ -1238,7 +1274,7 @@ def summarize(results, path, report):
         + [f"runs-{n}" for n in range(1, 5)]
         + ["short-all-in", "short-big-blind", "side-pots", "split-pots", "odd-chips"]
         + ["fold-out", "showdown", "mucks", "rejected-commands", "rabbit-hunt", "voluntary-show"]
-        + ["interactive-showdown", "concession", "unshown-winner", "hidden-run-out"]
+        + ["interactive-showdown", "concession", "unshown-winner", "hidden-run-out", "casino-blinds"]
     )
     for feature in order + sorted(set(features) - set(order)):
         counts = features.get(feature, Counter())

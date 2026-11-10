@@ -186,7 +186,13 @@ export const SeatViewSchema = Schema.Struct({
     Schema.Struct({
       away: Schema.Boolean,
       leaving: Schema.Boolean,
+      owes: Schema.Struct({
+        big: Schema.Boolean,
+        entry: Schema.Boolean,
+        small: Schema.Boolean,
+      }),
       player: PlayerIdSchema,
+      posts: Schema.Boolean,
       sittingOut: Schema.Boolean,
       stack: ChipsSchema,
       straddling: Schema.Boolean,
@@ -362,7 +368,9 @@ const seatsView = (state: Open) =>
       Option.map((occupant) => ({
         away: state.away.includes(seat),
         leaving: state.queued.leaving.includes(occupant.player),
+        owes: occupant.owes,
         player: occupant.player,
+        posts: state.posters.includes(occupant.player),
         sittingOut: occupant.sittingOut,
         stack: occupant.stack,
         straddling: state.straddlers.includes(occupant.player),

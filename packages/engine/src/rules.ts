@@ -54,6 +54,10 @@ export const ShowdownOrderSchema = Schema.Literals([
 
 export type ShowdownOrder = typeof ShowdownOrderSchema.Type;
 
+export const BlindPostingSchema = Schema.Literals(["HomeGame", "Casino"]);
+
+export type BlindPosting = typeof BlindPostingSchema.Type;
+
 export const RabbitHuntersSchema = Schema.Literals(["DealtIn", "StillIn"]);
 
 export type RabbitHunters = typeof RabbitHuntersSchema.Type;
@@ -91,6 +95,11 @@ export const TableConfigSchema = Schema.Struct({
   bigBlind: PositiveChipsSchema.annotate({
     description: "Chips the big blind posts before the cards are dealt.",
     title: "Big blind",
+  }),
+  blindPosting: setting(BlindPostingSchema, "HomeGame", {
+    description:
+      "HomeGame: a new or returning player is dealt in at the next hand and owes nothing. Casino: a new player waits for the big blind or posts one to come in at once; a player who sits out while a blind passes owes it, and on return waits for the big blind or posts what they owe, the big blind live and the small blind dead.",
+    title: "Blinds for new and returning players",
   }),
   maxRuns: RunCountSchema.annotate({
     description:

@@ -36,6 +36,7 @@ export const EventSchema = Schema.TaggedUnion({
     allIn: Schema.Boolean,
     amount: ChipsSchema,
     blind: BlindSchema,
+    dead: Schema.optionalKey(Schema.Boolean),
     seat: SeatIndexSchema,
   },
   Called: {

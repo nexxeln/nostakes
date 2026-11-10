@@ -19,8 +19,25 @@ export interface EmptySeat {
   readonly _tag: "Empty";
 }
 
+export interface Blinds {
+  readonly big: SeatIndex;
+  readonly small: SeatIndex;
+}
+
+export interface BlindDebt {
+  readonly big: boolean;
+  readonly entry: boolean;
+  readonly small: boolean;
+}
+
+export const NO_DEBT: BlindDebt = { big: false, entry: false, small: false };
+
+export const owesNothing = (debt: BlindDebt) =>
+  !debt.big && !debt.entry && !debt.small;
+
 export interface Occupied {
   readonly _tag: "Occupied";
+  readonly owes: BlindDebt;
   readonly player: PlayerId;
   readonly sittingOut: boolean;
   readonly stack: Chips;
@@ -121,6 +138,7 @@ export type TableState = Data.TaggedEnum<{
     readonly button: Option.Option<SeatIndex>;
     readonly config: TableConfig;
     readonly handNumber: number;
+    readonly lastBlinds: Option.Option<Blinds>;
     readonly lastHand: Option.Option<LastHand>;
     readonly seats: readonly Seat[];
   };
@@ -146,6 +164,7 @@ export const initialTable = (config: TableConfig): TableState =>
     button: Option.none(),
     config,
     handNumber: 0,
+    lastBlinds: Option.none(),
     lastHand: Option.none(),
     seats: Array.from({ length: SEAT_COUNT }, () => EMPTY_SEAT),
   });

@@ -6,6 +6,7 @@ import {
   Commands,
   DeckSchema,
   Events,
+  NO_DEBT,
   PendingDecisions,
   Phases,
   PlayerIdSchema,
@@ -28,6 +29,7 @@ import type {
   Event,
   LegalActions,
   PendingDecision,
+  BlindDebt,
   Rejection,
   TableConfig,
   TableState,
@@ -110,6 +112,7 @@ const randomConfig = (random: Random): TableConfig => {
     allInHands: random.chance(40) ? "Hidden" : "FaceUp",
     ante: anteOf(random, bigBlind),
     bigBlind: chipCount(bigBlind),
+    blindPosting: random.chance(40) ? "Casino" : "HomeGame",
     maxRuns: runCount(1 + random.below(4)),
     rabbitHunt: random.chance(50),
     rabbitHunters: random.chance(30) ? "StillIn" : "DealtIn",
@@ -526,11 +529,15 @@ const newCounts = () => ({
   boardsRunTwo: 0,
   buttonStraddles: 0,
   cappedCalls: 0,
+  casinoHands: 0,
   chipLimitRejected: 0,
   clockShowdownsLikeAutomatic: 0,
   deadDecisionsSkipped: 0,
+  deadPosts: 0,
+  debtsForgiven: 0,
   deepPots: 0,
   doubleStraddles: 0,
+  entryPosts: 0,
   equalStraddles: 0,
   everyPlayerAntes: 0,
   fixedRunOuts: 0,
@@ -555,6 +562,7 @@ const newCounts = () => ({
   splitPots: 0,
   straddleLimitRejected: 0,
   voluntaryShows: 0,
+  waitedForBigBlind: 0,
   walks: 0,
 });
 
@@ -735,6 +743,307 @@ const automaticOutcome = (state: TableState, command: Command) =>
     (): readonly Event[] => []
   );
 
+const SEAT_NUMBERS = Array.from({ length: 9 }, (_, index) => index);
+
+const clockwise = (from: number, to: number) => (to - from + 9) % 9;
+
+const between = (from: number, to: number, seat: number) =>
+  clockwise(from, seat) > 0 && clockwise(from, seat) < clockwise(from, to);
+
+const occupantAt = (state: TableState, index: number) => {
+  const held = state.seats[index];
+
+  return held !== undefined && Seats.$is("Occupied")(held) ? held : undefined;
+};
+
+const owesAnything = (debt: BlindDebt) => debt.big || debt.small || debt.entry;
+
+const behindTheBlinds = (started: HandStart, index: number) =>
+  index === started.button ||
+  index === started.smallBlindSeat ||
+  between(started.button, started.smallBlindSeat, index);
+
+const lastBigOf = (before: TableState, started: HandStart): number =>
+  TableStates.$is("BetweenHands")(before)
+    ? Option.match(before.lastBlinds, {
+        onNone: () => started.smallBlindSeat,
+        onSome: (last) => last.big,
+      })
+    : started.smallBlindSeat;
+
+const forgivenDeal = (before: TableState) =>
+  SEAT_NUMBERS.filter((index) => {
+    const occupant = occupantAt(before, index);
+
+    return (
+      occupant !== undefined &&
+      !occupant.sittingOut &&
+      occupant.stack > 0 &&
+      !owesAnything(occupant.owes)
+    );
+  }).length < 2;
+
+type HandStart = Extract<Event, { readonly _tag: "HandStarted" }>;
+
+interface Entry {
+  readonly dead: number;
+  readonly live: number;
+  readonly seat: number;
+}
+
+const entriesOf = (
+  events: readonly Event[],
+  started: HandStart
+): readonly Entry[] => {
+  const entries = new Map<number, Entry>();
+
+  for (const event of events) {
+    if (
+      Events.$is("BlindPosted")(event) &&
+      (event.dead === true ||
+        (event.blind === "Big" && event.seat !== started.bigBlindSeat))
+    ) {
+      const earlier = entries.get(event.seat) ?? {
+        dead: 0,
+        live: 0,
+        seat: event.seat,
+      };
+
+      entries.set(
+        event.seat,
+        event.dead === true
+          ? { ...earlier, dead: earlier.dead + event.amount }
+          : { ...earlier, live: earlier.live + event.amount }
+      );
+    }
+  }
+
+  return [...entries.values()];
+};
+
+const sittingOutProblems = (
+  started: HandStart,
+  lastBig: number,
+  index: number,
+  owed: BlindDebt,
+  owesAfter: BlindDebt
+) => {
+  const missedBig = between(lastBig, started.bigBlindSeat, index);
+  const missedSmall = missedBig || index === started.smallBlindSeat;
+
+  return !owed.entry &&
+    ((missedBig && !owesAfter.big) || (missedSmall && !owesAfter.small))
+    ? [
+        `seat ${index} sat out a passing blind and owes ${JSON.stringify(owesAfter)}`,
+      ]
+    : [];
+};
+
+const dealtInProblems = (
+  config: TableConfig,
+  started: HandStart,
+  forgiven: boolean,
+  index: number,
+  owed: BlindDebt,
+  post: Entry | undefined
+) => {
+  const expected =
+    forgiven || !owesAnything(owed) || index === started.bigBlindSeat
+      ? "nothing"
+      : `${owed.big || owed.entry ? config.bigBlind : 0} live and ${owed.small ? config.smallBlind : 0} dead`;
+
+  const actual =
+    post === undefined ? "nothing" : `${post.live} live and ${post.dead} dead`;
+
+  return [
+    ...(expected === actual
+      ? []
+      : [
+          `seat ${index} owed ${JSON.stringify(owed)}, posted ${actual}, expected ${expected}`,
+        ]),
+    ...(post !== undefined && behindTheBlinds(started, index)
+      ? [
+          `seat ${index} posted to come in between the button and the small blind`,
+        ]
+      : []),
+  ];
+};
+
+const dealProblems = (
+  before: TableState,
+  started: HandStart,
+  posts: readonly Entry[],
+  after: TableState
+): readonly string[] => {
+  const forgiven = forgivenDeal(before);
+
+  return SEAT_NUMBERS.flatMap((index) => {
+    const occupant = occupantAt(before, index);
+
+    if (occupant === undefined) {
+      return [];
+    }
+
+    const post = posts.find((posted) => posted.seat === index);
+    const owesAfter = occupantAt(after, index)?.owes ?? NO_DEBT;
+
+    if (!started.dealtIn.some((dealt) => dealt === index)) {
+      return [
+        ...(post === undefined ? [] : [`seat ${index} posted without a hand`]),
+        ...sittingOutProblems(
+          started,
+          lastBigOf(before, started),
+          index,
+          occupant.owes,
+          owesAfter
+        ),
+      ];
+    }
+
+    return [
+      ...dealtInProblems(
+        before.config,
+        started,
+        forgiven,
+        index,
+        occupant.owes,
+        post
+      ),
+      ...(owesAnything(owesAfter)
+        ? [`seat ${index} was dealt in and still owes`]
+        : []),
+    ];
+  });
+};
+
+interface Orbit {
+  readonly buttonsSincePaid: number;
+}
+
+const FRESH_ORBIT: Orbit = { buttonsSincePaid: 0 };
+
+const rotationProblems = (
+  before: TableState,
+  started: HandStart
+): readonly string[] => {
+  if (!TableStates.$is("BetweenHands")(before)) {
+    return [];
+  }
+
+  return Option.match(before.lastBlinds, {
+    onNone: () => [],
+    onSome: (last) => {
+      const stayed = Option.match(before.lastHand, {
+        onNone: () => [],
+        onSome: (lastHand) =>
+          lastHand.players
+            .map((player) => player.seat)
+            .filter((seat) => started.dealtIn.includes(seat)),
+      });
+
+      return [
+        ...stayed
+          .filter((seat) => between(last.big, started.bigBlindSeat, seat))
+          .map((seat) => `the big blind skipped seat ${seat}`),
+        ...(started.bigBlindSeat === last.big &&
+        stayed.some((seat) => seat !== last.big)
+          ? [`seat ${last.big} is the big blind twice in a row`]
+          : []),
+      ];
+    },
+  });
+};
+
+const orbitProblems = (
+  orbits: Map<string, Orbit>,
+  before: TableState,
+  started: HandStart,
+  posts: readonly Entry[]
+): readonly string[] => {
+  const seated = new Set<string>();
+  const problems: string[] = [];
+
+  for (const index of SEAT_NUMBERS) {
+    const occupant = occupantAt(before, index);
+
+    if (occupant !== undefined) {
+      seated.add(occupant.player);
+
+      const orbit = orbits.get(occupant.player) ?? FRESH_ORBIT;
+      const dealt = started.dealtIn.some((seat) => seat === index);
+
+      const paid =
+        dealt &&
+        (index === started.bigBlindSeat ||
+          index === started.smallBlindSeat ||
+          posts.some((posted) => posted.seat === index));
+
+      const buttonsSincePaid = paid
+        ? 0
+        : orbit.buttonsSincePaid + (dealt && index === started.button ? 1 : 0);
+
+      orbits.set(occupant.player, { buttonsSincePaid });
+
+      if (buttonsSincePaid >= 2) {
+        problems.push(
+          `seat ${index} held the button twice without paying a blind`
+        );
+      }
+    }
+  }
+
+  for (const player of orbits.keys()) {
+    if (!seated.has(player)) {
+      orbits.delete(player);
+    }
+  }
+
+  return [...problems, ...rotationProblems(before, started)];
+};
+
+const casinoProblems = (
+  orbits: Map<string, Orbit>,
+  counts: Counts,
+  before: TableState,
+  events: readonly Event[],
+  after: TableState
+): readonly string[] => {
+  const started = events.find(Events.$is("HandStarted"));
+
+  if (started === undefined) {
+    return [];
+  }
+
+  if (before.config.blindPosting !== "Casino" || forgivenDeal(before)) {
+    counts.debtsForgiven +=
+      before.config.blindPosting === "Casino" &&
+      SEAT_NUMBERS.some((index) =>
+        owesAnything(occupantAt(before, index)?.owes ?? NO_DEBT)
+      )
+        ? 1
+        : 0;
+    orbits.clear();
+
+    return [];
+  }
+
+  const posts = entriesOf(events, started);
+
+  counts.casinoHands += 1;
+  counts.entryPosts += posts.length;
+  counts.deadPosts += posts.filter((posted) => posted.dead > 0).length;
+  counts.waitedForBigBlind += owesAnything(
+    occupantAt(before, started.bigBlindSeat)?.owes ?? NO_DEBT
+  )
+    ? 1
+    : 0;
+
+  return [
+    ...dealProblems(before, started, posts, after),
+    ...orbitProblems(orbits, before, started, posts),
+  ];
+};
+
 const countRejection = (
   counts: Counts,
   rejection: Rejection,
@@ -814,6 +1123,8 @@ const simulate = (
   let automaticTwin: readonly Event[] = [];
   let everyChoiceByClock = true;
   let lastChoiceByClock = false;
+  const orbits = new Map<string, Orbit>();
+  let rulesChanged = false;
 
   const violation = (detail: string): Result.Result<boolean, Broken> =>
     Result.fail({ detail, hand: hands, log });
@@ -839,6 +1150,13 @@ const simulate = (
     if (decision.success.some(Events.$is("ShowdownStarted"))) {
       automaticTwin = automaticOutcome(state, command);
       everyChoiceByClock = true;
+    }
+
+    const prior = state;
+
+    if (Commands.$is("ChangeRules")(command)) {
+      orbits.clear();
+      rulesChanged = true;
     }
 
     for (const event of decision.success) {
@@ -888,7 +1206,18 @@ const simulate = (
       }
     }
 
-    return Result.succeed(true);
+    const dealt = decision.success.some(Events.$is("HandStarted"));
+
+    const blinds =
+      dealt && rulesChanged
+        ? []
+        : casinoProblems(orbits, counts, prior, decision.success, state);
+
+    rulesChanged &&= !dealt;
+
+    return blinds.length > 0
+      ? violation(`casino blinds: ${blinds.join("; ")}`)
+      : Result.succeed(true);
   };
 
   const openTable = () => {
@@ -962,7 +1291,13 @@ const simulate = (
     const straddled = plannedStraddles(state, random).map(seatAt);
 
     return apply(
-      Commands.StartHand({ deck: shuffledDeck(random), straddles: straddled }),
+      Commands.StartHand({
+        deck: shuffledDeck(random),
+        posts: occupied(state)
+          .filter(() => random.chance(50))
+          .map((seat) => seatAt(seat.index)),
+        straddles: straddled,
+      }),
       false
     );
   };

@@ -121,6 +121,13 @@ const queueViolations = (state: Open) => [
 ];
 
 const markViolations = (state: Open) => [
+  ...state.posters.flatMap((player) =>
+    check(
+      isSeated(state, player),
+      "PostersAreSeated",
+      () => `${player} chose to post without a seat`
+    )
+  ),
   ...state.straddlers.flatMap((player) =>
     check(
       isSeated(state, player),

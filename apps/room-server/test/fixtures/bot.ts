@@ -553,10 +553,29 @@ export const plannerFor = (setup: PlannerSetup) => {
     return Option.none();
   };
 
+  const postingIntent = (occupant: {
+    readonly owes: {
+      readonly big: boolean;
+      readonly entry: boolean;
+      readonly small: boolean;
+    };
+    readonly posts: boolean;
+  }): Option.Option<Intent> =>
+    (occupant.owes.big || occupant.owes.entry || occupant.owes.small) &&
+    random.chance(10)
+      ? intent(Commands.ChoosePosting.make({ post: !occupant.posts }))
+      : Option.none();
+
   const seatedIntent = (
     open: OpenView,
     occupant: {
+      readonly owes: {
+        readonly big: boolean;
+        readonly entry: boolean;
+        readonly small: boolean;
+      };
       readonly player: PlayerId;
+      readonly posts: boolean;
       readonly sittingOut: boolean;
       readonly stack: number;
       readonly straddling: boolean;
@@ -572,6 +591,12 @@ export const plannerFor = (setup: PlannerSetup) => {
     );
 
     const canTopUp = !asked && !queued && mayTopUp(open, occupant.stack);
+    const posting = postingIntent(occupant);
+
+    if (Option.isSome(posting)) {
+      return posting;
+    }
+
     const { max, min } = open.settings.buyIn;
 
     if (occupant.leaving) {

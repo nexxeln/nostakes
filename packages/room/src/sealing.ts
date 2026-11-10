@@ -5,11 +5,7 @@ import {
   Events,
   decide as decideTable,
 } from "@nostakes/engine";
-import type {
-  Deck as TableDeck,
-  SeatIndex,
-  TableState,
-} from "@nostakes/engine";
+import type { Deck as TableDeck, SeatIndex } from "@nostakes/engine";
 import {
   CardSchema as SealedCardSchema,
   DeckSchema as SealedDeckSchema,
@@ -36,7 +32,8 @@ import {
   dealDue,
   dealableSeats,
   deckFromBytes,
-  straddlesFor,
+  handStart,
+  postingSeats,
 } from "./dealing.js";
 import type { Decision } from "./decision.js";
 import { RoomEvents } from "./events.js";
@@ -88,11 +85,14 @@ export const sealDue = (state: Open): Option.Option<Millis> =>
     : Option.none();
 
 const dealOrderOf = (
-  table: TableState,
+  state: Open,
   deck: TableDeck
 ): Result.Result<readonly SeatIndex[], TableRejected> =>
   Result.mapBoth(
-    decideTable(table, Commands.StartHand({ deck, straddles: [] })),
+    decideTable(
+      state.table,
+      Commands.StartHand({ deck, posts: postingSeats(state), straddles: [] })
+    ),
     {
       onFailure: (rejection) => new TableRejected({ rejection }),
       onSuccess: (events): readonly SeatIndex[] => {
@@ -141,9 +141,9 @@ const sealNotDue = (state: Open, at: Millis) => {
     : Option.none();
 };
 
-const onTableOrder = (table: TableState, deck: TableDeck) =>
+const onTableOrder = (state: Open, deck: TableDeck) =>
   Result.mapError(
-    dealOrderOf(table, deck),
+    dealOrderOf(state, deck),
     () =>
       new SealNotDue({
         due: Option.none(),
@@ -180,7 +180,7 @@ export const sealNextHand = (
     const second = yield* sealedDeckFrom(command.decks[1]);
     const decks: readonly [SealedDeck, SealedDeck] = [first, second];
     const tableDeck = TableDeckSchema.make([...first]);
-    const seats = yield* onTableOrder(state.table, tableDeck);
+    const seats = yield* onTableOrder(state, tableDeck);
     const secret = SaltSecretSchema.make(command.secret);
     const hand = nextHandNumber(state);
 
@@ -217,13 +217,9 @@ const sameOrder = (left: readonly SeatIndex[], right: readonly SeatIndex[]) =>
 const startSealed =
   (sealed: Sealed, deck: TableDeck, at: Millis): Step =>
   (state) =>
-    Result.flatMap(dealOrderOf(state.table, deck), (order): Decision =>
+    Result.flatMap(dealOrderOf(state, deck), (order): Decision =>
       sameOrder(order, sealed.seats)
-        ? onTable(
-            state.table,
-            Commands.StartHand({ deck, straddles: straddlesFor(state, deck) }),
-            at
-          )
+        ? onTable(state.table, handStart(state, deck), at)
         : Result.fail(
             new SealedSeatsMoved({ dealt: order, sealed: sealed.seats })
           )

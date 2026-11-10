@@ -26,7 +26,11 @@ export const CommandSchema = Schema.TaggedUnion({
     seat: SeatIndexSchema,
   },
   StandUp: { seat: SeatIndexSchema },
-  StartHand: { deck: DeckSchema, straddles: Schema.Array(SeatIndexSchema) },
+  StartHand: {
+    deck: DeckSchema,
+    posts: Schema.optionalKey(Schema.Array(SeatIndexSchema)),
+    straddles: Schema.Array(SeatIndexSchema),
+  },
   TableHand: { seat: SeatIndexSchema },
 });
 

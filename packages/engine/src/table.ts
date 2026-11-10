@@ -23,6 +23,7 @@ import { Events } from "./events.js";
 import type { Event } from "./events.js";
 import {
   beginHand,
+  clearDebtsAtHome,
   dealHoleCards,
   postAnte,
   postBlind,
@@ -193,10 +194,8 @@ const evolveEvent = Events.$match({
       raise(state, event),
   RulesChanged:
     (event) =>
-    (state: TableState): TableState => ({
-      ...state,
-      config: event.config,
-    }),
+    (state: TableState): TableState =>
+      clearDebtsAtHome({ ...state, config: event.config }),
   RunsAgreed:
     (event) =>
     (state: TableState): TableState =>

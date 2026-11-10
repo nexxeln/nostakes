@@ -92,6 +92,7 @@ const randomConfig = (random: Random): TableConfig => {
     allInHands: random.chance(40) ? "Hidden" : "FaceUp",
     ante: anteOf(random, bigBlind),
     bigBlind: chipCount(bigBlind),
+    blindPosting: random.chance(40) ? "Casino" : "HomeGame",
     maxRuns: runCount(1 + random.below(4)),
     rabbitHunt: random.chance(50),
     rabbitHunters: random.chance(30) ? "StillIn" : "DealtIn",
@@ -641,7 +642,11 @@ const exportHands = (seed: number, wanted: number) =>
         seats: seatsRecord(state),
       };
 
-      const outcome = apply(Commands.StartHand({ deck, straddles }));
+      const posts = occupied(state)
+        .filter(() => random.chance(50))
+        .map((seat) => seatAt(seat.index));
+
+      const outcome = apply(Commands.StartHand({ deck, posts, straddles }));
 
       if (Result.isFailure(outcome)) {
         rejectedStarts.push({

@@ -30,7 +30,13 @@ import { QueueNotDue, RoomIsClosed } from "./rejection.js";
 import type { RoomRejection } from "./rejection.js";
 import { changeSettings } from "./rules.js";
 import { dealSealed, sealNextHand, withdrawStale } from "./sealing.js";
-import { answerSeat, declareStraddle, requestSeat, sitOut } from "./seats.js";
+import {
+  answerSeat,
+  choosePosting,
+  declareStraddle,
+  requestSeat,
+  sitOut,
+} from "./seats.js";
 import { RoomSettingsSchema } from "./settings.js";
 import { RoomStates, handInProgress, isOpen, queueWaiting } from "./state.js";
 import type { Open, RoomState } from "./state.js";
@@ -88,6 +94,8 @@ const decideOpen = (state: Open, command: RoomCommand): Decision =>
       byHost(state, approve, () => answerSeat(state, approve, true)),
     ChangeSettings: (change) =>
       byHost(state, change, () => changeSettings(state, change)),
+    ChoosePosting: (choose) =>
+      byMember(state, choose, (player) => choosePosting(state, player, choose)),
     ChooseRuns: (choose) =>
       byMember(state, choose, (player) => play(state, player, choose)),
     CloseRoom: (close) => byHost(state, close, () => closeRoom(state, close)),

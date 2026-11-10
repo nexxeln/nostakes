@@ -10,6 +10,7 @@ import {
   SeatEmpty,
   SeatTaken,
   Events,
+  NO_DEBT,
   Seats,
   decide,
   initialTable,
@@ -49,6 +50,7 @@ describe("seating", () => {
     ]);
     expect(sat.state.seats[3]).toStrictEqual(
       Seats.Occupied({
+        owes: NO_DEBT,
         player: player("ann"),
         sittingOut: false,
         stack: chipCount(200),

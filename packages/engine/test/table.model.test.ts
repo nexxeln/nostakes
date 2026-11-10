@@ -30,6 +30,7 @@ import type {
   ShowdownOrder,
   TableState,
 } from "../src/index.js";
+import { dealProblems } from "./blind-checks.js";
 import { bankrollChange, chipCount, runCount, seat } from "./fixtures.js";
 import { seededRandom } from "./random.js";
 import {
@@ -77,6 +78,12 @@ const contributionOf = (event: Event) => {
 
   return Events.$is("RaisedTo")(event) ? event.added : 0;
 };
+
+const livePost = (event: Event) =>
+  (Events.$is("BlindPosted")(event) && event.dead !== true) ||
+  Events.$is("StraddlePosted")(event)
+    ? { amount: event.amount, seat: event.seat }
+    : undefined;
 
 const sum = (values: readonly number[]) =>
   values.reduce((total, value) => total + value, 0);
@@ -586,6 +593,18 @@ describe("generated sessions", () => {
   );
 
   it.prop(
+    "casino blinds: a seat dealt in owed nothing, is the big blind, or posted exactly what it owed, never from the button or the small blind, and a seat sitting out owes every blind that passes it",
+    { source: session },
+    ({ source }) => {
+      expect(
+        playSession(source).steps.flatMap((step) =>
+          dealProblems(step.before, step.events, step.after)
+        )
+      ).toStrictEqual([]);
+    }
+  );
+
+  it.prop(
     "interactive showdown: seats are asked in order only while another seat contests a pot they claim, a muck never throws away a hand that beats or ties the tabled hands of a contested pot, and each pot is awarded once, to its last claimant or the best tabled claimants",
     { source: session },
     ({ source }) => {
@@ -794,11 +813,13 @@ describe("generated sessions", () => {
           antes.set(event.seat, event.amount);
         }
 
-        if (
-          Events.$is("BlindPosted")(event) ||
-          Events.$is("StraddlePosted")(event)
-        ) {
-          posted.set(event.seat, (posted.get(event.seat) ?? 0) + event.amount);
+        const livePosted = livePost(event);
+
+        if (livePosted !== undefined) {
+          posted.set(
+            livePosted.seat,
+            (posted.get(livePosted.seat) ?? 0) + livePosted.amount
+          );
         }
 
         if (Events.$is("StraddlePosted")(event)) {

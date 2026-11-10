@@ -1,6 +1,7 @@
 import { describe, expect, it } from "@effect/vitest";
 import {
   Actions,
+  NO_DEBT,
   PendingDecisions,
   Seats,
   pendingDecisions,
@@ -93,7 +94,12 @@ describe("seats", () => {
       }),
     ]);
     expect(open(sat.state).table.seats[4]).toStrictEqual(
-      Seats.Occupied({ player: bob, sittingOut: false, stack: chipCount(300) })
+      Seats.Occupied({
+        owes: NO_DEBT,
+        player: bob,
+        sittingOut: false,
+        stack: chipCount(300),
+      })
     );
     expect(open(sat.state).entries.get(bob)).toStrictEqual([
       BoughtIn({ amount: amount(300), player: bob }),
