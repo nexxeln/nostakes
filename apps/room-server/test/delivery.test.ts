@@ -60,17 +60,30 @@ const secretsSeenBy = (client: RoomClient) =>
     )
   );
 
-const dealRound = (dealer: RoomClient, id: string, round: number) =>
-  Effect.gen(function* dealUntilRound() {
+const roundDealt =
+  (round: number) =>
+  (
+    message: ToyServerMessage
+  ): message is typeof codec.server.cases.Events.Type =>
+    isEvents(message) &&
+    message.events.some(
+      (event) => isSecretDealt(event) && event.round === round
+    );
+
+const dealRound = (
+  dealer: RoomClient,
+  id: string,
+  round: number,
+  live: readonly RoomClient[]
+) =>
+  Effect.gen(function* dealUntilEveryoneSeesRound() {
     yield* dealer.send(command(id, Commands.RequestDeal.make({})));
     yield* dealer.next(`reply ${id}`, replyTo(id));
-    yield* dealer.next(
-      `round ${round}`,
-      (message): message is typeof codec.server.cases.Events.Type =>
-        isEvents(message) &&
-        message.events.some(
-          (event) => isSecretDealt(event) && event.round === round
-        )
+    yield* pipe(
+      live,
+      Effect.forEach((client) =>
+        client.next(`round ${round}`, roundDealt(round))
+      )
     );
   });
 
@@ -109,12 +122,22 @@ test(
       { client: deeAgain.client, pass: deePass },
     ];
 
-    yield* dealRound(ana.client, "deal-1", 1);
+    yield* dealRound(
+      ana.client,
+      "deal-1",
+      1,
+      clients.map(({ client }) => client)
+    );
 
     const cySeen = lastSeq(cy.client);
 
     yield* cy.client.disconnect;
-    yield* dealRound(ben.client, "deal-2", 2);
+    yield* dealRound(ben.client, "deal-2", 2, [
+      ana.client,
+      ben.client,
+      dee.client,
+      deeAgain.client,
+    ]);
 
     const cyBack = yield* joinAs(
       base,
@@ -125,7 +148,13 @@ test(
 
     clients.push({ client: cyBack.client, pass: cyPass });
 
-    yield* dealRound(dee.client, "deal-3", 3);
+    yield* dealRound(dee.client, "deal-3", 3, [
+      ana.client,
+      ben.client,
+      cyBack.client,
+      dee.client,
+      deeAgain.client,
+    ]);
 
     const benLate = yield* joinAs(
       base,
