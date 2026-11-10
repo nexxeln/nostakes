@@ -114,7 +114,13 @@ const layersOf = (
     moved(eyes, mood),
     moved(brows, mood),
     moved(
-      eyewearFor(avatar.eyewear, expression, build.eyes, build.glasses),
+      eyewearFor(
+        avatar.eyewear,
+        expression,
+        build.eyes,
+        build.glasses,
+        build.hat.y - 1
+      ),
       mood
     ),
     moved(mouthFor(avatar.mouth, expression, build.mouth), mood),

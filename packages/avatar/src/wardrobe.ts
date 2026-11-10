@@ -139,12 +139,12 @@ const monocle = (eyes: EyeAnchor): readonly Piece[] => {
   ];
 };
 
-const patch = (eyes: EyeAnchor): readonly Piece[] => {
+const patch = (eyes: EyeAnchor, top: number): readonly Piece[] => {
   const { left: lx, right: rx, size: s, y } = eyes;
 
   return [
     flat(
-      band([lx - s * 1.5, y + s * 0.2], [rx + s * 1.4, y - s * 2.1], 1.7),
+      band([lx - s * 1.1, y + s * 0.15], [lx + (rx - lx) * 0.62, top], 1.7),
       "Ink"
     ),
     cut(
@@ -165,7 +165,8 @@ export const eyewearFor = (
   eyewear: Eyewear,
   expression: Expression,
   eyes: EyeAnchor,
-  glasses: GlassesAnchor
+  glasses: GlassesAnchor,
+  top: number
 ): readonly Piece[] => {
   if (expression === "Folded" || eyewear === "None") {
     return [];
@@ -189,7 +190,7 @@ export const eyewearFor = (
     );
   }
 
-  return patch(eyes);
+  return patch(eyes, top);
 };
 
 const chain = (suit: Suit, neck: NeckAnchor): readonly Piece[] => {

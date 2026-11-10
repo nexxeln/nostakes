@@ -335,7 +335,7 @@ const octopus: Build = {
   ],
   body: [cut(OCTO_HEAD, "Body")],
   brows: { half: 6.5, y: 25 },
-  cheek: [69, 47],
+  cheek: [68, 53],
   eyes: { left: 38, right: 62, size: 12.5, y: 37.5 },
   fold: 30,
   front: nothing,
@@ -387,7 +387,7 @@ const whale: Build = {
     ),
   ],
   brows: { half: 6.5, y: 37.5 },
-  cheek: [80, 44],
+  cheek: [50, 31],
   eyes: { left: 26, right: 74, size: 9.5, y: 47 },
   fold: 38,
   front: (rank, suit) =>
