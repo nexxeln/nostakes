@@ -151,4 +151,39 @@ describe("a deadline the room refuses", () => {
     expect(room.memory.tables().refusals).toStrictEqual(Option.none());
     expect(room.host.nextDeadline()).toStrictEqual(room.host.dueAt(1002));
   });
+
+  it("counts a core that throws while answering its deadline as a refusal: logged with the throw, backed off, and the room marked stalled", () => {
+    const room = openToyHost();
+    const viewer = room.watch(ana);
+
+    room.send(
+      ana,
+      "break",
+      1001,
+      Commands.Jam.make({ on: true, throws: true })
+    );
+    room.send(ana, "deal", 1002, Commands.RequestDeal.make({}));
+
+    const answers = [1002, 2002, 4002, 8002, 16_002].map((at) =>
+      Option.getOrThrow(room.answerDue(at))
+    );
+
+    expect(answers.map(({ result }) => result.note._tag)).toStrictEqual([
+      "Crashed",
+      "Crashed",
+      "Crashed",
+      "Crashed",
+      "Crashed",
+    ]);
+    expect(
+      Option.getOrThrow(answers[0]?.refused ?? Option.none()).message
+    ).toContain(
+      `refused the server's answer to its Deal deadline, 1 in a row: the room core threw: {"_tag":"ToyRefusal","reason":"Broken"}.`
+    );
+    expect(Option.isSome(answers[4]?.stall ?? Option.none())).toBe(true);
+    expect(lastView(room, viewer)?.view.stalled).toStrictEqual(
+      Option.some(16_002)
+    );
+    expect(Option.getOrThrow(room.host.nextDeadline()).at).toBe(32_002);
+  });
 });

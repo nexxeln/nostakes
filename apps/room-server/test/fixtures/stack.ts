@@ -39,7 +39,9 @@ export const inspect = (base: string, code: RoomCode) =>
   );
 
 export const refusedAlarms = (inspection: Inspection) =>
-  inspection.alarmRuns.filter(({ outcome }) => outcome === "Rejected").length;
+  inspection.alarmRuns.filter(
+    ({ outcome }) => outcome === "Rejected" || outcome === "Crashed"
+  ).length;
 
 export const restart = (base: string, code: RoomCode) =>
   HttpClient.post(new URL(`/test/rooms/${code}/restart`, base)).pipe(

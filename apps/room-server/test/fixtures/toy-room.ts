@@ -40,7 +40,7 @@ export const ToyMemberCommandSchema = Schema.TaggedUnion({
   Increment: {
     times: Schema.Int.check(Schema.isBetween({ maximum: 8, minimum: 1 })),
   },
-  Jam: { on: Schema.Boolean },
+  Jam: { on: Schema.Boolean, throws: Schema.optionalKey(Schema.Boolean) },
   Join: { avatar: Avatar, name: Name },
   RequestDeal: {},
   StartTurn: {
@@ -72,7 +72,7 @@ export const ToyEventSchema = Schema.TaggedUnion({
   DealRequested: { by: PlayerIdSchema, due: Millis },
   Exploded: { fuse: NegativeFuse },
   Incremented: { by: PlayerIdSchema, count: Schema.Int },
-  Jammed: { on: Schema.Boolean },
+  Jammed: { on: Schema.Boolean, throws: Schema.optionalKey(Schema.Boolean) },
   Joined: { avatar: Avatar, name: Name, player: PlayerIdSchema },
   Opened: { at: Millis, code: RoomCodeSchema, host: PlayerIdSchema },
   SecretDealt: { round: Schema.Int, secret: SecretSchema, to: PlayerIdSchema },
@@ -89,7 +89,7 @@ export const ToyRedactedSchema = Schema.TaggedUnion({
   DealRequested: { by: PlayerIdSchema, due: Millis },
   Exploded: { fuse: Schema.Int },
   Incremented: { by: PlayerIdSchema, count: Schema.Int },
-  Jammed: { on: Schema.Boolean },
+  Jammed: { on: Schema.Boolean, throws: Schema.optionalKey(Schema.Boolean) },
   Joined: { avatar: Avatar, name: Name, player: PlayerIdSchema },
   Opened: { at: Millis, code: RoomCodeSchema, host: PlayerIdSchema },
   SecretDealt: {
@@ -167,6 +167,7 @@ export interface ToyState {
   readonly count: number;
   readonly increments: number;
   readonly jammed: boolean;
+  readonly jamThrows: boolean;
   readonly round: number;
   readonly secrets: ReadonlyMap<PlayerId, string>;
   readonly stalled: Option.Option<number>;
@@ -194,6 +195,7 @@ const emptyRoom: ToyState = {
   count: 0,
   dealDue: Option.none(),
   increments: 0,
+  jamThrows: false,
   jammed: false,
   latest: 0,
   members: [],
@@ -249,8 +251,10 @@ const decideMember = (
               incremented(by, state.count + index + 1)
             )
           ),
-        Jam: ({ on }) =>
-          Result.succeed([ToyEventSchema.cases.Jammed.make({ on })]),
+        Jam: ({ on, throws }) =>
+          Result.succeed([
+            ToyEventSchema.cases.Jammed.make({ on, throws: throws === true }),
+          ]),
         Join: ({ avatar, name }) =>
           Result.succeed([
             ToyEventSchema.cases.Joined.make({ avatar, name, player: by }),
@@ -278,6 +282,14 @@ const secretFor = (entropy: Uint8Array, index: number) =>
     entropy.subarray(index * SECRET_BYTES, (index + 1) * SECRET_BYTES)
   );
 
+const brokenOrRefused = (state: ToyState): Decision => {
+  if (state.jamThrows) {
+    throw new ToyRefusal({ reason: "Broken" });
+  }
+
+  return refuse("Jammed");
+};
+
 const answersDeadline = (command: ToyServerCommand) =>
   !ToyServerCommandSchema.guards.MarkStalled(command);
 
@@ -287,7 +299,7 @@ const decideServer = (
   command: ToyServerCommand
 ): Decision =>
   state.jammed && answersDeadline(command)
-    ? refuse("Jammed")
+    ? brokenOrRefused(state)
     : ToyServerCommandSchema.match(command, {
         Deal: ({ entropy }): Decision =>
           Option.match(state.dealDue, {
@@ -369,7 +381,11 @@ const evolve = (state: ToyState, event: ToyEvent): ToyState =>
       count,
       increments: state.increments + 1,
     }),
-    Jammed: ({ on }) => ({ ...state, jammed: on }),
+    Jammed: ({ on, throws }) => ({
+      ...state,
+      jamThrows: throws === true,
+      jammed: on,
+    }),
     Joined: ({ avatar, name, player }) => ({
       ...state,
       members: [...state.members, { avatar, name, player }],

@@ -69,6 +69,7 @@ export type CommitNote = Data.TaggedEnum<{
   Rejected: { readonly stored: boolean };
   Committed: { readonly from: number; readonly to: number };
   StorageFailed: { readonly cause: string };
+  Crashed: { readonly cause: string };
   Halted: { readonly violations: readonly string[]; readonly events: string };
   RoomHalted: { readonly reason: string };
 }>;
@@ -617,7 +618,7 @@ export const hostRoom = <T extends RoomTypes>(
 
   const refusalOf = (
     deadline: Deadline<T["Due"]>,
-    rejection: T["Rejection"],
+    rejection: string,
     at: number,
     connections: Connections
   ): Pick<DeadlineAnswer<T>, "refused" | "stall"> => {
@@ -639,7 +640,7 @@ export const hostRoom = <T extends RoomTypes>(
           code: current.code,
           deadline: core.dueKind(deadline.due),
           refusals: count,
-          rejection: codec.encodeRejection(rejection),
+          rejection,
           retryInMs,
           stalled,
         })
@@ -674,15 +675,24 @@ export const hostRoom = <T extends RoomTypes>(
       (now) => keyOf(now) === keyOf(deadline)
     );
 
-    const result = commit(
-      {
-        at,
-        command,
-        grant: Option.none(),
-        origin: Origins.Server({ trigger: "Alarm" }),
-      },
-      connections
-    );
+    const attempted = Result.try({
+      catch: (cause) => Inspectable.toStringUnknown(cause, 0),
+      try: () =>
+        commit(
+          {
+            at,
+            command,
+            grant: Option.none(),
+            origin: Origins.Server({ trigger: "Alarm" }),
+          },
+          connections
+        ),
+    });
+
+    const result = Result.getOrElse(attempted, (cause): CommitResult<T> => ({
+      note: CommitNotes.Crashed({ cause }),
+      reply: unavailable("RoomHalted"),
+    }));
 
     if (
       CommitNotes.$is("Committed")(result.note) &&
@@ -691,10 +701,18 @@ export const hostRoom = <T extends RoomTypes>(
       keepRefusals(Option.none());
     }
 
-    const refused =
-      stillDue && codec.reply.guards.Rejected(result.reply)
-        ? refusalOf(deadline, result.reply.rejection, at, connections)
-        : { refused: Option.none(), stall: Option.none() };
+    const refusal = Result.match(attempted, {
+      onFailure: (cause) => Option.some(`the room core threw: ${cause}`),
+      onSuccess: ({ reply }) =>
+        stillDue && codec.reply.guards.Rejected(reply)
+          ? Option.some(codec.encodeRejection(reply.rejection))
+          : Option.none(),
+    });
+
+    const refused = Option.match(refusal, {
+      onNone: () => ({ refused: Option.none(), stall: Option.none() }),
+      onSome: (text) => refusalOf(deadline, text, at, connections),
+    });
 
     return { result, ...refused };
   };

@@ -281,6 +281,7 @@ export const roomObject = <T extends RoomTypes>(
         const logCommit = (result: CommitResult<T>, command: T["Command"]) =>
           CommitNotes.$match(result.note, {
             Committed: () => Effect.void,
+            Crashed: () => Effect.void,
             Halted: ({ events, violations }) =>
               Effect.logError("room halted on an unsound commit", {
                 command,
