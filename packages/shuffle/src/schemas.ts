@@ -6,6 +6,8 @@ export const DIGEST_BYTES = 32;
 
 export const SEALED_DECKS = 2;
 
+export const MIN_DEALT_IN = 2;
+
 export const MAX_DEALT_IN = 9;
 
 const deckIndex = Schema.Int.check(
@@ -108,20 +110,25 @@ export const EpochMillisSchema = Schema.Int.check(
 
 export type EpochMillis = typeof EpochMillisSchema.Type;
 
-export const ContributionSchema = Schema.TaggedUnion({
-  Beacon: { randomness: RandomnessSchema, round: BeaconRoundSchema },
-  Player: { seat: SeatSchema, value: RandomnessSchema },
+export const BeaconSchema = Schema.Struct({
+  randomness: RandomnessSchema,
+  round: BeaconRoundSchema,
 });
 
-export type Contribution = typeof ContributionSchema.Type;
+export type Beacon = typeof BeaconSchema.Type;
 
-export type PlayerContribution = typeof ContributionSchema.cases.Player.Type;
+export const SeatsSchema = Schema.Array(SeatSchema).check(
+  Schema.isMinLength(MIN_DEALT_IN),
+  Schema.isMaxLength(MAX_DEALT_IN),
+  Schema.isUnique()
+);
 
-export const Contributions = Data.taggedEnum<Contribution>();
+export type Seats = typeof SeatsSchema.Type;
 
 export const SealSchema = Schema.Struct({
-  beaconRound: Schema.Option(BeaconRoundSchema),
+  beaconRound: BeaconRoundSchema,
   roots: Schema.Tuple([DigestSchema, DigestSchema]),
+  seats: SeatsSchema,
 });
 
 export type Seal = typeof SealSchema.Type;
@@ -148,13 +155,10 @@ export const SightingSchema = Schema.Struct({
 export type Sighting = typeof SightingSchema.Type;
 
 export const PlayerSawSchema = Schema.Struct({
+  beacon: BeaconSchema,
   context: HandContextSchema,
-  contributions: Schema.Array(ContributionSchema),
-  dealtIn: Schema.Int.check(
-    Schema.isBetween({ maximum: MAX_DEALT_IN, minimum: 2 })
-  ),
-  mine: Schema.Option(ContributionSchema.cases.Player),
   seal: SealSchema,
+  seats: SeatsSchema,
   sightings: Schema.Array(SightingSchema),
   spare: DeckOpeningSchema,
 });

@@ -29,11 +29,8 @@ export {
   BeaconSignatureInvalid,
   BeaconSignatureMalformed,
   CardSeenTwice,
-  DuplicateContribution,
+  DealtSeatsDiffer,
   HandRejectedSchema,
-  MyContributionAltered,
-  MyContributionLeftOut,
-  NoOutsideRandomness,
   OpeningMismatch,
   RoleOutOfRange,
   ShownCardDiffers,
@@ -46,9 +43,8 @@ export type { HandRejected } from "./rejection.js";
 
 export {
   BeaconRoundSchema,
+  BeaconSchema,
   CardSchema,
-  ContributionSchema,
-  Contributions,
   DealIndexSchema,
   DECK_SIZE,
   DeckOpeningSchema,
@@ -59,6 +55,7 @@ export {
   EpochMillisSchema,
   HandContextSchema,
   MAX_DEALT_IN,
+  MIN_DEALT_IN,
   OpeningSchema,
   PlayerSawSchema,
   PositionSchema,
@@ -69,15 +66,16 @@ export {
   SaltSecretSchema,
   SealSchema,
   SeatSchema,
+  SeatsSchema,
   SEALED_DECKS,
   SeedSchema,
   SightingSchema,
 } from "./schemas.js";
 
 export type {
+  Beacon,
   BeaconRound,
   Card,
-  Contribution,
   DealIndex,
   Deck,
   DeckOpening,
@@ -86,7 +84,6 @@ export type {
   EpochMillis,
   HandContext,
   Opening,
-  PlayerContribution,
   PlayerSaw,
   Position,
   Randomness,
@@ -94,6 +91,7 @@ export type {
   Salt,
   SaltSecret,
   Seal,
+  Seats,
   Seed,
   Sighting,
 } from "./schemas.js";
@@ -108,11 +106,9 @@ export { dealingPlan, drawsFrom, shuffledIndices } from "./order.js";
 
 export type { DealingPlan, Draw } from "./order.js";
 
-export { combine } from "./seed.js";
+export { seedOf } from "./seed.js";
 
 export { beaconMessage, verifyBeacon } from "./beacon.js";
-
-export type { Beacon } from "./beacon.js";
 
 export {
   firstFutureRound,

@@ -25,6 +25,14 @@ export const uint32 = (value: number): Uint8Array => {
   return bytes;
 };
 
+export const uint64 = (value: number): Uint8Array => {
+  const bytes = new Uint8Array(8);
+
+  new DataView(bytes.buffer).setBigUint64(0, BigInt(value));
+
+  return bytes;
+};
+
 const utf8Encoder = new TextEncoder();
 
 export const utf8 = (text: string): Uint8Array => utf8Encoder.encode(text);

@@ -4,6 +4,7 @@ import { openCard, openDeck, sealDeck } from "./commitment.js";
 import type { SealedDeck } from "./commitment.js";
 import type { DealingPlan } from "./order.js";
 import type {
+  BeaconRound,
   DealIndex,
   Deck,
   DeckOpening,
@@ -11,6 +12,7 @@ import type {
   Opening,
   SaltSecret,
   Seal,
+  Seats,
 } from "./schemas.js";
 
 export interface SealedHand {
@@ -23,7 +25,8 @@ export const sealHand = (
   context: HandContext,
   decks: readonly [Deck, Deck],
   secret: SaltSecret,
-  beaconRound: Option.Option<number>
+  beaconRound: BeaconRound,
+  seats: Seats
 ): SealedHand => {
   const sealed = [
     sealDeck(context, 0, decks[0], secret),
@@ -33,7 +36,7 @@ export const sealHand = (
   return {
     context,
     decks: sealed,
-    seal: { beaconRound, roots: [sealed[0].root, sealed[1].root] },
+    seal: { beaconRound, roots: [sealed[0].root, sealed[1].root], seats },
   };
 };
 

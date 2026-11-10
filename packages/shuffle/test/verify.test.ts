@@ -4,12 +4,8 @@ import { Option, Result, Schema } from "effect";
 import {
   BeaconRoundMismatch,
   CardSchema,
-  Contributions,
   DealIndexSchema,
-  DuplicateContribution,
-  MyContributionAltered,
-  MyContributionLeftOut,
-  NoOutsideRandomness,
+  DealtSeatsDiffer,
   OpeningMismatch,
   openCard,
   PositionSchema,
@@ -26,6 +22,7 @@ import {
 import type { PlayerSaw, Sighting } from "../src/index.js";
 import { between } from "./arbitraries.js";
 import {
+  dealtInOf,
   everything,
   honestHand,
   keepFlags,
@@ -75,20 +72,6 @@ describe("verifyHand on honest hands", () => {
           dealtSlot: hand.plan.dealtSlot,
         })
       );
-    }
-  );
-
-  it.prop(
-    "accepts a player's own contribution when it was used as sent",
-    { hand: honestHand },
-    ({ hand }) => {
-      const mine = hand.contributions.find(Contributions.$is("Player"));
-
-      expect(
-        Result.isSuccess(
-          verifyHand(sawOf(hand, hand.dealt, Option.fromNullishOr(mine)))
-        )
-      ).toBe(true);
     }
   );
 });
@@ -223,36 +206,17 @@ describe("verifyHand on a changed hand", () => {
   );
 
   it.prop(
-    "fails for an observer of every card when any one contribution changed",
-    {
-      by: between(1, 255),
-      hand: honestHand,
-      pick: between(0, 9),
-      spot: between(0, 31),
-    },
-    ({ by, hand, pick, spot }) => {
-      const target = pick % hand.contributions.length;
+    "fails for an observer of every card when the beacon's randomness changed",
+    { by: between(1, 255), hand: honestHand, spot: between(0, 31) },
+    ({ by, hand, spot }) => {
+      const beacon = {
+        ...hand.beacon,
+        randomness: RandomnessSchema.make(
+          nudged(hand.beacon.randomness, spot, by)
+        ),
+      };
 
-      const changed = hand.contributions.map((contribution, index) =>
-        index === target
-          ? Contributions.$match(contribution, {
-              Beacon: (beacon) =>
-                Contributions.Beacon({
-                  ...beacon,
-                  randomness: RandomnessSchema.make(
-                    nudged(beacon.randomness, spot, by)
-                  ),
-                }),
-              Player: (player) =>
-                Contributions.Player({
-                  ...player,
-                  value: RandomnessSchema.make(nudged(player.value, spot, by)),
-                }),
-            })
-          : contribution
-      );
-
-      const rejected = outcome({ ...everything(hand), contributions: changed });
+      const rejected = outcome({ ...everything(hand), beacon });
 
       expect(
         Schema.is(SpareDeckMismatch)(rejected) ||
@@ -262,99 +226,37 @@ describe("verifyHand on a changed hand", () => {
   );
 
   it.prop(
-    "tells a player when the value their device sent was left out or altered",
-    { by: between(1, 255), hand: honestHand, spot: between(0, 31) },
-    ({ by, hand, spot }) => {
-      const mine = hand.contributions.find(Contributions.$is("Player"));
-
-      if (mine === undefined) {
-        return;
-      }
-
-      const others = hand.contributions.filter(
-        (contribution) => contribution !== mine
-      );
-
-      const altered = Contributions.Player({
-        ...mine,
-        value: RandomnessSchema.make(nudged(mine.value, spot, by)),
-      });
-
-      expect(
-        outcome({
-          ...sawOf(hand, [], Option.some(mine)),
-          contributions: others,
-        })
-      ).toEqual(
-        others.length === 0
-          ? new NoOutsideRandomness({ hand: hand.sealed.context.hand })
-          : new MyContributionLeftOut({ seat: mine.seat })
-      );
-
-      expect(
-        outcome({
-          ...sawOf(hand, [], Option.some(mine)),
-          contributions: [...others, altered],
-        })
-      ).toEqual(new MyContributionAltered({ seat: mine.seat }));
-    }
-  );
-
-  it.prop(
-    "rejects a source that contributed twice",
-    { hand: honestHand },
-    ({ hand }) => {
-      const [first] = hand.contributions;
-
-      if (first === undefined) {
-        return;
-      }
-
-      expect(
-        outcome({
-          ...everything(hand),
-          contributions: [...hand.contributions, first],
-        })
-      ).toBeInstanceOf(DuplicateContribution);
-    }
-  );
-
-  it.prop(
     "rejects a beacon round other than the sealed one",
     { hand: honestHand, shift: between(1, 1000) },
     ({ hand, shift }) => {
-      const contributions = hand.contributions.map((contribution) =>
-        Contributions.$match(contribution, {
-          Beacon: (beacon) =>
-            Contributions.Beacon({ ...beacon, round: beacon.round + shift }),
-          Player: (player) => player,
+      const used = hand.beacon.round + shift;
+
+      expect(
+        outcome({
+          ...everything(hand),
+          beacon: { ...hand.beacon, round: used },
         })
-      );
-
-      const beacon = hand.contributions.find(Contributions.$is("Beacon"));
-
-      expect(outcome({ ...everything(hand), contributions })).toEqual(
-        beacon === undefined
-          ? outcome(everything(hand))
-          : new BeaconRoundMismatch({
-              sealed: Option.some(beacon.round),
-              used: Option.some(beacon.round + shift),
-            })
-      );
+      ).toEqual(new BeaconRoundMismatch({ sealed: hand.beacon.round, used }));
     }
   );
 
   it.prop(
-    "refuses to call an order fair when nothing outside the server chose it",
-    { hand: honestHand },
-    ({ hand }) => {
-      expect(
-        outcome({
-          ...everything(hand),
-          contributions: [],
-          seal: { ...hand.sealed.seal, beaconRound: Option.none() },
-        })
-      ).toEqual(new NoOutsideRandomness({ hand: hand.sealed.context.hand }));
+    "rejects a deal to seats other than the sealed ones, in another order, or one seat short",
+    { extra: between(0, 8), hand: honestHand },
+    ({ extra, hand }) => {
+      const sealed = hand.sealed.seal.seats;
+
+      const changed = [
+        sealed.toReversed(),
+        sealed.slice(1),
+        sealed.includes(extra) ? sealed.slice(0, -1) : [...sealed, extra],
+      ].filter((dealt) => dealt.join(",") !== sealed.join(","));
+
+      for (const dealt of changed) {
+        expect(outcome({ ...everything(hand), seats: dealt })).toEqual(
+          new DealtSeatsDiffer({ dealt, sealed })
+        );
+      }
     }
   );
 
@@ -411,14 +313,15 @@ describe("verifyHand on a changed hand", () => {
         return;
       }
 
-      const pastDeck = Roles.Community({ drawn: 52 - 2 * hand.dealtIn });
+      const dealtIn = dealtInOf(hand);
+      const pastDeck = Roles.Community({ drawn: 52 - 2 * dealtIn });
 
       const pastPlayers =
-        hand.dealtIn < 9 ? [Roles.Hole({ pass: 1, turn: hand.dealtIn })] : [];
+        dealtIn < 9 ? [Roles.Hole({ pass: 1, turn: dealtIn })] : [];
 
       for (const role of [...pastPlayers, pastDeck]) {
         expect(outcome(sawOf(hand, [{ ...first, role }]))).toEqual(
-          new RoleOutOfRange({ dealtIn: hand.dealtIn, role })
+          new RoleOutOfRange({ dealtIn, role })
         );
       }
     }

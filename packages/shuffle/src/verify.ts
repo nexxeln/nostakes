@@ -5,9 +5,9 @@ import { deckRoot, verifyOpening } from "./commitment.js";
 import { dealingPlan } from "./order.js";
 import type { DealingPlan } from "./order.js";
 import {
+  BeaconRoundMismatch,
   CardSeenTwice,
-  MyContributionAltered,
-  MyContributionLeftOut,
+  DealtSeatsDiffer,
   RoleOutOfRange,
   ShownCardDiffers,
   SpareDeckMismatch,
@@ -15,7 +15,7 @@ import {
   WrongPosition,
 } from "./rejection.js";
 import type { HandRejected } from "./rejection.js";
-import { Contributions, DealIndexSchema, DECK_SIZE, Roles } from "./schemas.js";
+import { DealIndexSchema, DECK_SIZE, Roles } from "./schemas.js";
 import type {
   Card,
   DealIndex,
@@ -25,7 +25,7 @@ import type {
   Seed,
   Sighting,
 } from "./schemas.js";
-import { combine } from "./seed.js";
+import { seedOf } from "./seed.js";
 
 export interface Verified {
   readonly seed: Seed;
@@ -51,23 +51,23 @@ export const dealIndexOf = (
     Option.map((index) => DealIndexSchema.make(index))
   );
 
-const checkMine = (saw: PlayerSaw) =>
-  Option.match(saw.mine, {
-    onNone: () => Result.void,
-    onSome: (mine) => {
-      const listed = saw.contributions
-        .filter(Contributions.$is("Player"))
-        .find(({ seat }) => seat === mine.seat);
+const checkRound = (saw: PlayerSaw) =>
+  saw.beacon.round === saw.seal.beaconRound
+    ? Result.void
+    : Result.fail(
+        new BeaconRoundMismatch({
+          sealed: saw.seal.beaconRound,
+          used: saw.beacon.round,
+        })
+      );
 
-      if (listed === undefined) {
-        return Result.fail(new MyContributionLeftOut({ seat: mine.seat }));
-      }
-
-      return sameBytes(listed.value, mine.value)
-        ? Result.void
-        : Result.fail(new MyContributionAltered({ seat: mine.seat }));
-    },
-  });
+const checkSeats = (saw: PlayerSaw) =>
+  saw.seats.length === saw.seal.seats.length &&
+  saw.seats.every((seat, turn) => seat === saw.seal.seats[turn])
+    ? Result.void
+    : Result.fail(
+        new DealtSeatsDiffer({ dealt: saw.seats, sealed: saw.seal.seats })
+      );
 
 const checkSpare = (saw: PlayerSaw, plan: DealingPlan) => {
   const repeated = saw.spare.cards.find(
@@ -94,13 +94,11 @@ const checkSighting = (
   sighting: Sighting
 ): Result.Result<Seen, HandRejected> =>
   Result.gen(function* checkOneSighting() {
-    const outOfRange = new RoleOutOfRange({
-      dealtIn: saw.dealtIn,
-      role: sighting.role,
-    });
+    const dealtIn = saw.seal.seats.length;
+    const outOfRange = new RoleOutOfRange({ dealtIn, role: sighting.role });
 
     const dealIndex = yield* Result.fromOption(
-      dealIndexOf(sighting.role, saw.dealtIn),
+      dealIndexOf(sighting.role, dealtIn),
       () => outOfRange
     );
 
@@ -164,10 +162,10 @@ export const verifyHand = (
   saw: PlayerSaw
 ): Result.Result<Verified, HandRejected> =>
   Result.gen(function* verifyOneHand() {
-    const seed = yield* combine(saw.context, saw.seal, saw.contributions);
+    yield* checkRound(saw);
+    yield* checkSeats(saw);
 
-    yield* checkMine(saw);
-
+    const seed = seedOf(saw.context, saw.seal, saw.beacon);
     const plan = dealingPlan(seed);
 
     yield* checkSpare(saw, plan);

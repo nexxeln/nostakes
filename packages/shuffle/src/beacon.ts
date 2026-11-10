@@ -1,30 +1,19 @@
 import { bls12_381 } from "@noble/curves/bls12-381.js";
 import { Result } from "effect";
 
+import { uint64 } from "./bytes.js";
 import { SIGNATURE_DST } from "./drand.js";
 import type { DrandChain } from "./drand.js";
 import { BeaconSignatureInvalid } from "./rejections/beacon-signature-invalid.js";
 import { BeaconSignatureMalformed } from "./rejections/beacon-signature-malformed.js";
 import { RandomnessSchema } from "./schemas.js";
-import type { BeaconRound, Randomness } from "./schemas.js";
+import type { Beacon, BeaconRound } from "./schemas.js";
 import { sha256 } from "./sha256.js";
-
-export interface Beacon {
-  readonly round: BeaconRound;
-  readonly randomness: Randomness;
-}
-
-const ROUND_BYTES = 8;
 
 const signatures = bls12_381.shortSignatures;
 
-export const beaconMessage = (round: BeaconRound): Uint8Array => {
-  const bytes = new Uint8Array(ROUND_BYTES);
-
-  new DataView(bytes.buffer).setBigUint64(0, BigInt(round));
-
-  return sha256(bytes);
-};
+export const beaconMessage = (round: BeaconRound): Uint8Array =>
+  sha256(uint64(round));
 
 export const verifyBeacon = (
   chain: DrandChain,

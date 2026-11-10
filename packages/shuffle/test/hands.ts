@@ -1,27 +1,26 @@
-import { Array as Arr, Option, Result, Schema } from "effect";
+import { Array as Arr, Option, Schema } from "effect";
 import * as Arbitrary from "effect/Arbitrary";
 
 import {
-  combine,
-  Contributions,
   DealIndexSchema,
   DECK_SIZE,
   dealingPlan,
+  MAX_DEALT_IN,
   openDealt,
   openSpare,
   RandomnessSchema,
   Roles,
   sealHand,
+  seedOf,
 } from "../src/index.js";
 import type {
-  Contribution,
+  Beacon,
   DealingPlan,
   DeckOpening,
-  HandContext,
-  PlayerContribution,
   PlayerSaw,
   Role,
   SealedHand,
+  Seats,
   Sighting,
 } from "../src/index.js";
 import {
@@ -29,14 +28,14 @@ import {
   bytesOfLength,
   deck,
   handContext,
+  permutationOf,
   saltSecret,
 } from "./arbitraries.js";
 
 export interface HonestHand {
   readonly sealed: SealedHand;
-  readonly contributions: readonly Contribution[];
+  readonly beacon: Beacon;
   readonly plan: DealingPlan;
-  readonly dealtIn: number;
   readonly spare: DeckOpening;
   readonly dealt: readonly Sighting[];
 }
@@ -44,6 +43,11 @@ export interface HonestHand {
 export const randomness = bytesOfLength(32).pipe(
   Arbitrary.map((bytes) => RandomnessSchema.make(bytes))
 );
+
+export const seats = Arbitrary.all({
+  count: between(2, MAX_DEALT_IN),
+  order: permutationOf(MAX_DEALT_IN),
+}).pipe(Arbitrary.map(({ count, order }): Seats => order.slice(0, count)));
 
 export const rolesFor = (dealtIn: number): readonly Role[] => [
   ...Arr.range(0, dealtIn - 1).map((turn) => Roles.Hole({ pass: 0, turn })),
@@ -55,16 +59,11 @@ export const rolesFor = (dealtIn: number): readonly Role[] => [
 
 export const dealHonestly = (
   sealed: SealedHand,
-  contributions: readonly Contribution[],
-  dealtIn: number
+  beacon: Beacon
 ): HonestHand => {
-  const seed = Result.getOrThrow(
-    combine(sealed.context, sealed.seal, contributions)
-  );
+  const plan = dealingPlan(seedOf(sealed.context, sealed.seal, beacon));
 
-  const plan = dealingPlan(seed);
-
-  const dealt = rolesFor(dealtIn).map((role, dealIndex) => {
+  const dealt = rolesFor(sealed.seal.seats.length).map((role, dealIndex) => {
     const opening = Option.getOrThrow(
       openDealt(sealed, plan, DealIndexSchema.make(dealIndex))
     );
@@ -72,77 +71,36 @@ export const dealHonestly = (
     return { opening, role, shown: opening.card };
   });
 
-  return {
-    contributions,
-    dealt,
-    dealtIn,
-    plan,
-    sealed,
-    spare: openSpare(sealed, plan),
-  };
+  return { beacon, dealt, plan, sealed, spare: openSpare(sealed, plan) };
 };
 
 export const sawOf = (
   hand: HonestHand,
-  sightings: readonly Sighting[],
-  mine: Option.Option<PlayerContribution> = Option.none()
+  sightings: readonly Sighting[]
 ): PlayerSaw => ({
+  beacon: hand.beacon,
   context: hand.sealed.context,
-  contributions: hand.contributions,
-  dealtIn: hand.dealtIn,
-  mine,
   seal: hand.sealed.seal,
+  seats: hand.sealed.seal.seats,
   sightings,
   spare: hand.spare,
 });
 
 export const everything = (hand: HonestHand) => sawOf(hand, hand.dealt);
 
-const playerValues = Arbitrary.array(
-  Arbitrary.all({ joins: Arbitrary.schema(Schema.Boolean), value: randomness }),
-  { maxLength: 9, minLength: 9 }
-);
-
 export const honestHand = Arbitrary.all({
-  beacon: Arbitrary.all({
-    randomness,
-    round: between(1, 10_000_000),
-    used: Arbitrary.schema(Schema.Boolean),
-  }),
+  beacon: Arbitrary.all({ randomness, round: between(1, 10_000_000) }),
   context: handContext,
-  dealtIn: between(2, 9),
   decks: Arbitrary.all([deck, deck]),
-  players: playerValues,
+  seats,
   secret: saltSecret,
 }).pipe(
-  Arbitrary.map(({ beacon, context, dealtIn, decks, players, secret }) => {
-    const playerContributions = players.flatMap(({ joins, value }, seat) =>
-      joins && seat < dealtIn ? [Contributions.Player({ seat, value })] : []
-    );
-
-    const usesBeacon = beacon.used || playerContributions.length === 0;
-
-    const contributions = [
-      ...(usesBeacon
-        ? [
-            Contributions.Beacon({
-              randomness: beacon.randomness,
-              round: beacon.round,
-            }),
-          ]
-        : []),
-      ...playerContributions,
-    ];
-
-    const sealed = sealHand(
-      context,
-      decks,
-      secret,
-      usesBeacon ? Option.some(beacon.round) : Option.none()
-    );
-
-    return dealHonestly(sealed, contributions, dealtIn);
-  })
+  Arbitrary.map(({ beacon, context, decks, seats: dealtIn, secret }) =>
+    dealHonestly(
+      sealHand(context, decks, secret, beacon.round, dealtIn),
+      beacon
+    )
+  )
 );
 
 export const pickedFrom = (
@@ -155,5 +113,4 @@ export const keepFlags = Arbitrary.array(Arbitrary.schema(Schema.Boolean), {
   minLength: DECK_SIZE,
 });
 
-export const contextFor = (hand: HonestHand): HandContext =>
-  hand.sealed.context;
+export const dealtInOf = (hand: HonestHand) => hand.sealed.seal.seats.length;

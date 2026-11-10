@@ -1,18 +1,14 @@
 import { describe, expect, it } from "@effect/vitest";
 import { Array as Arr, Option, Result } from "effect";
-import * as Hex from "effect/encoding/Hex";
 
 import {
   BeaconRoundMismatch,
   CardSchema,
   CardSeenTwice,
-  combine,
-  Contributions,
   DealIndexSchema,
   dealingPlan,
+  DealtSeatsDiffer,
   DeckSchema,
-  MyContributionLeftOut,
-  NoOutsideRandomness,
   OpeningMismatch,
   openDeck,
   RandomnessSchema,
@@ -21,6 +17,7 @@ import {
   sealCards,
   sealDeck,
   sealHand,
+  seedOf,
   sha256,
   ShownCardDiffers,
   SpareDeckMismatch,
@@ -29,7 +26,7 @@ import {
   WrongPosition,
 } from "../src/index.js";
 import type {
-  Contribution,
+  Beacon,
   Deck,
   HandContext,
   PlayerSaw,
@@ -45,7 +42,9 @@ const bytesFor = (label: string) => sha256(text(label));
 
 const context: HandContext = { hand: 7, room: "QK7PLM" };
 
-const DEALT_IN = 4;
+const SEATS = [3, 5, 0, 1];
+
+const DEALT_IN = SEATS.length;
 
 const ROUND = 4_200_000;
 
@@ -58,17 +57,15 @@ const reversed = deckFrom(Arr.range(0, 51).toReversed());
 
 const secret = SaltSecretSchema.make(bytesFor("salt secret"));
 
-const beacon = (label: string, round = ROUND) =>
-  Contributions.Beacon({
-    randomness: RandomnessSchema.make(bytesFor(label)),
-    round,
-  });
+const beacon = (label: string, round = ROUND): Beacon => ({
+  randomness: RandomnessSchema.make(bytesFor(label)),
+  round,
+});
 
-const honest = (contributions: readonly Contribution[] = [beacon("round")]) =>
+const honest = () =>
   dealHonestly(
-    sealHand(context, [sorted, reversed], secret, Option.some(ROUND)),
-    contributions,
-    DEALT_IN
+    sealHand(context, [sorted, reversed], secret, ROUND, SEATS),
+    beacon("round")
   );
 
 const outcome = (saw: PlayerSaw) =>
@@ -90,15 +87,14 @@ const board = (hand: HonestHand) =>
 
 const RIVER = 2 * DEALT_IN + 4;
 
-const beaconPicking = (sealed: SealedHand, slot: 0 | 1): Contribution => {
+const beaconPicking = (sealed: SealedHand, slot: 0 | 1): Beacon => {
   for (let attempt = 0; ; attempt += 1) {
     const candidate = beacon(`search ${attempt}`);
 
-    const seed = Result.getOrThrow(
-      combine(sealed.context, sealed.seal, [candidate])
-    );
-
-    if (dealingPlan(seed).dealtSlot === slot) {
+    if (
+      dealingPlan(seedOf(sealed.context, sealed.seal, candidate)).dealtSlot ===
+      slot
+    ) {
       return candidate;
     }
   }
@@ -177,25 +173,22 @@ describe("planted cheats the verifier catches", () => {
     expect(
       outcome({
         ...sawOf(hand, holeCardsOf(hand, 1)),
-        contributions: [beacon("a later round", ROUND + 1)],
+        beacon: beacon("a later round", ROUND + 1),
       })
-    ).toEqual(
-      new BeaconRoundMismatch({
-        sealed: Option.some(ROUND),
-        used: Option.some(ROUND + 1),
-      })
-    );
+    ).toEqual(new BeaconRoundMismatch({ sealed: ROUND, used: ROUND + 1 }));
   });
 
   it("last hand's seal and openings replayed as this hand fail", () => {
     const hand = honest();
+    const next = { ...context, hand: context.hand + 1 };
+
+    const replayed = dealingPlan(
+      seedOf(next, hand.sealed.seal, beacon("round"))
+    );
 
     expect(
-      outcome({
-        ...sawOf(hand, holeCardsOf(hand, 1)),
-        context: { ...context, hand: context.hand + 1 },
-      })
-    ).toEqual(new SpareDeckMismatch({ slot: hand.plan.spareSlot }));
+      outcome({ ...sawOf(hand, holeCardsOf(hand, 1)), context: next })
+    ).toEqual(new SpareDeckMismatch({ slot: replayed.spareSlot }));
   });
 
   it("a spare deck holding a card twice fails for every player", () => {
@@ -211,10 +204,10 @@ describe("planted cheats the verifier catches", () => {
     const sealed: SealedHand = {
       context,
       decks: [good, bad],
-      seal: { beaconRound: Option.some(ROUND), roots: [good.root, bad.root] },
+      seal: { beaconRound: ROUND, roots: [good.root, bad.root], seats: SEATS },
     };
 
-    const hand = dealHonestly(sealed, [beaconPicking(sealed, 0)], DEALT_IN);
+    const hand = dealHonestly(sealed, beaconPicking(sealed, 0));
 
     expect(outcome(sawOf(hand, []))).toEqual(
       new SpareDeckRepeatsCard({ card: CardSchema.make(0), slot: 1 })
@@ -236,15 +229,13 @@ describe("planted cheats the verifier catches", () => {
     const sealed: SealedHand = {
       context,
       decks: [bad, spare],
-      seal: { beaconRound: Option.some(ROUND), roots: [bad.root, spare.root] },
+      seal: { beaconRound: ROUND, roots: [bad.root, spare.root], seats: SEATS },
     };
 
     const visible = [0, DEALT_IN, ...Arr.range(2 * DEALT_IN, 2 * DEALT_IN + 4)];
 
-    const seesAPair = (contribution: Contribution) => {
-      const plan = dealingPlan(
-        Result.getOrThrow(combine(context, sealed.seal, [contribution]))
-      );
+    const seesAPair = (candidate: Beacon) => {
+      const plan = dealingPlan(seedOf(context, sealed.seal, candidate));
 
       const cards = visible.map(
         (dealIndex) => pairs[plan.order[dealIndex] ?? 0] ?? 0
@@ -258,9 +249,7 @@ describe("planted cheats the verifier catches", () => {
       .find(seesAPair);
 
     const hand = Option.fromNullishOr(chosen).pipe(
-      Option.map((contribution) =>
-        dealHonestly(sealed, [contribution], DEALT_IN)
-      )
+      Option.map((candidate) => dealHonestly(sealed, candidate))
     );
 
     const found = Option.getOrThrow(hand);
@@ -307,18 +296,6 @@ describe("planted cheats the verifier catches", () => {
     );
   });
 
-  it("a hand ordered by the server alone is not called fair", () => {
-    const hand = honest();
-
-    expect(
-      outcome({
-        ...sawOf(hand, holeCardsOf(hand, 1)),
-        contributions: [],
-        seal: { ...hand.sealed.seal, beaconRound: Option.none() },
-      })
-    ).toEqual(new NoOutsideRandomness({ hand: context.hand }));
-  });
-
   it("a server showing two players different seals cannot show them the same board", () => {
     const alice = honest();
 
@@ -327,10 +304,10 @@ describe("planted cheats the verifier catches", () => {
         context,
         [sorted, reversed],
         SaltSecretSchema.make(bytesFor("another secret")),
-        Option.some(ROUND)
+        ROUND,
+        SEATS
       ),
-      [beacon("round")],
-      DEALT_IN
+      beacon("round")
     );
 
     const sharedBoard = board(alice);
@@ -345,85 +322,20 @@ describe("planted cheats the verifier catches", () => {
   });
 });
 
-describe("planted cheats one player cannot see", () => {
-  it("a dropped contribution shows only on the screen of the player who sent it", () => {
-    const values = Arr.range(0, DEALT_IN - 1).map((seat) =>
-      Contributions.Player({
-        seat,
-        value: RandomnessSchema.make(bytesFor(`chain value ${seat}`)),
-      })
-    );
+describe("planted cheats a beacon leaves the server", () => {
+  it("dealing to other seats than the sealed ones after seeing the beacon fails for every player", () => {
+    const hand = honest();
+    const withoutSeatFive = SEATS.filter((seat) => seat !== 5);
 
-    const dropped = Option.getOrThrow(Option.fromNullishOr(values[3]));
-
-    const kept = values.filter((value) => value !== dropped);
-
-    const hand = dealHonestly(
-      sealHand(context, [sorted, reversed], secret, Option.none()),
-      kept,
-      DEALT_IN
-    );
-
-    expect(
-      outcome(sawOf(hand, holeCardsOf(hand, 3), Option.some(dropped)))
-    ).toEqual(new MyContributionLeftOut({ seat: 3 }));
-
-    for (const turn of [0, 1, 2]) {
-      const own = values[turn];
-
+    for (let turn = 0; turn < DEALT_IN; turn += 1) {
       expect(
-        outcome(
-          sawOf(
-            hand,
-            [...holeCardsOf(hand, turn), ...board(hand)],
-            Option.fromNullishOr(own)
-          )
-        )
-      ).toBe("checked out");
-    }
-  });
-
-  it("a server holding nine player values can choose among 511 different deals, and with only a beacon among one", () => {
-    const sealed = sealHand(context, [sorted, reversed], secret, Option.none());
-
-    const values = Arr.range(0, 8).map((seat) =>
-      Contributions.Player({
-        seat,
-        value: RandomnessSchema.make(bytesFor(`chain value ${seat}`)),
-      })
-    );
-
-    const deals = new Set<string>();
-
-    for (let mask = 1; mask < 2 ** values.length; mask += 1) {
-      const subset = values.filter(
-        (_, seat) => Math.floor(mask / 2 ** seat) % 2 === 1
+        outcome({
+          ...sawOf(hand, [...holeCardsOf(hand, turn), ...board(hand)]),
+          seats: withoutSeatFive,
+        })
+      ).toEqual(
+        new DealtSeatsDiffer({ dealt: withoutSeatFive, sealed: SEATS })
       );
-
-      const plan = dealingPlan(
-        Result.getOrThrow(combine(context, sealed.seal, subset))
-      );
-
-      deals.add(`${plan.dealtSlot}:${plan.order.join(",")}`);
     }
-
-    const beaconSealed = sealHand(
-      context,
-      [sorted, reversed],
-      secret,
-      Option.some(ROUND)
-    );
-
-    const beaconDeals = new Set(
-      [[beacon("round")], [beacon("round"), beacon("round")]].flatMap(
-        (contributions) =>
-          Result.match(combine(context, beaconSealed.seal, contributions), {
-            onFailure: () => [],
-            onSuccess: (seed) => [Hex.encode(seed)],
-          })
-      )
-    );
-
-    expect([deals.size, beaconDeals.size]).toEqual([511, 1]);
   });
 });
