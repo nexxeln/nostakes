@@ -3,11 +3,14 @@ import { PlayerIdSchema } from "@nostakes/engine";
 import { Result, Schema } from "effect";
 
 import { fromHost, fromMember, fromServer, fromSomeone } from "./authority.js";
+import { actForSeat, clockEvents, expireClock } from "./clocks.js";
 import { RoomCommands } from "./commands.js";
 import type { RoomCommand } from "./commands.js";
 import { deal, pauseGame, startGame } from "./dealing.js";
 import type { Decision } from "./decision.js";
 import { RoomEvents } from "./events.js";
+import type { RoomEvent } from "./events.js";
+import { evolveAll } from "./evolve.js";
 import type { RoomLog } from "./evolve.js";
 import { AvatarSchema, NameSchema, RoomCodeSchema } from "./identity.js";
 import { joinRoom, leaveRoom, setProfile, transferHost } from "./members.js";
@@ -16,9 +19,10 @@ import { play } from "./play.js";
 import { RoomIsClosed } from "./rejection.js";
 import { answerSeat, declareStraddle, requestSeat, sitOut } from "./seats.js";
 import { RoomSettingsSchema } from "./settings.js";
-import { RoomStates } from "./state.js";
+import { RoomStates, isOpen } from "./state.js";
 import type { Open, RoomState } from "./state.js";
 import { MillisSchema, latest } from "./time.js";
+import type { Millis } from "./time.js";
 
 export const OpeningSchema = Schema.Struct({
   at: MillisSchema,
@@ -61,6 +65,8 @@ const byHost = (
 const decideOpen = (state: Open, command: RoomCommand): Decision =>
   RoomCommands.$match(command, {
     Act: (act) => byMember(state, act, (player) => play(state, player, act)),
+    ActForSeat: (actFor) =>
+      byHost(state, actFor, () => actForSeat(state, actFor)),
     ApproveChips: (approve) =>
       byHost(state, approve, () => answerChips(state, approve, true)),
     ApproveSeat: (approve) =>
@@ -77,6 +83,8 @@ const decideOpen = (state: Open, command: RoomCommand): Decision =>
       byHost(state, deny, () => answerChips(state, deny, false)),
     DenySeat: (deny) =>
       byHost(state, deny, () => answerSeat(state, deny, false)),
+    ExpireClock: (expiry) =>
+      Result.flatMap(fromServer(expiry), () => expireClock(state, expiry)),
     Join: (join) =>
       Result.flatMap(fromSomeone(join), (player) =>
         joinRoom(state, player, join)
@@ -113,9 +121,26 @@ const decideOpen = (state: Open, command: RoomCommand): Decision =>
       byHost(state, transfer, () => transferHost(state, transfer)),
   });
 
+const followThrough = (
+  before: Open,
+  events: readonly RoomEvent[],
+  at: Millis
+): readonly RoomEvent[] => {
+  const after = evolveAll(before, events);
+
+  return isOpen(after)
+    ? [...events, ...clockEvents(before, after, events, at)]
+    : events;
+};
+
 export const decide = (state: RoomState, command: RoomCommand): Decision =>
   RoomStates.$match(state, {
     Closed: (closed) => Result.fail(new RoomIsClosed({ code: closed.code })),
-    Open: (open) =>
-      decideOpen(open, { ...command, at: latest(command.at, open.now) }),
+    Open: (open) => {
+      const at = latest(command.at, open.now);
+
+      return Result.map(decideOpen(open, { ...command, at }), (events) =>
+        followThrough(open, events, at)
+      );
+    },
   });

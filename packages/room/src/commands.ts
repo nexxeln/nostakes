@@ -16,6 +16,7 @@ const naming = { ...envelope, player: PlayerIdSchema };
 
 export const RoomCommandSchema = Schema.TaggedUnion({
   Act: { ...envelope, action: ActionSchema },
+  ActForSeat: naming,
   ApproveChips: naming,
   ApproveSeat: naming,
   ChooseRuns: {
@@ -26,6 +27,7 @@ export const RoomCommandSchema = Schema.TaggedUnion({
   DeclareStraddle: { ...envelope, on: Schema.Boolean },
   DenyChips: naming,
   DenySeat: naming,
+  ExpireClock: { ...envelope, deadline: MillisSchema },
   Join: { ...envelope, avatar: AvatarSchema, name: NameSchema },
   LeaveRoom: envelope,
   LeaveSeat: envelope,

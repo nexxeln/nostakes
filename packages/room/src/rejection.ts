@@ -1,16 +1,19 @@
 import { Schema } from "effect";
 
+import { ActionNotOnSeat } from "./rejections/action-not-on-seat.js";
 import { AlreadyAMember } from "./rejections/already-a-member.js";
 import { AlreadySeated } from "./rejections/already-seated.js";
 import { AlreadyTheHost } from "./rejections/already-the-host.js";
 import { BuyInOutOfRange } from "./rejections/buy-in-out-of-range.js";
 import { ChipRequestPending } from "./rejections/chip-request-pending.js";
 import { ChipsOverMax } from "./rejections/chips-over-max.js";
+import { ClockNotDue } from "./rejections/clock-not-due.js";
 import { DealNotDue } from "./rejections/deal-not-due.js";
 import { GameAlready } from "./rejections/game-already.js";
 import { MembersOnly } from "./rejections/members-only.js";
 import { NoChipRequest } from "./rejections/no-chip-request.js";
 import { NoSeatRequest } from "./rejections/no-seat-request.js";
+import { NoSuchDeadline } from "./rejections/no-such-deadline.js";
 import { NotAMember } from "./rejections/not-a-member.js";
 import { NotSeated } from "./rejections/not-seated.js";
 import { NotTheHost } from "./rejections/not-the-host.js";
@@ -22,17 +25,20 @@ import { ShuffleRanOut } from "./rejections/shuffle-ran-out.js";
 import { TableRejected } from "./rejections/table-rejected.js";
 
 export const RoomRejectionSchema = Schema.Union([
+  ActionNotOnSeat,
   AlreadyAMember,
   AlreadySeated,
   AlreadyTheHost,
   BuyInOutOfRange,
   ChipRequestPending,
   ChipsOverMax,
+  ClockNotDue,
   DealNotDue,
   GameAlready,
   MembersOnly,
   NoChipRequest,
   NoSeatRequest,
+  NoSuchDeadline,
   NotAMember,
   NotSeated,
   NotTheHost,
@@ -46,6 +52,8 @@ export const RoomRejectionSchema = Schema.Union([
 
 export type RoomRejection = typeof RoomRejectionSchema.Type;
 
+export { ActionNotOnSeat } from "./rejections/action-not-on-seat.js";
+
 export { AlreadyAMember } from "./rejections/already-a-member.js";
 
 export { AlreadySeated } from "./rejections/already-seated.js";
@@ -58,6 +66,8 @@ export { ChipRequestPending } from "./rejections/chip-request-pending.js";
 
 export { ChipsOverMax } from "./rejections/chips-over-max.js";
 
+export { ClockNotDue } from "./rejections/clock-not-due.js";
+
 export { DealNotDue } from "./rejections/deal-not-due.js";
 
 export { GameAlready } from "./rejections/game-already.js";
@@ -67,6 +77,8 @@ export { MembersOnly } from "./rejections/members-only.js";
 export { NoChipRequest } from "./rejections/no-chip-request.js";
 
 export { NoSeatRequest } from "./rejections/no-seat-request.js";
+
+export { NoSuchDeadline } from "./rejections/no-such-deadline.js";
 
 export { NotAMember } from "./rejections/not-a-member.js";
 

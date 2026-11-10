@@ -21,17 +21,20 @@ export {
 export type { Actor, RoomCode } from "./identity.js";
 
 export {
+  ActionNotOnSeat,
   AlreadyAMember,
   AlreadySeated,
   AlreadyTheHost,
   BuyInOutOfRange,
   ChipRequestPending,
   ChipsOverMax,
+  ClockNotDue,
   DealNotDue,
   GameAlready,
   MembersOnly,
   NoChipRequest,
   NoSeatRequest,
+  NoSuchDeadline,
   NotAMember,
   NotSeated,
   NotTheHost,
@@ -51,6 +54,15 @@ export { OpeningSchema, decide, openRoom } from "./room.js";
 export type { Opening } from "./room.js";
 
 export type { Decision } from "./decision.js";
+
+export {
+  DeadlineSchema,
+  Deadlines,
+  nextDeadline,
+  timeBankLeft,
+} from "./clocks.js";
+
+export type { Deadline } from "./clocks.js";
 
 export { deckFromBytes } from "./dealing.js";
 

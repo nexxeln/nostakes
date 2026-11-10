@@ -23,9 +23,11 @@ export const RoomEventSchema = Schema.TaggedUnion({
   ChipsApproved: { at, player: PlayerIdSchema },
   ChipsDenied: { at, player: PlayerIdSchema },
   ChipsRequested: { amount: ChipAmountSchema, at, player: PlayerIdSchema },
+  ClockStopped: { at },
   GamePaused: { at },
   GameStarted: { at },
   HostChanged: { at, host: PlayerIdSchema },
+  MarkedAway: { at, seat: SeatIndexSchema },
   MemberJoined: {
     at,
     avatar: AvatarSchema,
@@ -45,6 +47,7 @@ export const RoomEventSchema = Schema.TaggedUnion({
     host: PlayerIdSchema,
     settings: RoomSettingsSchema,
   },
+  RunClockStarted: { at, deadline: MillisSchema },
   SeatApproved: { at, player: PlayerIdSchema },
   SeatDenied: { at, player: PlayerIdSchema },
   SeatRequested: {
@@ -55,6 +58,18 @@ export const RoomEventSchema = Schema.TaggedUnion({
   },
   StraddleDeclared: { at, on: Schema.Boolean, player: PlayerIdSchema },
   Table: { at, event: EventSchema },
+  TimeBankSpent: {
+    at,
+    player: PlayerIdSchema,
+    seconds: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
+  },
+  TimeBankStarted: { at, deadline: MillisSchema, player: PlayerIdSchema },
+  TurnClockStarted: {
+    at,
+    deadline: MillisSchema,
+    player: PlayerIdSchema,
+    seat: SeatIndexSchema,
+  },
 });
 
 export type RoomEvent = typeof RoomEventSchema.Type;

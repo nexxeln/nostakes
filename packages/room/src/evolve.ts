@@ -5,8 +5,13 @@ import { Option } from "effect";
 import { RoomEvents } from "./events.js";
 import type { RoomEvent, RoomEventOf } from "./events.js";
 import { boughtIn, cashedOut, withEntry } from "./money.js";
-import { EMPTY_QUEUE, RoomStates, occupantAt } from "./state.js";
-import type { Open, RoomState } from "./state.js";
+import {
+  DecisionClocks,
+  EMPTY_QUEUE,
+  RoomStates,
+  occupantAt,
+} from "./state.js";
+import type { DecisionClock, Open, RoomState } from "./state.js";
 import { latest } from "./time.js";
 import type { Millis } from "./time.js";
 
@@ -63,7 +68,11 @@ const onTable = (state: Open, event: Event, at: Millis): Open => {
   return Events.$is("HandEnded")(event)
     ? {
         ...next,
-        clocks: { ...next.clocks, lastHandEndedAt: Option.some(at) },
+        clocks: {
+          ...next.clocks,
+          decision: Option.none(),
+          lastHandEndedAt: Option.some(at),
+        },
       }
     : next;
 };
@@ -83,6 +92,29 @@ const withoutChipRequest = (state: Open, player: PlayerId): Open => ({
     chips: state.requests.chips.filter((request) => request.player !== player),
   },
 });
+
+const withDecision = (
+  state: Open,
+  decision: Option.Option<DecisionClock>
+): Open => ({ ...state, clocks: { ...state.clocks, decision } });
+
+const bankStarted = (state: Open, deadline: Millis): Open =>
+  withDecision(
+    state,
+    state.clocks.decision.pipe(
+      Option.map((clock) =>
+        DecisionClocks.$match(clock, {
+          RunChoice: () => clock,
+          Turn: (turn) =>
+            DecisionClocks.Turn({
+              ...turn,
+              bankFrom: Option.some(turn.deadline),
+              deadline,
+            }),
+        })
+      )
+    )
+  );
 
 const evolveOpen = (state: Open, event: RoomEvent): RoomState =>
   RoomEvents.$match(event, {
@@ -114,9 +146,11 @@ const evolveOpen = (state: Open, event: RoomEvent): RoomState =>
         chips: [...state.requests.chips, { amount, player }],
       },
     }),
+    ClockStopped: () => withDecision(state, Option.none()),
     GamePaused: (): Open => ({ ...state, game: "Waiting" }),
     GameStarted: (): Open => ({ ...state, game: "Running" }),
     HostChanged: ({ host }) => ({ ...state, host }),
+    MarkedAway: ({ seat }) => ({ ...state, away: [...state.away, seat] }),
     MemberJoined: ({ at, avatar, name, player }) => ({
       ...state,
       members: [...state.members, { avatar, joinedAt: at, name, player }],
@@ -140,6 +174,8 @@ const evolveOpen = (state: Open, event: RoomEvent): RoomState =>
       ),
     }),
     RoomOpened: (opening) => opened(opening),
+    RunClockStarted: ({ deadline }) =>
+      withDecision(state, Option.some(DecisionClocks.RunChoice({ deadline }))),
     SeatApproved: ({ player }) => withoutSeatRequest(state, player),
     SeatDenied: ({ player }) => withoutSeatRequest(state, player),
     SeatRequested: ({ buyIn, player, seat }) => ({
@@ -156,6 +192,29 @@ const evolveOpen = (state: Open, event: RoomEvent): RoomState =>
         : state.straddlers.filter((straddler) => straddler !== player),
     }),
     Table: ({ at, event: tableEvent }) => onTable(state, tableEvent, at),
+    TimeBankSpent: ({ player, seconds }) => ({
+      ...state,
+      clocks: {
+        ...state.clocks,
+        bankSpent: new Map([
+          ...state.clocks.bankSpent,
+          [player, (state.clocks.bankSpent.get(player) ?? 0) + seconds],
+        ]),
+      },
+    }),
+    TimeBankStarted: ({ deadline }) => bankStarted(state, deadline),
+    TurnClockStarted: ({ deadline, player, seat }) =>
+      withDecision(
+        state,
+        Option.some(
+          DecisionClocks.Turn({
+            bankFrom: Option.none(),
+            deadline,
+            player,
+            seat,
+          })
+        )
+      ),
   });
 
 export const evolve = (state: RoomState, event: RoomEvent): RoomState =>
