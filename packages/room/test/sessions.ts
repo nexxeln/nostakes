@@ -101,6 +101,7 @@ export const tableConfigFrom = (random: SeededRandom): TableConfig => {
   const small = 1 + random.below(5);
 
   return TableConfigSchema.make({
+    allInHands: random.chance(1, 2) ? "Hidden" : "FaceUp",
     ante: anteOf(random.below(3), 1 + random.below(small * 2)),
     bigBlind: chips(small * (1 + random.below(2))),
     maxRuns: RunCountSchema.make(1 + random.below(3)),

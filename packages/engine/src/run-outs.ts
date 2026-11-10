@@ -9,7 +9,12 @@ import { chips, splitEvenly } from "./primitives.js";
 import { NoRunChoiceOwed, RunsOutOfRange } from "./rejection.js";
 import { ONE_RUN, RunCountSchema } from "./rules.js";
 import type { RunCount, TableConfig } from "./rules.js";
-import { ShowdownEntries, awardPart, rankOnBoard } from "./showdown.js";
+import {
+  ShowdownEntries,
+  awardPart,
+  rankOnBoard,
+  shownAcrossRuns,
+} from "./showdown.js";
 import {
   Phases,
   activePlayers,
@@ -23,6 +28,7 @@ import {
 import type {
   ChoosingRuns,
   Hand,
+  HandPlayer,
   InHand,
   Street,
   TableState,
@@ -139,11 +145,38 @@ const dealRuns = (hand: Hand, runs: RunCount) => {
   return { boards, events };
 };
 
+const tabledFirst = (state: InHand, contenders: readonly HandPlayer[]) =>
+  state.config.allInHands === "FaceUp"
+    ? [
+        Events.HandsTabled({
+          hands: contenders.map((player) => ({
+            cards: player.holeCards,
+            seat: player.seat,
+          })),
+        }),
+      ]
+    : [];
+
 export const runOut = (state: InHand, runs: RunCount): readonly Event[] => {
   const contenders = playersClockwiseAfter(notFolded(state.hand), state.button);
   const pots = buildPots(state.hand);
   const parts = pots.map((pot) => splitEvenly(pot.amount, runs));
   const dealt = dealRuns(state.hand, runs);
+  const hidden = state.config.allInHands === "Hidden";
+
+  if (hidden && runs === ONE_RUN && state.config.showdown === "Interactive") {
+    return [
+      Events.RunsAgreed({ runs }),
+      ...dealt.events,
+      Events.ShowdownStarted({
+        order: contenders.map((player) => player.seat),
+      }),
+    ];
+  }
+
+  const shown = hidden
+    ? shownAcrossRuns(contenders, dealt.boards, pots)
+    : new Set(contenders.map((player) => player.seat));
 
   const showdowns = dealt.boards.flatMap((board, index) => {
     const run = index + 1;
@@ -152,11 +185,13 @@ export const runOut = (state: InHand, runs: RunCount): readonly Event[] => {
     return [
       Events.ShowdownReached({
         order: ranked.map((entry) =>
-          ShowdownEntries.Shown({
-            cards: entry.player.holeCards,
-            rank: entry.rank,
-            seat: entry.player.seat,
-          })
+          shown.has(entry.player.seat)
+            ? ShowdownEntries.Shown({
+                cards: entry.player.holeCards,
+                rank: entry.rank,
+                seat: entry.player.seat,
+              })
+            : ShowdownEntries.Mucked({ seat: entry.player.seat })
         ),
         run,
       }),
@@ -176,12 +211,7 @@ export const runOut = (state: InHand, runs: RunCount): readonly Event[] => {
 
   return [
     Events.RunsAgreed({ runs }),
-    Events.HandsTabled({
-      hands: contenders.map((player) => ({
-        cards: player.holeCards,
-        seat: player.seat,
-      })),
-    }),
+    ...tabledFirst(state, contenders),
     ...dealt.events,
     ...showdowns,
     handEnded(state),

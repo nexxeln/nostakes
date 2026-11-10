@@ -165,6 +165,15 @@ export const RULES: readonly RuleChange[] = [
       }),
     label: "showdowns flip between interactive and automatic",
   },
+  {
+    atHand: 0,
+    change: (settings) =>
+      withTable(settings, {
+        allInHands:
+          settings.table.allInHands === "Hidden" ? "FaceUp" : "Hidden",
+      }),
+    label: "all-in hands flip between face up and hidden",
+  },
 ];
 
 export interface NightRecipe {
@@ -221,6 +230,7 @@ export const planNight = (
     showdownSeconds: random.between(1, 2),
     sitOutAfterTimeouts: [1, 1, 1, 0, 2][random.below(5)] ?? 1,
     table: {
+      allInHands: random.chance(40) ? "Hidden" : "FaceUp",
       ante: Antes.NoAnte(),
       bigBlind: big,
       maxRuns: random.between(1, 3),

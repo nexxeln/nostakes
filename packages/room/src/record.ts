@@ -26,7 +26,8 @@ const updated = (record: HandRecord, event: Event): HandRecord =>
         ...record.mucked,
         ...order
           .filter(ShowdownEntries.$is("Mucked"))
-          .map((entry) => entry.seat),
+          .map((entry) => entry.seat)
+          .filter((seat) => !record.mucked.includes(seat)),
       ],
     })),
     Match.tag("HandMucked", ({ seat }) => ({

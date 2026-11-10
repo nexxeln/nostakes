@@ -107,6 +107,7 @@ const randomConfig = (random: Random): TableConfig => {
   const bigBlind = smallBlind * (1 + random.below(2));
 
   return TableConfigSchema.make({
+    allInHands: random.chance(40) ? "Hidden" : "FaceUp",
     ante: anteOf(random, bigBlind),
     bigBlind: chipCount(bigBlind),
     maxRuns: runCount(1 + random.below(4)),
@@ -526,6 +527,7 @@ const newCounts = () => ({
   deepPots: 0,
   doubleStraddles: 0,
   everyPlayerAntes: 0,
+  hiddenRunOuts: 0,
   hiddenShowdownWinners: 0,
   illegalRejected: 0,
   interactiveShowdowns: 0,
@@ -644,6 +646,8 @@ const countHand = (counts: Counts, hand: readonly Event[], seen: Seen) => {
     ? 1
     : 0;
   counts.runOuts += runs > 0 ? 1 : 0;
+  counts.hiddenRunOuts +=
+    runs > 0 && !hand.some(Events.$is("HandsTabled")) ? 1 : 0;
   counts.boardsRunTwo += runs === 2 ? 1 : 0;
   counts.boardsRunThree += runs === 3 ? 1 : 0;
   counts.boardsRunFour += runs === 4 ? 1 : 0;

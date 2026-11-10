@@ -47,7 +47,16 @@ export const ShowdownRuleSchema = Schema.Literals(["Automatic", "Interactive"]);
 
 export type ShowdownRule = typeof ShowdownRuleSchema.Type;
 
+export const AllInHandsSchema = Schema.Literals(["FaceUp", "Hidden"]);
+
+export type AllInHands = typeof AllInHandsSchema.Type;
+
 export const TableConfigSchema = Schema.Struct({
+  allInHands: setting(AllInHandsSchema, "FaceUp", {
+    description:
+      "FaceUp turns every hand still in face up before the rest of the board is dealt to players all in. Hidden keeps the hands down until the board is complete; then they are shown or mucked as the showdown rule says, or, when the board ran more than once, each hand is shown if it can win or tie part of a pot on some run.",
+    title: "Hands when all in",
+  }),
   ante: AnteSchema.annotate({
     description:
       "No ante, an ante from every player dealt in, or one ante paid by the big blind for the table.",

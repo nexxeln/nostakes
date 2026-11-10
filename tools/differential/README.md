@@ -22,7 +22,7 @@ uv run --locked --script tools/differential/replay.py tools/differential/finding
 
 ## How it works
 
-1. `packages/engine/scripts/export-hands.ts` plays seeded tables through the real engine. Tables have two to nine seats, every ante kind, single, double, and button straddles, `maxRuns` from 1 to 4, `showdown` Automatic or Interactive, and churn between hands. At an interactive showdown a seat tables, or mucks when it may. It also tries illegal actions, run choices, mucks of winning hands, and showdown choices out of turn. It prints one JSON object per hand: rules, seats and stacks, the previous button, the deck, the straddle list, every command with the pending decision before it and whether the engine accepted it, the events, after-hand shows and rabbit hunts, and the final stacks.
+1. `packages/engine/scripts/export-hands.ts` plays seeded tables through the real engine. Tables have two to nine seats, every ante kind, single, double, and button straddles, `maxRuns` from 1 to 4, `showdown` Automatic or Interactive, `allInHands` FaceUp or Hidden, and churn between hands. At an interactive showdown a seat tables, or mucks when it may. It also tries illegal actions, run choices, mucks of winning hands, and showdown choices out of turn. It prints one JSON object per hand: rules, seats and stacks, the previous button, the deck, the straddle list, every command with the pending decision before it and whether the engine accepted it, the events, after-hand shows and rabbit hunts, and the final stacks.
 2. `replay.py` rebuilds each hand in PokerKit with the same stacks, blinds, antes, and straddles. It deals every card explicitly from the exported deck, applies the same actions, and compares:
    - whose turn it is at every decision,
    - the call amount and the minimum and maximum raise at every decision,
@@ -58,6 +58,7 @@ PokerKit cannot follow these rules. Each exclusion skips only the affected compa
 - `pokerkit-forgets-added-short-all-ins`: PokerKit restarts its sum of short all-ins once it reaches a full raise, so a later short all-in closes the betting again. TDA Rule 49-A counts them all.
 - `pokerkit-refuses-raise-nobody-can-call`: PokerKit refuses a raise that no other live seat can call. The engine allows it and returns the uncalled excess. The replay plays the raise as a call.
 - `muck-keeps-uncontested-pot`: at an interactive showdown a seat may muck the pots other seats still contest and keep a pot every other claimant has already mucked. PokerKit's muck forfeits every pot, so that pot would have no live seat. The rest of the hand is not compared.
+- `all-in-hands-hidden`: with `allInHands` Hidden the engine deals an all-in run-out without tabling and shows or mucks once the board is complete. PokerKit tables every hand before an all-in run-out. The replay lets PokerKit table and still compares the boards, the pots, and the awards. It skips the tabling, the show-or-muck order, and the interactive choices, and it skips the awards of a hand where a seat mucked at an interactive showdown after the run-out, because that muck may concede a pot.
 - `odd-chip-spread`: PokerKit gives a whole remainder to the first run and the first winner. The brief hands leftover chips out one at a time. Awards are compared against the brief's split of PokerKit's own pots and winners.
 
 ## Gaps

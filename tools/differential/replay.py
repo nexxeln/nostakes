@@ -134,6 +134,15 @@ EXCLUSIONS = {
         "PokerKit's muck forfeits every pot, so that pot would have no live seat. The rest "
         "of the hand is not compared."
     ),
+    "all-in-hands-hidden": (
+        "With allInHands Hidden the engine deals an all-in run-out without tabling and "
+        "shows or mucks once the board is complete. PokerKit always tables every hand "
+        "before an all-in run-out. The replay lets PokerKit table, compares the boards, "
+        "the pots, and the awards, and skips the tabling, the show-or-muck order, and the "
+        "interactive choices. When a seat mucks at an interactive showdown after a hidden "
+        "run-out it may concede a pot it could have won, so that hand's awards are not "
+        "compared either."
+    ),
     "odd-chip-spread": (
         "PokerKit gives a pot's whole remainder to the first run and to the first winner. "
         "Brief rules 17 and 22 hand leftover chips out one at a time. Awards and final "
@@ -174,6 +183,9 @@ class Hand:
         engine_events = list(self.events())
         started_showdowns = [e for e in engine_events if e["_tag"] == "ShowdownStarted"]
         self.interactive = started_showdowns[0]["order"] if started_showdowns else None
+        self.hidden_run_out = self.config.get("allInHands") == "Hidden" and any(
+            e["_tag"] == "RunsAgreed" for e in engine_events
+        )
         self.engine_choices = {
             e["seat"]: e["_tag"] == "HandTabled" for e in engine_events if e["_tag"] in ("HandTabled", "HandMucked")
         }
@@ -299,6 +311,8 @@ class Hand:
             self.features.add("straddle-double")
         if self.count == 2:
             self.features.add("heads-up")
+        if self.hidden_run_out:
+            self.features.add("hidden-run-out")
         events = list(self.events())
         runs = [e["runs"] for e in events if e["_tag"] == "RunsAgreed"]
         tabled = any(e["_tag"] == "HandsTabled" for e in events)
@@ -768,6 +782,9 @@ class Hand:
         return any(pot == (player,) for pot in self.live_pots())
 
     def choose_at_showdown(self, step):
+        if self.hidden_run_out:
+            self.excluded.add("all-in-hands-hidden")
+            return
         state = self.state
         self.skip_dead_checks(None)
         pending = step["pending"]
@@ -836,6 +853,9 @@ class Hand:
             self.differ("board", f"engine dealt {engine}, pokerkit dealt {self.board_deals}")
 
     def check_showdown(self):
+        if self.hidden_run_out:
+            self.excluded.add("all-in-hands-hidden")
+            return
         events = list(self.events())
         tabled = [e for e in events if e["_tag"] == "HandsTabled"]
         showdowns = [e for e in events if e["_tag"] == "ShowdownReached"]
@@ -867,6 +887,9 @@ class Hand:
 
     def check_payout(self):
         events = list(self.events())
+        if self.hidden_run_out and any(e["_tag"] == "HandMucked" for e in events):
+            self.excluded.add("all-in-hands-hidden")
+            return
         awards = [e for e in events if e["_tag"] == "PotAwarded"]
         final = self.record["final"]
         engine_final = [final[seat]["stack"] for seat in self.order]
@@ -1104,7 +1127,7 @@ def summarize(results, path, report):
         + [f"runs-{n}" for n in range(1, 5)]
         + ["short-all-in", "short-big-blind", "side-pots", "split-pots", "odd-chips"]
         + ["fold-out", "showdown", "mucks", "rejected-commands", "rabbit-hunt", "voluntary-show"]
-        + ["interactive-showdown", "concession", "unshown-winner"]
+        + ["interactive-showdown", "concession", "unshown-winner", "hidden-run-out"]
     )
     for feature in order + sorted(set(features) - set(order)):
         counts = features.get(feature, Counter())

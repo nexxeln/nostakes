@@ -46,6 +46,7 @@ export const SessionSchema = Schema.Struct({
   anteKind: between(0, 2),
   bigBlindExtra: between(0, 12),
   button: Schema.Boolean,
+  hiddenAllIns: Schema.Boolean,
   intents: Schema.Array(IntentSchema).check(
     Schema.isMinLength(300),
     Schema.isMaxLength(600)
@@ -77,6 +78,7 @@ const anteOf = (kind: number, amount: number): Ante => {
 
 export const configOf = (source: Session): TableConfig =>
   TableConfigSchema.make({
+    allInHands: source.hiddenAllIns ? "Hidden" : "FaceUp",
     ante: anteOf(source.anteKind, source.anteAmount),
     bigBlind: chipCount(source.smallBlind + source.bigBlindExtra),
     maxRuns: runCount(source.maxRuns),
@@ -90,6 +92,7 @@ const randomConfig = (random: SeededRandom): TableConfig => {
   const small = 1 + random.below(10);
 
   return TableConfigSchema.make({
+    allInHands: random.chance(1, 2) ? "Hidden" : "FaceUp",
     ante: anteOf(random.below(3), 1 + random.below(12)),
     bigBlind: chipCount(small + random.below(12)),
     maxRuns: runCount(1 + random.below(4)),

@@ -151,16 +151,32 @@ const showingDown = (
     toAct: nextToShow(hand, order, entries),
   });
 
+const completeBoard = (hand: Hand): Hand => {
+  const { phase } = hand;
+
+  if (!Phases.$is("RunningOut")(phase) || phase.runs.length !== 1) {
+    return hand;
+  }
+
+  return {
+    ...hand,
+    board: [...hand.board, ...(phase.runs[0] ?? [])],
+    street: "River",
+  };
+};
+
 export const openShowdown = (
   state: TableState,
   event: EventOf<"ShowdownStarted">
 ) =>
-  whenInHand(state, (inHand) =>
-    withHand(inHand, {
-      ...inHand.hand,
-      phase: showingDown(inHand.hand, event.order, []),
-    })
-  );
+  whenInHand(state, (inHand) => {
+    const hand = completeBoard(inHand.hand);
+
+    return withHand(inHand, {
+      ...hand,
+      phase: showingDown(hand, event.order, []),
+    });
+  });
 
 const withEntry = (
   state: TableState,

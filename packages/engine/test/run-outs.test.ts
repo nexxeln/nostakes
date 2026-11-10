@@ -247,3 +247,109 @@ describe("running the board", () => {
     ).toStrictEqual(new NoRunChoiceOwed({ seat: seat(0) }));
   });
 });
+
+const hiddenConfig = (
+  maxRuns: number,
+  showdown: TableConfig["showdown"]
+): TableConfig => ({
+  ...runsConfig(maxRuns),
+  allInHands: "Hidden",
+  showdown,
+});
+
+const hiddenAllIn = (
+  maxRuns: number,
+  showdown: TableConfig["showdown"],
+  boards: string
+) =>
+  play(
+    startHand(
+      occupiedTable(hiddenConfig(maxRuns, showdown), { 0: 100, 1: 100 }),
+      deckStartingWith(`Ah Kh Ad Kd ${boards}`)
+    ).state,
+    [
+      [0, raisesTo(100)],
+      [1, calls],
+    ]
+  );
+
+describe("hands kept hidden when all in", () => {
+  it("deals the board without tabling, then shows the winner and mucks the beaten hand", () => {
+    const allIn = hiddenAllIn(1, "Automatic", ACES_WIN);
+
+    expect(allIn.events.some(Events.$is("HandsTabled"))).toBe(false);
+    expect(runOutEvents(allIn.events)).toStrictEqual([
+      Events.RunsAgreed({ runs: runCount(1) }),
+      ...dealtStreets(1, ACES_WIN),
+      Events.ShowdownReached({
+        order: [
+          shownOn(1, ACES, ACES_WIN),
+          ShowdownEntries.Mucked({ seat: seat(0) }),
+        ],
+        run: 1,
+      }),
+      awarded(1, 200, 1),
+      Events.HandEnded({ handNumber: 1 }),
+    ]);
+  });
+
+  it("shows a hand on every run when it wins or ties part of a pot on any run, and mucks it on every run otherwise", () => {
+    const split = runAll(
+      hiddenAllIn(2, "Automatic", `${ACES_WIN} ${KINGS_WIN}`).state,
+      [choose(0, 2), choose(1, 2)]
+    );
+
+    expect(
+      split.events
+        .filter(Events.$is("ShowdownReached"))
+        .map((reached) => reached.order.map((entry) => entry._tag))
+    ).toStrictEqual([
+      ["Shown", "Shown"],
+      ["Shown", "Shown"],
+    ]);
+
+    const sweep = runAll(
+      hiddenAllIn(2, "Automatic", `${ACES_WIN} ${ACES_WIN_AGAIN}`).state,
+      [choose(0, 2), choose(1, 2)]
+    );
+
+    expect(sweep.events.filter(Events.$is("ShowdownReached"))).toStrictEqual([
+      Events.ShowdownReached({
+        order: [
+          shownOn(1, ACES, ACES_WIN),
+          ShowdownEntries.Mucked({ seat: seat(0) }),
+        ],
+        run: 1,
+      }),
+      Events.ShowdownReached({
+        order: [
+          shownOn(1, ACES, ACES_WIN_AGAIN),
+          ShowdownEntries.Mucked({ seat: seat(0) }),
+        ],
+        run: 2,
+      }),
+    ]);
+    expect(stacksOf(sweep.state).slice(0, 2)).toStrictEqual([0, 200]);
+  });
+
+  it("deals one run onto the board and then asks each seat to table or muck when the showdown is interactive", () => {
+    const allIn = hiddenAllIn(1, "Interactive", ACES_WIN);
+
+    expect(runOutEvents(allIn.events)).toStrictEqual([
+      Events.RunsAgreed({ runs: runCount(1) }),
+      ...dealtStreets(1, ACES_WIN),
+      Events.ShowdownStarted({ order: [seat(1), seat(0)] }),
+    ]);
+    expect(handOf(allIn.state).board).toStrictEqual(cards(ACES_WIN));
+    expect(handOf(allIn.state).street).toBe("River");
+
+    const tabled = run(allIn.state, Commands.TableHand({ seat: seat(1) }));
+    const mucked = run(tabled.state, Commands.MuckHand({ seat: seat(0) }));
+
+    expect(mucked.events).toStrictEqual([
+      Events.HandMucked({ seat: seat(0) }),
+      awarded(1, 200, 1),
+      Events.HandEnded({ handNumber: 1 }),
+    ]);
+  });
+});

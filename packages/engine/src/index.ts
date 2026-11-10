@@ -111,6 +111,7 @@ export {
 } from "./rejection.js";
 
 export {
+  AllInHandsSchema,
   AnteSchema,
   Antes,
   MAX_RUNS,
@@ -118,6 +119,7 @@ export {
   ShowdownRuleSchema,
   StraddleRulesSchema,
   TableConfigSchema,
+  type AllInHands,
   type Ante,
   type RunCount,
   type ShowdownRule,

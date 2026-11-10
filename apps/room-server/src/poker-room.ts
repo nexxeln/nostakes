@@ -65,6 +65,7 @@ export const DEFAULT_SETTINGS: RoomSettings = Schema.decodeSync(
   shuffle: "Plain",
   sitOutAfterTimeouts: 1,
   table: {
+    allInHands: "FaceUp",
     ante: Antes.NoAnte(),
     bigBlind: 2,
     maxRuns: 1,

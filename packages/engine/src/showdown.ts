@@ -96,6 +96,40 @@ export const showOrMuck = (
   });
 };
 
+export const shownAcrossRuns = (
+  ordered: readonly HandPlayer[],
+  boards: readonly (readonly Card[])[],
+  pots: readonly Pot[]
+): ReadonlySet<SeatIndex> => {
+  const ranks = boards.map((board) => rankOnBoard(ordered, board));
+  const shown = new Set<SeatIndex>();
+
+  const rankAt = (run: number, seat: SeatIndex) =>
+    rankOf(ranks[run] ?? [], seat);
+
+  for (const player of ordered) {
+    const { seat } = player;
+
+    const stillContesting = boards.some((_, run) =>
+      pots.some(
+        (pot) =>
+          pot.eligible.includes(seat) &&
+          [...shown].every(
+            (other) =>
+              !pot.eligible.includes(other) ||
+              rankAt(run, seat) >= rankAt(run, other)
+          )
+      )
+    );
+
+    if (shown.size === 0 || stillContesting) {
+      shown.add(seat);
+    }
+  }
+
+  return shown;
+};
+
 export const awardPart = (
   state: InHand,
   run: number,

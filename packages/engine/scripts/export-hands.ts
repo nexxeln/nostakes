@@ -89,6 +89,7 @@ const randomConfig = (random: Random): TableConfig => {
   const bigBlind = smallBlind * (1 + random.below(3));
 
   return TableConfigSchema.make({
+    allInHands: random.chance(40) ? "Hidden" : "FaceUp",
     ante: anteOf(random, bigBlind),
     bigBlind: chipCount(bigBlind),
     maxRuns: runCount(1 + random.below(4)),

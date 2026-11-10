@@ -386,7 +386,7 @@ describe("generated sessions", () => {
   );
 
   it.prop(
-    "showdown: in every pot part the winners are exactly the best eligible hands on that run's board, shares fall by at most a chip from the seat after the button, and a seat shows only when rule 24 says so",
+    "showdown: in every pot part the winners are exactly the best eligible hands on that run's board, shares fall by at most a chip from the seat after the button, and a seat shows only when rule 24 says so, on every run when it can win or tie part of a pot on any run of a hidden run-out",
     { source: session },
     ({ source }) => {
       for (const hand of handsIn(playSession(source).events)) {
@@ -435,37 +435,40 @@ describe("generated sessions", () => {
           ).toBeLessThanOrEqual(1);
         }
 
-        for (const showdown of showdowns) {
-          const pots = hand
+        const potsOn = (run: number) =>
+          hand
             .filter(Events.$is("PotAwarded"))
-            .filter((award) => award.run === showdown.run);
+            .filter((award) => award.run === run);
 
-          const shownSoFar: SeatIndex[] = [];
+        const shownSeats: SeatIndex[] = [];
 
-          for (const entry of showdown.order) {
-            const rank = rankOn(showdown.run, entry.seat);
-
-            const contests = pots.some(
+        for (const { seat: seatIndex } of showdowns[0]?.order ?? []) {
+          const contests = showdowns.some(({ run }) =>
+            potsOn(run).some(
               (pot) =>
-                pot.eligible.includes(entry.seat) &&
-                shownSoFar.every(
+                pot.eligible.includes(seatIndex) &&
+                shownSeats.every(
                   (other) =>
                     !pot.eligible.includes(other) ||
-                    rank >= rankOn(showdown.run, other)
+                    rankOn(run, seatIndex) >= rankOn(run, other)
                 )
+            )
+          );
+
+          if (tabled || shownSeats.length === 0 || contests) {
+            shownSeats.push(seatIndex);
+          }
+        }
+
+        for (const showdown of showdowns) {
+          for (const entry of showdown.order) {
+            expect(ShowdownEntries.$is("Shown")(entry)).toBe(
+              shownSeats.includes(entry.seat)
             );
-
-            const shouldShow = tabled || shownSoFar.length === 0 || contests;
-
-            expect(ShowdownEntries.$is("Shown")(entry)).toBe(shouldShow);
-
-            if (shouldShow) {
-              shownSoFar.push(entry.seat);
-            }
 
             if (ShowdownEntries.$is("Mucked")(entry)) {
               expect(
-                pots.some((pot) =>
+                potsOn(showdown.run).some((pot) =>
                   pot.winners.some((winner) => winner.seat === entry.seat)
                 )
               ).toBe(false);
