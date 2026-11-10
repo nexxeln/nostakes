@@ -49,6 +49,7 @@ import {
 } from "@nostakes/room";
 import type {
   Audience,
+  Deadline,
   Open,
   Opening,
   RoomCommand,
@@ -178,6 +179,7 @@ const newCounts = () => ({
   queuedAdds: 0,
   rebuys: 0,
   rulesQueued: 0,
+  runVotesExpiredWithoutTurnClock: 0,
   settlements: 0,
   staleExpiriesRefused: 0,
   straddlesApplied: 0,
@@ -552,12 +554,15 @@ const checkViews = (run: Run, command: RoomCommand) => {
     }
   }
 
+  const waitingOn = pendingDecisions(state.table);
+
   if (
-    state.settings.turnSeconds > 0 &&
+    (state.settings.turnSeconds > 0 ||
+      PendingDecisions.$is("ChooseRuns")(waitingOn)) &&
     TableStates.$is("InHand")(state.table) &&
     Option.isNone(nextDeadline(state))
   ) {
-    fail(run, "a clocked hand has no deadline");
+    fail(run, `a hand waiting on ${waitingOn._tag} has no deadline`);
   }
 };
 
@@ -629,7 +634,7 @@ const play = (run: Run, open: Open) => {
   });
 };
 
-const expire = (run: Run, deadline: number, sent: number) => {
+const expire = (run: Run, open: Open, deadline: Deadline, sent: number) => {
   const stale = run.random.chance(5);
 
   const decision = send(
@@ -637,9 +642,16 @@ const expire = (run: Run, deadline: number, sent: number) => {
     RoomCommands.ExpireClock({
       at: millis(sent),
       by: Actors.Server(),
-      deadline: millis(stale ? deadline + 1 : deadline),
+      deadline: millis(stale ? deadline.at + 1 : deadline.at),
     })
   );
+
+  run.counts.runVotesExpiredWithoutTurnClock +=
+    Result.isSuccess(decision) &&
+    Deadlines.$is("RunChoiceClock")(deadline) &&
+    open.settings.turnSeconds === 0
+      ? 1
+      : 0;
 
   if (Result.isFailure(decision)) {
     const refusal = decision.failure._tag;
@@ -672,7 +684,7 @@ const serve = (run: Run, open: Open) => {
         })
       );
     } else {
-      expire(run, deadline.at, sent);
+      expire(run, open, deadline, sent);
     }
   });
 };
@@ -891,11 +903,12 @@ const mischief = (run: Run, open: Open) => {
 const step = (run: Run, open: Open) => {
   const roll = run.random.below(100);
 
-  const pending = !PendingDecisions.$is("Nothing")(
-    pendingDecisions(open.table)
-  );
+  const waitingOn = pendingDecisions(open.table);
+  const pending = !PendingDecisions.$is("Nothing")(waitingOn);
 
-  const clocked = open.settings.turnSeconds > 0;
+  const clocked =
+    open.settings.turnSeconds > 0 ||
+    PendingDecisions.$is("ChooseRuns")(waitingOn);
 
   if (roll < 55 && pending && !(clocked && run.random.chance(30))) {
     play(run, open);
@@ -1077,7 +1090,7 @@ const program = Effect.gen(function* soak() {
   );
 
   for (const [name, count] of Object.entries(counts)) {
-    yield* Console.log(`${name.padEnd(22)} ${String(count).padStart(9)}`);
+    yield* Console.log(`${name.padEnd(31)} ${String(count).padStart(9)}`);
   }
 
   for (const [made, settled] of [...transfers].toSorted(
