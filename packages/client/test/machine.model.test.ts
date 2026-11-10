@@ -31,6 +31,7 @@ import {
   toyCodec,
   ToyCommandSchema,
   ToyEventSchema,
+  ToySignalSchema,
 } from "./fixtures/toy-room.js";
 import type { ToyTypes } from "./fixtures/toy-room.js";
 
@@ -84,6 +85,8 @@ const StepSchema = Schema.Literals([
   "Garbled",
   "Timer",
   "Drawn",
+  "SendSignal",
+  "SignalHeard",
 ]);
 
 type Step = typeof StepSchema.Type;
@@ -221,6 +224,19 @@ const STEP_EVENTS: Record<Step, (step: StepInput) => readonly MachineEvent[]> =
     Pong: () => [{ type: "Pong" }],
     Presence: () => [{ connected: [YOU], type: "Presence" }],
     Reply: ({ snapshot }) => [replyTo(snapshot, firstSent(snapshot))],
+    SendSignal: ({ pick }) => [
+      {
+        signal: ToySignalSchema.cases.Wave.make({ count: pick }),
+        type: "SendSignal",
+      },
+    ],
+    SignalHeard: () => [
+      {
+        from: YOU,
+        signal: ToySignalSchema.cases.Nod.make({}),
+        type: "Signal",
+      },
+    ],
     Start: () => [{ type: "Start" }],
     Stop: () => [{ type: "Stop" }],
     StrangerReply: ({ snapshot }) => [replyTo(snapshot, stranger)],
@@ -279,6 +295,49 @@ const isLive = (snapshot: Snapshot) => snapshot.matches({ Online: "Live" });
 
 const isGreeting = (snapshot: Snapshot) =>
   snapshot.matches({ Online: "Greeting" });
+
+const EmissionSchema = Schema.Struct({
+  event: Schema.Struct({ type: Schema.String }),
+  kind: Schema.Literal("emit"),
+});
+
+const isEmission = Schema.is(EmissionSchema);
+
+const emitted = (effects: Effects): readonly string[] =>
+  effects.flatMap((effect) => {
+    const described = describeExecutableEffect(effect);
+
+    return isEmission(described) ? [described.event.type] : [];
+  });
+
+const roomFacts = (snapshot: Snapshot) => ({
+  applied: snapshot.context.applied,
+  owed: snapshot.context.owed,
+  pending: snapshot.context.pending,
+  view: snapshot.context.view,
+});
+
+const checkSignal = (
+  before: Snapshot,
+  event: MachineEvent,
+  after: Snapshot,
+  effects: Effects
+) => {
+  const signals = transmitted(effects).filter(toyCodec.client.guards.Signal);
+  const signalled = emitted(effects).filter((type) => type === "Signalled");
+
+  expect(signals.length).toBe(
+    event.type === "SendSignal" && isLive(before) ? 1 : 0
+  );
+  expect(signalled.length).toBe(
+    event.type === "Signal" && isLive(before) ? 1 : 0
+  );
+
+  if (event.type === "SendSignal" || event.type === "Signal") {
+    expect(after.value).toEqual(before.value);
+    expect(roomFacts(after)).toEqual(roomFacts(before));
+  }
+};
 
 const ARMED: readonly (readonly [object | string, readonly NamedTimer[]])[] = [
   [{ Online: "Connecting" }, ["connect"]],
@@ -502,6 +561,7 @@ const replay = (history: readonly (readonly [Step, number])[]) => {
       }
 
       checkStep(snapshot, next, effects, sentOnThisSocket);
+      checkSignal(snapshot, event, next, effects);
       expectDeadlinesFor(answers, next);
       snapshot = next;
     }
@@ -736,6 +796,7 @@ describe("connection lifecycle model", () => {
         const fresh = new Map<CommandId, number>();
 
         checkStep(state, next, effects, fresh);
+        checkSignal(state, event, next, effects);
         edges += 1;
       }
     }
@@ -744,7 +805,7 @@ describe("connection lifecycle model", () => {
   });
 
   it.prop(
-    "no history sends a command outside Live, resends out of order, or leaves a timer or socket behind its state",
+    "no history sends a command or a signal outside Live, resends out of order, lets a signal touch the log, the view, or what is owed, or leaves a timer or socket behind its state",
     { history: histories },
     ({ history }) => {
       replay(history);

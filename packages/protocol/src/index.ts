@@ -20,6 +20,15 @@ export {
 } from "./frames.js";
 
 export {
+  FRAME_ALLOWANCE,
+  fullBucket,
+  SIGNAL_ALLOWANCE,
+  spendToken,
+  type Allowance,
+  type Bucket,
+} from "./allowance.js";
+
+export {
   HttpRefusalSchema,
   PlainRefusalSchema,
   RoomPassSchema,

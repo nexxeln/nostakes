@@ -37,6 +37,11 @@ export interface RoomUpdate<T extends RoomTypes> {
   readonly view: T["View"];
 }
 
+export interface ReceivedSignal<T extends RoomTypes> {
+  readonly from: PlayerId;
+  readonly signal: T["Signal"];
+}
+
 export interface PendingCommand<T extends RoomTypes> {
   readonly id: CommandId;
   readonly command: T["Command"];

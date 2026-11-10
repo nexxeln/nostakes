@@ -22,12 +22,14 @@ export const ToySignalSchema = Schema.TaggedUnion({
   Wave: { count: Schema.Int },
 });
 
+export type ToySignal = typeof ToySignalSchema.Type;
+
 export interface ToyTypes {
   readonly Command: typeof ToyCommandSchema.Type;
   readonly Event: typeof ToyEventSchema.Type;
   readonly View: typeof ToyViewSchema.Type;
   readonly Rejection: typeof ToyRejectionSchema.Type;
-  readonly Signal: typeof ToySignalSchema.Type;
+  readonly Signal: ToySignal;
 }
 
 export const toySchemas: ClientSchemas<ToyTypes> = {

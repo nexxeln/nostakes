@@ -6,6 +6,9 @@ import {
   MAX_FRAME_BYTES,
   CommandIdSchema,
   PROTOCOL_VERSION,
+  PlayerIdSchema,
+  SIGNAL_BURST,
+  SIGNALS_PER_SECOND,
 } from "@nostakes/protocol";
 import type { BuildId, CloseReason } from "@nostakes/protocol";
 import { Clock, Effect, Option, pipe, Random, Schema, Stream } from "effect";
@@ -28,6 +31,7 @@ import {
 import type {
   Activity,
   IssuedCommand,
+  ReceivedSignal,
   RoomClient,
   RoomUpdate,
 } from "../src/index.js";
@@ -45,8 +49,9 @@ import {
   ToyCommandSchema,
   ToyEventSchema,
   toySchemas,
+  ToySignalSchema,
 } from "./fixtures/toy-room.js";
-import type { ToyTypes } from "./fixtures/toy-room.js";
+import type { ToySignal, ToyTypes } from "./fixtures/toy-room.js";
 
 const Commands = ToyCommandSchema.cases;
 
@@ -1533,5 +1538,177 @@ describe("room client against a fake socket", () => {
         expect(Schema.is(CommandTooLarge)(failure)).toBe(true);
         expect(tagsSent(yield* socket(0))).toEqual(["Hello"]);
       }).pipe(Effect.scoped, lowestJitter)
+  );
+});
+
+const Signals = ToySignalSchema.cases;
+
+const wave = (count: number) => Signals.Wave.make({ count });
+
+const signalsSent = (socket: FakeSocket) =>
+  socket.sent.flatMap(({ message }) =>
+    Sent.Signal(message) ? [message.signal] : []
+  );
+
+const NEIGHBOUR = PlayerIdSchema.make("neighbour-aaaaaa");
+
+describe("signals from a room client", () => {
+  it.effect(
+    "a signal leaves as one Signal frame while live, is owed no answer, and is not sent again after a reconnect",
+    () =>
+      Effect.gen(function* signalSent() {
+        const { client, fake, greet, live, phase, socket } = yield* harness;
+
+        yield* live(3);
+
+        const outcome = yield* client.signal(wave(1));
+
+        yield* settle;
+
+        const first = yield* socket(0);
+
+        expect(outcome).toBe("Sent");
+        expect(signalsSent(first)).toEqual([wave(1)]);
+
+        yield* advance(UNANSWERED_AFTER_MS + 1000);
+
+        const state = yield* client.state;
+
+        expect(yield* phase).toBe("Live");
+        expect(state.pending).toEqual([]);
+        expect(state.waitingForTable).toEqual([]);
+
+        yield* cut(first);
+
+        while (fake.sockets.length < 2) {
+          yield* advance(125);
+        }
+
+        yield* greet(1, 3);
+
+        expect(yield* phase).toBe("Live");
+        expect(signalsSent(yield* socket(1))).toEqual([]);
+      })
+  );
+
+  it.effect(
+    "a signal made while the client is not live is dropped on the spot, never queued for later",
+    () =>
+      Effect.gen(function* signalWhileAway() {
+        const { accept, client, socket } = yield* harness;
+
+        const idle = yield* client.signal(wave(1));
+
+        yield* client.start;
+        yield* settle;
+
+        const connecting = yield* client.signal(wave(2));
+        const open = yield* accept(0);
+        const greeting = yield* client.signal(wave(3));
+
+        yield* open.push(serverText.welcome(3));
+        yield* settle;
+
+        expect([idle, connecting, greeting]).toEqual([
+          "NotLive",
+          "NotLive",
+          "NotLive",
+        ]);
+        expect(signalsSent(yield* socket(0))).toEqual([]);
+      })
+  );
+
+  it.effect(
+    "signals past the device's allowance are dropped there, a command right after still leaves, and the allowance refills",
+    () =>
+      Effect.gen(function* overTheAllowance() {
+        const { client, live, socket } = yield* harness;
+
+        yield* live(3);
+
+        const outcomes: string[] = [];
+
+        for (let count = 1; count <= SIGNAL_BURST + 3; count += 1) {
+          outcomes.push(yield* client.signal(wave(count)));
+        }
+
+        const issued = yield* client.issue(add(1));
+
+        yield* settle;
+        yield* advance(Math.ceil(1000 / SIGNALS_PER_SECOND));
+
+        const refilled = yield* client.signal(wave(99));
+
+        yield* settle;
+
+        const open = yield* socket(0);
+
+        expect(outcomes).toEqual([
+          ...Array.from({ length: SIGNAL_BURST }, () => "Sent"),
+          "OverLimit",
+          "OverLimit",
+          "OverLimit",
+        ]);
+        expect(refilled).toBe("Sent");
+        expect(signalsSent(open)).toEqual([
+          ...Array.from({ length: SIGNAL_BURST }, (_, index) =>
+            wave(index + 1)
+          ),
+          wave(99),
+        ]);
+        expect(commandIds(open)).toEqual([issued.id]);
+      })
+  );
+
+  it.effect(
+    "a signal heard from the room comes out of signals with its sender, and never as an update or activity",
+    () =>
+      Effect.gen(function* signalHeard() {
+        const { client, live, phase, seen, socket, updates } = yield* harness;
+        const heard: ReceivedSignal<ToyTypes>[] = [];
+
+        yield* client.signals.pipe(
+          Stream.runForEach((received) =>
+            Effect.sync(() => heard.push(received))
+          ),
+          Effect.forkScoped
+        );
+        yield* live(3);
+
+        const open = yield* socket(0);
+        const updatesBefore = updates.length;
+        const nod: ToySignal = Signals.Nod.make({});
+
+        yield* open.push(serverText.signal(NEIGHBOUR, nod));
+        yield* open.push(serverText.signal(NEIGHBOUR, wave(4)));
+        yield* settle;
+
+        expect(heard).toEqual([
+          { from: NEIGHBOUR, signal: nod },
+          { from: NEIGHBOUR, signal: wave(4) },
+        ]);
+        expect(updates.length).toBe(updatesBefore);
+        expect(seen).toEqual([]);
+        expect(yield* phase).toBe("Live");
+      })
+  );
+
+  it.effect(
+    "a signal that does not match the room's signal schema fails before anything is sent",
+    () =>
+      Effect.gen(function* signalInvalid() {
+        const { client, live, socket } = yield* harness;
+
+        yield* live(3);
+
+        const failure = yield* client
+          .signal(Signals.Wave.make({ count: 1.5 }, { disableChecks: true }))
+          .pipe(Effect.flip);
+
+        yield* settle;
+
+        expect(failure._tag).toBe("SignalInvalid");
+        expect(signalsSent(yield* socket(0))).toEqual([]);
+      })
   );
 });

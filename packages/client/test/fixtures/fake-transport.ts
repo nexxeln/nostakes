@@ -21,7 +21,7 @@ import type { Cause } from "effect";
 import { SocketEvents, Transport } from "../../src/index.js";
 import type { ClientMessage, SocketEvent } from "../../src/index.js";
 import { ToyEventSchema, toyCodec, toySchemas } from "./toy-room.js";
-import type { ToyTypes } from "./toy-room.js";
+import type { ToySignal, ToyTypes } from "./toy-room.js";
 
 export interface SentFrame {
   readonly at: number;
@@ -77,6 +77,8 @@ export const serverText = {
         result: toyCodec.reply.cases.Accepted.make({ seq: seq(total) }),
       })
     ),
+  signal: (from: PlayerId, signal: ToySignal) =>
+    encodeServerFrame(toyCodec.server.cases.Signal.make({ from, signal })),
   skippedWelcome: (from: number, head: number) =>
     encodeServerFrame(
       toyCodec.server.cases.Welcome.make({

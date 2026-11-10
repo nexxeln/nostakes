@@ -1,6 +1,7 @@
 import * as Cloudflare from "@alchemy.run/cloudflare";
 import type * as cf from "@cloudflare/workers-types";
 import {
+  FRAME_ALLOWANCE,
   HELLO_TIMEOUT_MS,
   PlainRefusalSchema,
   PING_FRAME,
@@ -9,11 +10,19 @@ import {
   PLAYER_ID_BYTES,
   PlayerIdSchema,
   RoomCodeSchema,
+  SIGNAL_ALLOWANCE,
   TOKEN_BYTES,
   TokenTextSchema,
+  fullBucket,
+  spendToken,
   versionMismatch,
 } from "@nostakes/protocol";
-import type { CloseReason, PlainRefusal, PlayerId } from "@nostakes/protocol";
+import type {
+  Bucket,
+  CloseReason,
+  PlainRefusal,
+  PlayerId,
+} from "@nostakes/protocol";
 import {
   Array as Arr,
   Clock,
@@ -34,14 +43,7 @@ import * as HttpServerResponse from "effect/http/HttpServerResponse";
 
 import { Beacon } from "./beacon.js";
 import { Entropy, liveEntropy } from "./entropy.js";
-import {
-  FRAME_ALLOWANCE,
-  SIGNAL_ALLOWANCE,
-  fullBucket,
-  oversized,
-  spendToken,
-} from "./frame-limits.js";
-import type { Bucket } from "./frame-limits.js";
+import { oversized } from "./frame-limits.js";
 import type { HostedRoom, RoomTypes } from "./hosted-room.js";
 import { refuseSocket } from "./refused-socket.js";
 import {

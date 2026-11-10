@@ -9,6 +9,7 @@ export {
   type Link,
   type Owed,
   type PendingCommand,
+  type ReceivedSignal,
   type RoomUpdate,
 } from "./client-events.js";
 
@@ -83,6 +84,8 @@ export { CommandInvalid } from "./errors/command-invalid.js";
 
 export { CommandTooLarge } from "./errors/command-too-large.js";
 
+export { SignalInvalid } from "./errors/signal-invalid.js";
+
 export {
   roomClient,
   type ClientState,
@@ -93,4 +96,5 @@ export {
   type LocalCancelOutcome,
   type RoomClient,
   type RoomClientOptions,
+  type SignalOutcome,
 } from "./room-client.js";

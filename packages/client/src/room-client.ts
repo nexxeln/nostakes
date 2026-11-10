@@ -1,4 +1,10 @@
-import { CommandIdSchema, MAX_FRAME_BYTES } from "@nostakes/protocol";
+import {
+  CommandIdSchema,
+  fullBucket,
+  MAX_FRAME_BYTES,
+  SIGNAL_ALLOWANCE,
+  spendToken,
+} from "@nostakes/protocol";
 import type {
   BuildId,
   CloseReason,
@@ -14,6 +20,7 @@ import {
   waitFor,
 } from "@xstate/effect";
 import {
+  Clock,
   Deferred,
   Effect,
   Exit,
@@ -27,7 +34,12 @@ import {
 import type { Scope } from "effect";
 import type { SnapshotFrom } from "xstate";
 
-import type { Activity, DropReason, RoomUpdate } from "./client-events.js";
+import type {
+  Activity,
+  DropReason,
+  ReceivedSignal,
+  RoomUpdate,
+} from "./client-events.js";
 import { clientCodec, frameBytes } from "./codec.js";
 import type { ClientSchemas, ReplyResult, RoomTypes } from "./codec.js";
 import { ClientRefused } from "./errors/client-refused.js";
@@ -35,6 +47,7 @@ import { ClientStopped } from "./errors/client-stopped.js";
 import { CommandCancelled } from "./errors/command-cancelled.js";
 import { CommandInvalid } from "./errors/command-invalid.js";
 import { CommandTooLarge } from "./errors/command-too-large.js";
+import { SignalInvalid } from "./errors/signal-invalid.js";
 import { roomClientMachine } from "./machine.js";
 import type { RoomClientMachine } from "./machine.js";
 import type { Transport } from "./transport.js";
@@ -73,6 +86,8 @@ export type CommandFailure = ClientRefused | ClientStopped | CommandCancelled;
 
 export type CommandRejectedLocally = CommandInvalid | CommandTooLarge;
 
+export type SignalOutcome = "Sent" | "NotLive" | "OverLimit";
+
 export interface IssuedCommand<T extends RoomTypes> {
   readonly id: CommandId;
   readonly reply: Effect.Effect<ReplyResult<T>, CommandFailure>;
@@ -92,6 +107,10 @@ export interface RoomClient<T extends RoomTypes> {
     command: T["Command"]
   ) => Effect.Effect<ReplyResult<T>, CommandRejectedLocally | CommandFailure>;
   readonly cancelLocally: (id: CommandId) => Effect.Effect<LocalCancelOutcome>;
+  readonly signal: (
+    signal: T["Signal"]
+  ) => Effect.Effect<SignalOutcome, SignalInvalid>;
+  readonly signals: Stream.Stream<ReceivedSignal<T>>;
   readonly state: Effect.Effect<ClientState<T>>;
   readonly states: Stream.Stream<ClientState<T>>;
   readonly activity: Stream.Stream<Activity<T["Event"]>>;
@@ -141,6 +160,11 @@ export const roomClient = <T extends RoomTypes>(
     const issued = yield* Ref.make(0);
     const activity = yield* PubSub.unbounded<Activity<T["Event"]>>();
     const updates = yield* PubSub.unbounded<RoomUpdate<T>>();
+    const signals = yield* PubSub.unbounded<ReceivedSignal<T>>();
+
+    const signalBucket = yield* Ref.make(
+      fullBucket(SIGNAL_ALLOWANCE, yield* Clock.currentTimeMillis)
+    );
 
     const waiting = new Map<
       CommandId,
@@ -223,6 +247,9 @@ export const roomClient = <T extends RoomTypes>(
       }),
       actor.on("Replied", ({ id, result }) => {
         settle(id, Exit.succeed(result));
+      }),
+      actor.on("Signalled", ({ from, signal }) => {
+        PubSub.publishUnsafe(signals, { from, signal });
       }),
     ];
 
@@ -308,12 +335,49 @@ export const roomClient = <T extends RoomTypes>(
           : "NeverSentWillNotApply";
       });
 
+    const sendSignal = (signal: T["Signal"]) =>
+      Effect.gen(function* signalOnce() {
+        yield* Result.match(
+          codec.encodeClientFrame(
+            codec.client.cases.Signal.make({ signal }, { disableChecks: true })
+          ),
+          {
+            onFailure: (problem) =>
+              Effect.fail(new SignalInvalid({ issue: problem.message })),
+            onSuccess: () => Effect.void,
+          }
+        );
+
+        if (stateOf(actor.getSnapshot()).connection !== "Live") {
+          return "NotLive" as const;
+        }
+
+        const at = yield* Clock.currentTimeMillis;
+
+        const allowed = yield* Ref.modify(signalBucket, (bucket) =>
+          Option.match(spendToken(SIGNAL_ALLOWANCE, bucket, at), {
+            onNone: () => [false, bucket] as const,
+            onSome: (spent) => [true, spent] as const,
+          })
+        );
+
+        if (!allowed) {
+          return "OverLimit" as const;
+        }
+
+        actor.send({ signal, type: "SendSignal" });
+
+        return "Sent" as const;
+      });
+
     const client: RoomClient<T> = {
       activity: Stream.fromPubSub(activity),
       cancelLocally,
       issue,
       send: (command) =>
         issue(command).pipe(Effect.flatMap(({ reply }) => reply)),
+      signal: sendSignal,
+      signals: Stream.fromPubSub(signals),
       start: Effect.sync(() => {
         actor.send({ type: "Start" });
       }),

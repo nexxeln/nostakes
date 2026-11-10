@@ -192,6 +192,7 @@ export const roomClientMachine = <T extends RoomTypes>(
           readonly id: CommandId;
           readonly result: ReplyResult<T>;
         }>(),
+        Signalled: types<ConnectionPayloads<T>["Signal"]>(),
       },
       events: {
         Batch: types<ConnectionPayloads<T>["Batch"]>(),
@@ -210,6 +211,7 @@ export const roomClientMachine = <T extends RoomTypes>(
         Pong: NoPayload,
         Presence: types<ConnectionPayloads<T>["Presence"]>(),
         Reply: types<ConnectionPayloads<T>["Reply"]>(),
+        SendSignal: types<{ readonly signal: T["Signal"] }>(),
         Signal: types<ConnectionPayloads<T>["Signal"]>(),
         Start: NoPayload,
         Stop: NoPayload,
@@ -676,6 +678,25 @@ export const roomClientMachine = <T extends RoomTypes>(
                     },
                   },
                 };
+              },
+              SendSignal: ({ context, event }, enq) => {
+                enq(
+                  transmitFrame,
+                  context.link,
+                  Frames.Signal.make({ signal: event.signal })
+                );
+              },
+              Signal: ({ event }, enq) => {
+                enq.cancel(TIMERS.silence);
+                enq.raise(
+                  { type: "Silent" },
+                  { delay: SILENCE_LIMIT_MS, id: TIMERS.silence }
+                );
+                enq.emit({
+                  from: event.from,
+                  signal: event.signal,
+                  type: "Signalled",
+                });
               },
               Silent: dropped("Silent"),
               Unanswered: dropped("Unanswered"),
