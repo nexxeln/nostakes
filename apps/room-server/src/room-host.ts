@@ -11,7 +11,7 @@ import { hashedCredential, matchCredential } from "./credentials.js";
 import type { HashedCredential } from "./credentials.js";
 import type { HostedRoom, OpenInput, RoomTypes } from "./hosted-room.js";
 import { roomCodec } from "./room-codec.js";
-import type { Reply } from "./room-codec.js";
+import type { CatchUp, Reply } from "./room-codec.js";
 import type { Credential, RoomStorage, StoredEvent } from "./room-storage.js";
 
 export interface Viewer {
@@ -455,18 +455,26 @@ export const hostRoom = <T extends RoomTypes>(
       current.recent.states[seq - current.recent.from]
     ).pipe(Option.map((state) => core.audienceOf(state, player)));
 
-  const missedSince = (
+  const catchUpFor = (
     after: Option.Option<number>,
     player: PlayerId
-  ): Checked<readonly T["Redacted"][]> =>
-    Option.match(after, {
-      onNone: () => Result.succeed([]),
+  ): Checked<CatchUp<T>> => {
+    const upToDate = codec.catchUp.cases.UpToDate.make({});
+
+    return Option.match(after, {
+      onNone: () => Result.succeed(upToDate),
       onSome: (seq) => {
-        if (
-          seq >= current.headSeq ||
-          current.headSeq - seq > MAX_MISSED_EVENTS
-        ) {
-          return Result.succeed([]);
+        if (seq >= current.headSeq) {
+          return Result.succeed(upToDate);
+        }
+
+        const skipped = codec.catchUp.cases.Skipped.make({
+          from: SeqSchema.make(seq + 1),
+          to: SeqSchema.make(current.headSeq),
+        });
+
+        if (current.headSeq - seq > MAX_MISSED_EVENTS) {
+          return Result.succeed(skipped);
         }
 
         const seen = Option.all(
@@ -481,11 +489,22 @@ export const hostRoom = <T extends RoomTypes>(
         );
 
         return Option.match(seen, {
-          onNone: () => Result.succeed([]),
-          onSome: (forms) => redactAll(forms, seq + 1, player),
+          onNone: () => Result.succeed(skipped),
+          onSome: (forms) =>
+            redactAll(forms, seq + 1, player).pipe(
+              Result.map((events): CatchUp<T> =>
+                Arr.isReadonlyArrayNonEmpty(events)
+                  ? codec.catchUp.cases.Missed.make({
+                      events,
+                      from: SeqSchema.make(seq + 1),
+                    })
+                  : skipped
+              )
+            ),
         });
       },
     });
+  };
 
   const welcome = (
     player: PlayerId,
@@ -496,11 +515,11 @@ export const hostRoom = <T extends RoomTypes>(
     const audience = core.audienceOf(current.state, player);
 
     const frame = guarded("could not prepare welcome", () =>
-      missedSince(after, player).pipe(
-        Result.map((missed) =>
+      catchUpFor(after, player).pipe(
+        Result.map((caughtUp) =>
           codec.encodeFrame(
             codec.server.cases.Welcome.make({
-              missed,
+              catchUp: caughtUp,
               seq: SeqSchema.make(current.headSeq),
               view: core.viewFor(current.state, audience, at),
               you: player,

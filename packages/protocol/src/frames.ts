@@ -60,6 +60,13 @@ export const replyResult = <Rejection extends WireSchema>(
     Unavailable: { reason: UnavailableReasonSchema },
   });
 
+export const catchUp = <Event extends WireSchema>(event: Event) =>
+  Schema.TaggedUnion({
+    Missed: { events: Schema.NonEmptyArray(event), from: SeqSchema },
+    Skipped: { from: SeqSchema, to: SeqSchema },
+    UpToDate: {},
+  });
+
 export const clientMessage = <Command extends WireSchema>(command: Command) =>
   Schema.TaggedUnion({
     Command: { command, id: CommandIdSchema },
@@ -99,7 +106,7 @@ export const serverMessage = <
     Presence: { connected: Schema.Array(PlayerIdSchema) },
     Reply: { id: CommandIdSchema, result: replyResult(schemas.rejection) },
     Welcome: {
-      missed: Schema.Array(schemas.event),
+      catchUp: catchUp(schemas.event),
       seq: SeqSchema,
       view: schemas.view,
       you: PlayerIdSchema,

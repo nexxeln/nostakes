@@ -34,31 +34,77 @@ export const fitBatch = (
   return BatchFits.Fresh({ skip: applied + 1 - from });
 };
 
-export interface WelcomeFit {
-  readonly firstMissed: number;
-  readonly keepFrom: number;
-  readonly skipped: Option.Option<{
-    readonly from: number;
-    readonly to: number;
-  }>;
+export interface SkippedRange {
+  readonly from: number;
+  readonly to: number;
 }
+
+export interface WelcomeSpan {
+  readonly seq: number;
+  readonly missedFrom: number;
+  readonly missedCount: number;
+  readonly skipped: Option.Option<SkippedRange>;
+}
+
+export type WelcomeFit = Data.TaggedEnum<{
+  Resume: {
+    readonly keepFrom: number;
+    readonly skipped: Option.Option<SkippedRange>;
+  };
+  Gap: { readonly expected: number; readonly from: number };
+  Malformed: {
+    readonly seq: number;
+    readonly from: number;
+    readonly size: number;
+  };
+}>;
+
+export const WelcomeFits = Data.taggedEnum<WelcomeFit>();
+
+const startOf = ({ missedFrom, skipped }: WelcomeSpan) =>
+  Option.match(skipped, {
+    onNone: () => missedFrom,
+    onSome: ({ from }) => from,
+  });
+
+const isConsistent = ({ missedCount, missedFrom, seq, skipped }: WelcomeSpan) =>
+  missedFrom + missedCount - 1 === seq &&
+  Option.match(skipped, {
+    onNone: () => true,
+    onSome: ({ from, to }) => from <= to && to + 1 === missedFrom,
+  });
 
 export const fitWelcome = (
   applied: Option.Option<number>,
-  seq: number,
-  missed: number
+  span: WelcomeSpan
 ): WelcomeFit => {
-  const firstMissed = seq - missed + 1;
+  const start = startOf(span);
+
+  if (!isConsistent(span)) {
+    return WelcomeFits.Malformed({
+      from: start,
+      seq: span.seq,
+      size: span.missedCount,
+    });
+  }
 
   return Option.match(applied, {
-    onNone: () => ({ firstMissed, keepFrom: 0, skipped: Option.none() }),
-    onSome: (last) => ({
-      firstMissed,
-      keepFrom: Math.min(missed, Math.max(0, last + 1 - firstMissed)),
-      skipped:
-        firstMissed - 1 > last
-          ? Option.some({ from: last + 1, to: firstMissed - 1 })
-          : Option.none(),
-    }),
+    onNone: () => WelcomeFits.Resume({ keepFrom: 0, skipped: span.skipped }),
+    onSome: (last) =>
+      start > last + 1
+        ? WelcomeFits.Gap({ expected: last + 1, from: start })
+        : WelcomeFits.Resume({
+            keepFrom: Math.min(
+              span.missedCount,
+              Math.max(0, last + 1 - span.missedFrom)
+            ),
+            skipped: span.skipped.pipe(
+              Option.filter(({ to }) => to > last),
+              Option.map(({ from, to }) => ({
+                from: Math.max(from, last + 1),
+                to,
+              }))
+            ),
+          }),
   });
 };

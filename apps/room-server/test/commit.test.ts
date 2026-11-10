@@ -9,6 +9,7 @@ import * as Arbitrary from "effect/Arbitrary";
 
 import { CommitNotes, loadRoom } from "../src/room-host.js";
 import { REPLIES_KEPT_PER_PLAYER } from "../src/room-storage.js";
+import { describeCatchUp, missedIn } from "./fixtures/room-client.js";
 import { ana, ben, cy, openToyHost } from "./fixtures/toy-host.js";
 import type { RecordingViewer } from "./fixtures/toy-host.js";
 import {
@@ -261,7 +262,7 @@ describe("commit", () => {
     expect(room.memory.alarm()).toEqual(Option.some(9000));
   });
 
-  it("sends missed events only when at most 200 are behind, and otherwise just the view", () => {
+  it("sends missed events from the first one after the client's last when at most 200 are behind, and otherwise names the skipped range", () => {
     const room = withMembers();
     const batches = Math.ceil(MAX_MISSED_EVENTS / 8) + 1;
 
@@ -289,13 +290,18 @@ describe("commit", () => {
       );
 
       return room.host.codec.server.guards.Welcome(message)
-        ? message.missed.length
-        : -1;
+        ? describeCatchUp(message)
+        : message._tag;
     };
 
-    expect(missedAfter(head - MAX_MISSED_EVENTS)).toBe(MAX_MISSED_EVENTS);
-    expect(missedAfter(head - MAX_MISSED_EVENTS - 1)).toBe(0);
-    expect(missedAfter(head)).toBe(0);
+    expect(missedAfter(head - MAX_MISSED_EVENTS)).toBe(
+      `Missed ${head - MAX_MISSED_EVENTS + 1}..${head}`
+    );
+    expect(missedAfter(head - MAX_MISSED_EVENTS - 1)).toBe(
+      `Skipped ${head - MAX_MISSED_EVENTS}..${head}`
+    );
+    expect(missedAfter(head)).toBe("UpToDate");
+    expect(missedAfter(head + 3)).toBe("UpToDate");
   });
 
   it("welcomes a returning viewer with its own redacted view of what it missed", () => {
@@ -322,14 +328,15 @@ describe("commit", () => {
     }
 
     expect(message.seq).toBe(8);
-    expect(message.missed.map(({ _tag }) => _tag)).toEqual([
+    expect(describeCatchUp(message)).toBe("Missed 5..8");
+    expect(missedIn(message).map(({ _tag }) => _tag)).toEqual([
       "DealRequested",
       "SecretDealt",
       "SecretDealt",
       "SecretDealt",
     ]);
 
-    const secrets = message.missed.flatMap((event) =>
+    const secrets = missedIn(message).flatMap((event) =>
       ToyRedactedSchema.guards.SecretDealt(event) ? [event] : []
     );
 

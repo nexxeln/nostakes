@@ -20,6 +20,7 @@ export const roomCodec = <T extends RoomTypes>(core: HostedRoom<T>) => {
   const client = clientMessage(core.schemas.memberCommand);
 
   return {
+    catchUp: server.cases.Welcome.fields.catchUp,
     client,
     decodeClientFrame: Schema.decodeUnknownResult(
       clientFrame(core.schemas.memberCommand)
@@ -39,5 +40,7 @@ export type RoomCodec<T extends RoomTypes> = ReturnType<typeof roomCodec<T>>;
 export type Reply<T extends RoomTypes> = RoomCodec<T>["reply"]["Type"];
 
 export type ServerMessage<T extends RoomTypes> = RoomCodec<T>["server"]["Type"];
+
+export type CatchUp<T extends RoomTypes> = RoomCodec<T>["catchUp"]["Type"];
 
 export type ClientMessage<T extends RoomTypes> = RoomCodec<T>["client"]["Type"];

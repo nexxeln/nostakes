@@ -18,6 +18,7 @@ export {
 
 export {
   clientCodec,
+  type CatchUp,
   type ClientCodec,
   type ClientMessage,
   type ClientSchemas,
@@ -34,7 +35,16 @@ export {
   type RoomClientMachine,
 } from "./machine.js";
 
-export { BatchFits, fitBatch, fitWelcome, type BatchFit } from "./sequence.js";
+export {
+  BatchFits,
+  fitBatch,
+  fitWelcome,
+  WelcomeFits,
+  type BatchFit,
+  type SkippedRange,
+  type WelcomeFit,
+  type WelcomeSpan,
+} from "./sequence.js";
 
 export { SocketEvents, type SocketEvent } from "./socket-event.js";
 

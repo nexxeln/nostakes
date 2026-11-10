@@ -172,7 +172,10 @@ const STEP_EVENTS: Record<Step, (step: StepInput) => readonly MachineEvent[]> =
 
       return [
         {
-          missed: [added(applied + 1), added(applied + 2)],
+          catchUp: toyCodec.catchUp.cases.Missed.make({
+            events: [added(applied + 1), added(applied + 2)],
+            from: seq(applied + 1),
+          }),
           seq: seq(applied + 2),
           type: "Welcome",
           view: { total: applied + 2 },

@@ -177,6 +177,18 @@ export const command = (id: string, payload: ToyMemberCommand) =>
 
 export const isWelcome = codec.server.guards.Welcome;
 
+export type ToyWelcome = typeof codec.server.cases.Welcome.Type;
+
+export const missedIn = (welcome: ToyWelcome) =>
+  codec.catchUp.guards.Missed(welcome.catchUp) ? welcome.catchUp.events : [];
+
+export const describeCatchUp = (welcome: ToyWelcome) =>
+  codec.catchUp.match(welcome.catchUp, {
+    Missed: ({ events, from }) => `Missed ${from}..${from + events.length - 1}`,
+    Skipped: ({ from, to }) => `Skipped ${from}..${to}`,
+    UpToDate: () => "UpToDate",
+  });
+
 export const isEvents = codec.server.guards.Events;
 
 export const isPresence = codec.server.guards.Presence;
@@ -247,9 +259,11 @@ export const openRoomWith = (base: string, names: readonly string[]) =>
 export const appliedSeqs = (client: RoomClient) =>
   client.messages.flatMap((message) => {
     if (isWelcome(message)) {
-      return message.missed.map(
-        (_, index) => message.seq - message.missed.length + 1 + index
-      );
+      const { catchUp } = message;
+
+      return codec.catchUp.guards.Missed(catchUp)
+        ? catchUp.events.map((_, index) => catchUp.from + index)
+        : [];
     }
 
     return isEvents(message)

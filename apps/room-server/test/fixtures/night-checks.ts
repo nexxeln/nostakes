@@ -383,45 +383,70 @@ const welcomeArrived = (
     return;
   }
 
-  const first = message.seq - message.missed.length + 1;
   const after = Option.getOrElse(record.after, () => -1);
+  const raw = decodeJson(arrival.text);
+  const rawCatchUp = fieldOf(raw, "catchUp");
 
   lineage.welcomed = true;
 
-  if (message.missed.length > 0) {
-    checker.counts.catchUps += 1;
+  pokerCodec.catchUp.match(message.catchUp, {
+    Missed: ({ events, from }) => {
+      checker.counts.catchUps += 1;
 
-    if (
-      first !== after + 1 ||
-      lineage.next.pipe(Option.exists((expected) => expected !== first))
-    ) {
-      report(
-        checker,
-        `${where} caught up from ${first}, not after its last event`
-      );
-    }
-  } else if (Option.isSome(record.after) && message.seq !== after) {
-    if (message.seq - after > MAX_MISSED_EVENTS) {
+      if (
+        from !== after + 1 ||
+        lineage.next.pipe(Option.exists((expected) => expected !== from))
+      ) {
+        report(
+          checker,
+          `${where} caught up from ${from}, not after its last event`
+        );
+      }
+
+      if (from + events.length - 1 !== message.seq) {
+        report(
+          checker,
+          `${where} caught up to ${from + events.length - 1}, not to the head at ${message.seq}`
+        );
+      }
+
+      const rawMissed = itemsOf(fieldOf(rawCatchUp, "events"));
+
+      for (const [offset, event] of events.entries()) {
+        pushTo(received.events, from + offset, {
+          player,
+          raw: rawMissed[offset] ?? null,
+          text: textOf(encodeSeenResult(event)),
+          where,
+        });
+      }
+    },
+    Skipped: ({ from, to }) => {
       checker.counts.catchUpsSkipped += 1;
-    } else {
-      report(
-        checker,
-        `${where} missed ${message.seq - after} events and got none of them`
-      );
-    }
-  }
 
-  const raw = decodeJson(arrival.text);
-  const rawMissed = itemsOf(fieldOf(raw, "missed"));
+      if (from !== after + 1 || to !== message.seq) {
+        report(
+          checker,
+          `${where} was told it skipped ${from}..${to} after ${after}, with the head at ${message.seq}`
+        );
+      }
 
-  for (const [offset, event] of message.missed.entries()) {
-    pushTo(received.events, first + offset, {
-      player,
-      raw: rawMissed[offset] ?? null,
-      text: textOf(encodeSeenResult(event)),
-      where,
-    });
-  }
+      if (to - after <= MAX_MISSED_EVENTS) {
+        report(
+          checker,
+          `${where} skipped ${to - after} events that the server could have replayed`
+        );
+      }
+    },
+    UpToDate: () => {
+      if (Option.isSome(record.after) && message.seq !== after) {
+        report(
+          checker,
+          `${where} missed ${message.seq - after} events and was told it was up to date`
+        );
+      }
+    },
+  });
 
   pushTo(received.welcomes, message.seq, {
     arrivedAt: arrival.at,

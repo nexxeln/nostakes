@@ -1,6 +1,14 @@
 import { serverFrame, PlayerIdSchema, SeqSchema } from "@nostakes/protocol";
 import type { CloseReason, CommandId, PlayerId, Seq } from "@nostakes/protocol";
-import { Clock, Effect, Layer, Queue, Schema, Stream } from "effect";
+import {
+  Array as Arr,
+  Clock,
+  Effect,
+  Layer,
+  Queue,
+  Schema,
+  Stream,
+} from "effect";
 import type { Cause } from "effect";
 
 import { SocketEvents, Transport } from "../../src/index.js";
@@ -59,10 +67,29 @@ export const serverText = {
         result: toyCodec.reply.cases.Accepted.make({ seq: seq(total) }),
       })
     ),
+  skippedWelcome: (from: number, head: number) =>
+    encodeServerFrame(
+      toyCodec.server.cases.Welcome.make({
+        catchUp: toyCodec.catchUp.cases.Skipped.make({
+          from: seq(from),
+          to: seq(head),
+        }),
+        seq: seq(head),
+        view: { total: head },
+        you: YOU,
+      })
+    ),
   welcome: (head: number, missedTotals: readonly number[] = []) =>
     encodeServerFrame(
       toyCodec.server.cases.Welcome.make({
-        missed: missedTotals.map(addedEvent),
+        catchUp: Arr.match(missedTotals.map(addedEvent), {
+          onEmpty: () => toyCodec.catchUp.cases.UpToDate.make({}),
+          onNonEmpty: (events) =>
+            toyCodec.catchUp.cases.Missed.make({
+              events,
+              from: seq(head - events.length + 1),
+            }),
+        }),
         seq: seq(head),
         view: { total: head },
         you: YOU,

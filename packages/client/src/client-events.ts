@@ -8,7 +8,12 @@ import type {
 import { Data } from "effect";
 import type { Option } from "effect";
 
-import type { ClientMessage, ReplyResult, RoomTypes } from "./codec.js";
+import type {
+  CatchUp,
+  ClientMessage,
+  ReplyResult,
+  RoomTypes,
+} from "./codec.js";
 
 export interface Link<T extends RoomTypes> {
   readonly transmit: (message: ClientMessage<T>) => void;
@@ -62,7 +67,7 @@ export interface ClientContext<T extends RoomTypes> extends ClientInput {
 export interface ConnectionPayloads<T extends RoomTypes> {
   readonly Opened: { readonly link: Link<T> };
   readonly Welcome: {
-    readonly missed: readonly T["Event"][];
+    readonly catchUp: CatchUp<T>;
     readonly seq: Seq;
     readonly view: T["View"];
     readonly you: PlayerId;

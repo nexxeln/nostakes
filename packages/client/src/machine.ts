@@ -23,7 +23,8 @@ import type {
   RoomTypes,
 } from "./codec.js";
 import { connectionEvents } from "./connection.js";
-import { BatchFits, fitBatch, fitWelcome } from "./sequence.js";
+import { BatchFits, fitBatch, fitWelcome, WelcomeFits } from "./sequence.js";
+import type { WelcomeSpan } from "./sequence.js";
 import {
   CONNECT_TIMEOUT_MS,
   GREETING_TIMEOUT_MS,
@@ -55,6 +56,11 @@ const appliedSeqOf = (applied: Option.Option<Seq>) =>
 
 const seqAt = (value: number) => SeqSchema.make(value);
 
+interface CaughtUp<T extends RoomTypes> {
+  readonly events: readonly T["Event"][];
+  readonly span: WelcomeSpan;
+}
+
 const withoutCommand = <T extends RoomTypes>(
   pending: readonly PendingCommand<T>[],
   id: CommandId
@@ -81,6 +87,7 @@ export const roomClientMachine = <T extends RoomTypes>(
   codec: ClientCodec<T>
 ) => {
   const Frames = codec.client.cases;
+  const CatchUps = codec.catchUp;
 
   const transmitFrame = (
     link: Option.Option<Link<T>>,
@@ -245,50 +252,90 @@ export const roomClientMachine = <T extends RoomTypes>(
             on: {
               GreetingTimedOut: dropped("GreetingTimeout"),
               Welcome: ({ context, event }, enq) => {
-                const fit = fitWelcome(
-                  context.applied,
-                  event.seq,
-                  event.missed.length
+                const caughtUp = CatchUps.match(event.catchUp, {
+                  Missed: ({ events, from }): CaughtUp<T> => ({
+                    events,
+                    span: {
+                      missedCount: events.length,
+                      missedFrom: from,
+                      seq: event.seq,
+                      skipped: Option.none(),
+                    },
+                  }),
+                  Skipped: ({ from, to }): CaughtUp<T> => ({
+                    events: [],
+                    span: {
+                      missedCount: 0,
+                      missedFrom: to + 1,
+                      seq: event.seq,
+                      skipped: Option.some({ from, to }),
+                    },
+                  }),
+                  UpToDate: (): CaughtUp<T> => ({
+                    events: [],
+                    span: {
+                      missedCount: 0,
+                      missedFrom: event.seq + 1,
+                      seq: event.seq,
+                      skipped: Option.none(),
+                    },
+                  }),
+                });
+
+                return WelcomeFits.$match(
+                  fitWelcome(context.applied, caughtUp.span),
+                  {
+                    Gap: () => dropped("Gap"),
+                    Malformed: () => dropped("Malformed"),
+                    Resume: ({ keepFrom, skipped }) => {
+                      const activity: Activity<T["Event"]>[] = [
+                        ...Option.toArray(skipped).map(({ from, to }) =>
+                          Activities.Skipped({
+                            from: seqAt(from),
+                            to: seqAt(to),
+                          })
+                        ),
+                        ...caughtUp.events
+                          .slice(keepFrom)
+                          .map((missed, index) =>
+                            Activities.Applied({
+                              event: missed,
+                              seq: seqAt(
+                                caughtUp.span.missedFrom + keepFrom + index
+                              ),
+                            })
+                          ),
+                      ];
+
+                      if (Arr.isArrayNonEmpty(activity)) {
+                        enq.emit({ activity, type: "Applied" });
+                      }
+
+                      for (const { command, id } of context.pending) {
+                        enq(
+                          transmitFrame,
+                          context.link,
+                          Frames.Command.make({ command, id })
+                        );
+                      }
+
+                      return {
+                        context: {
+                          applied: Option.some(event.seq),
+                          drop: Option.none(),
+                          failures: 0,
+                          pending: context.pending.map((entry) => ({
+                            ...entry,
+                            sent: true,
+                          })),
+                          view: Option.some(event.view),
+                          you: Option.some(event.you),
+                        },
+                        target: "Live",
+                      };
+                    },
+                  }
                 );
-
-                const activity: Activity<T["Event"]>[] = [
-                  ...Option.toArray(fit.skipped).map(({ from, to }) =>
-                    Activities.Skipped({ from: seqAt(from), to: seqAt(to) })
-                  ),
-                  ...event.missed.slice(fit.keepFrom).map((missed, index) =>
-                    Activities.Applied({
-                      event: missed,
-                      seq: seqAt(fit.firstMissed + fit.keepFrom + index),
-                    })
-                  ),
-                ];
-
-                if (Arr.isArrayNonEmpty(activity)) {
-                  enq.emit({ activity, type: "Applied" });
-                }
-
-                for (const { command, id } of context.pending) {
-                  enq(
-                    transmitFrame,
-                    context.link,
-                    Frames.Command.make({ command, id })
-                  );
-                }
-
-                return {
-                  context: {
-                    applied: Option.some(event.seq),
-                    drop: Option.none(),
-                    failures: 0,
-                    pending: context.pending.map((entry) => ({
-                      ...entry,
-                      sent: true,
-                    })),
-                    view: Option.some(event.view),
-                    you: Option.some(event.you),
-                  },
-                  target: "Live",
-                };
               },
             },
           },

@@ -13,6 +13,7 @@ import {
   isEvents,
   joinAs,
   lastSeq,
+  missedIn,
   openRoomWith,
   replyTo,
 } from "./fixtures/room-client.js";
@@ -48,7 +49,7 @@ const eventsIn = (message: ToyServerMessage) => {
     return message.events;
   }
 
-  return codec.server.guards.Welcome(message) ? message.missed : [];
+  return codec.server.guards.Welcome(message) ? missedIn(message) : [];
 };
 
 const secretsSeenBy = (client: RoomClient) =>
@@ -174,8 +175,8 @@ test(
     );
 
     expect(owned.size).toBe(12);
-    expect(cyBack.welcome.missed.filter(isSecretDealt).length).toBe(4);
-    expect(benLate.welcome.missed.filter(isSecretDealt).length).toBe(12);
+    expect(missedIn(cyBack.welcome).filter(isSecretDealt).length).toBe(4);
+    expect(missedIn(benLate.welcome).filter(isSecretDealt).length).toBe(12);
 
     for (const { client, pass } of clients) {
       expect(secretsSeenBy(client).every(({ to }) => to === pass.player)).toBe(

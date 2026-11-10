@@ -301,14 +301,15 @@ describe("room client against a fake socket", () => {
     "missed events on resume are applied in order, and a stretch the server cannot replay is reported as skipped",
     () =>
       Effect.gen(function* resumeActivity() {
-        const { greet, live, seen, socket } = yield* harness;
+        const { accept, greet, live, seen, socket } = yield* harness;
 
         yield* live(5);
         yield* cut(yield* socket(0));
         yield* advance(250);
         yield* cut(yield* greet(1, 8, [6, 7, 8]));
         yield* advance(250);
-        yield* greet(2, 300);
+        yield* (yield* accept(2)).push(serverText.skippedWelcome(9, 300));
+        yield* settle;
 
         expect(seen).toEqual([
           Activities.Applied({ event: addedTotal(6), seq: seqOf(6) }),
@@ -316,6 +317,29 @@ describe("room client against a fake socket", () => {
           Activities.Applied({ event: addedTotal(8), seq: seqOf(8) }),
           Activities.Skipped({ from: seqOf(9), to: seqOf(300) }),
         ]);
+      }).pipe(Effect.scoped, lowestJitter)
+  );
+
+  it.effect(
+    "a welcome that starts past the next event the client expects is a gap: nothing is applied and the client reconnects",
+    () =>
+      Effect.gen(function* welcomeGap() {
+        const { accept, client, fake, live, seen, socket } = yield* harness;
+
+        yield* live(5);
+        yield* cut(yield* socket(0));
+        yield* advance(250);
+        yield* (yield* accept(1)).push(serverText.skippedWelcome(8, 300));
+        yield* settle;
+
+        const state = yield* client.state;
+
+        yield* advance(250);
+
+        expect(state.drop).toEqual(Option.some("Gap"));
+        expect(state.seq).toEqual(Option.some(seqOf(5)));
+        expect(seen).toEqual([]);
+        expect(fake.sockets.length).toBe(3);
       }).pipe(Effect.scoped, lowestJitter)
   );
 

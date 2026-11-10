@@ -36,8 +36,8 @@ const fromServer = <T extends RoomTypes>(
           result,
           type: "Reply",
         }),
-        Welcome: ({ missed, seq, view, you }): ConnectionEvent<T> => ({
-          missed,
+        Welcome: ({ catchUp, seq, view, you }): ConnectionEvent<T> => ({
+          catchUp,
           seq,
           type: "Welcome",
           view,

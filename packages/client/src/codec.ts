@@ -34,6 +34,7 @@ export const clientCodec = <T extends RoomTypes>(schemas: ClientSchemas<T>) => {
   const server = serverMessage(schemas);
 
   return {
+    catchUp: server.cases.Welcome.fields.catchUp,
     client,
     decodeServerFrame: Schema.decodeUnknownResult(serverFrame(schemas)),
     encodeClientFrame: Schema.encodeResult(Schema.fromJsonString(client)),
@@ -53,3 +54,5 @@ export type ServerMessage<T extends RoomTypes> =
   ClientCodec<T>["server"]["Type"];
 
 export type ReplyResult<T extends RoomTypes> = ClientCodec<T>["reply"]["Type"];
+
+export type CatchUp<T extends RoomTypes> = ClientCodec<T>["catchUp"]["Type"];

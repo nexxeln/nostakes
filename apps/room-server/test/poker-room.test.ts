@@ -244,8 +244,9 @@ describe("the poker room adapter", () => {
 const holeCardsIn = (room: ReturnType<typeof openPokerHost>, frame: string) => {
   const message = room.decodeFrame(frame);
 
-  return room.host.codec.server.guards.Welcome(message)
-    ? message.missed.flatMap((event) =>
+  return room.host.codec.server.guards.Welcome(message) &&
+    room.host.codec.catchUp.guards.Missed(message.catchUp)
+    ? message.catchUp.events.flatMap((event) =>
         SeenEvents.$is("Table")(event) &&
         Events.$is("HoleCardsDealt")(event.event)
           ? [{ cards: event.event.cards, seat: event.event.seat }]

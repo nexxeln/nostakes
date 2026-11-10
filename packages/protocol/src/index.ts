@@ -1,5 +1,6 @@
 export {
   CLOSE_CODES,
+  catchUp,
   CloseReasonSchema,
   ClosingSchema,
   clientFrame,
