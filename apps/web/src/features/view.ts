@@ -2,7 +2,7 @@ import { avatarFor } from "@nostakes/avatar";
 import { Option } from "effect";
 import type { Document, Html, HtmlBuilder } from "foldkit/html";
 
-import { themeSwitch } from "./chrome.js";
+import { learnLink, themeSwitch } from "./chrome.js";
 import { face, faceSheet } from "./face-builder.js";
 import { landingView } from "./landing/view.js";
 import { Messages } from "./message.js";
@@ -159,7 +159,11 @@ const yourRooms = (model: Model, h: H): Html =>
 const readingLinks = (h: H): Html =>
   h.footer(
     [h.Class("reading-links")],
-    [h.a([h.Href("/privacy")], ["Privacy"]), h.a([h.Href("/terms")], ["Terms"])]
+    [
+      learnLink(h),
+      h.a([h.Href("/privacy")], ["Privacy"]),
+      h.a([h.Href("/terms")], ["Terms"]),
+    ]
   );
 
 const homeView = (

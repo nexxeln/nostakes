@@ -3,7 +3,7 @@ import type { Expression } from "@nostakes/avatar";
 import type { Html, HtmlBuilder } from "foldkit/html";
 
 import { cardFaceOf } from "../card-art.js";
-import { themeSwitch } from "../chrome.js";
+import { learnLink, themeSwitch } from "../chrome.js";
 import { face } from "../face-builder.js";
 import { BRAND_LINE } from "../link-preview.js";
 import { cardMarkup } from "../markup.js";
@@ -363,6 +363,7 @@ const close = (h: H): Html =>
       h.footer(
         [h.Class("reading-links")],
         [
+          learnLink(h),
           h.a([h.Href("/privacy")], ["Privacy"]),
           h.a([h.Href("/terms")], ["Terms"]),
         ]

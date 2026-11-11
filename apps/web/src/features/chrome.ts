@@ -10,6 +10,25 @@ import type { Deck, Theme } from "./model.js";
 
 type H = HtmlBuilder<Message>;
 
+export const LEARN_PATH = "/learn";
+
+export const learnLink = (h: H): Html =>
+  h.a(
+    [h.Class("learn-link"), h.Href(LEARN_PATH)],
+    ["New to poker? Learn in two minutes"]
+  );
+
+export const learnInNewTab = (h: H): Html =>
+  h.a(
+    [
+      h.Class("text-button"),
+      h.Href(LEARN_PATH),
+      h.Target("_blank"),
+      h.Rel("noopener"),
+    ],
+    ["How to play"]
+  );
+
 export const themeSwitch = (h: H): Html =>
   h.span(
     [h.Class("theme-switch")],

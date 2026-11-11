@@ -6,7 +6,7 @@ import type { Html, HtmlBuilder } from "foldkit/html";
 
 import { mayCallBombPot } from "./bomb-pot.js";
 import { commandButton } from "./buttons.js";
-import { deviceToggles } from "./chrome.js";
+import { deviceToggles, learnInNewTab } from "./chrome.js";
 import { face } from "./face-builder.js";
 import { Messages } from "./message.js";
 import type { Message } from "./message.js";
@@ -519,6 +519,7 @@ const menuFoot = (model: Model, view: OpenView, h: H): Html => {
       h.span(
         [h.Class("menu-foot-end")],
         [
+          learnInNewTab(h),
           hosting && view.queued.close
             ? h.span([h.Class("muted small")], ["Ending after this hand"])
             : h.empty,

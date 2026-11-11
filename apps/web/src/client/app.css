@@ -2163,6 +2163,25 @@ button.person {
   font-size: var(--text-1);
 }
 
+.reading-links {
+  flex-wrap: wrap;
+}
+
 .reading-links a {
   color: inherit;
+}
+
+.reading-links .learn-link {
+  flex-basis: 100%;
+  min-height: var(--size-touch);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: var(--text-2);
+}
+
+a.text-button {
+  display: inline-flex;
+  align-items: center;
+  text-decoration: none;
 }
