@@ -207,7 +207,7 @@ const GESTURES: readonly Gesture[] = [
   },
 ];
 
-const whoseTurn = (pages: readonly Page[], looks = 150) =>
+const whoseTurn = (pages: readonly Page[]) =>
   Effect.gen(function* findTheLiveChip() {
     for (const page of pages) {
       if ((yield* count(page, `${CHIP}.live`)) > 0) {
@@ -219,7 +219,7 @@ const whoseTurn = (pages: readonly Page[], looks = 150) =>
   }).pipe(
     Effect.repeat({
       schedule: Schedule.spaced("150 millis"),
-      times: looks,
+      times: 150,
       until: Option.isSome,
     }),
     Effect.flatMap(
@@ -611,8 +611,6 @@ const showsABluff = (ana: Page, ben: Page) =>
 
 const AWARDED = `${TABLE} [data-awarded]`;
 
-const NEXT_DEAL_LOOKS = 400;
-
 const AWARD_SETTLES = "3 seconds";
 
 const tablesWhenAsked = (pages: readonly Page[], watcher: Page) =>
@@ -630,8 +628,6 @@ const tablesWhenAsked = (pages: readonly Page[], watcher: Page) =>
 
 const callsTheRiver = (ana: Page, ben: Page) =>
   Effect.gen(function* betCallAndShow() {
-    yield* whoseTurn([ana, ben], NEXT_DEAL_LOOKS);
-
     const bettor = yield* toRiver([ana, ben]);
     const caller = bettor === ana ? ben : ana;
 
