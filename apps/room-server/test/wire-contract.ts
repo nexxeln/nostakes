@@ -335,7 +335,8 @@ export const WIRE_CONTRACTS: readonly WireContract[] = [
       view: "b934d6ddb2490c67",
     },
     protocol: 20,
-  },  {
+  },
+  {
     parts: {
       clientFrame: "4b93253255d2cab4",
       command: "c75d39e91d02178b",
