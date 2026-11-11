@@ -1,7 +1,10 @@
 import { codeFor, randomAvatar } from "@nostakes/avatar";
+import { Option } from "effect";
 
 import { expressionFor } from "../../src/features/pictures/settle-up.js";
 import type { SettleUpCard } from "../../src/features/pictures/settle-up.js";
+import type { RecapCard } from "../../src/features/recap.js";
+import { samplePicture } from "../moments/samples.js";
 
 interface Night {
   readonly nets: readonly (readonly [string, number])[];
@@ -97,5 +100,102 @@ export const sampleSettleUp = (name: string): SettleUpCard => {
       from,
       to,
     })),
+  };
+};
+
+interface RecapNight {
+  readonly hands: number;
+  readonly length: string;
+  readonly moments: readonly (readonly [string, string])[];
+  readonly pot: readonly [number, number, readonly string[]];
+}
+
+const RECAPS = {
+  nine: {
+    hands: 263,
+    length: "5 h 2 min",
+    moments: [
+      ["BigHand-3", "Bartholomew Montgomery-Fitzwilliam III"],
+      ["BadBeat-1", "Anastasia Konstantinopoulou-Papadimitri"],
+      ["HeroCall-2", "WWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWW"],
+    ],
+    pot: [
+      3120,
+      211,
+      [
+        "Maximiliana Wolfenstein-Vanderbilt Okafo",
+        "Oluwaseun Adebayo-Williams Montgomery Jr",
+      ],
+    ],
+  },
+  six: {
+    hands: 142,
+    length: "3 h 10 min",
+    moments: [
+      ["BigHand-3", "Kit"],
+      ["BadBeat-1", "Jonas"],
+      ["Bluff-2", "Lou"],
+    ],
+    pot: [2400, 87, ["Kit"]],
+  },
+  two: {
+    hands: 18,
+    length: "48 min",
+    moments: [["SevenDeuce-1", "Ana"]],
+    pot: [120, 9, ["Ana"]],
+  },
+} satisfies Readonly<Record<string, RecapNight>>;
+
+const recapOf = (name: string): RecapNight =>
+  new Map<string, RecapNight>(Object.entries(RECAPS)).get(name) ?? RECAPS.six;
+
+export const sampleRecap = (name: string): RecapCard => {
+  const night = recapOf(name);
+  const settled = sampleSettleUp(name);
+  const [winner] = settled.players;
+
+  const faceFor = (player: string) =>
+    settled.players.find((each) => each.name === player) ?? winner;
+
+  const [pot, hand, takers] = night.pot;
+
+  return {
+    biggestPot: Option.some({
+      hand,
+      pot,
+      takers: takers.map((taker) => ({
+        avatar: faceFor(taker)?.avatar ?? "",
+        expression: "Happy" as const,
+        name: taker,
+      })),
+    }),
+    hands: night.hands,
+    length: night.length,
+    moments: night.moments.map(([sample, player], index) => {
+      const picture = samplePicture(sample);
+      const [lead] = picture.faces;
+
+      return {
+        cards: lead?.cards ?? [],
+        face: {
+          avatar: faceFor(player)?.avatar ?? lead?.avatar ?? "",
+          expression: lead?.expression ?? "Happy",
+          name: player,
+        },
+        hand: 20 + index * 37,
+        line: picture.line.replaceAll(lead?.name ?? "", player),
+        title: picture.title,
+      };
+    }),
+    winner: Option.fromUndefinedOr(winner).pipe(
+      Option.map((top) => ({
+        face: {
+          avatar: top.avatar,
+          expression: "Happy" as const,
+          name: top.name,
+        },
+        net: top.net,
+      }))
+    ),
   };
 };

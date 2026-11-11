@@ -1,6 +1,6 @@
 import type { Deck, Theme } from "../../features/model.js";
 import { KEEP_TAG, keepSvg, keepTitle } from "../../features/pictures/keep.js";
-import type { KeepPicture } from "../../features/pictures/keep.js";
+import type { KeepPicture, KeepTone } from "../../features/pictures/keep.js";
 import { KEPT_FRAMES } from "../../features/pictures/paper.js";
 import type { KeptFrame } from "../../features/pictures/paper.js";
 import { Keeper } from "./keeper.js";
@@ -11,6 +11,7 @@ button { font: inherit; display: inline-flex; align-items: center; justify-conte
 button:active { translate: var(--press-1, 1px 1.8px); box-shadow: var(--shadow-sheet-0); }
 .keep { flex: 1; background: var(--color-accent, #ef5326); color: var(--color-on-accent, #fffaf3); font-size: 1.0625rem; box-shadow: var(--shadow-sheet-2); }
 .keep:active { translate: var(--press-2, 1.5px 2.6px); }
+:host([data-tone="Quiet"]) .keep { background: var(--color-raised, #fffdf8); color: var(--color-raised-ink, #1f1c31); font-size: inherit; box-shadow: var(--shadow-sheet-1); }
 .story { color: var(--color-ink-muted, #716a79); }
 button:focus-visible { outline: 2px solid var(--color-accent, #ef5326); outline-offset: 2px; }
 `;
@@ -21,6 +22,7 @@ class NostakesKeep extends HTMLElement {
   #theme: Theme = "Light";
   #deck: Deck = "TwoColour";
   #label = "Share as a picture";
+  #tone: KeepTone = "Primary";
   #keeper: Keeper | null = null;
   #drawnFor = "";
 
@@ -75,6 +77,15 @@ class NostakesKeep extends HTMLElement {
   set deck(next: Deck) {
     this.#deck = next;
     this.#redraw();
+  }
+
+  get tone(): KeepTone {
+    return this.#tone;
+  }
+
+  set tone(next: KeepTone) {
+    this.#tone = next;
+    this.dataset.tone = next;
   }
 
   get label(): string {

@@ -29,6 +29,7 @@ import { handEnded } from "./moments/watch.js";
 import { updateLine } from "./page-update.js";
 import { KeepPictureSchema, keepElement } from "./pictures/keep.js";
 import { settleUpCardOf } from "./pictures/settle-up.js";
+import { handsLine, recapCardOf, recapLines } from "./recap.js";
 import { hasLeft, isLive, isYou, nameOf, openViewOf, viewOf } from "./room.js";
 import type { ClosedView, OpenView } from "./room.js";
 import { rulesSheet } from "./rules-view.js";
@@ -484,8 +485,47 @@ const settleUpKeep = (model: Model, view: ClosedView, h: H): Html => {
       keep.Theme(pageTheme(model)),
       keep.Deck(model.deck),
       keep.Label("Share as a picture"),
+      keep.Tone("Primary"),
     ],
     []
+  );
+};
+
+const recapSection = (model: Model, view: ClosedView, h: H): Html => {
+  if (view.recap.hands === 0) {
+    return h.empty;
+  }
+
+  const keep = keepElement.withMessage(h);
+
+  return h.div(
+    [h.Class("recap")],
+    [
+      h.p([h.Class("recap-hands")], [handsLine(view.recap)]),
+      h.ul(
+        [h.Class("recap-lines")],
+        recapLines(view).map((line) =>
+          h.li(
+            [h.Key(line.key), h.Class("recap-line")],
+            [
+              h.span([h.Class("recap-title")], [line.title]),
+              h.span([h.Class("recap-detail")], [line.detail]),
+            ]
+          )
+        )
+      ),
+      keep(
+        [
+          h.Class("keep-row"),
+          keep.Picture(KeepPictureSchema.cases.Recap.make(recapCardOf(view))),
+          keep.Theme(pageTheme(model)),
+          keep.Deck(model.deck),
+          keep.Label("Share the recap"),
+          keep.Tone("Quiet"),
+        ],
+        []
+      ),
+    ]
   );
 };
 
@@ -501,6 +541,7 @@ const closedRoomView = (
     [h.Class("card-panel settlement")],
     [
       h.h2([h.Class("sheet-title")], ["The night is over"]),
+      recapSection(model, view, h),
       h.ul(
         [h.Class("member-list")],
         view.settlement.balances

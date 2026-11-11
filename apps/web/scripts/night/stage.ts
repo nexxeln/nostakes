@@ -5,8 +5,9 @@ import { Effect } from "effect";
 import { EMBEDDED_FONTS, pngFile } from "../../src/client/pictures/png.js";
 import { fileNameOf } from "../../src/features/pictures/paper.js";
 import type { KeptFrame } from "../../src/features/pictures/paper.js";
+import { recapSvg } from "../../src/features/pictures/recap-card.js";
 import { settleUpSvg } from "../../src/features/pictures/settle-up.js";
-import { NIGHT_NAMES, sampleSettleUp } from "./samples.js";
+import { NIGHT_NAMES, sampleRecap, sampleSettleUp } from "./samples.js";
 
 const params = new URLSearchParams(globalThis.location.search);
 
@@ -16,13 +17,15 @@ const frame: KeptFrame = params.get("frame") === "Story" ? "Story" : "Chat";
 
 const sample = params.get("sample") ?? "six";
 
-const svgOf = (fonts: string) =>
-  settleUpSvg(sampleSettleUp(sample), {
-    deck: "TwoColour",
-    fonts,
-    frame,
-    theme,
-  });
+const card = params.get("card") === "recap" ? "recap" : "settle";
+
+const svgOf = (fonts: string) => {
+  const look = { deck: "TwoColour", fonts, frame, theme } as const;
+
+  return card === "recap"
+    ? recapSvg(sampleRecap(sample), look)
+    : settleUpSvg(sampleSettleUp(sample), look);
+};
 
 document.documentElement.dataset.theme = theme.toLowerCase();
 
@@ -31,7 +34,7 @@ document.body.style.margin = "0";
 const root = document.querySelector("#stage");
 
 const png = (into: Element) =>
-  pngFile(svgOf(EMBEDDED_FONTS), frame, fileNameOf("settle up", frame)).pipe(
+  pngFile(svgOf(EMBEDDED_FONTS), frame, fileNameOf(card, frame)).pipe(
     Effect.flatMap((file) => {
       const image = document.createElement("img");
 

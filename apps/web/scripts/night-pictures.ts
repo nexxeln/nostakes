@@ -19,6 +19,8 @@ const FRAMES = [
 
 const THEMES = ["Light", "Dark"] as const;
 
+const CARDS = ["settle", "recap"] as const;
+
 class PicturesFailed extends Schema.TaggedError<
   PicturesFailed,
   { readonly brand: unique symbol }
@@ -110,21 +112,23 @@ const pictures = (opened: Browser, dir: string) =>
 
         const names = yield* sampleNames(opened);
 
-        for (const sample of names) {
-          for (const theme of THEMES) {
-            yield* staged(
-              page,
-              `${STAGE}/stage.html?view=png&sample=${sample}&theme=${theme}&frame=${frame}`
-            );
+        for (const card of CARDS) {
+          for (const sample of names) {
+            for (const theme of THEMES) {
+              yield* staged(
+                page,
+                `${STAGE}/stage.html?view=png&card=${card}&sample=${sample}&theme=${theme}&frame=${frame}`
+              );
 
-            const png = yield* attempt("photograph the picture", () =>
-              page.locator("img").screenshot({ type: "png" })
-            );
+              const png = yield* attempt("photograph the picture", () =>
+                page.locator("img").screenshot({ type: "png" })
+              );
 
-            const name = `settle-${frame.toLowerCase()}-${sample}-${theme.toLowerCase()}.png`;
+              const name = `${card}-${frame.toLowerCase()}-${sample}-${theme.toLowerCase()}.png`;
 
-            yield* fs.writeFile(`${dir}/${name}`, png);
-            yield* Console.log(`  ${name}`);
+              yield* fs.writeFile(`${dir}/${name}`, png);
+              yield* Console.log(`  ${name}`);
+            }
           }
         }
       }),

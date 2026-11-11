@@ -680,6 +680,27 @@ const endsTheNight = (ana: Page, ben: Page) =>
     yield* settles([ana, ben], 4);
   });
 
+const recapOn = (page: Page, who: string) =>
+  attempt(`read ${who}'s recap`, () =>
+    page.locator(".recap").textContent({ timeout: 10_000 })
+  ).pipe(Effect.map((text) => text ?? ""));
+
+const sameRecap = (ana: Page, ben: Page) =>
+  Effect.gen(function* compareRecaps() {
+    const seenByAna = yield* recapOn(ana, "Ana");
+    const seenByBen = yield* recapOn(ben, "Ben");
+
+    yield* holds(
+      seenByAna === seenByBen && /\d+ hands? in/u.test(seenByAna),
+      new NightFailed({
+        detail: `Ana read "${seenByAna}" and Ben read "${seenByBen}"`,
+        step: "show both players the same recap of the night",
+      })
+    );
+
+    return seenByAna;
+  });
+
 const SettleSharedSchema = Schema.Array(
   Schema.Struct({ name: Schema.String, sameTask: Schema.Boolean })
 );
@@ -689,12 +710,12 @@ const sharesTheSettleUp = (page: Page) =>
     yield* attempt("stub the share sheet", () => page.evaluate(SHARE_STUB));
     yield* attempt("draw the settle-up picture before any tap", () =>
       page
-        .locator('nostakes-keep[data-drawn="Chat Story"]')
+        .locator('nostakes-keep[data-tone="Primary"][data-drawn="Chat Story"]')
         .waitFor({ state: "attached", timeout: 30_000 })
     );
     yield* shoot(page, "settled.png");
     yield* attempt("tap Share as a picture", () =>
-      page.locator("nostakes-keep .keep").click()
+      page.locator('nostakes-keep[data-tone="Primary"] .keep').click()
     );
     yield* attempt("hand the picture to the share sheet", () =>
       page.waitForFunction("window.__shared.length >= 1", undefined, {
@@ -905,6 +926,9 @@ const night = Effect.gen(function* playOneHand() {
   );
   yield* endsTheNight(ana, ben);
   yield* Console.log("Ana ends the night and both players see the settle-up");
+  yield* Console.log(
+    `both players read the same recap: ${yield* sameRecap(ana, ben)}`
+  );
   yield* sharesTheSettleUp(ben);
   yield* Console.log(
     "Ben's settle-up picture was drawn before his tap and shared inside it"
