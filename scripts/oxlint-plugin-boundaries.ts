@@ -759,6 +759,41 @@ const noCrossLayerImports = defineRule({
   },
 });
 
+const MEDIA_BINDINGS = "apps/web/src/client/moments/mediabunny";
+
+const isMediaLibrary = (specifier: string) =>
+  specifier === "mediabunny" ||
+  specifier.startsWith("mediabunny/") ||
+  specifier.startsWith("@mediabunny/");
+
+const noMediaLibraryOutsideBindings = defineRule({
+  create(context) {
+    if (isWithin(workspacePath(context.filename), MEDIA_BINDINGS)) {
+      return {};
+    }
+
+    const report = (node: ESTree.Node, source: ESTree.Expression) => {
+      const specifier = isStringModule(source);
+
+      if (specifier !== null && isMediaLibrary(specifier)) {
+        context.report({ messageId: "outsideBindings", node });
+      }
+    };
+
+    return moduleSourceVisitors(context, report);
+  },
+  meta: {
+    docs: {
+      description: "Keep Mediabunny behind its Effect bindings.",
+    },
+    messages: {
+      outsideBindings:
+        "Only `apps/web/src/client/moments/mediabunny/` may import Mediabunny. That module binds the library's promises and mutable objects as Effects with tagged errors, scoped outputs, and backpressure, so the rest of the app stays Effect. Fix: use the `Media` service it exports, or add what you need to the bindings.",
+    },
+    type: "problem",
+  },
+});
+
 const browserGlobals = new Set([
   "document",
   "localStorage",
@@ -881,5 +916,6 @@ export default definePlugin({
   rules: {
     "no-browser-globals-on-server": noBrowserGlobalsOnServer,
     "no-cross-layer-imports": noCrossLayerImports,
+    "no-media-library-outside-bindings": noMediaLibraryOutsideBindings,
   },
 });

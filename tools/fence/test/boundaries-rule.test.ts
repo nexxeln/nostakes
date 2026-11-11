@@ -37,6 +37,7 @@ const lintFixture = (area: string, source: string): LintResult => {
       rules: {
         "nostakes-boundaries/no-browser-globals-on-server": "error",
         "nostakes-boundaries/no-cross-layer-imports": "error",
+        "nostakes-boundaries/no-media-library-outside-bindings": "error",
       },
     })
   );
@@ -77,9 +78,33 @@ describe("architecture boundary rules", () => {
     for (const rule of [
       "nostakes-boundaries/no-browser-globals-on-server",
       "nostakes-boundaries/no-cross-layer-imports",
+      "nostakes-boundaries/no-media-library-outside-bindings",
     ]) {
       expect(configSource).toContain(`"${rule}": "error"`);
     }
+  });
+
+  it("keeps Mediabunny behind its bindings, whichever way it is imported", () => {
+    const message =
+      "Only `apps/web/src/client/moments/mediabunny/` may import Mediabunny.";
+
+    const outside = [
+      'import { Output } from "mediabunny";\nexport { Output };\n',
+      'export { BufferTarget } from "mediabunny";\n',
+      'export const extension = () => import("@mediabunny/aac-encoder");\n',
+      'import type { VideoSample } from "mediabunny";\nexport type Sample = VideoSample;\n',
+    ].map((source) => lintFixture("apps/web/src/client/moments", source));
+
+    const inside = lintFixture(
+      "apps/web/src/client/moments/mediabunny",
+      'import { Output } from "mediabunny";\nexport { Output };\n'
+    );
+
+    for (const result of outside) {
+      expectRuleSoft(result, message);
+    }
+
+    expect(inside.output).not.toContain(message);
   });
 
   it("blocks package imports from application code", () => {

@@ -88,6 +88,7 @@ export default defineConfig({
     "no-comments/no-comments": "error",
     "nostakes-boundaries/no-browser-globals-on-server": "error",
     "nostakes-boundaries/no-cross-layer-imports": "error",
+    "nostakes-boundaries/no-media-library-outside-bindings": "error",
     "nostakes-patterns/acquire-release-constructs-in-acquire-body": "error",
     "nostakes-patterns/no-hand-rolled-hex": "error",
     "nostakes-patterns/no-markup-outside-builders": "error",
