@@ -37,7 +37,6 @@ export interface Geo {
   readonly boardInStrip: boolean;
   readonly potStacked: boolean;
   readonly pot: Pt;
-  readonly banner: Pt;
   readonly board: readonly Pt[];
   readonly cardW: number;
   readonly deck: Pt;
@@ -409,7 +408,6 @@ interface Middle {
   readonly pot: Pt;
   readonly strip: Box;
   readonly interior: Pt;
-  readonly banner: Pt;
   readonly deck: Pt;
 }
 
@@ -451,7 +449,6 @@ const stripMiddle = (
   };
 
   return {
-    banner: { x: cx, y: Math.max(interior.y, stripY - 74) },
     board: Array.from({ length: BOARD_CARDS }, (_, index) => ({
       x: boardX0 + cardW / 2 + index * (cardW + gap),
       y: mid,
@@ -479,7 +476,6 @@ const ovalMiddle = (w: number, inside: Solved, cardW: number): Middle => {
   const pot = { x: cx, y: midY - cardW * 0.7 - 40 };
 
   return {
-    banner: { x: cx, y: pot.y - 12 },
     board: Array.from({ length: BOARD_CARDS }, (_, index) => ({
       x: cx - boardW / 2 + cardW / 2 + index * (cardW + gap),
       y: midY,
@@ -607,7 +603,6 @@ const tallGeo = (w: number, h: number, count: number, room: Room): Geo => {
   );
 
   return {
-    banner: middle.banner,
     board: middle.board,
     boardInStrip,
     caption: CAPTION,
@@ -803,7 +798,6 @@ const wideGeo = (
   const railTop = Math.max(TOP + 20, chip.y - 46 - railLength);
 
   return {
-    banner: { x: cx, y: pot.y - 12 },
     board: Array.from({ length: BOARD_CARDS }, (_, index) => ({
       x: cx - boardW / 2 + cardW / 2 + index * (cardW + gap),
       y: boardY,

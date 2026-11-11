@@ -499,6 +499,40 @@ const shows = (seats: readonly number[]): readonly Happening[] =>
     })
   );
 
+const SIDE_POT = 20;
+
+const splitBetween = (
+  winners: readonly (readonly [number, number])[]
+): TableSnapshot => ({
+  ...withSeats(atShowdown, (seat) => ({
+    ...seat,
+    stack:
+      seat.stack +
+      winners
+        .filter(([at]) => at === seat.seat)
+        .reduce((total, [, amount]) => total + amount, 0),
+  })),
+  clock: null,
+  pots: [],
+});
+
+const MAIN_AND_SIDE: readonly (readonly [number, number])[] = [
+  [0, RIVER_TOTAL - SIDE_POT],
+  [0, SIDE_POT],
+];
+
+const MAIN_TO_THEM: readonly (readonly [number, number])[] = [
+  [RIVER_WINNER, RIVER_TOTAL - SIDE_POT],
+  [0, SIDE_POT],
+];
+
+const paid = (
+  winners: readonly (readonly [number, number])[]
+): readonly Happening[] => [
+  ...shows([0, RIVER_WINNER]),
+  ...winners.map(([seat, amount]) => Happenings.Win.make({ amount, seat })),
+];
+
 const awardTo = (winner: number): readonly Happening[] => [
   ...shows([0, RIVER_WINNER]),
   Happenings.Win.make({ amount: RIVER_TOTAL, seat: winner }),
@@ -552,6 +586,8 @@ const HAND_STEPS: readonly HandStep[] = [
   [settledWith(0), awardTo(0), atShowdown],
   [settledWith(RIVER_WINNER), awardTo(RIVER_WINNER), atShowdown],
   [{ ...start, handId: 9 }, deals],
+  [splitBetween(MAIN_AND_SIDE), paid(MAIN_AND_SIDE), atShowdown],
+  [splitBetween(MAIN_TO_THEM), paid(MAIN_TO_THEM), atShowdown],
 ];
 
 const handStep = Math.min(

@@ -740,6 +740,7 @@ export class NostakesTable extends HTMLElement {
   #piles = new Map<number, Pile>();
   readonly #pending = new Map<string, number>();
   readonly #landing = new Map<number, Landing>();
+  readonly #won = new Map<number, number>();
   #later: Later[] = [];
   #collectEndsAt = 0;
   #lastEventId = -1;
@@ -1680,6 +1681,7 @@ export class NostakesTable extends HTMLElement {
     this.#fx.replaceChildren();
     this.#pending.clear();
     this.#landing.clear();
+    this.#won.clear();
     this.#later = [];
     this.#collectEndsAt = 0;
     this.#winner = -1;
@@ -3132,15 +3134,19 @@ export class NostakesTable extends HTMLElement {
 
     this.#gutLosers(seat);
 
+    const total = (this.#won.get(seat) ?? 0) + amount;
+
+    this.#won.set(seat, total);
+
     if (hero) {
-      this.#heroWins(amount, geo);
+      this.#heroWins(total);
     } else {
       const tile = this.#tiles.get(seat);
 
       if (tile !== undefined) {
         tile.joyUntil = performance.now() + 2400;
         tile.winUntil = performance.now() + WIN_TAB_MS;
-        tile.tab.textContent = `+${formatChips(amount)}`;
+        tile.tab.textContent = `+${formatChips(total)}`;
         tile.root.dataset.awarded = tile.tab.textContent;
         tile.scale.kick(2);
       }
@@ -3169,43 +3175,14 @@ export class NostakesTable extends HTMLElement {
     }
   }
 
-  #heroWins(amount: number, geo: Geo) {
-    const now = performance.now();
-    const banner = el("div", "banner", this.#fx);
-
-    this.#selfTab.textContent = `+${formatChips(amount)}`;
+  #heroWins(total: number) {
+    this.#selfTab.textContent = `+${formatChips(total)}`;
     this.#self.dataset.awarded = this.#selfTab.textContent;
     this.#hint.classList.remove("on");
-    this.#heroWinUntil = now + 4200;
+    this.#heroWinUntil = performance.now() + 4200;
     this.#sound.win();
     this.#sound.buzz([30, 40, 30, 40, 70]);
     this.#selfScale.kick(6);
-    banner.style.left = `${geo.banner.x}px`;
-    banner.style.top = `${geo.banner.y}px`;
-    el("div", "k", banner, "You win");
-    el("div", "v", banner, formatChips(amount));
-
-    const showing = banner.animate(
-      [
-        { opacity: 0, transform: "translate(-50%, -30%) scale(.9)" },
-        {
-          offset: 0.12,
-          opacity: 1,
-          transform: "translate(-50%, -50%) scale(1)",
-        },
-        {
-          offset: 0.85,
-          opacity: 1,
-          transform: "translate(-50%, -50%) scale(1)",
-        },
-        { opacity: 0, transform: "translate(-50%, -62%) scale(1)" },
-      ],
-      { duration: 3400, easing: "ease-out", fill: "both" }
-    );
-
-    flightOf(showing, () => {
-      banner.remove();
-    });
   }
 
   #muckHero(geo: Geo) {

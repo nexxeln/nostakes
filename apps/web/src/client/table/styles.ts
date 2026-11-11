@@ -316,12 +316,6 @@ export const tableCss = `
 .reaction-choice { font: inherit; font-size: var(--text-4); line-height: 1; padding: var(--space-1); border: 0; border-radius: var(--radius-round); background: transparent; cursor: pointer; }
 .reaction-choice:focus-visible { outline: 2px solid var(--color-accent); }
 .self .frame { cursor: pointer; }
-.banner { position: absolute; left: 50%; z-index: 9; transform: translate(-50%, -50%); text-align: center; pointer-events: none; opacity: 0; white-space: nowrap; }
-.banner .v {
-  font-family: var(--font-display); font-weight: var(--weight-display); font-variation-settings: var(--settings-display);
-  font-size: var(--text-6); line-height: 1.05; letter-spacing: -0.02em; color: var(--color-win);
-}
-.banner .k { font-size: var(--text-2); color: var(--color-ink-muted); margin: 2px 0; }
 
 .hint {
   position: absolute; z-index: 11; font-size: 0.8125rem; font-weight: var(--weight-body); color: var(--color-ink-muted); white-space: nowrap;
