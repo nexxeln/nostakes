@@ -12,6 +12,7 @@ import { MutableHashMap, Option, Result } from "effect";
 import {
   Audiences,
   MissingEvidences,
+  RoomEvents,
   RoomStates,
   audienceOf,
   emptyWitness,
@@ -65,10 +66,12 @@ const verdictKind = (verdict: Verdict) =>
 
 describe("what a device sees of a checked hand", () => {
   it.prop(
-    "lets every member and a spectator check every sealed hand they saw, from redacted events and views alone",
+    "lets every member and a spectator check every sealed hand they saw, from redacted events and views alone, in time unless their device started watching after that hand was sealed",
     { source: session },
     ({ source }) => {
       const witnesses = new Map<string, Witness>();
+      const startedAt = new Map<string, number>();
+      const sealedAt = new Map<number, number>();
       const spectator = "spectator";
 
       const played = playSession(source, undefined, (settings) => ({
@@ -76,9 +79,15 @@ describe("what a device sees of a checked hand", () => {
         shuffle: "Checked",
       }));
 
-      for (const step of played.steps) {
+      for (const [index, step] of played.steps.entries()) {
         if (Result.isFailure(step.decision)) {
           continue;
+        }
+
+        for (const event of step.events) {
+          if (RoomEvents.$is("HandSealed")(event)) {
+            sealedAt.set(event.hand, index);
+          }
         }
 
         const at = EpochMillisSchema.make(step.command.at);
@@ -92,6 +101,10 @@ describe("what a device sees of a checked hand", () => {
         ];
 
         for (const [name, audience] of watchers) {
+          if (!startedAt.has(name)) {
+            startedAt.set(name, index);
+          }
+
           let witness = witnesses.get(name) ?? emptyWitness;
 
           for (const event of step.events) {
@@ -124,9 +137,16 @@ describe("what a device sees of a checked hand", () => {
             onSuccess: (evidence) => {
               const kind = verdictKind(judge(evidence));
 
+              const joinedAfterTheSeal =
+                (sealedAt.get(hand) ?? -1) < (startedAt.get(name) ?? 0);
+
               kinds.add(kind);
 
-              if (kind !== "Checked InTime" && kind !== "NotChecked") {
+              if (
+                kind !== "Checked InTime" &&
+                kind !== "NotChecked" &&
+                !(joinedAfterTheSeal && kind === "Checked NotWatched")
+              ) {
                 problems.push(`${name} hand ${hand}: ${kind}`);
               }
             },
