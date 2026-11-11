@@ -438,6 +438,24 @@ const mostOnTable = (snapshot: TableSnapshot | null) =>
 
 const BUTTON_TRAVEL_MS = 720;
 
+interface Landing {
+  readonly amount: number;
+  readonly at: number;
+}
+
+interface Later {
+  readonly at: number;
+  readonly run: () => void;
+}
+
+const BET_CHIP = { apart: 45, flight: 380 };
+
+const COLLECT_CHIP = { apart: 40, flight: 460, lead: 30, scatter: 60 };
+
+const QUICK_FLIGHT = { flight: 160, lead: 60 };
+
+const CHIPS_PER_PILE = 4;
+
 const SHOWS = "Shows";
 
 const PAPER_ARMS_AFTER_MS = 700;
@@ -721,6 +739,9 @@ export class NostakesTable extends HTMLElement {
   #order = "";
   #piles = new Map<number, Pile>();
   readonly #pending = new Map<string, number>();
+  readonly #landing = new Map<number, Landing>();
+  #later: Later[] = [];
+  #collectEndsAt = 0;
   #lastEventId = -1;
   #handId = -1;
   #legalKey = "";
@@ -900,6 +921,11 @@ export class NostakesTable extends HTMLElement {
     }
 
     this.#playFresh(next.events);
+
+    if (next.seats.every(({ bet }) => bet === 0)) {
+      this.#collect();
+    }
+
     this.#playReactions(next.reactions);
     this.#render();
 
@@ -1653,6 +1679,9 @@ export class NostakesTable extends HTMLElement {
   #resetHand() {
     this.#fx.replaceChildren();
     this.#pending.clear();
+    this.#landing.clear();
+    this.#later = [];
+    this.#collectEndsAt = 0;
     this.#winner = -1;
     this.#heroWinUntil = 0;
     this.#hand.classList.remove("open", "armed", "peek");
@@ -1743,6 +1772,7 @@ export class NostakesTable extends HTMLElement {
     this.#renderHero(snapshot, geo, now);
     this.#renderDealer(snapshot, geo);
     this.#updateHints();
+    toggle(this.#hint, "held", now < this.#collectEndsAt);
   }
 
   #renderSeats(snapshot: TableSnapshot, geo: Geo, now: number) {
@@ -2455,9 +2485,11 @@ export class NostakesTable extends HTMLElement {
   }
 
   #dealToBoard(node: HTMLDivElement, index: number, order: number, geo: Geo) {
+    const wait = Math.max(0, this.#collectEndsAt - performance.now());
+
     if (this.#reduced) {
       node.animate([{ opacity: 0 }, { opacity: 1 }], {
-        delay: order * 60,
+        delay: wait + order * 60,
         duration: 160,
         fill: "backwards",
       });
@@ -2466,7 +2498,7 @@ export class NostakesTable extends HTMLElement {
       return;
     }
 
-    const delay = order * 150;
+    const delay = wait + order * 150;
     const spot = geo.board[index] ?? geo.deck;
     const from = { x: geo.deck.x - spot.x, y: geo.deck.y - spot.y };
     const face = node.querySelector<HTMLElement>(".face");
@@ -2565,6 +2597,7 @@ export class NostakesTable extends HTMLElement {
         }
       },
       Return: ({ amount, seat }) => {
+        this.#takeBack(seat, amount);
         this.#returnFlight(seat, amount);
       },
       Say: ({ seat, text }) => {
@@ -2748,7 +2781,9 @@ export class NostakesTable extends HTMLElement {
   #beingRead(): readonly Box[] {
     const geo = this.#geo;
 
-    return geo !== null && this.#hint.classList.contains("on")
+    return geo !== null &&
+      this.#hint.classList.contains("on") &&
+      !this.#hint.classList.contains("held")
       ? [geo.hint.say, geo.hint.foot]
       : [];
   }
@@ -2868,6 +2903,14 @@ export class NostakesTable extends HTMLElement {
       return;
     }
 
+    const landing = {
+      amount: (this.#landing.get(seat)?.amount ?? pile.shown) + added,
+      at:
+        performance.now() +
+        this.#flightTime(count, BET_CHIP.apart, 0, BET_CHIP.flight),
+    };
+
+    this.#landing.set(seat, landing);
     this.#hold(`bet:${seat}`);
     this.#flyChips(
       count,
@@ -2875,6 +2918,10 @@ export class NostakesTable extends HTMLElement {
       this.#pilePoint(seat),
       6,
       () => {
+        if (this.#landing.get(seat) === landing) {
+          this.#landing.delete(seat);
+        }
+
         this.#release(`bet:${seat}`);
         pile.root.animate(
           [
@@ -2902,6 +2949,33 @@ export class NostakesTable extends HTMLElement {
     }
   }
 
+  #flightTime(count: number, apart: number, lead: number, flight: number) {
+    const last = lead + (count - 1) * apart;
+
+    return this.#reduced
+      ? Math.min(QUICK_FLIGHT.lead, last) + QUICK_FLIGHT.flight
+      : last + flight;
+  }
+
+  #takeBack(seat: number, amount: number) {
+    const flying = this.#landing.get(seat);
+
+    if (flying !== undefined) {
+      this.#landing.set(seat, {
+        ...flying,
+        amount: Math.max(0, flying.amount - amount),
+      });
+
+      return;
+    }
+
+    const pile = this.#piles.get(seat);
+
+    if (pile !== undefined) {
+      setPile(pile, Math.max(0, pile.shown - amount));
+    }
+  }
+
   #collect() {
     const geo = this.#geo;
 
@@ -2909,42 +2983,68 @@ export class NostakesTable extends HTMLElement {
       return;
     }
 
-    const filled = [...this.#piles].filter(([, pile]) => pile.shown > 0);
-    const chipsPerPile = 4;
+    const now = performance.now();
 
-    this.#hold("pot");
+    const going = [...this.#piles].flatMap(([seat, pile]) => {
+      const flying = this.#landing.get(seat);
+      const amount = flying?.amount ?? pile.shown;
 
-    if (filled.length === 0) {
-      this.#release("pot");
+      return amount > 0
+        ? [{ amount, pile, seat, wait: Math.max(0, (flying?.at ?? now) - now) }]
+        : [];
+    });
 
+    if (going.length === 0) {
       return;
     }
 
+    const collected = going.reduce((total, { amount }) => total + amount, 0);
+    const before = this.#pot.target;
+
+    this.#landing.clear();
+    this.#hold("pot");
+
     const land = countdown(
-      filled.length * chipsPerPile,
+      going.length * CHIPS_PER_PILE,
       () => {
         this.#sound.chips(5, 0, 0.8);
       },
       () => {
+        if (sum(this.#snap?.pots ?? []) <= 0) {
+          this.#pot.set(before + collected, performance.now());
+        }
+
         this.#release("pot");
       }
     );
 
-    for (const [seat, pile] of filled) {
+    for (const { pile, seat, wait } of going) {
       const from = this.#pilePoint(seat);
 
-      pile.shown = 0;
-      pile.root.classList.add("empty");
+      setPile(pile, 0);
 
-      for (let index = 0; index < chipsPerPile; index += 1) {
+      for (let index = 0; index < CHIPS_PER_PILE; index += 1) {
+        const lead =
+          wait + COLLECT_CHIP.lead + jitter(index + seat, COLLECT_CHIP.scatter);
+
+        this.#collectEndsAt = Math.max(
+          this.#collectEndsAt,
+          now +
+            this.#flightTime(
+              index + 1,
+              COLLECT_CHIP.apart,
+              lead,
+              COLLECT_CHIP.flight
+            )
+        );
         this.#fly(
           el("div", `fly fchip ${chipClass(index + seat)}`),
           from,
           { x: geo.pot.x, y: geo.pot.y - 14 },
           {
             arc: -20,
-            delay: index * 40 + jitter(index + seat, 60) + 30,
-            duration: 460,
+            delay: index * COLLECT_CHIP.apart + lead,
+            duration: COLLECT_CHIP.flight,
           }
         ).done(land);
       }
@@ -2959,8 +3059,23 @@ export class NostakesTable extends HTMLElement {
       return;
     }
 
-    if ([...this.#piles.values()].some(({ shown }) => shown > 0)) {
-      this.#collect();
+    this.#collect();
+
+    const now = performance.now();
+
+    if (now < this.#collectEndsAt) {
+      this.#hold(`stack:${seat}`);
+      this.#hold("pot");
+      this.#later.push({
+        at: this.#collectEndsAt,
+        run: () => {
+          this.#award(seat, amount);
+          this.#release(`stack:${seat}`);
+          this.#release("pot");
+        },
+      });
+
+      return;
     }
 
     const hero = seat === snapshot.heroSeat;
@@ -4112,6 +4227,22 @@ export class NostakesTable extends HTMLElement {
     this.#selfStack.tick(now);
     this.#pot.tick(now);
     this.#sharePeek(now);
+    this.#runLater(now);
+    toggle(this.#hint, "held", now < this.#collectEndsAt);
+  }
+
+  #runLater(now: number) {
+    const due = this.#later.filter(({ at }) => at <= now);
+
+    if (due.length === 0) {
+      return;
+    }
+
+    this.#later = this.#later.filter(({ at }) => at > now);
+
+    for (const { run } of due) {
+      run();
+    }
   }
 
   #clockFraction(snapshot: TableSnapshot, now: number) {

@@ -550,7 +550,7 @@ describe("each seat's lane", () => {
     expect(found).toStrictEqual([]);
   });
 
-  it("routes chips going into the pot around both lines of the hint, and chips going out to a winner around the hint and the winner's award tab, on the smallest tables the app supports and on the boxes it gives the table", () => {
+  it("routes chips going out to a winner around both lines of the hint and the winner's award tab, on the smallest tables the app supports and on the boxes it gives the table", () => {
     const found = SMALLEST_TABLES.flatMap((screen) =>
       [1, 2, 3, 4, 5, 6, 7, 8].flatMap((others) =>
         flightsOverTheHint(

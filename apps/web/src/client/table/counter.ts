@@ -18,6 +18,10 @@ export class Counter {
     this.#node = node;
   }
 
+  get target() {
+    return this.#to;
+  }
+
   set(value: number, now: number, animate = true) {
     if (value === this.#to) {
       return;

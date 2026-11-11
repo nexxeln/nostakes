@@ -96,7 +96,7 @@ export const tableCss = `
   opacity: 0; scale: 0.6; pointer-events: none; transition: opacity var(--duration-2) var(--ease), scale var(--duration-3) var(--ease-back);
 }
 .won .tab { opacity: 1; scale: 1; }
-.tab-inside .tab { top: 4px; }
+.tab-inside .tab { top: 8px; }
 
 .shown { position: absolute; left: 50%; top: calc(var(--t) * 0.5); z-index: 3; display: flex; gap: 3px; transform: translateX(-50%); }
 
@@ -216,6 +216,7 @@ export const tableCss = `
 .hand-label.on { opacity: 1; }
 .hand-hint { position: absolute; inset: 0; z-index: 6; pointer-events: none; opacity: 0; transition: opacity var(--duration-2) var(--ease); }
 .hand-hint.on { opacity: 1; }
+.hand-hint.held { opacity: 0; }
 .hand-hint .say, .hand-hint .foot { position: absolute; display: flex; align-items: center; justify-content: center; text-align: center; white-space: nowrap; }
 .hand-hint .say { font-size: var(--text-2); font-weight: var(--weight-strong); line-height: 18px; color: var(--color-ink); }
 .hand-hint .foot { flex-direction: column; font-size: var(--text-1); font-weight: var(--weight-body); line-height: 14px; color: var(--color-ink-muted); }

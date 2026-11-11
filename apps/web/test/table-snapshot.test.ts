@@ -488,16 +488,18 @@ describe("the blinds on the table", () => {
 
       const view = { ...table, hand: Option.some(hand) };
       const start = opening(hand.handNumber);
+      const open = Option.isSome(hand.toAct);
+      const whileOpen = <A>(posts: readonly A[]) => (open ? posts : []);
 
       expect(postsOf(view, eventsOf(start))).toEqual(
-        posted(true).map((post) => ({ ...post, settled: false }))
+        whileOpen(posted(true).map((post) => ({ ...post, settled: false })))
       );
       expect(
         postsOf(
           view,
           eventsOf([...start, Happenings.Fold.make({ seat: COMING_IN + 1 })])
         )
-      ).toEqual(posted(true));
+      ).toEqual(whileOpen(posted(true)));
       expect(
         postsOf(
           view,
@@ -506,7 +508,7 @@ describe("the blinds on the table", () => {
             Happenings.Call.make({ added: 3, allIn: false, seat: SMALL }),
           ])
         )
-      ).toEqual(posted(true).filter(({ seat }) => seat !== SMALL));
+      ).toEqual(whileOpen(posted(true).filter(({ seat }) => seat !== SMALL)));
       expect(
         postsOf(
           view,
@@ -541,7 +543,7 @@ describe("the blinds on the table", () => {
         .map(({ seat }) => seat);
 
       const expected =
-        hand.street === "Preflop"
+        hand.street === "Preflop" && Option.isSome(hand.toAct)
           ? [
               { posted: "SmallBlind", seat: SMALL, settled: true },
               { posted: "BigBlind", seat: BIG, settled: true },

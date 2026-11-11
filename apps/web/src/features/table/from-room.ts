@@ -1,4 +1,10 @@
-import { cardText, handCategory } from "@nostakes/engine";
+import {
+  buildPots,
+  cardText,
+  ChipsSchema,
+  handCategory,
+  Phases,
+} from "@nostakes/engine";
 import type { Card, HandCategory, HandRank } from "@nostakes/engine";
 import type { PlayerId } from "@nostakes/protocol";
 import { RoomViews, SeenEvents } from "@nostakes/room";
@@ -335,6 +341,58 @@ const heldCards = (held: {
   return held.status === "Folded" || held.status === "Out" ? 0 : held.ownCards;
 };
 
+type HandView = Option.Option.Value<OpenView["hand"]>;
+
+export const bettingClosed = (hand: HandView) => Option.isNone(hand.toAct);
+
+const chipsIn = (amounts: readonly number[]) =>
+  amounts.reduce((total, amount) => total + amount, 0);
+
+const potsWithEveryBet = (hand: HandView): readonly number[] => {
+  const beforeThisStreet = chipsIn(
+    hand.players.map(
+      ({ committedThisStreet, committedTotal }) =>
+        committedTotal - committedThisStreet
+    )
+  );
+
+  return buildPots({
+    aggressor: Option.none(),
+    beaten: [],
+    bigBlindSeat: hand.bigBlindSeat,
+    board: [],
+    deadMoney: ChipsSchema.make(
+      Math.max(
+        0,
+        chipsIn(hand.pots.map(({ amount }) => amount)) - beforeThisStreet
+      )
+    ),
+    deck: [],
+    paused: Option.none(),
+    phase: Phases.Settling({ lastAggressor: Option.none() }),
+    players: hand.players.map((player) => ({
+      committedThisStreet: player.committedThisStreet,
+      committedTotal: player.committedTotal,
+      holeCards: [],
+      mucked: player.mucked,
+      player: player.player,
+      publicCards: player.shown,
+      seat: player.seat,
+      status: player.status,
+      won: ChipsSchema.make(0),
+    })),
+    smallBlindSeat: hand.smallBlindSeat,
+    straddles: [],
+    street: hand.street,
+    wonAlone: [],
+  }).map(({ amount }) => amount);
+};
+
+export const potsOnTheTable = (hand: HandView): readonly number[] =>
+  bettingClosed(hand)
+    ? potsWithEveryBet(hand)
+    : hand.pots.map(({ amount }) => amount);
+
 const occupiedSeat = (
   context: SeatContext,
   seat: number,
@@ -342,6 +400,7 @@ const occupiedSeat = (
 ): SeatSnapshot => {
   const { presence, view } = context;
   const mine = isYou(view, occupant.player);
+  const collected = Option.exists(view.hand, bettingClosed);
   const here = presence.includes(occupant.player);
 
   const member = peopleOf(view).find(
@@ -397,7 +456,8 @@ const occupiedSeat = (
     away: occupant.away || !here,
     bet: Option.match(inHand, {
       onNone: () => 0,
-      onSome: ({ committedThisStreet }) => committedThisStreet,
+      onSome: ({ committedThisStreet }) =>
+        collected ? 0 : committedThisStreet,
     }),
     cardsHeld,
     name: mine ? "You" : (member?.name ?? "Someone"),
@@ -610,8 +670,6 @@ const runVoteOf = (view: OpenView, heroSeat: Option.Option<number>) =>
     Option.getOrNull
   );
 
-type HandView = Option.Option.Value<OpenView["hand"]>;
-
 const POSTED_AS: Record<
   PostKind,
   (seat: number, hand: HandView) => Posted | null
@@ -676,7 +734,7 @@ export const postsOf = (
   view: OpenView,
   events: readonly TableEvent[]
 ): readonly SeatPost[] =>
-  Option.match(view.hand, {
+  Option.match(view.hand.pipe(Option.filter((hand) => !bettingClosed(hand))), {
     onNone: () => [],
     onSome: (hand) => {
       const start = events.findLastIndex(
@@ -714,7 +772,7 @@ const handFields = (view: OpenView) =>
       buttonSeat: hand.button,
       handId: hand.handNumber,
       heroCards: texts(view.holeCards),
-      pots: hand.pots.map(({ amount }) => amount),
+      pots: potsOnTheTable(hand),
       rabbit: [],
       toAct: Option.getOrNull(Option.orElse(hand.toAct, () => hand.toShow)),
     }),

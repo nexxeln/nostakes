@@ -425,6 +425,11 @@ const preflop: TableSnapshot = withSeats(
       : seat
 );
 
+const flopDealt: TableSnapshot = withSeats(
+  { ...mid, clock: null, pots: [26 + 12] },
+  (seat) => ({ ...seat, bet: 0 })
+);
+
 const riverOut = (toAct: number | null): TableSnapshot =>
   withSeats(
     {
@@ -459,31 +464,31 @@ const allIn: TableSnapshot = withSeats(riverOut(0), (seat) =>
     : seat
 );
 
+const RIVER_TOTAL = RIVER_POT + RIVER_BET * players;
+
 const atShowdown: TableSnapshot = {
-  ...withSeats(riverOut(null), (seat) =>
-    seat.seat === 0 ? { ...seat, shown: HERO_CARDS } : seat
-  ),
+  ...withSeats(riverOut(null), (seat) => ({
+    ...seat,
+    bet: 0,
+    shown: seat.seat === 0 ? HERO_CARDS : seat.shown,
+  })),
   afterHand: {
     bothOnly: false,
     closes: { key: "showdown-window", remainingMs: 9000 },
     rabbit: false,
     showable: [HERO_CARDS[1] ?? "Kh"],
   },
+  pots: [RIVER_TOTAL],
 };
 
-const settledWith = (winner: number): TableSnapshot => {
-  const pot = RIVER_POT + RIVER_BET * players;
-
-  return {
-    ...withSeats(atShowdown, (seat) => ({
-      ...seat,
-      bet: 0,
-      stack: seat.stack + (seat.seat === winner ? pot : 0),
-    })),
-    clock: null,
-    pots: [],
-  };
-};
+const settledWith = (winner: number): TableSnapshot => ({
+  ...withSeats(atShowdown, (seat) => ({
+    ...seat,
+    stack: seat.stack + (seat.seat === winner ? RIVER_TOTAL : 0),
+  })),
+  clock: null,
+  pots: [],
+});
 
 const shows = (seats: readonly number[]): readonly Happening[] =>
   seats.map((seat, index) =>
@@ -496,67 +501,68 @@ const shows = (seats: readonly number[]): readonly Happening[] =>
 
 const awardTo = (winner: number): readonly Happening[] => [
   ...shows([0, RIVER_WINNER]),
-  Happenings.Win.make({
-    amount: RIVER_POT + RIVER_BET * players,
-    seat: winner,
-  }),
+  Happenings.Win.make({ amount: RIVER_TOTAL, seat: winner }),
 ];
 
-const HAND_STEPS: readonly (readonly [TableSnapshot, readonly Happening[]])[] =
+type HandStep = readonly [TableSnapshot, readonly Happening[], TableSnapshot?];
+
+const HAND_STEPS: readonly HandStep[] = [
+  [start, deals],
   [
-    [start, deals],
+    preflop,
     [
-      preflop,
-      [
-        Happenings.Bet.make({
-          added: 12,
-          allIn: false,
-          raise: true,
-          seat: firstToAct,
-          to: 12,
-        }),
-      ],
+      Happenings.Bet.make({
+        added: 12,
+        allIn: false,
+        raise: true,
+        seat: firstToAct,
+        to: 12,
+      }),
     ],
-    [mid, [Happenings.Collect.make({ street: "Flop" })]],
-    [turn, [Happenings.Collect.make({ street: "Turn" })]],
+  ],
+  [flopDealt, [Happenings.Collect.make({ street: "Flop" })], preflop],
+  [turn, [Happenings.Collect.make({ street: "Turn" })]],
+  [
+    riverOut(1 % players),
+    Array.from({ length: players }, (__, seat) =>
+      seat === 0
+        ? Happenings.Bet.make({
+            added: RIVER_BET,
+            allIn: false,
+            raise: false,
+            seat,
+            to: RIVER_BET,
+          })
+        : Happenings.Call.make({ added: RIVER_BET, allIn: false, seat })
+    ),
+  ],
+  [
+    allIn,
     [
-      riverOut(1 % players),
-      Array.from({ length: players }, (__, seat) =>
-        seat === 0
-          ? Happenings.Bet.make({
-              added: RIVER_BET,
-              allIn: false,
-              raise: false,
-              seat,
-              to: RIVER_BET,
-            })
-          : Happenings.Call.make({ added: RIVER_BET, allIn: false, seat })
-      ),
+      Happenings.Bet.make({
+        added: RIVER_BET,
+        allIn: true,
+        raise: true,
+        seat: RIVER_WINNER,
+        to: RIVER_BET,
+      }),
     ],
-    [
-      allIn,
-      [
-        Happenings.Bet.make({
-          added: RIVER_BET,
-          allIn: true,
-          raise: true,
-          seat: RIVER_WINNER,
-          to: RIVER_BET,
-        }),
-      ],
-    ],
-    [atShowdown, shows([0, RIVER_WINNER])],
-    [settledWith(0), awardTo(0)],
-    [settledWith(RIVER_WINNER), awardTo(RIVER_WINNER)],
-    [{ ...start, handId: 9 }, deals],
-  ];
+  ],
+  [atShowdown, shows([0, RIVER_WINNER]), riverOut(null)],
+  [settledWith(0), awardTo(0), atShowdown],
+  [settledWith(RIVER_WINNER), awardTo(RIVER_WINNER), atShowdown],
+  [{ ...start, handId: 9 }, deals],
+];
 
 const handStep = Math.min(
   HAND_STEPS.length - 1,
   Math.max(0, Number(params.get("step") ?? "0"))
 );
 
-const [handSnapshot, handTold] = HAND_STEPS[handStep] ?? [start, deals];
+const [handSnapshot, handTold, handFrom] = HAND_STEPS[handStep] ?? [
+  start,
+  deals,
+];
 
 const TOLD = new Map<string, readonly Happening[]>([
   ["bounty", bountyTold],
@@ -659,7 +665,9 @@ const mount = () => {
   root.append(page);
   const travel = params.get("travel") === "1";
 
-  table.snapshot = travel ? before : snapshot;
+  const from = params.get("scene") === "hand" ? handFrom : undefined;
+
+  table.snapshot = travel ? before : (from ?? snapshot);
 
   if (travel) {
     document.addEventListener(

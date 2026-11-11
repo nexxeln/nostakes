@@ -27,11 +27,11 @@ export const PEEK_LIFT_PX = 30;
 
 export const SMALLEST_FACE_PX = 40;
 
-export const SMALLEST_TALL = { height: 610, width: 360 };
+export const SMALLEST_TALL = { height: 600, width: 360 };
 
-export const SMALLEST_WIDE = { height: 420, width: 660 };
+export const SMALLEST_WIDE = { height: 350, width: 660 };
 
-export const SHORTEST_WIDE = { height: 320, width: 790 };
+export const SHORTEST_WIDE = { height: 320, width: 740 };
 
 export const SMALLEST_TABLES = [
   SMALLEST_TALL,
@@ -60,7 +60,7 @@ const DRAWN_PILE_PX = new Map([
 
 const DRAWN_TAG_PX = { narrow: 38, wide: 61.8 };
 
-const AWARD_TAB_PX = { h: 22, inset: 4, rise: 13 };
+const AWARD_TAB_PX = { h: 22, inset: 8, rise: 13 };
 
 const DRAWN_AWARD_PX = new Map([
   [1, 48],
@@ -428,8 +428,6 @@ export const laneProblemsOn = (
     ["the hint's second line", geo.hint.foot],
   ];
 
-  const onTheHint = bets.flatMap((item) => covering(item, hintLines));
-
   const winners = [...new Set([owner ?? you, you])];
 
   const awarded = winners.flatMap((winner) => {
@@ -516,7 +514,6 @@ export const laneProblemsOn = (
     ...behind,
     ...owned,
     ...laidOnce,
-    ...onTheHint,
     ...whileActing,
     ...awarded,
   ];
@@ -628,15 +625,12 @@ const crossesLines = (from: Pt, control: Pt, to: Pt, lines: readonly Box[]) => {
   }).some((point) => lines.some((line) => covers(chipAt(point), line)));
 };
 
-const COLLECT_ARC = -20;
-
 const AWARD_ARCS = { others: -60, you: 80 };
 
 const AWARD_SPREAD = { from: 8, toX: 3.5, toY: 2.5 };
 
 export const flightsOverTheHint = (geo: Table) => {
   const lines = [geo.hint.say, geo.hint.foot];
-  const piles = [...geo.seats.map(({ bet }) => bet), geo.heroBet];
   const you = geo.seats.length;
 
   const stackOf = (face: Pt, size: number) => ({
@@ -664,32 +658,23 @@ export const flightsOverTheHint = (geo: Table) => {
     };
   };
 
-  const flights = [
-    ...piles.map((pile, seat) => ({
-      arc: COLLECT_ARC,
-      avoid: lines,
-      from: pile,
-      to: { x: geo.pot.x, y: geo.pot.y - 14 },
-      what: `seat ${seat}'s bet going into the pot`,
-    })),
-    ...stacks.flatMap((stack, seat) =>
-      spreads.flatMap((across) =>
-        spreads.map((along) => ({
-          arc: seat === you ? AWARD_ARCS.you : AWARD_ARCS.others,
-          avoid: [...lines, tabOf(seat)],
-          from: {
-            x: geo.pot.x + across * AWARD_SPREAD.from,
-            y: geo.pot.y - 10,
-          },
-          to: {
-            x: stack.x + along * AWARD_SPREAD.toX,
-            y: stack.y + across * AWARD_SPREAD.toY,
-          },
-          what: `the pot going to seat ${seat}, past the hint and its award tab,`,
-        }))
-      )
-    ),
-  ];
+  const flights = stacks.flatMap((stack, seat) =>
+    spreads.flatMap((across) =>
+      spreads.map((along) => ({
+        arc: seat === you ? AWARD_ARCS.you : AWARD_ARCS.others,
+        avoid: [...lines, tabOf(seat)],
+        from: {
+          x: geo.pot.x + across * AWARD_SPREAD.from,
+          y: geo.pot.y - 10,
+        },
+        to: {
+          x: stack.x + along * AWARD_SPREAD.toX,
+          y: stack.y + across * AWARD_SPREAD.toY,
+        },
+        what: `the pot going to seat ${seat}`,
+      }))
+    )
+  );
 
   return [
     ...new Set(
@@ -703,7 +688,7 @@ export const flightsOverTheHint = (geo: Table) => {
         const control = flightControl(from, to, arc, avoid, CHIP_HALF);
 
         return crossesLines(from, control, to, avoid)
-          ? [`${what} crosses what it should pass`]
+          ? [`${what} crosses the hint or the winner's award tab`]
           : [];
       })
     ),

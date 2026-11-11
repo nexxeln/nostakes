@@ -1328,7 +1328,7 @@ const hintFixedGround = (geo: Geo): readonly Box[] => [
 
 export const handHintGround = (geo: Geo): readonly Box[] => [
   ...hintFixedGround(geo),
-  ...pilesOf(geo).map((bet) => pileBox(bet, geo.pileW)),
+  ...geo.seats.map(({ bet }) => pileBox(bet, geo.pileW)),
 ];
 
 const handTopOf = (geo: Geo) => geo.hand.y - (geo.handCardW * 1.4) / 2;
@@ -2273,7 +2273,7 @@ const awayFromLane = (geo: Geo, home: SeatGeo, scale: number): Pt => {
 
 const AWARD_TAB = {
   h: 22,
-  inset: 4,
+  inset: 8,
   least: 48,
   padding: 16,
   plus: 7.6,
@@ -2828,13 +2828,12 @@ const clashList = (
   geo: Geo,
   seats: readonly Pt[],
   arrangement: Arrangement,
-  hint: HandHint,
+  hint: Box,
   judged: Judged = "Everything"
 ): readonly string[] => {
   const owners = ownersAt(geo, seats);
   const fixed = fixedGround(geo, seats);
-  const buttonsAvoid = [hintBoxOf(hint), liftedHand(geo)];
-  const lines = [hint.say, hint.foot];
+  const buttonsAvoid = [hint, liftedHand(geo)];
 
   const items = owners.map((__, index) => {
     const pile = arrangement.piles[index] ?? geo.interior;
@@ -2900,9 +2899,6 @@ const clashList = (
       ),
       ...parts.flatMap(([part, box, point]) => [
         ...(onTable(geo, box) ? [] : [`${index} ${part} off the table`]),
-        ...(part === "pile" && lines.some((line) => overlap(box, line) > 0)
-          ? [`${index} ${part} on the hint`]
-          : []),
         ...(part === "button" ? item.others : fixed).flatMap((other, slot) =>
           overlap(box, other) > 0 ? [`${index} ${part} on ground ${slot}`] : []
         ),
@@ -2930,7 +2926,7 @@ const clashesOf = (
   geo: Geo,
   seats: readonly Pt[],
   arrangement: Arrangement,
-  hint: HandHint
+  hint: Box
 ): number => clashList(geo, seats, arrangement, hint).length;
 
 interface Lane {
@@ -3497,21 +3493,15 @@ const yourButton = (
 const yourPile = (
   geo: Geo,
   owners: readonly Footprint[],
-  ground: readonly Box[],
-  hint: readonly Box[]
+  ground: readonly Box[]
 ) => {
   const half = geo.self.size / 2;
   const row = PILE_BOX.h;
-  const front = Math.min(...hint.map(({ y }) => y)) - LANE_GAP - row / 2;
 
   const piles = [
     ...Array.from({ length: 6 }, (__, step) => ({
       x: geo.heroBet.x + ((geo.self.x - geo.heroBet.x) * step) / 6,
       y: geo.heroBet.y,
-    })),
-    ...Array.from({ length: 4 }, (__, step) => ({
-      x: geo.heroBet.x + ((geo.self.x - geo.heroBet.x) * step) / 3,
-      y: front,
     })),
     ...[1, -1].flatMap((side) =>
       [0, half + CAPTION_DEPTH / 2].map((drop) => ({
@@ -3519,32 +3509,25 @@ const yourPile = (
         y: geo.self.y - half + row / 2 + drop,
       }))
     ),
-    ...[LANE_GAP, 1].flatMap((gap) =>
-      [0, -0.25, 0.25, -0.5, 0.5].map((shift) => ({
-        x: geo.self.x + shift * geo.laneW,
-        y: geo.self.y - half - gap - row / 2,
-      }))
-    ),
+    { x: geo.self.x, y: geo.self.y - half - LANE_GAP - row / 2 },
   ];
 
   const placings = piles
     .filter((pile) => pile.y < geo.self.y)
     .flatMap((pile) => HERO_TAGS.map((tag) => ({ pile, tag })));
 
-  const clear = placings.filter(({ pile, tag }) => {
-    const pileAt = pileBox(pile, geo.pileW);
-    const tagAt = postTagBox(pile, tag, POST_TAG_WIDTHS.narrow, geo.pileW);
-
-    return (
-      clearOn(geo, pileAt, ground) &&
-      clearOn(geo, tagAt, ground) &&
-      yoursNearest(owners, centreOf(pileAt)) &&
-      yoursNearest(owners, centreOf(tagAt))
-    );
-  });
-
   return (
-    leastBy(clear, ({ pile }) => coveredBy(pileBox(pile, geo.pileW), hint)) ??
+    placings.find(({ pile, tag }) => {
+      const pileAt = pileBox(pile, geo.pileW);
+      const tagAt = postTagBox(pile, tag, POST_TAG_WIDTHS.narrow, geo.pileW);
+
+      return (
+        clearOn(geo, pileAt, ground) &&
+        clearOn(geo, tagAt, ground) &&
+        yoursNearest(owners, centreOf(pileAt)) &&
+        yoursNearest(owners, centreOf(tagAt))
+      );
+    }) ??
     placings[0] ?? { pile: geo.heroBet, tag: "After" as const }
   );
 };
@@ -3558,14 +3541,6 @@ const hintWith = (geo: Geo, button: ButtonSpot, ground: readonly Box[]) =>
 interface Laid extends Arrangement {
   readonly hint: HandHint;
 }
-
-const yourLaneBoxes = (
-  geo: Geo,
-  yours: { readonly pile: Pt; readonly tag: TagSide }
-): readonly Box[] => [
-  pileBox(yours.pile, geo.pileW),
-  postTagBox(yours.pile, yours.tag, POST_TAG_WIDTHS.narrow, geo.pileW),
-];
 
 const withPiles = (geo: Geo, lanes: Arrangement): Geo => ({
   ...geo,
@@ -3646,23 +3621,16 @@ const lanesOf = (
   const fixed = fixedGround(geo, geo.seats);
   const free = hintAmong(geo, hintFixedGround(geo));
 
-  const yours = yourPile(geo, owners, fixed, [free.say, free.foot]);
-  const yourBoxes = yourLaneBoxes(geo, yours);
-
   const button = yourButton(
     geo,
     owners,
-    [...fixed, liftedHand(geo), ...yourBoxes],
+    [...fixed, liftedHand(geo)],
     [hintBoxOf(free)]
   );
 
-  const lines = hintWith(geo, button, [
-    ...hintFixedGround(geo),
-    pileBox(yours.pile, geo.pileW),
-  ]);
-
+  const lines = hintWith(geo, button, hintFixedGround(geo));
   const hint = hintBoxOf(lines);
-  const middle = [buttonBox(button), lines.say, lines.foot, ...yourBoxes];
+  const middle = [buttonBox(button), lines.say, lines.foot];
 
   const options = geo.seats.map((__, index) =>
     lanesClearFor(
@@ -3687,6 +3655,15 @@ const lanesOf = (
     geo.seats.map(
       (seat, index) => options[index]?.[0] ?? fallbackLane(geo, seat)
     );
+
+  const yours = yourPile(geo, owners, [
+    ...fixed,
+    buttonBox(button),
+    ...lanes.flatMap((lane) => [
+      pileBox(lane.pile, geo.pileW),
+      postTagBox(lane.pile, lane.tag, POST_TAG_WIDTHS.narrow, geo.pileW),
+    ]),
+  ]);
 
   return {
     buttons: [...lanes.map((lane) => lane.button), button],
@@ -3846,21 +3823,12 @@ export const computeGeo = (
   const todaysHint = handHint(today);
   const todaysTags = postTagSides(today, POST_TAG_WIDTHS.narrow);
 
-  const hintKeepsItsPlace = sameHint(
-    todaysHint,
-    hintAmong(today, [
-      ...hintFixedGround(today),
-      ...today.seats.map(({ bet }) => pileBox(bet, today.pileW)),
-    ])
-  );
-
   const pilesFit =
-    hintKeepsItsPlace &&
     clashList(
       today,
       restingSeats,
       { buttons: [], piles: pilesOf(today), tags: todaysTags },
-      todaysHint,
+      hintBoxOf(todaysHint),
       "PilesAndTags"
     ).length === 0;
 
@@ -3868,7 +3836,8 @@ export const computeGeo = (
 
   if (
     kept !== null &&
-    clashesOf(today, restingSeats, kept.arrangement, todaysHint) === 0
+    clashesOf(today, restingSeats, kept.arrangement, hintBoxOf(todaysHint)) ===
+      0
   ) {
     const wideSides = postTagSides(today, POST_TAG_WIDTHS.wide);
 
@@ -3919,7 +3888,8 @@ export const computeGeo = (
     ).length;
 
     return {
-      clashes: clashesOf(geo, geo.seats, lanes, hint) + moved + tabsWithout,
+      clashes:
+        clashesOf(geo, geo.seats, lanes, hintBoxOf(hint)) + moved + tabsWithout,
       geo,
       hint,
       lanes,

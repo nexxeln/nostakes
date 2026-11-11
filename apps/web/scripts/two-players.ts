@@ -350,6 +350,55 @@ const showsOneCardThenTheOther = (page: Page, other: Page) =>
 const holds = (truth: boolean, failure: NightFailed) =>
   truth ? Effect.void : Effect.fail(failure);
 
+const FELT_CLEAR = "clear";
+
+const watchesTheFelt = (page: Page) =>
+  attempt("watch for a bet on the felt while the hint shows", () =>
+    page.evaluate((clear) => {
+      const { dataset } = globalThis.document.documentElement;
+
+      dataset.felt = clear;
+
+      const look = () => {
+        const root =
+          globalThis.document.querySelector("nostakes-table")?.shadowRoot;
+
+        const hint = root?.querySelector(".hand-hint");
+
+        const reading =
+          hint?.classList.contains("on") === true &&
+          !hint.classList.contains("held");
+
+        const bets = [...(root?.querySelectorAll(".pile:not(.empty)") ?? [])];
+
+        if (reading && bets.length > 0 && dataset.felt === clear) {
+          dataset.felt = `"${hint?.textContent?.trim() ?? ""}" with ${bets.map((bet) => bet.textContent?.trim() ?? "").join(", ")} on the felt`;
+        }
+
+        requestAnimationFrame(look);
+      };
+
+      requestAnimationFrame(look);
+    }, FELT_CLEAR)
+  );
+
+const feltStayedClear = (page: Page, who: string) =>
+  Effect.gen(function* readTheWatch() {
+    const felt = yield* attempt(`read what ${who}'s felt held`, () =>
+      page.evaluate(
+        () => globalThis.document.documentElement.dataset.felt ?? "no watch ran"
+      )
+    );
+
+    yield* holds(
+      felt === FELT_CLEAR,
+      new NightFailed({
+        detail: felt,
+        step: `${who} never sees a bet on the felt while the hint shows`,
+      })
+    );
+  });
+
 interface SeenCards {
   readonly board: readonly string[];
   readonly hole: readonly string[];
@@ -558,6 +607,50 @@ const showsABluff = (ana: Page, ben: Page) =>
             step: "find a hand to bluff with",
           })
         );
+  });
+
+const AWARDED = `${TABLE} [data-awarded]`;
+
+const tablesWhenAsked = (pages: readonly Page[], watcher: Page) =>
+  Effect.gen(function* tableOnce() {
+    for (const page of pages) {
+      if ((yield* count(page, `${HAND}.beckon`)) > 0) {
+        yield* attempt("table the hand when the showdown asks", () =>
+          page.locator(HAND).click({ position: EXPOSED_EDGE, timeout: 2000 })
+        ).pipe(Effect.ignore);
+      }
+    }
+
+    return (yield* count(watcher, AWARDED)) > 0;
+  });
+
+const callsTheRiver = (ana: Page, ben: Page) =>
+  Effect.gen(function* betCallAndShow() {
+    const bettor = yield* toRiver([ana, ben]);
+    const caller = bettor === ana ? ben : ana;
+
+    yield* press(bettor, ["r", "Enter"], "bet the river with R and Enter");
+    yield* heard(bettor, /^Bet \d+/u, "the table hears the river bet");
+    yield* whoseTurn([caller]);
+    yield* attempt("call the river", () =>
+      caller.locator(`${CHIP}.live`).click()
+    );
+
+    const awarded = yield* tablesWhenAsked([bettor, caller], ana).pipe(
+      Effect.repeat({
+        schedule: Schedule.spaced("200 millis"),
+        times: 150,
+        until: (done) => done,
+      })
+    );
+
+    yield* holds(
+      awarded,
+      new NightFailed({
+        detail: "no seat was awarded the pot within 30 seconds",
+        step: "show both hands down after a called river bet",
+      })
+    );
   });
 
 const sameMoment = (ana: Page, ben: Page) =>
@@ -835,12 +928,19 @@ const night = Effect.gen(function* playOneHand() {
   yield* sitDown(ana, "Ana");
   yield* sitDown(ben, "Ben");
   yield* click(ana, "Ana starts the game", "Start the game");
+  yield* watchesTheFelt(ana);
+  yield* watchesTheFelt(ben);
 
   const result = yield* playHand([ana, ben], ana);
 
   yield* Console.log(`hand 1 played with gestures, pot: ${result}`);
   yield* showsOneCardThenTheOther(ana, ben);
   yield* Console.log("Ana shows one card, then the other, and Ben sees both");
+  yield* feltStayedClear(ana, "Ana");
+  yield* feltStayedClear(ben, "Ben");
+  yield* Console.log(
+    "no bet lay on the felt while either player's hint showed"
+  );
 
   const deck = yield* calmDeck(ana);
 
@@ -908,9 +1008,17 @@ const night = Effect.gen(function* playOneHand() {
   yield* click(ana, "Ana starts the game again", "Start the game");
   yield* whoseTurn([ana, ben]);
   yield* Console.log("hand 3 is dealt on the new build");
+  yield* watchesTheFelt(ana);
+  yield* watchesTheFelt(ben);
   yield* showsABluff(ana, ben);
   yield* Console.log(
     `both players see the same moment: ${yield* sameMoment(ana, ben)}`
+  );
+  yield* callsTheRiver(ana, ben);
+  yield* feltStayedClear(ana, "Ana");
+  yield* feltStayedClear(ben, "Ben");
+  yield* Console.log(
+    "a called river bet went into the pot before either hint showed the hands"
   );
   yield* holds(
     loads.ana === 2 && loads.ben === 2,
