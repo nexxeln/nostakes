@@ -55,7 +55,7 @@ import {
 
 export type Layer = "back" | "caps" | "hud" | "over" | "talk" | "world";
 
-interface Placed {
+export interface Placed {
   readonly id: string;
   readonly kind: string;
   readonly layer: Layer;
@@ -95,7 +95,10 @@ const holeCard = (player: (typeof PLAYERS)[number], index: number) => {
   return cardMarkup("", "hole");
 };
 
-const placedSprites = (inks: Inks, moment: string): readonly Placed[] => [
+export const placedSprites = (
+  inks: Inks,
+  moment: string
+): readonly Placed[] => [
   {
     id: "felt",
     kind: "",

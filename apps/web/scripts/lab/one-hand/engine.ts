@@ -49,11 +49,16 @@ export interface Sprite {
 }
 
 export interface Film {
+  readonly length: number;
   readonly parts: Map<string, Part>;
   readonly sprites: Map<string, Sprite>;
 }
 
-export const emptyFilm = (): Film => ({ parts: new Map(), sprites: new Map() });
+export const emptyFilm = (length: number = FILM_LENGTH): Film => ({
+  length,
+  parts: new Map(),
+  sprites: new Map(),
+});
 
 const keyOf = (sprite: string, part: string) => `${sprite}/${part}`;
 
@@ -220,14 +225,15 @@ const declared = (pose: Pose, channel: Channel, tall: boolean) =>
     ? `transform:${transformOf(pose, tall)}`
     : `opacity:${trimmed(pose.opacity, 3)}`;
 
-const percentOf = (at: number) => `${trimmed((at / FILM_LENGTH) * 100, 3)}%`;
+const percentOf = (at: number, length: number) =>
+  `${trimmed((at / length) * 100, 3)}%`;
 
 interface Compiled {
   readonly keyframes: string;
   readonly still: string;
 }
 
-const compiled = (part: Part, channel: Channel): Compiled => {
+const compiled = (part: Part, channel: Channel, length: number): Compiled => {
   const frames = framesOf(part, channel);
   const tall = part.part === ROOT;
   const start = declared(part.start, channel, tall);
@@ -240,13 +246,16 @@ const compiled = (part: Part, channel: Channel): Compiled => {
   const merged = new Map<string, Frame>();
 
   for (const frame of frames) {
-    merged.set(percentOf(Math.min(FILM_LENGTH, Math.max(0, frame.at))), frame);
+    merged.set(
+      percentOf(Math.min(length, Math.max(0, frame.at)), length),
+      frame
+    );
   }
 
   const last = frames.at(-1);
 
   if (last !== undefined && !merged.has("100%")) {
-    merged.set("100%", { ...last, at: FILM_LENGTH });
+    merged.set("100%", { ...last, at: length });
   }
 
   const keyframes = [...merged.entries()]
@@ -262,7 +271,10 @@ const compiled = (part: Part, channel: Channel): Compiled => {
 export const selectorOf = (sprite: string, part: string) =>
   part === ROOT ? `#${sprite}` : `#${sprite} [data-p="${part}"]`;
 
-const scriptedKeyframes = (frames: readonly ScriptedFrame[]) => {
+const scriptedKeyframes = (
+  frames: readonly ScriptedFrame[],
+  length: number
+) => {
   const first = frames.at(0);
   const last = frames.at(-1);
 
@@ -273,7 +285,7 @@ const scriptedKeyframes = (frames: readonly ScriptedFrame[]) => {
   const merged = new Map<string, string>([["0%", first.css]]);
 
   for (const frame of frames) {
-    merged.set(percentOf(frame.at), frame.css);
+    merged.set(percentOf(frame.at, length), frame.css);
   }
 
   merged.set("100%", last.css);
@@ -305,8 +317,13 @@ export const stylesOf = (film: Film, names: Names): CutStyles => {
   for (const part of film.parts.values()) {
     const channels =
       part.scripted.length > 0
-        ? [{ keyframes: scriptedKeyframes(part.scripted), still: "" }]
-        : CHANNELS.map((channel) => compiled(part, channel));
+        ? [
+            {
+              keyframes: scriptedKeyframes(part.scripted, film.length),
+              still: "",
+            },
+          ]
+        : CHANNELS.map((channel) => compiled(part, channel, film.length));
 
     const moving = channels
       .filter(({ keyframes }) => keyframes !== "")

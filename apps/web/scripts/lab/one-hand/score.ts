@@ -1,90 +1,30 @@
-import type { Expression } from "@nostakes/avatar";
-
 import { CLOSEUP_SHEETS } from "./art.js";
+import {
+  ROLES,
+  SCRAPS,
+  actorId,
+  emptyId,
+  holeId,
+  lineId,
+  scrapId,
+} from "./cast.js";
 import { LINE_NAMES, PLAYERS } from "./cuts.js";
 import type { Cut, LineName, Player, Point, ShotName } from "./cuts.js";
-import { ROOT, cut, emptyFilm, move, rest } from "./engine.js";
-import type { Ease, Film, Pose } from "./engine.js";
+import { SHADOW, at, between, directorOf, lifted, plus } from "./direction.js";
+import type { Director } from "./direction.js";
+import { ROOT, emptyFilm } from "./engine.js";
+import type { Ease, Film } from "./engine.js";
 
-export const ROLES: Readonly<
-  Record<
-    Player,
-    {
-      readonly acts: readonly string[];
-      readonly city: string;
-      readonly clock: string;
-      readonly expressions: readonly Expression[];
-      readonly poke: Expression;
-      readonly won: string;
-    }
-  >
-> = {
-  Dev: {
-    acts: ["Fold"],
-    city: "Lisbon",
-    clock: "2:11 am",
-    expressions: ["Resting", "Folded", "Happy"],
-    poke: "Folded",
-    won: "",
-  },
-  Jonas: {
-    acts: ["Call 60", "Call 180", "Call 760"],
-    city: "Berlin",
-    clock: "3:06 am",
-    expressions: ["Resting", "Thinking", "Happy", "Gutted"],
-    poke: "Thinking",
-    won: "",
-  },
-  Maya: {
-    acts: ["Call 60", "Fold"],
-    city: "San Francisco",
-    clock: "6:04 pm",
-    expressions: ["Resting", "LookingDown", "Folded", "Happy"],
-    poke: "LookingDown",
-    won: "",
-  },
-  Priya: {
-    acts: ["Raise 60", "Bet 180", "All in 760"],
-    city: "Bangalore",
-    clock: "7:35 am",
-    expressions: ["Resting", "Thinking", "Happy", "Gutted"],
-    poke: "Happy",
-    won: "+2,120",
-  },
-  Sam: {
-    acts: ["Call 60", "Fold"],
-    city: "Toronto",
-    clock: "9:02 pm",
-    expressions: ["Resting", "Thinking", "Folded", "Happy"],
-    poke: "Happy",
-    won: "",
-  },
-};
-
-export const LINES: Readonly<
-  Record<LineName, { readonly say: string; readonly who: Player }>
-> = {
-  Clip: { say: "keeping this", who: "Maya" },
-  DevFive: { say: "5 min", who: "Dev" },
-  DevHere: { say: "here we go", who: "Dev" },
-  DevKing: { say: "i folded a king", who: "Dev" },
-  DevNight: { say: "gn", who: "Dev" },
-  JonasFine: { say: "fine. in.", who: "Jonas" },
-  JonasLate: { say: "it's 3 am here", who: "Jonas" },
-  JonasRematch: { say: "rematch. sunday.", who: "Jonas" },
-  Link: { say: "", who: "Sam" },
-  MayaIn: { say: "in", who: "Maya" },
-  MayaNext: { say: "same time next week?", who: "Maya" },
-  MayaNo: { say: "NO", who: "Maya" },
-  MayaPriya: { say: "priya no", who: "Maya" },
-  PriyaDealing: { say: "who's dealing", who: "Priya" },
-  PriyaSleep: { say: "sleep well, jonas", who: "Priya" },
-  SamHaha: { say: "lol", who: "Sam" },
-  SamLocked: { say: "there's a seat open", who: "Sam" },
-  SamRules: { say: "straddles on. run it twice.", who: "Sam" },
-  SamTonight: { say: "poker tonight?", who: "Sam" },
-  SamUnchanged: { say: "they haven't changed, maya", who: "Sam" },
-};
+export {
+  LINES,
+  ROLES,
+  SCRAPS,
+  actorId,
+  emptyId,
+  holeId,
+  lineId,
+  scrapId,
+} from "./cast.js";
 
 export const CAPTIONS: readonly {
   readonly from: number;
@@ -256,42 +196,7 @@ export const BETS: readonly {
   },
 ];
 
-export const SCRAPS = 14;
-
-export const scrapId = (index: number) => `scrap-${index}`;
-
-export const holeId = (player: Player, index: number) =>
-  `h-${player.toLowerCase()}-${index}`;
-
-export const actorId = (player: Player) => player.toLowerCase();
-
-export const emptyId = (player: Player) => `empty-${player.toLowerCase()}`;
-
-export const lineId = (name: LineName) => `say-${name.toLowerCase()}`;
-
 const HOLE_SMALL = 0.56;
-
-const at = (point: Point): Pick<Pose, "x" | "y"> => ({
-  x: point[0],
-  y: point[1],
-});
-
-const plus = (point: Point, dx: number, dy: number): Point => [
-  point[0] + dx,
-  point[1] + dy,
-];
-
-const between = (from: Point, to: Point, amount: number): Point => [
-  from[0] + (to[0] - from[0]) * amount,
-  from[1] + (to[1] - from[1]) * amount,
-];
-
-const SHADOW = { x: 1, y: 1.8 };
-
-const lifted = (height: number) => ({
-  x: SHADOW.x + height * 0.55,
-  y: SHADOW.y + height,
-});
 
 const ARRIVALS: Readonly<
   Record<
@@ -418,123 +323,6 @@ const SHOT_TIMES: readonly (readonly [number, number, ShotName])[] = [
 ];
 
 const BACK_DEPTH = 0.82;
-
-interface Director {
-  readonly acts: (
-    player: Player,
-    index: number,
-    from: number,
-    to: number
-  ) => void;
-  readonly clock: (id: string, from: number, to: number, stop: number) => void;
-  readonly express: (
-    player: Player,
-    when: number,
-    expression: Expression
-  ) => void;
-  readonly flick: (sprite: string, from: number, towards: Point) => void;
-  readonly flip: (sprite: string, from: number, to: number) => void;
-  readonly folds: (player: Player, when: number, act: number) => void;
-  readonly frame: Cut;
-  readonly go: (
-    sprite: string,
-    part: string,
-    span: readonly [from: number, to: number, ease?: Ease],
-    pose: Partial<Pose>
-  ) => void;
-  readonly set: (
-    sprite: string,
-    part: string,
-    when: number,
-    pose: Partial<Pose>
-  ) => void;
-  readonly starts: (sprite: string, part: string, pose: Partial<Pose>) => void;
-}
-
-const QUARTERS = [0, 1, 2, 3];
-
-const directorOf = (film: Film, frame: Cut): Director => {
-  const go: Director["go"] = (sprite, part, span, pose) => {
-    const [from, to, ease] = span;
-
-    move(film, [sprite, part], { ease: ease ?? "Out", from, to }, pose);
-  };
-
-  const set: Director["set"] = (sprite, part, when, pose) => {
-    cut(film, [sprite, part], when, pose);
-  };
-
-  const starts: Director["starts"] = (sprite, part, pose) => {
-    rest(film, sprite, part, pose);
-  };
-
-  const express: Director["express"] = (player, when, expression) => {
-    for (const known of ROLES[player].expressions) {
-      set(actorId(player), `ex-${known}`, when, {
-        opacity: known === expression ? 1 : 0,
-      });
-    }
-  };
-
-  const acts: Director["acts"] = (player, index, from, to) => {
-    const id = actorId(player);
-
-    set(id, "city", from, { opacity: 0 });
-    set(id, `act-${index}`, from, { opacity: 1 });
-    set(id, `act-${index}`, to, { opacity: 0 });
-    set(id, "city", to, { opacity: 1 });
-  };
-
-  const clock: Director["clock"] = (id, from, to, stop) => {
-    const quarter = (to - from) / 4;
-
-    set(id, "ring", from, { opacity: 1 });
-
-    for (const side of QUARTERS.filter(
-      (each) => from + each * quarter < stop
-    )) {
-      const begins = from + side * quarter;
-      const ends = Math.min(stop, begins + quarter);
-
-      go(id, `ring-${side}`, [begins, ends, "Linear"], {
-        squeeze: 1 - (ends - begins) / quarter,
-      });
-    }
-
-    set(id, "ring", stop, { opacity: 0 });
-  };
-
-  const flip: Director["flip"] = (sprite, from, to) => {
-    const middle = (from + to) / 2;
-
-    go(sprite, "bd", [from, middle, "In"], { squeeze: 0.04 });
-    set(sprite, "bk", middle, { opacity: 0 });
-    set(sprite, "fc", middle, { opacity: 1 });
-    go(sprite, "bd", [middle, to, "Out"], { squeeze: 1 });
-    go(sprite, "sh", [from, middle, "Out"], lifted(5));
-    go(sprite, "sh", [middle, to, "In"], SHADOW);
-  };
-
-  const flick: Director["flick"] = (sprite, from, towards) => {
-    go(sprite, ROOT, [from, from + 8, "In"], {
-      ...at(towards),
-      scale: 0.7,
-      turn: 160,
-    });
-    go(sprite, ROOT, [from + 4, from + 8, "Linear"], { opacity: 0 });
-  };
-
-  const muck: Point = plus(frame.pot, 0, -frame.spread * 2);
-
-  const folds: Director["folds"] = (player, when, act) => {
-    flick(holeId(player, 0), when, muck);
-    flick(holeId(player, 1), when + 1, muck);
-    express(player, when + 3, "Folded");
-    acts(player, act, when + 2, when + 30);
-  };
-
-  return { acts, clock, express, flick, flip, folds, frame, go, set, starts };
-};
 
 const camera = ({ frame, go, starts }: Director) => {
   starts("world", ROOT, {});
@@ -1128,7 +916,7 @@ const SCENES = [
 
 export const scoreFor = (frame: Cut): Film => {
   const film = emptyFilm();
-  const director = directorOf(film, frame);
+  const director = directorOf(film, frame, 1);
 
   for (const scene of SCENES) {
     scene(director);
