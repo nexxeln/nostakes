@@ -1,5 +1,4 @@
 import { describe, expect, it } from "@effect/vitest";
-import { AvatarSchema as RoomAvatarSchema } from "@nostakes/room";
 import { Option, Schema } from "effect";
 import * as Arbitrary from "effect/Arbitrary";
 
@@ -80,12 +79,11 @@ const shadowDepths = (svg: string) =>
 
 describe("avatar codes", () => {
   it.prop(
-    "every avatar fits the room's avatar string and decodes to itself",
+    "every avatar encodes to a 13-character code and decodes to itself",
     { avatar: avatars },
     ({ avatar }) => {
       const code = codeFor(avatar);
 
-      expect(Schema.is(RoomAvatarSchema)(code)).toBe(true);
       expect(code).toMatch(/^h1[0-9a-z]{11}$/u);
       expect(parseAvatar(code)).toStrictEqual(Option.some({ ...avatar }));
     }

@@ -7,7 +7,11 @@ import {
 } from "@nostakes/avatar";
 import type { Avatar } from "@nostakes/avatar";
 import { PlayerIdSchema, RoomCodeSchema } from "@nostakes/protocol";
-import { MemberCommandSchema, RoomViewSchema } from "@nostakes/room";
+import {
+  AvatarSchema as RoomAvatarSchema,
+  MemberCommandSchema,
+  RoomViewSchema,
+} from "@nostakes/room";
 import { Option, Schema } from "effect";
 import * as Arbitrary from "effect/Arbitrary";
 import { Scene } from "foldkit";
@@ -316,6 +320,14 @@ describe("the face builder", () => {
       expect(checkedLabels(onPart(wearing, "Mark"))).toStrictEqual([
         spaced(avatar.mark),
       ]);
+    }
+  );
+
+  it.prop(
+    "every face's code fits the room's avatar string",
+    { avatar: avatars },
+    ({ avatar }) => {
+      expect(Schema.is(RoomAvatarSchema)(codeFor(avatar))).toBe(true);
     }
   );
 });

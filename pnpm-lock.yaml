@@ -363,9 +363,6 @@ importers:
       '@effect/vitest':
         specifier: 4.1.2
         version: 4.1.2(effect@4.1.2)(vitest@5.1.0(@types/node@24.19.2)(vite@8.3.6(@types/node@24.19.2)(yaml@2.9.1)))
-      '@nostakes/room':
-        specifier: workspace:*
-        version: link:../room
       '@types/node':
         specifier: 24.19.2
         version: 24.19.2
