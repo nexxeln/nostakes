@@ -1,0 +1,1 @@
+(()=>{try{var t=localStorage.getItem("nostakes.theme");if(t==="Dark"||t==="Light"){document.documentElement.dataset.theme=t.toLowerCase()}}catch(e){}})();
