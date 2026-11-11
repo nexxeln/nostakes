@@ -33,6 +33,7 @@ const DrawnShotSchema = Schema.Struct({
   keys: Schema.Array(KeySchema),
   pinned: Schema.Boolean,
   pivot: PointSchema,
+  size: Schema.Struct({ height: Schema.Int, width: Schema.Int }),
   source: PointSchema,
 });
 
@@ -45,7 +46,7 @@ export const ChancesRequestSchema = Schema.Struct({
 export const FilmRequestSchema = Schema.Struct({
   aac: Schema.Literals(["Browser", "Extension"]),
   bands: Schema.Array(Schema.instanceOf(ImageBitmap)),
-  bitrate: Schema.Int,
+  bitrate: Schema.NullOr(Schema.Int),
   camera: Schema.Array(KeySchema),
   compare: Schema.Boolean,
   fps: Schema.Literals([24, 25, 30]),
@@ -53,6 +54,7 @@ export const FilmRequestSchema = Schema.Struct({
   height: Schema.Int,
   kind: Schema.Literal("Film"),
   redraw: Schema.Literals(["Changed", "Whole"]),
+  scale: Schema.Finite,
   shots: Schema.Array(DrawnShotSchema),
   sound: Schema.NullOr(
     Schema.Struct({

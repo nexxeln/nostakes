@@ -1,7 +1,11 @@
 import { tableChances } from "@nostakes/room";
 import { Effect, Option, Schema } from "effect";
 
-import { changedAreas, frameTime } from "../../features/moments/film.js";
+import {
+  changedAreas,
+  frameTime,
+  videoBitrate,
+} from "../../features/moments/film.js";
 import type { Box, Placed } from "../../features/moments/film.js";
 import {
   BGRA_ORDER,
@@ -185,16 +189,50 @@ const SOUND_PIECE_SECONDS = 1;
 const failedInMedia = (failure: MediaFailed) =>
   new ClipFailed({ detail: String(failure.cause), step: failure.step });
 
-const pictureSpecOf = (request: FilmRequest) => ({
-  bitrate: request.bitrate,
+const motionOf = (request: FilmRequest) => {
+  const sizes = request.shots.map((shot) => shot.size);
+  const frame = { height: request.height, width: request.width };
+  const area = frame.width * frame.height;
+  let before = placementsAt(request, frameTime(0, request.fps));
+  let changed = 0;
+
+  for (let index = 1; index < request.frames; index += 1) {
+    const now = placementsAt(request, frameTime(index, request.fps));
+
+    changed += changedAreas(sizes, before, now, frame).reduce(
+      (total, box) => total + areaOf(box),
+      0
+    );
+    before = now;
+  }
+
+  return request.frames > 1 ? changed / (area * (request.frames - 1)) : 0;
+};
+
+const bitrateOf = (request: FilmRequest) =>
+  request.bitrate ??
+  videoBitrate(
+    {
+      fps: request.fps,
+      height: request.height,
+      length: frameTime(request.frames, request.fps),
+      width: request.width,
+    },
+    motionOf(request)
+  );
+
+const pictureSpecOf = (request: FilmRequest, bitrate: number) => ({
+  bitrate,
   frameRate: request.fps,
   height: request.height,
   keyFrameSeconds: KEY_FRAME_SECONDS,
   width: request.width,
 });
 
-const codecFor = (request: FilmRequest) =>
-  Media.use((media) => media.pictureCodec(pictureSpecOf(request))).pipe(
+const codecFor = (request: FilmRequest, bitrate: number) =>
+  Media.use((media) =>
+    media.pictureCodec(pictureSpecOf(request, bitrate))
+  ).pipe(
     Effect.flatMap((codec) =>
       Option.match(codec, {
         onNone: () =>
@@ -242,12 +280,13 @@ const soundIn = (writer: Mp4Writer, sound: NonNullable<FilmRequest["sound"]>) =>
 
 const made = (request: FilmRequest) =>
   Effect.gen(function* makeFilm() {
-    const codec = yield* codecFor(request);
+    const bitrate = bitrateOf(request);
+    const codec = yield* codecFor(request, bitrate);
     const sound = yield* soundFor(request);
 
     const writer = yield* Media.use((media) =>
       media.mp4({
-        picture: { ...pictureSpecOf(request), codec },
+        picture: { ...pictureSpecOf(request, bitrate), codec },
         playFor: request.frames / request.fps,
         sound:
           sound === null
@@ -285,7 +324,7 @@ const made = (request: FilmRequest) =>
       snapshot: snapshotOrder(canvas),
     };
 
-    const sizes = request.shots.map((shot) => shot.box);
+    const sizes = request.shots.map((shot) => shot.size);
     const whole: readonly Box[] = [{ ...frame, x: 0, y: 0 }];
     const drawn: Drawn = { before: null, redrawn: 0 };
     const compared: Compared = { frames: 0, most: 0, pixels: 0 };
@@ -299,6 +338,8 @@ const made = (request: FilmRequest) =>
     const witnessed = new Uint8Array(
       request.compare ? i420Size(request.width, request.height) : 0
     );
+
+    reply({ made: 0, tag: "Progress" }, []);
 
     for (let index = 0; index < request.frames; index += 1) {
       const ms = frameTime(index, request.fps);

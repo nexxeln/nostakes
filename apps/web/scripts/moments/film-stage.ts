@@ -45,7 +45,7 @@ const deck = "TwoColour" as const;
 const number = (name: string, fallback: number) =>
   Number(params.get(name) ?? String(fallback));
 
-const fps = number("fps", 30) === 24 ? 24 : 30;
+const fps: 24 | 30 = number("fps", 30) === 24 ? 24 : 30;
 
 const stage = document.querySelector("#stage");
 
@@ -439,7 +439,7 @@ const filmFor = Effect.gen(function* chooseFilm() {
     }
   );
 
-  return { film, worker };
+  return { film: params.has("fps") ? { ...film, fps } : film, worker };
 });
 
 const filmText = (file: Blob) =>
@@ -461,7 +461,7 @@ const filmText = (file: Blob) =>
 const references = (film: Film, times: readonly number[]) =>
   Effect.gen(function* drawReferences() {
     const atlas = yield* shotAtlas(film.shots, EMBEDDED_FONTS, Effect.void);
-    const reel = { ...film, shots: atlas.shots };
+    const reel = { ...film, scale: 1, shots: atlas.shots };
     const canvas = new OffscreenCanvas(film.width, film.height);
     const context = canvas.getContext("2d");
     const drawn: string[] = [];
@@ -484,6 +484,7 @@ const references = (film: Film, times: readonly number[]) =>
   });
 
 const program = Effect.gen(function* makeFilm() {
+  const planning = yield* Clock.currentTimeMillis;
   const { film, worker } = yield* filmFor;
   const support = yield* filmSupport(film);
 
@@ -499,6 +500,7 @@ const program = Effect.gen(function* makeFilm() {
     {
       budgetMs: null,
       name: "nostakes-film.mp4",
+      scale: asked("scale") ?? 1,
       slot: Effect.void,
       support: support.value,
     },
@@ -528,6 +530,7 @@ const program = Effect.gen(function* makeFilm() {
       params.get("scene") === "sync" ? syncTimes(number("seconds", 25)) : [],
     frames: Math.ceil((film.length * film.fps) / 1000),
     ms: finished - started,
+    planMs: started - planning,
     redrawn: made.redrawn,
     state: "Made",
   };

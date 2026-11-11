@@ -19,3 +19,16 @@ export const reachFor = (deviceMemory: Option.Option<number>): ClipReach =>
       return gigabytes < SHORT_ONLY_BELOW_GB ? "Short" : "Replay";
     },
   });
+
+export const LIGHT_CUT_SCALE = 2 / 3;
+
+export const FULL_CUT_FROM_GB = 8;
+
+export const replayScales = (
+  deviceMemory: Option.Option<number>
+): readonly number[] =>
+  Option.match(deviceMemory, {
+    onNone: () => [1, LIGHT_CUT_SCALE],
+    onSome: (gigabytes) =>
+      gigabytes >= FULL_CUT_FROM_GB ? [1, LIGHT_CUT_SCALE] : [LIGHT_CUT_SCALE],
+  });

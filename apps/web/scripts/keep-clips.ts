@@ -8,6 +8,8 @@ import type { BrowserType, Page } from "playwright-core";
 
 import { MEDIA_PACKAGES } from "../src/client/moments/mediabunny/packages.ts";
 import {
+  FULL_CUT_FROM_GB,
+  LIGHT_CUT_SCALE,
   NO_CLIP_BELOW_GB,
   SHORT_ONLY_BELOW_GB,
 } from "../src/features/moments/clip-reach.ts";
@@ -245,6 +247,25 @@ const inside = (bytes: Uint8Array, box: Box | undefined, type: string) =>
     ? undefined
     : boxesIn(bytes, box.body, box.end).find((each) => each.type === type);
 
+const TKHD_WIDTH_AT = 76;
+
+const FIXED_ONE = 65_536;
+
+const videoWidthOf = (bytes: Uint8Array) => {
+  const view = new DataView(bytes.buffer, bytes.byteOffset);
+
+  const moov = boxesIn(bytes, 0, bytes.length).find(
+    (box) => box.type === "moov"
+  );
+
+  const trak = inside(bytes, moov, "trak");
+  const tkhd = inside(bytes, trak, "tkhd");
+
+  return tkhd === undefined
+    ? 0
+    : view.getUint32(tkhd.body + TKHD_WIDTH_AT) / FIXED_ONE;
+};
+
 const atomsOf = (bytes: Uint8Array) => {
   const view = new DataView(bytes.buffer, bytes.byteOffset);
   const top = boxesIn(bytes, 0, bytes.length);
@@ -369,7 +390,7 @@ const SHORT_CLIP: Told = {
 const REPLAY: Told = {
   channels: 2,
   longest: 25.2,
-  mostBytes: 6_000_000,
+  mostBytes: 2_600_000,
   shortest: 11.9,
 };
 
@@ -1101,19 +1122,32 @@ const guardedClip = (engine: BrowserType, gigabytes: number) =>
       sharedAtLeast(page, 1, 15_000)
     );
 
-    const { seconds } = atomsOf(yield* fileOf(page, 0));
+    const bytes = yield* fileOf(page, 0);
+    const { seconds } = atomsOf(bytes);
+    const width = videoWidthOf(bytes);
     const replayed = seconds > SHORT_LONGEST_SECONDS;
     const wanted = gigabytes >= SHORT_ONLY_BELOW_GB;
 
+    const wantedWidth =
+      gigabytes >= FULL_CUT_FROM_GB
+        ? 1080
+        : Math.round((1080 * LIGHT_CUT_SCALE) / 2) * 2;
+
     return {
       label,
-      line: `${label}: ${replayed ? "the replay" : "the short clip"}, ${seconds.toFixed(2)} s`,
-      problems:
-        replayed === wanted
+      line: `${label}: ${replayed ? "the replay" : "the short clip"}, ${seconds.toFixed(2)} s, ${width} wide`,
+      problems: [
+        ...(replayed === wanted
           ? []
           : [
               `${label}: a device reporting ${gigabytes} GB got ${replayed ? "the replay" : "the short clip"}`,
-            ],
+            ]),
+        ...(!replayed || width === wantedWidth
+          ? []
+          : [
+              `${label}: a device reporting ${gigabytes} GB got a replay ${width} wide, not ${wantedWidth}`,
+            ]),
+      ],
     };
   }).pipe(Effect.scoped);
 
@@ -1979,6 +2013,8 @@ const redrawnFilms = (engine: BrowserType) =>
     return { label, line: `${label}: ${lines.join("; ")}`, problems };
   });
 
+const STORY_CARD_TOP = (SIZES.Story.height - SIZES.Chat.height) / 2;
+
 const replayedClip = (
   engine: BrowserType,
   settings: Settings,
@@ -2085,8 +2121,8 @@ const replayedClip = (
       };
     }
 
-    yield* attempt("tap Keep", () =>
-      page.locator("nostakes-moment .keep").click()
+    yield* attempt("tap Story", () =>
+      page.locator("nostakes-moment .story").click()
     );
     yield* attempt("tap Clip", () =>
       page.locator("nostakes-moment .clip").click()
@@ -2120,8 +2156,13 @@ const replayedClip = (
     const verdict = yield* judged(
       page,
       settings,
-      { clip: clipIndex, label, still: stillIndex, title },
-      { frame: "Chat", seconds: REPLAY, sound }
+      {
+        clip: clipIndex,
+        label,
+        still: stillIndex,
+        title: { ...title, y: title.y + STORY_CARD_TOP },
+      },
+      { frame: "Story", seconds: REPLAY, sound }
     );
 
     return {
@@ -2290,6 +2331,7 @@ const checks = Effect.gen(function* checkClips() {
         sharpFilm(engine),
         guardedClip(engine, 1),
         guardedClip(engine, 2),
+        guardedClip(engine, 4),
         guardedClip(engine, 8),
       ]) {
         problems.push(...(yield* reported(yield* flow)));

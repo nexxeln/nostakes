@@ -249,6 +249,7 @@ export const clipFile = (
 
 export interface ReplayOrder extends ClipOrder {
   readonly notes: readonly ReplayNote[];
+  readonly scale?: number;
   readonly principals: readonly SeatIndex[];
   readonly record: readonly SeenTableEvent[];
   readonly seats: readonly ReplaySeat[];
@@ -401,6 +402,7 @@ export const replayFile = (
           filmOn(worker, film, {
             budgetMs: order.budgetMs,
             name: clipName(picture, order.frame),
+            scale: order.scale ?? 1,
             slot: order.slot,
             support: order.support,
           })

@@ -36,7 +36,7 @@ export const filmSheet = (
 ): Effect.Effect<Sheet, ClipUnavailable> =>
   Effect.gen(function* drawSheet() {
     const atlas = yield* shotAtlas(film.shots, EMBEDDED_FONTS, Effect.void);
-    const reel = { ...film, shots: atlas.shots };
+    const reel = { ...film, scale: 1, shots: atlas.shots };
     const { scale, tile, times } = layout;
     const cellWidth = Math.round(film.width * scale);
     const cellHeight = Math.round(film.height * scale);

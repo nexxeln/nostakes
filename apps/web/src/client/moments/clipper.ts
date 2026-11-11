@@ -4,6 +4,7 @@ import type { Deck, Theme } from "../../features/model.js";
 import {
   REPLAY_BUDGET_MS,
   reachFor,
+  replayScales,
 } from "../../features/moments/clip-reach.js";
 import type { MomentPicture } from "../../features/moments/picture.js";
 import {
@@ -11,10 +12,12 @@ import {
   replaySeatsOf,
   tellsTheHand,
 } from "../../features/moments/replay-plan.js";
+import type { KeptFrame } from "../../features/pictures/paper.js";
 import { offer } from "../pictures/keeper.js";
+import type { ClipUnavailable } from "./clip-layers.js";
 import type { PartBox } from "./clip-measure.js";
 import { clipFile, clipSupport, replayFile, slotFor } from "./clip.js";
-import type { ClipPace, ClipSupport } from "./clip.js";
+import type { ClipPace, ClipSupport, ClipTooSlow } from "./clip.js";
 import type { SceneStory } from "./element.js";
 
 export type ClipState =
@@ -30,7 +33,7 @@ export interface ClipArt {
   readonly boxes: readonly PartBox[];
   readonly look: { readonly deck: Deck; readonly theme: Theme };
   readonly story: SceneStory | null;
-  readonly svg: string;
+  readonly svg: (frame: KeptFrame) => string;
 }
 
 const replayOrderOf = (story: SceneStory | null) =>
@@ -182,21 +185,39 @@ export class Clipper {
       frame: "Chat" as const,
       slot: Effect.suspend(() => slotFor(this.#pace)),
       support,
-      svg: this.#art.svg,
+      svg: this.#art.svg("Chat"),
     };
 
     const replay = replayOrderOf(this.#art.story);
     const short = clipFile(this.#picture, this.#art.look, order);
 
+    const vertical = (scale: number) =>
+      replay === null
+        ? short
+        : replayFile(this.#picture, this.#art.look, {
+            ...order,
+            ...replay,
+            budgetMs: REPLAY_BUDGET_MS,
+            frame: "Story",
+            scale,
+            svg: this.#art.svg("Story"),
+          });
+
+    let cascade: Effect.Effect<File, ClipUnavailable | ClipTooSlow> = short;
+
+    for (const scale of replayScales(deviceMemory()).toReversed()) {
+      const fallback = cascade;
+
+      cascade = vertical(scale).pipe(
+        Effect.catchTag("ClipTooSlow", () => fallback)
+      );
+    }
+
     Effect.runFork(
       (replay !== null &&
       tellsTheHand(this.#picture.kind, this.#picture.tier) &&
       reachFor(deviceMemory()) === "Replay"
-        ? replayFile(this.#picture, this.#art.look, {
-            ...order,
-            ...replay,
-            budgetMs: REPLAY_BUDGET_MS,
-          }).pipe(Effect.catchTag("ClipTooSlow", () => short))
+        ? cascade
         : short
       ).pipe(
         Effect.match({

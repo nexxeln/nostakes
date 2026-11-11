@@ -423,3 +423,31 @@ export const sampledKeys = (
     })
     .map((each) => ({ at: each.at, ease: "Linear", pose: each.pose }));
 };
+
+const BITS_PER_PIXEL = 0.013;
+
+const BITS_PER_MOVING_PIXEL = 0.0047;
+
+const LEAST_BITRATE = 500_000;
+
+const MOST_BITRATE = 3_000_000;
+
+const PICTURE_BYTES_ANY_CLIP_MAY_SPEND = 1_000_000;
+
+export const videoBitrate = (
+  film: Pick<Film, "fps" | "height" | "length" | "width">,
+  motion: number
+) =>
+  Math.max(
+    LEAST_BITRATE,
+    Math.round(
+      film.width *
+        film.height *
+        film.fps *
+        (BITS_PER_PIXEL + BITS_PER_MOVING_PIXEL * motion)
+    ),
+    Math.min(
+      MOST_BITRATE,
+      Math.round((PICTURE_BYTES_ANY_CLIP_MAY_SPEND * 8 * 1000) / film.length)
+    )
+  );

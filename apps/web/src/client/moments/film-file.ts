@@ -29,6 +29,7 @@ export interface ClipSupport {
 export interface FilmOrder {
   readonly budgetMs: number | null;
   readonly name: string;
+  readonly scale?: number;
   readonly slot: Effect.Effect<void>;
   readonly support: ClipSupport;
 }
@@ -138,25 +139,15 @@ export const clipWorker: Effect.Effect<
   }))
 );
 
-const BITS_PER_PIXEL = 0.013;
+const evenOf = (value: number) => Math.max(2, Math.round(value / 2) * 2);
 
-const LEAST_BITRATE = 500_000;
-
-const MOST_BITRATE = 3_000_000;
-
-const PICTURE_BYTES_ANY_CLIP_MAY_SPEND = 1_000_000;
-
-export const videoBitrate = (
-  film: Pick<Film, "fps" | "height" | "length" | "width">
-) =>
-  Math.max(
-    LEAST_BITRATE,
-    Math.round(film.width * film.height * film.fps * BITS_PER_PIXEL),
-    Math.min(
-      MOST_BITRATE,
-      Math.round((PICTURE_BYTES_ANY_CLIP_MAY_SPEND * 8 * 1000) / film.length)
-    )
-  );
+export const scaledFrame = (
+  film: Pick<Film, "height" | "width">,
+  scale: number
+) => ({
+  height: evenOf(film.height * scale),
+  width: evenOf(film.width * scale),
+});
 
 const MONO_BITRATE = 96_000;
 
@@ -189,15 +180,21 @@ const watching = (
   started: number
 ): Progress => {
   const frames = filmFrames(film);
-  const sent = performance.now();
+  const drawing = { from: performance.now() };
 
   return (made) => {
+    const now = performance.now();
+
+    if (made === 0) {
+      drawing.from = now;
+    }
+
     if (budgetMs === null || made < film.fps * JUDGED_AFTER_SECONDS) {
       return Option.none();
     }
 
-    const now = performance.now();
-    const projectedMs = sent - started + ((now - sent) / made) * frames;
+    const projectedMs =
+      drawing.from - started + ((now - drawing.from) / made) * frames;
 
     return projectedMs > budgetMs
       ? Option.some(new ClipTooSlow({ budgetMs, projectedMs }))
@@ -222,7 +219,15 @@ export const filmOn = (
         ),
     });
 
-    const atlas = yield* shotAtlas(film.shots, EMBEDDED_FONTS, order.slot);
+    const scale = order.scale ?? 1;
+    const size = scaledFrame(film, scale);
+
+    const atlas = yield* shotAtlas(
+      film.shots,
+      EMBEDDED_FONTS,
+      order.slot,
+      scale
+    );
 
     const sound =
       film.sound === null
@@ -239,17 +244,18 @@ export const filmOn = (
     const request: FilmRequest = {
       aac: checks.aac,
       bands: atlas.bands,
-      bitrate: checks.bitrate ?? videoBitrate(film),
+      bitrate: checks.bitrate,
       camera: film.camera,
       compare: checks.compare,
       fps: film.fps,
       frames: filmFrames(film),
-      height: film.height,
+      height: size.height,
       kind: "Film",
       redraw: checks.redraw,
+      scale,
       shots: atlas.shots,
       sound,
-      width: film.width,
+      width: size.width,
     };
 
     const reply = yield* worker.ask(

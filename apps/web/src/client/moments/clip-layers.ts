@@ -76,6 +76,7 @@ interface Measured {
   readonly local: { readonly x: number; readonly y: number };
   readonly markup: string;
   readonly role: string;
+  readonly view?: { readonly height: number; readonly width: number };
 }
 
 const placed = (
@@ -176,9 +177,10 @@ const bandSvg = (
     }
 
     const { height, width } = layer.cell;
+    const view = layer.view ?? { height, width };
 
     return [
-      `<svg x="${source.x}" y="${source.y}" width="${width}" height="${height}" viewBox="${layer.local.x} ${layer.local.y} ${width} ${height}" overflow="hidden">${layer.markup}</svg>`,
+      `<svg x="${source.x}" y="${source.y}" width="${width}" height="${height}" viewBox="${layer.local.x} ${layer.local.y} ${view.width} ${view.height}" overflow="hidden">${layer.markup}</svg>`,
     ];
   });
 
@@ -297,10 +299,16 @@ export interface ShotAtlas {
 const artKey = (shot: Shot) =>
   `${shot.box.x},${shot.box.y},${shot.box.width},${shot.box.height}|${shot.art}`;
 
+const scaledSize = (box: Box, scale: number) => ({
+  height: Math.max(1, Math.ceil(box.height * scale)),
+  width: Math.max(1, Math.ceil(box.width * scale)),
+});
+
 export const shotAtlas = (
   shots: readonly Shot[],
   fonts: string,
-  slot: Effect.Effect<void>
+  slot: Effect.Effect<void>,
+  scale = 1
 ): Effect.Effect<ShotAtlas, ClipUnavailable> =>
   Effect.gen(function* buildShots() {
     const firsts = new Map<string, number>();
@@ -317,14 +325,19 @@ export const shotAtlas = (
       return shot === undefined ? [] : [shot];
     });
 
-    const measured: readonly Measured[] = unique.map((shot, index) => ({
-      cell: shot.box,
-      centre: pivotOf(shot),
-      index,
-      local: { x: shot.box.x, y: shot.box.y },
-      markup: shot.art,
-      role: "shot",
-    }));
+    const measured: readonly Measured[] = unique.map((shot, index) => {
+      const size = scaledSize(shot.box, scale);
+
+      return {
+        cell: { ...size, x: shot.box.x, y: shot.box.y },
+        centre: pivotOf(shot),
+        index,
+        local: { x: shot.box.x, y: shot.box.y },
+        markup: shot.art,
+        role: "shot",
+        view: { height: size.height / scale, width: size.width / scale },
+      };
+    });
 
     const drawn = yield* rasterized(measured, fonts, slot);
     const keys = [...firsts.keys()];
@@ -340,6 +353,7 @@ export const shotAtlas = (
           keys: shot.keys,
           pinned: shot.pinned === true,
           pivot: pivotOf(shot),
+          size: scaledSize(shot.box, scale),
           source: drawn.places[art]?.source ?? { x: 0, y: 0 },
         };
       }),

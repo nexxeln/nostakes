@@ -19,21 +19,36 @@ export interface DrawnShot {
   readonly keys: readonly FilmKey[];
   readonly pinned: boolean;
   readonly pivot: Point;
+  readonly size: { readonly height: number; readonly width: number };
   readonly source: Point;
 }
 
 export interface Reel {
   readonly camera: readonly FilmKey[];
   readonly height: number;
+  readonly scale: number;
   readonly shots: readonly DrawnShot[];
   readonly width: number;
 }
 
+const scaledPlace = (placed: Placed, scale: number): Placed => {
+  const [a, b, c, d, e, f] = placed.matrix;
+
+  return { alpha: placed.alpha, matrix: [a, b, c, d, e * scale, f * scale] };
+};
+
 export const placementsAt = (reel: Reel, ms: number): readonly Placed[] => {
-  const camera = cameraAt(reel, ms);
+  const camera = cameraAt(
+    {
+      camera: reel.camera,
+      height: reel.height / reel.scale,
+      width: reel.width / reel.scale,
+    },
+    ms
+  );
 
   return reel.shots.map((shot) =>
-    placedAt(shot, poseAt(shot.keys, ms), camera)
+    scaledPlace(placedAt(shot, poseAt(shot.keys, ms), camera), reel.scale)
   );
 };
 
@@ -57,7 +72,7 @@ export const drawAreas = (
 
     return placed === undefined
       ? Option.none<Box>()
-      : boundsOf(shot.box, placed, frame);
+      : boundsOf(shot.size, placed, frame);
   });
 
   for (const area of areas) {
@@ -85,12 +100,12 @@ export const drawAreas = (
           source,
           shot.source.x,
           shot.source.y,
-          shot.box.width,
-          shot.box.height,
+          shot.size.width,
+          shot.size.height,
           0,
           0,
-          shot.box.width,
-          shot.box.height
+          shot.size.width,
+          shot.size.height
         );
       }
     }
