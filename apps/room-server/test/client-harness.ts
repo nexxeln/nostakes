@@ -141,7 +141,11 @@ export const tappedWire = (label: string) => {
     floodFromClient: Effect.sync(() => {
       const tapped = latest();
 
-      for (let frame = 0; frame <= FRAME_ALLOWANCE.burst + 2; frame += 1) {
+      for (
+        let frame = 0;
+        frame < FRAME_ALLOWANCE.burst + 2 * FRAME_ALLOWANCE.perSecond;
+        frame += 1
+      ) {
         tapped?.raw.send(WAKING_PING_FRAME);
       }
     }),

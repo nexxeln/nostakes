@@ -89,7 +89,7 @@ const baseUrl = deployed.pipe(
 
 const Commands = ToyMemberCommandSchema.cases;
 
-const FLOOD = FRAME_ALLOWANCE.burst + 20;
+const FLOOD = FRAME_ALLOWANCE.burst + 2 * FRAME_ALLOWANCE.perSecond;
 
 const isEvent = ToyRedactedSchema.guards;
 
