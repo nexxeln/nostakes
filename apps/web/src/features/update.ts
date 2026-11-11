@@ -49,6 +49,7 @@ import {
   ShowPath,
   ShuffleFace,
   SignalRoom,
+  UseRoomHere,
   WakeRoom,
 } from "../client/commands.js";
 import type { RoomConnection } from "../client/connection.js";
@@ -908,6 +909,7 @@ export const update = (model: Model, message: Message): Return =>
     ClickedSeat: ({ seat }) => pickSeat(model, seat),
     ClickedShuffleFace: () => ({ commands: [ShuffleFace()], model }),
     ClickedSit: ({ seat }) => sit(model, seat),
+    ClickedUseHere: () => ({ commands: [UseRoomHere()], model }),
     ClosedSheet: () =>
       editRoom(model, (room) => ({
         ...room,

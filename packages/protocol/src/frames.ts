@@ -24,6 +24,7 @@ export const CloseReasonSchema = Schema.Literals([
   "Unresponsive",
   "ClientOutdated",
   "ServerOutdated",
+  "OpenedElsewhere",
 ]);
 
 export type CloseReason = typeof CloseReasonSchema.Type;
@@ -34,6 +35,7 @@ export const CLOSE_CODES: Readonly<Record<CloseReason, number>> = {
   HelloTimeout: 4001,
   NotAuthorized: 4003,
   NotFound: 4004,
+  OpenedElsewhere: 4013,
   ProtocolViolation: 4002,
   RoomHalted: 4010,
   ServerOutdated: 4012,

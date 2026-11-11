@@ -32,6 +32,7 @@ const refusedCall = (method: string) =>
 
 const unreachableRooms: RoomNamespace = {
   getByName: () => ({
+    check: () => refusedCall("check"),
     fetch: () => Effect.die(new Error(CLOUDFLARE_REFUSAL)),
     join: () => refusedCall("join"),
     open: () => refusedCall("open"),

@@ -34,3 +34,5 @@ export const pokerClientSchemas: ClientSchemas<PokerClientTypes> = {
 export const roomPath = (code: string) => `/r/${code}`;
 
 export const socketPath = (code: string) => `/rooms/${code}/socket`;
+
+export const checkPath = (code: string) => `/rooms/${code}/check`;

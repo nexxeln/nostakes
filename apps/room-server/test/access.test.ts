@@ -2,6 +2,7 @@ import * as Cloudflare from "@alchemy.run/cloudflare";
 import * as Test from "@alchemy.run/test/Vitest";
 import { expect } from "@effect/vitest";
 import {
+  CLOSE_CODES,
   FRAME_ALLOWANCE,
   HELLO_TIMEOUT_MS,
   HttpRefusalSchema,
@@ -26,10 +27,16 @@ import {
 import * as Base64Url from "effect/encoding/Base64Url";
 import * as Hex from "effect/encoding/Hex";
 import * as FetchHttpClient from "effect/http/FetchHttpClient";
+import * as HttpClient from "effect/http/HttpClient";
+import * as HttpClientRequest from "effect/http/HttpClientRequest";
 import type * as HttpClientResponse from "effect/http/HttpClientResponse";
 
 import { retryDelay } from "../src/refused-deadline.js";
-import { MAX_MEMBERS, MAX_SOCKETS } from "../src/room-rpc.js";
+import {
+  MAX_MEMBERS,
+  PENDING_SOCKETS,
+  SOCKETS_PER_PLAYER,
+} from "../src/room-rpc.js";
 import {
   codec,
   command,
@@ -62,6 +69,7 @@ import {
   ToyRedactedSchema,
 } from "./fixtures/toy-room.js";
 import type { ToyRedacted } from "./fixtures/toy-room.js";
+import { TEST_ORIGIN } from "./fixtures/toy-worker.js";
 
 const { afterAll, beforeAll, deploy, destroy, test } = Test.make({
   dev: true,
@@ -429,7 +437,7 @@ const paddedPing = (bytes: number) =>
 const isPong = codec.server.guards.Pong;
 
 test(
-  "11. limits: frame size, frames per second, and sockets per room are each enforced, and exact pings are answered without counting",
+  "11. limits: frame size and frames per second are each enforced, and exact pings are answered without counting",
   Effect.gen(function* limits() {
     const base = yield* baseUrl;
     const [anaPass] = yield* openRoomWith(base, ["Ana"]);
@@ -478,30 +486,6 @@ test(
     expect(tooMany.reason).toBe("TooManyFrames");
     expect(pongs).toBeGreaterThanOrEqual(FRAME_ALLOWANCE.burst - 2);
     expect(pongs).toBeLessThan(FLOOD);
-
-    const sockets = yield* pipe(
-      Array.from({ length: MAX_SOCKETS - 1 }, (_, index) => index),
-      Effect.forEach((index) => connect(base, anaPass.code, `socket ${index}`))
-    );
-
-    const extra = yield* connect(base, anaPass.code, "one too many");
-
-    expect(yield* extra.waitClosed).toEqual({
-      code: 4029,
-      reason: "TooManySockets",
-    });
-    expect(extra.messages).toEqual([
-      codec.server.cases.Closing.make({ reason: "TooManySockets" }),
-    ]);
-    expect((yield* inspect(base, anaPass.code)).sockets).toEqual({
-      live: 1,
-      pending: MAX_SOCKETS - 1,
-    });
-
-    yield* pipe(
-      sockets,
-      Effect.forEach((socket) => socket.disconnect)
-    );
   }).pipe(Effect.provide(FetchHttpClient.layer))
 );
 
@@ -668,5 +652,118 @@ test(
       )
     );
     expect(stalled.faults.join(" ")).not.toContain("a private note");
+  }).pipe(Effect.provide(FetchHttpClient.layer))
+);
+
+const SLOT_FLOOD = 64;
+
+const openedElsewhere = {
+  code: CLOSE_CODES.OpenedElsewhere,
+  reason: "OpenedElsewhere",
+};
+
+test(
+  "14. socket slots: a member keeps only their newest sockets and the older ones hear they were opened elsewhere, sockets that never say hello only push out each other, and a member with a valid token always gets in",
+  Effect.gen(function* socketSlots() {
+    const base = yield* baseUrl;
+    const [anaPass, trollPass] = yield* openRoomWith(base, ["Ana", "Troll"]);
+
+    if (anaPass === undefined || trollPass === undefined) {
+      return;
+    }
+
+    const { code } = anaPass;
+
+    const trolls = yield* pipe(
+      Array.from({ length: SLOT_FLOOD }, (_, index) => index),
+      Effect.forEach((index) => joinAs(base, trollPass, `troll ${index}`))
+    );
+
+    const ana = yield* joinAs(base, anaPass, "ana after the troll's sockets");
+    const pushedOut = trolls.slice(0, SLOT_FLOOD - SOCKETS_PER_PLAYER);
+    const kept = trolls.slice(SLOT_FLOOD - SOCKETS_PER_PLAYER);
+
+    const pushedOutCloses = yield* pipe(
+      pushedOut,
+      Effect.forEach(({ client }) => client.waitClosed)
+    );
+
+    const keptCloses = yield* pipe(
+      kept,
+      Effect.forEach(({ client }) => client.closed)
+    );
+
+    expect(ana.welcome.you).toBe(anaPass.player);
+    expect(pushedOutCloses).toStrictEqual(pushedOut.map(() => openedElsewhere));
+    expect(pushedOut.map(({ client }) => client.messages.at(-1))).toStrictEqual(
+      pushedOut.map(() =>
+        codec.server.cases.Closing.make({ reason: "OpenedElsewhere" })
+      )
+    );
+    expect(keptCloses).toStrictEqual(kept.map(() => Option.none()));
+    expect((yield* inspect(base, code)).sockets).toStrictEqual({
+      live: SOCKETS_PER_PLAYER + 1,
+      pending: 0,
+    });
+
+    const silent = yield* pipe(
+      Array.from({ length: SLOT_FLOOD }, (_, index) => index),
+      Effect.forEach((index) => connect(base, code, `silent ${index}`))
+    );
+
+    const anaAgain = yield* joinAs(base, anaPass, "ana through the silence");
+    const crowded = silent.slice(0, SLOT_FLOOD - PENDING_SOCKETS + 1);
+    const waiting = silent.slice(SLOT_FLOOD - PENDING_SOCKETS + 1);
+    const during = yield* inspect(base, code);
+
+    const crowdedClosings = yield* pipe(
+      crowded,
+      Effect.forEach((client) => client.next("its closing frame", isClosing))
+    );
+
+    expect(anaAgain.welcome.you).toBe(anaPass.player);
+    expect(during.sockets).toStrictEqual({
+      live: SOCKETS_PER_PLAYER + 2,
+      pending: PENDING_SOCKETS - 1,
+    });
+    expect(crowdedClosings).toStrictEqual(
+      crowded.map(() =>
+        codec.server.cases.Closing.make({ reason: "TooManySockets" })
+      )
+    );
+    expect(waiting.flatMap((client) => client.frames)).toStrictEqual([]);
+
+    const checkOf = (checked: RoomCode) =>
+      HttpClientRequest.post(new URL(`/rooms/${checked}/check`, base)).pipe(
+        HttpClientRequest.setHeader("origin", TEST_ORIGIN),
+        HttpClient.execute,
+        Effect.flatMap((response) =>
+          response.text.pipe(
+            Effect.map((body) => ({ body, status: response.status }))
+          )
+        ),
+        Effect.orDie
+      );
+
+    const beforeCheck = yield* inspect(base, code);
+    const there = yield* checkOf(code);
+    const gone = yield* checkOf(randomCode());
+
+    expect([there, gone]).toStrictEqual([
+      { body: "", status: 204 },
+      { body: '{"refusal":"NotFound"}', status: 404 },
+    ]);
+    expect((yield* inspect(base, code)).sockets).toStrictEqual(
+      beforeCheck.sockets
+    );
+
+    yield* pipe(
+      [...kept.map(({ client }) => client), ana.client, anaAgain.client],
+      Effect.forEach((client) => client.disconnect)
+    );
+    yield* pipe(
+      waiting,
+      Effect.forEach((client) => client.disconnect)
+    );
   }).pipe(Effect.provide(FetchHttpClient.layer))
 );

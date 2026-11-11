@@ -235,6 +235,13 @@ export const ReloadPage = Command.define("ReloadPage", {
   messages: [Messages.StartedReload],
 });
 
+export const UseRoomHere = Command.define("UseRoomHere", {
+  execute: Effect.sync(() => {
+    globalThis.location.reload();
+  }).pipe(Effect.as(Messages.StartedReload())),
+  messages: [Messages.StartedReload],
+});
+
 export const CopyRoomLink = Command.define("CopyRoomLink", {
   args: { code: RoomCodeSchema },
   execute: ({ code }) =>

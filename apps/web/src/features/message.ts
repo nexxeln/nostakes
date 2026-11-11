@@ -70,6 +70,7 @@ export const Messages = defineMessageUnion({
   ClickedSeat: { seat: Schema.Int },
   ClickedShuffleFace: {},
   ClickedSit: { seat: Schema.Int },
+  ClickedUseHere: {},
   ClosedSheet: {},
   CompletedCopy: { copied: CopiedSchema },
   CompletedForget: { code: RoomCodeSchema },

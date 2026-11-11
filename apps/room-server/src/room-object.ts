@@ -68,16 +68,23 @@ import {
 } from "./room-host.js";
 import type { CommitResult, Connections, RoomHost } from "./room-host.js";
 import {
+  CheckOutcomeSchema,
   InspectionSchema,
   JoinOutcomeSchema,
   MAX_MEMBERS,
-  MAX_SOCKETS,
   OpenOutcomeSchema,
+  PENDING_SOCKETS,
+  SOCKETS_PER_PLAYER,
   StandingsOutcomeSchema,
 } from "./room-rpc.js";
 import type { Inspection } from "./room-rpc.js";
 import { servedBuildOrNone } from "./served-build.js";
-import { attach, attachmentOf, AttachmentSchema } from "./socket-attachment.js";
+import {
+  attach,
+  attachmentOf,
+  AttachmentSchema,
+  openedOf,
+} from "./socket-attachment.js";
 import { acknowledgeClose, closeWith } from "./socket-close.js";
 import { sqliteStorage } from "./sqlite-storage.js";
 import { workerdGlobals } from "./workerd.js";
@@ -134,6 +141,14 @@ const mintCredential = Effect.gen(function* mintCredential() {
 });
 
 const byNumber = Order.Number;
+
+const oldestFirst = <A extends { readonly opened: number }>(
+  open: readonly A[]
+) =>
+  Arr.sort(
+    open,
+    Order.mapInput(byNumber, ({ opened }: A) => opened)
+  );
 
 const send = (socket: cf.WebSocket, frame: string) => {
   Result.try(() => {
@@ -281,8 +296,9 @@ export const roomObject = <T extends RoomTypes, Tally>(
               ? []
               : attachmentOf(socket).pipe(
                   Option.filter(AttachmentSchema.guards.Live),
-                  Option.map(({ heardAt, player }) => ({
+                  Option.map(({ heardAt, opened, player }) => ({
                     heardAt: Math.max(heardAt, answeredPingAt(socket)),
+                    opened,
                     player,
                     socket,
                   })),
@@ -296,7 +312,11 @@ export const roomObject = <T extends RoomTypes, Tally>(
               ? []
               : attachmentOf(socket).pipe(
                   Option.filter(AttachmentSchema.guards.Pending),
-                  Option.map(({ acceptedAt }) => ({ acceptedAt, socket })),
+                  Option.map(({ acceptedAt, opened }) => ({
+                    acceptedAt,
+                    opened,
+                    socket,
+                  })),
                   Option.toArray
                 )
           );
@@ -464,9 +484,32 @@ export const roomObject = <T extends RoomTypes, Tally>(
         yield* attend(Option.none());
         yield* flush;
 
+        const nextOpened = () =>
+          1 +
+          Math.max(
+            0,
+            ...sockets().flatMap((socket) =>
+              Option.toArray(
+                attachmentOf(socket).pipe(Option.flatMap(openedOf))
+              )
+            )
+          );
+
+        const makeRoomForPending = () => {
+          const waiting = pendingSince(Option.none());
+
+          for (const { socket } of oldestFirst(waiting).slice(
+            0,
+            Math.max(0, waiting.length + 1 - PENDING_SOCKETS)
+          )) {
+            closeSocket(socket, "TooManySockets");
+          }
+        };
+
         const welcomeSocket = (
           room: RoomHost<T>,
           socket: cf.WebSocket,
+          opened: number,
           hash: Uint8Array,
           after: Option.Option<number>,
           at: number
@@ -489,13 +532,25 @@ export const roomObject = <T extends RoomTypes, Tally>(
             player.value
           );
 
+          const older = liveSockets(Option.some(socket)).filter(
+            (live) => live.player === player.value
+          );
+
           attach(
             socket,
             AttachmentSchema.cases.Live.make({
               heardAt: at,
+              opened,
               player: player.value,
             })
           );
+
+          for (const { socket: oldest } of oldestFirst(older).slice(
+            0,
+            Math.max(0, older.length + 1 - SOCKETS_PER_PLAYER)
+          )) {
+            closeSocket(oldest, "OpenedElsewhere");
+          }
 
           const welcome = room.welcome(
             player.value,
@@ -639,10 +694,7 @@ export const roomObject = <T extends RoomTypes, Tally>(
             )) {
               attach(
                 socket,
-                AttachmentSchema.cases.Live.make({
-                  heardAt: at,
-                  player: live.player,
-                })
+                AttachmentSchema.cases.Live.make({ ...live, heardAt: at })
               );
             }
 
@@ -693,11 +745,11 @@ export const roomObject = <T extends RoomTypes, Tally>(
                 }),
               Hello: ({ after, protocol, token }) =>
                 Effect.gen(function* greet() {
-                  if (
-                    !attachment.pipe(
-                      Option.exists(AttachmentSchema.guards.Pending)
-                    )
-                  ) {
+                  const waiting = attachment.pipe(
+                    Option.filter(AttachmentSchema.guards.Pending)
+                  );
+
+                  if (Option.isNone(waiting)) {
                     closeSocket(socket, "ProtocolViolation");
 
                     return;
@@ -718,7 +770,14 @@ export const roomObject = <T extends RoomTypes, Tally>(
                   const hash = yield* sha256(bytes);
                   const now = yield* Clock.currentTimeMillis;
 
-                  welcomeSocket(room, socket, hash, after, now);
+                  welcomeSocket(
+                    room,
+                    socket,
+                    waiting.value.opened,
+                    hash,
+                    after,
+                    now
+                  );
                 }),
               Ping: () =>
                 Effect.sync(() => {
@@ -1042,6 +1101,16 @@ export const roomObject = <T extends RoomTypes, Tally>(
             Effect.orDie
           );
 
+        const check = () =>
+          Effect.sync(() =>
+            Option.isSome(host)
+              ? CheckOutcomeSchema.cases.Found.make({})
+              : CheckOutcomeSchema.cases.NotFound.make({})
+          ).pipe(
+            Effect.flatMap(Schema.encodeEffect(CheckOutcomeSchema)),
+            Effect.orDie
+          );
+
         const standings = (input: typeof StandingsRequestSchema.Encoded) =>
           Effect.gen(function* readStandings() {
             const decoded = yield* Schema.decodeEffect(StandingsRequestSchema)(
@@ -1098,18 +1167,15 @@ export const roomObject = <T extends RoomTypes, Tally>(
             return yield* refuseSocket("RoomHalted");
           }
 
-          if (sockets().length >= MAX_SOCKETS) {
-            note(measure("SocketClosed", { reason: "TooManySockets" }));
-
-            return yield* refuseSocket("TooManySockets");
-          }
+          makeRoomForPending();
 
           const at = yield* Clock.currentTimeMillis;
+          const opened = nextOpened();
           const [response, socket] = yield* Cloudflare.upgrade();
 
           attach(
             socket.ws,
-            AttachmentSchema.cases.Pending.make({ acceptedAt: at })
+            AttachmentSchema.cases.Pending.make({ acceptedAt: at, opened })
           );
           armAlarm(host.value);
 
@@ -1118,6 +1184,7 @@ export const roomObject = <T extends RoomTypes, Tally>(
 
         return {
           alarm: () => runAlarm.pipe(Effect.ensuring(flush)),
+          check,
           fetch: upgrade.pipe(Effect.ensuring(flush)),
           inspect,
           join: (input: typeof JoinCall.Encoded) =>

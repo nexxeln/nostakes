@@ -4,8 +4,8 @@ import { Option, Result, Schema } from "effect";
 
 export const AttachmentSchema = Schema.TaggedUnion({
   Closed: { reason: CloseReasonSchema },
-  Live: { heardAt: Schema.Int, player: PlayerIdSchema },
-  Pending: { acceptedAt: Schema.Int },
+  Live: { heardAt: Schema.Int, opened: Schema.Int, player: PlayerIdSchema },
+  Pending: { acceptedAt: Schema.Int, opened: Schema.Int },
 });
 
 export type Attachment = typeof AttachmentSchema.Type;
@@ -18,6 +18,11 @@ export const attachmentOf = (socket: cf.WebSocket): Option.Option<Attachment> =>
   Result.try(() => decodeAttachment(socket.deserializeAttachment())).pipe(
     Result.getOrElse(() => Option.none())
   );
+
+export const openedOf = (attachment: Attachment) =>
+  AttachmentSchema.guards.Closed(attachment)
+    ? Option.none()
+    : Option.some(attachment.opened);
 
 export const attach = (socket: cf.WebSocket, attachment: Attachment) => {
   socket.serializeAttachment(encodeAttachment(attachment));

@@ -7,7 +7,9 @@ import { Schema } from "effect";
 
 export const MAX_MEMBERS = 64;
 
-export const MAX_SOCKETS = 64;
+export const SOCKETS_PER_PLAYER = 3;
+
+export const PENDING_SOCKETS = 16;
 
 export const OpenOutcomeSchema = Schema.TaggedUnion({
   AlreadyOpen: { code: RoomCodeSchema },
@@ -28,6 +30,13 @@ export const JoinOutcomeSchema = Schema.TaggedUnion({
 });
 
 export type JoinOutcome = typeof JoinOutcomeSchema.Type;
+
+export const CheckOutcomeSchema = Schema.TaggedUnion({
+  Found: {},
+  NotFound: {},
+});
+
+export type CheckOutcome = typeof CheckOutcomeSchema.Type;
 
 export const StandingsOutcomeSchema = Schema.TaggedUnion({
   Halted: { view: Schema.Json },

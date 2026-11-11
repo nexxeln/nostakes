@@ -1303,6 +1303,7 @@ describe("room client against a fake socket", () => {
         "Unresponsive",
         "ClientOutdated",
         "ServerOutdated",
+        "OpenedElsewhere",
       ];
 
       for (const reason of reasons) {
@@ -1325,6 +1326,7 @@ describe("room client against a fake socket", () => {
         ClientOutdated: "Outdated none",
         HelloTimeout: "Waiting HelloTimeout",
         NotFound: "Refused NotFound",
+        OpenedElsewhere: "Refused OpenedElsewhere",
         ProtocolViolation: "Refused ProtocolViolation",
         RoomHalted: "Refused RoomHalted",
         ServerOutdated: "Waiting ServerOutdated",

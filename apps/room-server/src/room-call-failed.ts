@@ -5,6 +5,7 @@ export const RoomCallSchema = Schema.Literals([
   "open",
   "join",
   "connect",
+  "check",
   "standings",
 ]);
 

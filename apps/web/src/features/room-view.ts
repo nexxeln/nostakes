@@ -42,6 +42,24 @@ type H = HtmlBuilder<Message>;
 
 const Commands = MemberCommandSchema.cases;
 
+export const OPENED_ELSEWHERE_LINE = "Open on another device.";
+
+const openedElsewhereLine = (h: H): Html =>
+  h.span(
+    [h.Class("connection is-refused"), h.Role("status")],
+    [
+      `${OPENED_ELSEWHERE_LINE} `,
+      h.button(
+        [
+          h.Type("button"),
+          h.Class("text-button"),
+          h.OnClick(Messages.ClickedUseHere()),
+        ],
+        ["Use it here"]
+      ),
+    ]
+  );
+
 const connectionLine = (room: InRoom, h: H): Html =>
   Option.match(room.link, {
     onNone: () => h.span([h.Class("connection")], ["Connecting…"]),
@@ -55,6 +73,10 @@ const connectionLine = (room: InRoom, h: H): Html =>
           [h.Class("connection"), h.Role("status")],
           ["Out of date"]
         );
+      }
+
+      if (phase === "Refused" && Option.contains(refusal, "OpenedElsewhere")) {
+        return openedElsewhereLine(h);
       }
 
       if (phase === "Refused") {
@@ -626,14 +648,31 @@ const leftRoomView = (view: OpenView, h: H): Html =>
     ]
   );
 
-const refusedView = (h: H): Html =>
-  h.section(
-    [h.Class("card-panel settlement")],
-    [
-      h.p([], ["This room is no longer open to you."]),
-      homeButton("Back home", h),
-    ]
-  );
+const refusedView = (room: InRoom, h: H): Html =>
+  Option.exists(room.link, ({ refusal }) =>
+    Option.contains(refusal, "OpenedElsewhere")
+  )
+    ? h.section(
+        [h.Class("card-panel settlement")],
+        [
+          h.p([], [OPENED_ELSEWHERE_LINE]),
+          h.button(
+            [
+              h.Type("button"),
+              h.Class("button"),
+              h.OnClick(Messages.ClickedUseHere()),
+            ],
+            ["Use it here"]
+          ),
+        ]
+      )
+    : h.section(
+        [h.Class("card-panel settlement")],
+        [
+          h.p([], ["This room is no longer open to you."]),
+          homeButton("Back home", h),
+        ]
+      );
 
 const haltedStandingsView = (room: InRoom, view: ClosedView, h: H): Html => {
   const name = (player: PlayerId) => nameOf(view, player);
@@ -744,7 +783,7 @@ export const roomView = (model: Model, room: InRoom, h: H): Html => {
         : Option.match(view, {
             onNone: () =>
               refused
-                ? refusedView(h)
+                ? refusedView(room, h)
                 : h.p([h.Class("muted opening")], ["Opening the room…"]),
             onSome: (current) =>
               RoomViews.$match(current, {

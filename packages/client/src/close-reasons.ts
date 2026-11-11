@@ -11,6 +11,7 @@ export const CLOSE_VERDICTS: Readonly<Record<CloseReason, CloseVerdict>> = {
   HelloTimeout: "Retry",
   NotAuthorized: "Refuse",
   NotFound: "Refuse",
+  OpenedElsewhere: "Refuse",
   ProtocolViolation: "Refuse",
   RoomHalted: "Refuse",
   ServerOutdated: "Retry",

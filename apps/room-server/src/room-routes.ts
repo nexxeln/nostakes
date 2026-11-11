@@ -30,6 +30,7 @@ import {
 } from "./room-code.js";
 import { refuse } from "./room-object.js";
 import {
+  CheckOutcomeSchema,
   JoinOutcomeSchema,
   OpenOutcomeSchema,
   StandingsOutcomeSchema,
@@ -46,6 +47,10 @@ export interface RoomStub {
     readonly device?: string;
     readonly request: Schema.Json;
   }) => Effect.Effect<typeof JoinOutcomeSchema.Encoded, RpcCallError>;
+  readonly check: () => Effect.Effect<
+    typeof CheckOutcomeSchema.Encoded,
+    RpcCallError
+  >;
   readonly standings: (input: {
     readonly token: string;
   }) => Effect.Effect<typeof StandingsOutcomeSchema.Encoded, RpcCallError>;
@@ -69,6 +74,8 @@ const CodePath = Schema.Struct({ code: Schema.String });
 
 export const REPORTS_ROUTE = "/rooms/reports";
 
+export const CHECK_ROUTE = "/rooms/:code/check";
+
 const logged = (failure: RoomCallFailed | RouteFault) =>
   Effect.logError(failure.message).pipe(
     Effect.annotateLogs({ error: failure._tag })
@@ -85,6 +92,8 @@ const decodeOpenOutcome = Schema.decodeEffect(OpenOutcomeSchema);
 const decodeJoinOutcome = Schema.decodeEffect(JoinOutcomeSchema);
 
 const decodeStandingsOutcome = Schema.decodeEffect(StandingsOutcomeSchema);
+
+const decodeCheckOutcome = Schema.decodeEffect(CheckOutcomeSchema);
 
 const encodeStandingsRequest = Schema.encodeSync(StandingsRequestSchema);
 
@@ -292,6 +301,28 @@ export const roomRoutes = <R>(
       });
     }).pipe(Effect.catchTag("RoomCallFailed", unavailable));
 
+    const checkRoom = Effect.gen(function* checkRoom() {
+      const code = yield* roomCodeOf.pipe(Effect.orDie);
+
+      if (Option.isNone(code)) {
+        return yield* refuse("NotFound");
+      }
+
+      const outcome = yield* callRoom(
+        code.value,
+        "check",
+        rooms
+          .getByName(code.value)
+          .check()
+          .pipe(Effect.flatMap(decodeCheckOutcome))
+      );
+
+      return yield* CheckOutcomeSchema.match(outcome, {
+        Found: () => Effect.succeed(HttpServerResponse.empty({ status: 204 })),
+        NotFound: () => refuse("NotFound"),
+      });
+    }).pipe(Effect.catchTag("RoomCallFailed", unavailable));
+
     const connect = Effect.gen(function* connect() {
       const code = yield* roomCodeOf.pipe(Effect.orDie);
       const request = yield* HttpServerRequest.HttpServerRequest;
@@ -359,6 +390,14 @@ export const roomRoutes = <R>(
         guarded(
           "POST /rooms/:code/standings",
           limited("join", tooManyRequests, readStandings)
+        )
+      ),
+      HttpRouter.add(
+        "POST",
+        CHECK_ROUTE,
+        guarded(
+          `POST ${CHECK_ROUTE}`,
+          limited("connect", tooManyRequests, checkRoom)
         )
       ),
       HttpRouter.add(

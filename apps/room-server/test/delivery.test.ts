@@ -11,6 +11,7 @@ import {
 import { Effect, Option, Redacted, Schema, pipe } from "effect";
 import * as FetchHttpClient from "effect/http/FetchHttpClient";
 
+import { SOCKETS_PER_PLAYER } from "../src/room-rpc.js";
 import {
   appliedSeqs,
   codec,
@@ -293,8 +294,6 @@ test(
   }).pipe(Effect.provide(FetchHttpClient.layer))
 );
 
-const DEVICES_PER_MEMBER = 4;
-
 const COMMANDS_PER_CLIENT = 50;
 
 const sendAll = (client: RoomClient, prefix: string) =>
@@ -323,13 +322,13 @@ const eventLog = (client: RoomClient) =>
   );
 
 test(
-  "13. order under load: three members on four devices each send 600 commands in all and every socket sees the stored order",
+  "13. order under load: three members on every device they may hold send 450 commands in all and every socket sees the stored order",
   Effect.gen(function* underLoad() {
     const base = yield* baseUrl;
     const passes = yield* openRoomWith(base, ["Ana", "Ben", "Cy"]);
 
     const devices = passes.flatMap((pass) =>
-      Array.from({ length: DEVICES_PER_MEMBER }, () => pass)
+      Array.from({ length: SOCKETS_PER_PLAYER }, () => pass)
     );
 
     const clients = yield* pipe(
