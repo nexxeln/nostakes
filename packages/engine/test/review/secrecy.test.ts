@@ -11,6 +11,7 @@ import {
   decide,
 } from "../../src/index.js";
 import type { Card, Command, Event, Rejection } from "../../src/index.js";
+import { generated } from "../scale.js";
 import { playSession, session } from "../sessions.js";
 import { commandMatrix } from "./matrix.js";
 
@@ -173,7 +174,8 @@ describe("secrecy beyond the existing property (rule 'a mucked hand never appear
         )
       ).toStrictEqual([]);
       expect(muckLeaks(events)).toStrictEqual([]);
-    }
+    },
+    generated(25, 100)
   );
 
   it.prop(
@@ -182,6 +184,6 @@ describe("secrecy beyond the existing property (rule 'a mucked hand never appear
     ({ source }) => {
       expect(rejectionLeaks(source)).toStrictEqual([]);
     },
-    { arbitrary: { runs: 25 }, timeout: 300_000 }
+    generated(6, 25)
   );
 });

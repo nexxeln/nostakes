@@ -33,6 +33,7 @@ import type {
 import { dealProblems } from "./blind-checks.js";
 import { bankrollChange, chipCount, runCount, seat } from "./fixtures.js";
 import { seededRandom } from "./random.js";
+import { generated } from "./scale.js";
 import {
   answerPending,
   configOf,
@@ -350,7 +351,8 @@ describe("generated sessions", () => {
       });
 
       expect(broken).toStrictEqual([]);
-    }
+    },
+    generated(25, 100)
   );
 
   it.prop(
@@ -362,7 +364,8 @@ describe("generated sessions", () => {
       expect(replay(configOf(source), played.events)).toStrictEqual(
         played.state
       );
-    }
+    },
+    generated(25, 100)
   );
 
   it.prop(
@@ -411,7 +414,8 @@ describe("generated sessions", () => {
       }
 
       expect(mismatches).toStrictEqual([]);
-    }
+    },
+    generated(25, 100)
   );
 
   it.prop(
@@ -435,7 +439,8 @@ describe("generated sessions", () => {
           finishHand(state, (current) => answerPending(current, random), 2000)
         ).toMatchObject({ finished: true });
       }
-    }
+    },
+    generated(25, 100)
   );
 
   it.prop(
@@ -492,7 +497,8 @@ describe("generated sessions", () => {
           );
         }
       }
-    }
+    },
+    generated(25, 100)
   );
 
   it.prop(
@@ -586,7 +592,8 @@ describe("generated sessions", () => {
           }
         }
       }
-    }
+    },
+    generated(25, 100)
   );
 
   it.prop(
@@ -600,7 +607,8 @@ describe("generated sessions", () => {
       }
 
       expect(watch.wrong).toStrictEqual([]);
-    }
+    },
+    generated(25, 100)
   );
 
   it.prop(
@@ -612,7 +620,8 @@ describe("generated sessions", () => {
           dealProblems(step.before, step.events, step.after)
         )
       ).toStrictEqual([]);
-    }
+    },
+    generated(25, 100)
   );
 
   it.prop(
@@ -628,7 +637,8 @@ describe("generated sessions", () => {
       }
 
       expect(problems).toStrictEqual([]);
-    }
+    },
+    generated(25, 100)
   );
 
   it.prop(
@@ -705,7 +715,8 @@ describe("generated sessions", () => {
       }
 
       expect(mismatches).toStrictEqual([]);
-    }
+    },
+    generated(25, 100)
   );
 
   it.prop(
@@ -801,7 +812,8 @@ describe("generated sessions", () => {
           ).toStrictEqual([]);
         }
       }
-    }
+    },
+    generated(25, 100)
   );
 
   it.prop(
@@ -874,6 +886,7 @@ describe("generated sessions", () => {
       });
 
       expect(broken).toStrictEqual([]);
-    }
+    },
+    generated(25, 100)
   );
 });

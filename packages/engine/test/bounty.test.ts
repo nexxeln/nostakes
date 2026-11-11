@@ -35,6 +35,7 @@ import {
   startHand,
 } from "./fixtures.js";
 import { seededRandom } from "./random.js";
+import { generated } from "./scale.js";
 import { configOf, playSession, session } from "./sessions.js";
 import type { Session } from "./sessions.js";
 
@@ -491,7 +492,8 @@ describe("generated sessions with the bounty", () => {
     { source: session },
     ({ source }) => {
       expect(bountyProblems(source).problems).toStrictEqual([]);
-    }
+    },
+    generated(25, 100)
   );
 
   it("reaches bounties in seeded sessions", () => {

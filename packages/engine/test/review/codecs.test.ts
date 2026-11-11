@@ -25,6 +25,7 @@ import {
   shownCards,
   startHand,
 } from "../fixtures.js";
+import { generated } from "../scale.js";
 import { playSession, session } from "../sessions.js";
 
 const commandJson = Schema.toCodecJson(CommandSchema);
@@ -178,7 +179,8 @@ describe("JSON codecs for phase 2 storage and transport", () => {
     { source: session },
     ({ source }) => {
       expect(brokenRoundTrips(traffic(source))).toStrictEqual([]);
-    }
+    },
+    generated(25, 100)
   );
 
   it.effect(

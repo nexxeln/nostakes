@@ -34,6 +34,7 @@ import {
   stacksOf,
 } from "./fixtures.js";
 import { seededRandom } from "./random.js";
+import { generated } from "./scale.js";
 import { handsIn, playSession, session } from "./sessions.js";
 import type { Session } from "./sessions.js";
 
@@ -718,7 +719,8 @@ describe("generated sessions with bomb pots", () => {
     { source: session },
     ({ source }) => {
       expect(bombProblems(source).problems).toStrictEqual([]);
-    }
+    },
+    generated(25, 100)
   );
 
   it("reaches bomb pots, short antes, and two in a row in seeded sessions", () => {

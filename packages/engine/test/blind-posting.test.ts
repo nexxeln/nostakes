@@ -37,6 +37,7 @@ import {
   startHand,
 } from "./fixtures.js";
 import { seededRandom } from "./random.js";
+import { sized } from "./scale.js";
 import { shuffledDeck } from "./sessions.js";
 
 const casino: TableConfig = { ...baseConfig, blindPosting: "Casino" };
@@ -563,7 +564,7 @@ const applied = (state: TableState, command: Command) => {
 
 const COMEBACK_HANDS = 40;
 
-const SEEDED_TABLES = 800;
+const SEEDED_TABLES = sized(150, 800);
 
 const SWEEP_TIMEOUT_MS = 120_000;
 
@@ -686,7 +687,7 @@ describe("generated tables where seats bust and come back", () => {
   );
 
   it(
-    "holds over 800 seeded tables, which reach tables that grow after a heads-up hand and seats that come back having last held the button",
+    "holds over a fixed set of seeded tables, which reach tables that grow after a heads-up hand and seats that come back having last held the button",
     () => {
       let afterHeadsUp = 0;
       const problems: string[] = [];

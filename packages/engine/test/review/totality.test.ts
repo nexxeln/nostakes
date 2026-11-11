@@ -16,6 +16,7 @@ import type {
   TableState,
 } from "../../src/index.js";
 import { baseConfig, chipCount } from "../fixtures.js";
+import { generated } from "../scale.js";
 import { playSession, session } from "../sessions.js";
 import { commandMatrix, startCommands, totalityProblems } from "./matrix.js";
 
@@ -88,7 +89,7 @@ describe("totality of decide over every command in every resting phase", () => {
     ({ source }) => {
       expect(probe(source).problems).toStrictEqual([]);
     },
-    { arbitrary: { runs: 25 }, timeout: 300_000 }
+    generated(6, 25)
   );
 
   it.effect(

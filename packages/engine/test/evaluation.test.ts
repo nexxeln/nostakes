@@ -10,6 +10,7 @@ import {
 import type { Card, HandCategory } from "../src/index.js";
 import { ALL_CARDS, oracleFive, oracleSeven } from "./oracle.js";
 import { seededRandom } from "./random.js";
+import { sized } from "./scale.js";
 
 const decodeCard = Schema.decodeSync(CardFromText);
 
@@ -20,7 +21,7 @@ const describedHand = (text: string) => describeHand(evaluate(cardsOf(text)));
 
 const fullDeck = ALL_CARDS;
 
-const SEVEN_CARD_SAMPLES = 3_000_000;
+const SEVEN_CARD_SAMPLES = sized(300_000, 3_000_000);
 
 const agreement = () => {
   const engineByOracle = new Map<number, number>();
@@ -122,7 +123,7 @@ describe("evaluate", () => {
     });
   }, 120_000);
 
-  it("orders several million random seven-card hands exactly as the oracle does", () => {
+  it("orders a large sample of random seven-card hands exactly as the oracle does", () => {
     const check = agreement();
     const random = seededRandom(20_261_110);
     const twoSuits = fullDeck.filter((card) => card % 4 < 2);
