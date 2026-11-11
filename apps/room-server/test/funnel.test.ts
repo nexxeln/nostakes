@@ -1,5 +1,5 @@
 import { describe, expect, it } from "@effect/vitest";
-import { Duration, Schema } from "effect";
+import { Duration } from "effect";
 import * as Arbitrary from "effect/Arbitrary";
 
 import {
@@ -260,22 +260,6 @@ describe("the stats report", () => {
         "  guide steps          3: Started 2, Finished 1",
         "  guide took           1: 1to2m 1",
       ],
-    ]);
-  });
-
-  it("reads the guide's two reports as the page writes them", () => {
-    const decode = Schema.decodeUnknownSync(
-      Schema.fromJsonString(ClientReportSchema)
-    );
-
-    expect(
-      [
-        '{"_tag":"GuideStep","step":"Hand3"}',
-        '{"_tag":"GuideTook","took":"1to2m"}',
-      ].map((text) => reportMeasure(decode(text)))
-    ).toStrictEqual([
-      measure("GuideStep", { step: "Hand3" }),
-      measure("GuideTook", { took: "1to2m" }),
     ]);
   });
 

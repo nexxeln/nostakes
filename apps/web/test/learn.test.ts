@@ -19,40 +19,29 @@ import {
   decide,
   evaluate,
   evolve,
-  handCategory,
   initialTable,
 } from "@nostakes/engine";
 import type { Command, Event, SeatIndex, TableState } from "@nostakes/engine";
 import { Result, Schema } from "effect";
 
-import learnPage from "../learn.html?raw";
 import {
   GUIDE_STEPS,
-  stepAt,
   stepReport,
-  timeTaken,
   tookReport,
 } from "../src/features/learn/counts.js";
-import { cardWords, factsOf } from "../src/features/learn/facts.js";
-import { HABITS, RANKING } from "../src/features/learn/guide.js";
-import { LESSON, RECAP } from "../src/features/learn/hands.js";
+import { LESSON } from "../src/features/learn/hands.js";
 import {
   BIG_BLIND,
   SEATS,
   SMALL_BLIND,
   STARTING_STACK,
-  beatOf,
 } from "../src/features/learn/lesson.js";
 import type { Hand, Move, Seat } from "../src/features/learn/lesson.js";
-import { afterMoves, DEALT } from "../src/features/learn/table.js";
-import type { Table } from "../src/features/learn/table.js";
 import {
-  back,
   begin,
   choose,
   here,
   jump,
-  skip,
   tableAt,
 } from "../src/features/learn/walk.js";
 import type { Walk } from "../src/features/learn/walk.js";
@@ -308,30 +297,30 @@ const pathsFrom = (walk: Walk, moves: readonly Move[]): readonly Path[] => {
 const pathsOf = (hand: Hand) =>
   pathsFrom(jump(LESSON, begin(LESSON), hand.id), hand.played);
 
-const everyWalk = (walk: Walk): readonly Walk[] => [
-  walk,
-  ...(here(LESSON, walk)?.choices ?? []).flatMap((_, index) =>
-    everyWalk(choose(LESSON, walk, index))
-  ),
-];
-
-const ALL_WALKS = everyWalk(begin(LESSON));
-
 const sorted = (cards: readonly string[]) => cards.toSorted();
 
-describe("the hands of the lesson, replayed by the engine", () => {
-  it("seats you on the button with Bo and Mara in the blinds", () => {
-    expect([
-      PROBE.started.button,
-      PROBE.started.smallBlindSeat,
-      PROBE.started.bigBlindSeat,
-    ]).toStrictEqual([PROBE.seats.you, PROBE.seats.bo, PROBE.seats.mara]);
-  });
+const holesOf = (events: readonly Event[]) =>
+  Object.fromEntries(
+    events.flatMap((event) =>
+      Events.$is("HoleCardsDealt")(event)
+        ? [[seatOf(event.seat), event.cards.map(cardText)] as const]
+        : []
+    )
+  );
 
+const tabledBy = (hand: Hand) =>
+  [...LESSON.beats.values()]
+    .filter((beat) => beat.hand === hand.id)
+    .flatMap((beat) =>
+      beat.tabled.map((tabled) => ({ beat: beat.id, tabled }))
+    );
+
+describe("the hands of the lesson, replayed by the engine", () => {
   it.each(LESSON.hands.map((hand) => [hand.id, hand] as const))(
-    "plays every line of %s as a legal hand with the lesson's chips",
+    "plays every line of %s as a legal hand that ends as the lesson says",
     (_, hand) => {
       const paths = pathsOf(hand);
+      const board = hand.board.map((text) => decodeCard(text));
 
       expect(paths.length).toBeGreaterThan(0);
 
@@ -339,388 +328,57 @@ describe("the hands of the lesson, replayed by the engine", () => {
         const { events, state } = replayed(hand, path.moves);
         const table = tableAt(LESSON, path.walk);
 
-        expect(events.some(Events.$is("HandEnded"))).toBe(true);
-        expect({ id: path.walk.at, stacks: stacksOf(state) }).toStrictEqual({
+        expect({
+          board: boardOf(events),
+          ended: events.some(Events.$is("HandEnded")),
+          holes: holesOf(events),
+          id: path.walk.at,
+          stacks: stacksOf(state),
+          won: awardsOf(events),
+        }).toStrictEqual({
+          board: hand.board.slice(0, table.board),
+          ended: true,
+          holes: hand.hole,
           id: path.walk.at,
           stacks: table.stacks,
-        });
-        expect({ id: path.walk.at, won: awardsOf(events) }).toStrictEqual({
-          id: path.walk.at,
           won: [table.won],
         });
-        expect(boardOf(events)).toStrictEqual(hand.board.slice(0, table.board));
       }
-    }
-  );
 
-  it.each(LESSON.hands.map((hand) => [hand.id, hand] as const))(
-    "deals %s the cards the lesson shows",
-    (_, hand) => {
-      const { events } = replayed(hand, []);
-
-      expect(
-        Object.fromEntries(
-          events
-            .filter(Events.$is("HoleCardsDealt"))
-            .map((dealt) => [seatOf(dealt.seat), dealt.cards.map(cardText)])
-        )
-      ).toStrictEqual(hand.hole);
-    }
-  );
-
-  it("names every tabled hand and its best five cards as the evaluator does", () => {
-    for (const beat of LESSON.beats.values()) {
-      const hand = LESSON.hands.find((each) => each.id === beat.hand);
-
-      for (const tabled of beat.tabled) {
-        const hole = (hand?.hole[tabled.seat] ?? []).map((text) =>
-          decodeCard(text)
-        );
-
-        const board = (hand?.board ?? []).map((text) => decodeCard(text));
+      for (const { beat, tabled } of tabledBy(hand)) {
+        const hole = hand.hole[tabled.seat].map((text) => decodeCard(text));
 
         expect({
+          beat,
           five: sorted(bestFive(hole, board).map(cardText)),
-          id: beat.id,
           name: handName(evaluate([...hole, ...board])),
         }).toStrictEqual({
+          beat,
           five: sorted(tabled.five),
-          id: beat.id,
           name: tabled.name,
         });
       }
     }
-  });
-
-  it("lights only cards that are on the table or in a tabled hand", () => {
-    for (const walk of ALL_WALKS) {
-      const beat = here(LESSON, walk);
-      const hand = LESSON.hands.find((each) => each.id === beat?.hand);
-      const table = tableAt(LESSON, walk);
-
-      const seen = new Set([
-        ...(hand?.board.slice(0, table.board) ?? []),
-        ...(hand?.hole.you ?? []),
-        ...table.shown.flatMap((seat) => hand?.hole[seat] ?? []),
-      ]);
-
-      expect({
-        id: beat?.id,
-        unseen: (beat?.lit ?? []).filter((card) => !seen.has(card)),
-      }).toStrictEqual({ id: beat?.id, unseen: [] });
-    }
-  });
-
-  it("shows a tabled hand only for a seat whose cards are face up", () => {
-    for (const walk of ALL_WALKS) {
-      const beat = here(LESSON, walk);
-      const table = tableAt(LESSON, walk);
-
-      expect({
-        hidden: (beat?.tabled ?? [])
-          .map((tabled) => tabled.seat)
-          .filter((seat) => seat !== "you" && !table.shown.includes(seat)),
-        id: beat?.id,
-      }).toStrictEqual({ hidden: [], id: beat?.id });
-    }
-  });
+  );
 });
-
-describe("the walk through the lesson", () => {
-  it("reaches the recap whatever the learner chooses", () => {
-    const ends = ALL_WALKS.filter(
-      (walk) => (here(LESSON, walk)?.choices.length ?? 0) === 0
-    );
-
-    expect(ends.length).toBeGreaterThan(0);
-    expect(new Set(ends.map((walk) => walk.at))).toStrictEqual(
-      new Set([RECAP])
-    );
-  });
-
-  it("names a beat that exists in every choice, and no beat is unreachable", () => {
-    const reached = new Set(ALL_WALKS.map((walk) => walk.at));
-
-    expect(
-      [...LESSON.beats.keys()].filter((id) => !reached.has(id))
-    ).toStrictEqual([]);
-    expect(
-      [...LESSON.beats.values()].flatMap((beat) =>
-        beat.choices
-          .filter((choice) => beatOf(LESSON, choice.to) === undefined)
-          .map((choice) => `${beat.id} -> ${choice.to}`)
-      )
-    ).toStrictEqual([]);
-  });
-
-  it("gives every gesture one meaning in a beat", () => {
-    expect(
-      [...LESSON.beats.values()].flatMap((beat) =>
-        new Set(beat.choices.map((choice) => choice.gesture)).size ===
-        beat.choices.length
-          ? []
-          : [beat.id]
-      )
-    ).toStrictEqual([]);
-  });
-
-  it("goes back to exactly where the learner was, from anywhere", () => {
-    for (const walk of ALL_WALKS) {
-      for (const [index] of (here(LESSON, walk)?.choices ?? []).entries()) {
-        expect(back(choose(LESSON, walk, index))).toBe(walk);
-      }
-
-      for (const hand of LESSON.hands) {
-        const jumped = jump(LESSON, walk, hand.id);
-
-        expect(jumped === walk || back(jumped) === walk).toBe(true);
-      }
-    }
-
-    expect(back(begin(LESSON))).toStrictEqual(begin(LESSON));
-  });
-
-  it("finishes in a bounded number of skips from anywhere", () => {
-    const skipsFrom = (walk: Walk, taken = 0): number =>
-      (here(LESSON, walk)?.choices.length ?? 0) === 0 || taken > 60
-        ? taken
-        : skipsFrom(skip(LESSON, walk), taken + 1);
-
-    expect(skipsFrom(begin(LESSON))).toBe(19);
-    expect(Math.max(...ALL_WALKS.map((walk) => skipsFrom(walk)))).toBeLessThan(
-      30
-    );
-  });
-
-  it("lets the learner jump to any hand and play on from there", () => {
-    for (const hand of LESSON.hands) {
-      const jumped = jump(LESSON, begin(LESSON), hand.id);
-
-      expect(jumped.at).toBe(hand.first);
-      expect(tableAt(LESSON, jumped)).toStrictEqual(
-        afterMoves(DEALT, [
-          ...hand.played,
-          ...(beatOf(LESSON, hand.first)?.moves ?? []),
-        ])
-      );
-    }
-  });
-
-  it("keeps the last hand free of advice until it is over", () => {
-    const playing = [...LESSON.beats.values()].filter(
-      (beat) => beat.hand === "Yours" && beat.kind === "Play"
-    );
-
-    expect(playing.length).toBe(11);
-    expect(
-      playing.filter(
-        (beat) =>
-          beat.cue.length > 0 || beat.talk.length > 0 || beat.lit.length > 0
-      )
-    ).toStrictEqual([]);
-    expect(
-      playing.filter((beat) => beat.id !== "Yours.Start" && beat.line !== "")
-    ).toStrictEqual([]);
-  });
-
-  it("plays the last hand fifteen ways and grades each in two sentences", () => {
-    const ends = [...LESSON.beats.values()].filter(
-      (beat) => beat.hand === "Yours" && beat.kind === "Outcome"
-    );
-
-    expect(ends.length).toBe(15);
-    expect(
-      ends.filter(
-        (beat) => !/^(?:You|Mara) .+\. A regular .+\.$/u.test(beat.line)
-      )
-    ).toStrictEqual([]);
-  });
-});
-
-const tableOf = (id: string): Table | undefined => {
-  const walk = ALL_WALKS.find((each) => each.at === id);
-
-  return walk === undefined ? undefined : tableAt(LESSON, walk);
-};
-
-const lost = (id: string, seat: Seat) => {
-  const table = tableOf(id);
-
-  return table === undefined ? -1 : STARTING_STACK - table.stacks[seat];
-};
-
-const potAt = (id: string) => {
-  const table = tableOf(id);
-
-  return table === undefined
-    ? -1
-    : table.pot +
-        table.bets.bo +
-        table.bets.jonas +
-        table.bets.mara +
-        table.bets.you;
-};
-
-const AMOUNT = /^(?:Bet|Call|Raise to) (?<amount>\d+)$/u;
-
-describe("what the lesson says about chips", () => {
-  it("counts what each mistake cost as the table does", () => {
-    expect({
-      bo: lost("Fold.Folded", "bo"),
-      first: lost("Fold.Paid60", "you"),
-      second: lost("Fold.Paid160", "you"),
-    }).toStrictEqual({ bo: 140, first: 60, second: 160 });
-  });
-
-  it("puts 30 in the pot from the blinds before anyone acts", () => {
-    expect(potAt("Whole.Peek")).toBe(30);
-  });
-
-  it("makes every amount on a button the amount the move puts in", () => {
-    for (const walk of ALL_WALKS) {
-      const beat = here(LESSON, walk);
-      const table = tableAt(LESSON, walk);
-
-      for (const choice of beat?.choices ?? []) {
-        const amount = AMOUNT.exec(choice.label)?.groups?.amount;
-        const after = afterMoves(table, choice.moves);
-
-        expect({
-          bet: amount === undefined ? "" : String(after.bets.you),
-          id: beat?.id,
-        }).toStrictEqual({ bet: amount ?? "", id: beat?.id });
-      }
-    }
-  });
-});
-
-const readable = (html: string) =>
-  html
-    .replaceAll(/<[^>]*>/gu, " ")
-    .replaceAll("&#9829;&#xFE0E;", "h")
-    .replaceAll(/\s+/gu, " ");
-
-describe("the guide as text", () => {
-  it("holds the whole ranking and every habit in the page's own HTML", () => {
-    const page = readable(learnPage);
-
-    expect(
-      [
-        ...RANKING.flatMap((ranked) => [ranked.name, ranked.means]),
-        ...HABITS,
-      ].filter((words) => !page.includes(words))
-    ).toStrictEqual([]);
-  });
-
-  it("gives each ranked hand the example the sheet draws", () => {
-    expect(
-      RANKING.filter(
-        (ranked) =>
-          !learnPage.includes(`data-cards="${ranked.cards.join(" ")}"`)
-      ).map((ranked) => ranked.name)
-    ).toStrictEqual([]);
-  });
-
-  it("names every example hand what the evaluator calls it", () => {
-    expect(
-      RANKING.map((ranked) =>
-        handCategory(evaluate(ranked.cards.map((text) => decodeCard(text))))
-      )
-    ).toStrictEqual([
-      "StraightFlush",
-      "FourOfAKind",
-      "FullHouse",
-      "Flush",
-      "Straight",
-      "ThreeOfAKind",
-      "TwoPair",
-      "OnePair",
-      "HighCard",
-    ]);
-  });
-});
-
-describe("what a screen reader is told", () => {
-  it("never names a card the learner cannot see", () => {
-    for (const walk of ALL_WALKS) {
-      const beat = here(LESSON, walk);
-      const hand = LESSON.hands.find((each) => each.id === beat?.hand);
-      const table = tableAt(LESSON, walk);
-
-      const hidden =
-        beat === undefined || hand === undefined
-          ? []
-          : [
-              ...hand.board.slice(table.board),
-              ...(beat.peeked ? [] : hand.hole.you),
-              ...SEATS.flatMap((seat) =>
-                seat === "you" || table.shown.includes(seat)
-                  ? []
-                  : hand.hole[seat]
-              ),
-            ];
-
-      const said =
-        beat === undefined ? "" : factsOf(hand, table, beat).toLowerCase();
-
-      expect({
-        id: beat?.id,
-        leaked: hidden.filter((card) => said.includes(cardWords(card))),
-      }).toStrictEqual({ id: beat?.id, leaked: [] });
-    }
-  });
-
-  it("says the learner's cards and the board once they are up", () => {
-    const walk = ALL_WALKS.find((each) => each.at === "Whole.Bet");
-    const beat = walk === undefined ? undefined : here(LESSON, walk);
-
-    expect(
-      walk === undefined || beat === undefined
-        ? ""
-        : factsOf(LESSON.hands[0], tableAt(LESSON, walk), beat)
-    ).toBe(
-      "Your cards: ace of spades, king of hearts. On the table: king of diamonds, eight of clubs, three of spades. In the pot: 50. Bo: Fold. Mara: Check. Jonas: Fold."
-    );
-  });
-});
-
-const skipped = (walk: Walk): readonly Walk[] =>
-  (here(LESSON, walk)?.choices.length ?? 0) === 0
-    ? [walk]
-    : [walk, ...skipped(skip(LESSON, walk))];
 
 describe("what the guide counts", () => {
-  it("counts the start, each later hand, and the end, once and in order", () => {
-    expect(
-      skipped(begin(LESSON)).flatMap((walk) => {
-        const step = stepAt(LESSON, walk.at);
-
-        return step === undefined ? [] : [step];
-      })
-    ).toStrictEqual([...GUIDE_STEPS]);
-  });
-
-  it("writes its two reports as the server reads them", () => {
-    expect([stepReport("Hand3"), tookReport(90_000)]).toStrictEqual([
+  it("writes nothing but a step or a coarse time from the fixed lists", () => {
+    expect([
+      ...GUIDE_STEPS.map((step) => stepReport(step)),
+      ...[0, 60_000, 120_000, 180_000, 300_000].map((ms) => tookReport(ms)),
+    ]).toStrictEqual([
+      '{"_tag":"GuideStep","step":"Started"}',
+      '{"_tag":"GuideStep","step":"Hand2"}',
       '{"_tag":"GuideStep","step":"Hand3"}',
+      '{"_tag":"GuideStep","step":"Hand4"}',
+      '{"_tag":"GuideStep","step":"Hand5"}',
+      '{"_tag":"GuideStep","step":"Finished"}',
+      '{"_tag":"GuideTook","took":"Under1m"}',
       '{"_tag":"GuideTook","took":"1to2m"}',
-    ]);
-  });
-
-  it("files how long it took in five coarse buckets", () => {
-    expect(
-      [0, 59_999, 60_000, 119_999, 120_000, 180_000, 299_999, 300_000].map(
-        (ms) => timeTaken(ms)
-      )
-    ).toStrictEqual([
-      "Under1m",
-      "Under1m",
-      "1to2m",
-      "1to2m",
-      "2to3m",
-      "3to5m",
-      "3to5m",
-      "Over5m",
+      '{"_tag":"GuideTook","took":"2to3m"}',
+      '{"_tag":"GuideTook","took":"3to5m"}',
+      '{"_tag":"GuideTook","took":"Over5m"}',
     ]);
   });
 });

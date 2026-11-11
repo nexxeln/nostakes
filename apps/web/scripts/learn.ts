@@ -12,6 +12,8 @@ const PAGE = "/learn.html";
 
 const STEP_TIMEOUT_MS = 6000;
 
+const READING_MS = 700;
+
 const HEADINGS = [
   "How to play poker",
   "What happens in a hand",
@@ -62,7 +64,10 @@ window.__shiftsFrom = Infinity;
 new PerformanceObserver((list) => {
   for (const entry of list.getEntries()) {
     if (!entry.hadRecentInput && entry.startTime >= globalThis.__shiftsFrom) {
-      globalThis.__shifts.push((entry.sources || []).map((source) => source.node ? (source.node.className || source.node.nodeName) + "" : "?").join(", ") + " " + entry.value.toFixed(4));
+      const box = (rect) => [rect.x, rect.y, rect.width, rect.height].map(Math.round).join(" ");
+      const beat = document.querySelector("[data-lesson]")?.dataset.beat ?? "no beat";
+      const moved = (entry.sources || []).map((source) => (source.node ? (source.node.className || source.node.nodeName) + "" : "?") + " from " + box(source.previousRect) + " to " + box(source.currentRect)).join(", ");
+      globalThis.__shifts.push(entry.value.toFixed(4) + " at " + beat + ", " + Math.round(entry.startTime - globalThis.__shiftsFrom) + " ms in: " + moved);
     }
   }
 }).observe({ buffered: true, type: "layout-shift" });
@@ -267,19 +272,46 @@ const explore = (
     return taken;
   });
 
-const skipToTheEnd = (page: Page): Effect.Effect<void, LearnCheckFailed> =>
-  Effect.gen(function* skipOn() {
-    if ((yield* beatNow(page)) !== "Recap") {
+const settled = (page: Page) =>
+  attempt("wait for the table's moves to arrive", () =>
+    page.waitForFunction(
+      () =>
+        document.querySelector<HTMLElement>("[data-lesson]")?.dataset
+          .arriving === undefined,
+      undefined,
+      { timeout: STEP_TIMEOUT_MS }
+    )
+  );
+
+const READ_SLOWLY = /^(?:Intro|Recap|Whole\..+)$/u;
+
+const readToTheEnd = (
+  page: Page,
+  reads: boolean
+): Effect.Effect<void, LearnCheckFailed> =>
+  Effect.gen(function* readOn() {
+    const beat = yield* beatNow(page);
+
+    if (reads && READ_SLOWLY.test(beat)) {
+      yield* settled(page);
+      yield* attempt("read the beat without touching the page", () =>
+        page.waitForTimeout(READING_MS)
+      );
+    }
+
+    if (beat !== "Recap") {
       yield* attempt("tap Skip", () =>
         page.locator(".controls .step").last().click()
       );
-      yield* skipToTheEnd(page);
+      yield* readToTheEnd(page, reads);
     }
   });
 
 interface Look {
   readonly driver: Driver;
+  readonly everyChoice: boolean;
   readonly height: number;
+  readonly reads: boolean;
   readonly still: boolean;
   readonly theme: "dark" | "light";
   readonly touch: boolean;
@@ -289,7 +321,9 @@ interface Look {
 const LOOKS: readonly Look[] = [
   {
     driver: byPointer(true),
+    everyChoice: true,
     height: 640,
+    reads: true,
     still: false,
     theme: "light",
     touch: true,
@@ -297,7 +331,9 @@ const LOOKS: readonly Look[] = [
   },
   {
     driver: byKeys,
+    everyChoice: true,
     height: 900,
+    reads: false,
     still: false,
     theme: "dark",
     touch: false,
@@ -305,7 +341,9 @@ const LOOKS: readonly Look[] = [
   },
   {
     driver: byPointer(false),
+    everyChoice: false,
     height: 844,
+    reads: false,
     still: true,
     theme: "dark",
     touch: false,
@@ -313,9 +351,9 @@ const LOOKS: readonly Look[] = [
   },
 ];
 
-const checkTheEnd = (page: Page, name: string) =>
+const checkTheEnd = (page: Page, name: string, reads: boolean) =>
   Effect.gen(function* checkRecap() {
-    yield* skipToTheEnd(page);
+    yield* readToTheEnd(page, reads);
     yield* attempt("see the recap", () =>
       page.locator(".recap h2").waitFor({ state: "visible", timeout: 4000 })
     );
@@ -408,18 +446,45 @@ const checkLook = (engine: BrowserType, origin: string, look: Look) => {
       page.evaluate(() => document.fonts.ready.then(() => true))
     );
 
-    yield* attempt("count shifts from the styled page on", () =>
+    yield* attempt("wait for the page's own styles", () =>
+      page.waitForFunction(
+        () => getComputedStyle(document.body).marginLeft === "0px",
+        undefined,
+        { timeout: 20_000 }
+      )
+    );
+    yield* attempt("count shifts from the first styled frame on", () =>
       page.evaluate(() => {
-        Object.defineProperty(globalThis, "__shiftsFrom", {
-          configurable: true,
-          value: performance.now(),
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            Object.defineProperty(globalThis, "__shiftsFrom", {
+              configurable: true,
+              value: performance.now(),
+            });
+          });
         });
       })
     );
+    yield* attempt("wait for that frame", () =>
+      page.waitForFunction(
+        () => {
+          const from: unknown = Object.getOwnPropertyDescriptor(
+            globalThis,
+            "__shiftsFrom"
+          )?.value;
 
-    const taken = yield* explore(page, look.driver, new Set());
+          return Number.isFinite(from);
+        },
+        undefined,
+        { timeout: 20_000 }
+      )
+    );
 
-    yield* checkTheEnd(page, name);
+    const taken = look.everyChoice
+      ? yield* explore(page, look.driver, new Set())
+      : 0;
+
+    yield* checkTheEnd(page, name, look.reads);
 
     const shifts =
       engine.name() === "chromium"
@@ -440,7 +505,7 @@ const checkLook = (engine: BrowserType, origin: string, look: Look) => {
       ...shifts.map((shift) => `layout shift: ${shift}`),
     ]);
     yield* Console.log(
-      `${name}: took each of the ${taken} choices once and came back from it, then kept the card and sent the link`
+      `${name}: ${look.everyChoice ? `took each of the ${taken} choices once and came back from it` : "skipped to the end"}, then kept the card and sent the link`
     );
   }).pipe(Effect.scoped);
 };
