@@ -1,22 +1,9 @@
-// @effect-diagnostics nodeBuiltinImport:off -- These tests create temporary source fixtures and run the real oxlint binary against them.
-import { spawnSync } from "node:child_process";
-import {
-  mkdirSync,
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
-import { tmpdir } from "node:os";
-import path from "node:path";
+import { describe } from "vitest";
 
-import { describe, expect, it } from "vitest";
+import { fixtureSuite, fromRepo, repoLintConfig } from "./lint-batch.js";
+import type { LintResult } from "./lint-batch.js";
 
-const repoRoot = path.resolve(import.meta.dirname, "../../..");
-
-const oxlint = path.join(repoRoot, "node_modules/.bin/oxlint");
-
-const plugin = path.join(repoRoot, "scripts/oxlint-plugin-patterns.ts");
+const plugin = fromRepo("scripts/oxlint-plugin-patterns.ts");
 
 const rules = [
   "nostakes-patterns/acquire-release-constructs-in-acquire-body",
@@ -29,45 +16,18 @@ const rules = [
   "nostakes-patterns/no-sleep-in-loop",
 ];
 
-interface LintResult {
-  readonly output: string;
-  readonly status: number;
-}
+const { each, expect, it, linter } = fixtureSuite();
+
+const lintPatterns = linter({
+  jsPlugins: [{ name: "nostakes-patterns", specifier: plugin }],
+  rules: Object.fromEntries(rules.map((rule) => [rule, "error"])),
+});
 
 const lintFixture = (
   area: string,
   source: string,
   name = "fixture.ts"
-): LintResult => {
-  const directory = mkdtempSync(path.join(tmpdir(), "nostakes-patterns-"));
-  const fixtureDirectory = path.join(directory, area, "pattern-fixtures");
-  const config = path.join(directory, "oxlint.json");
-  const file = path.join(fixtureDirectory, name);
-
-  mkdirSync(fixtureDirectory, { recursive: true });
-  writeFileSync(
-    config,
-    JSON.stringify({
-      jsPlugins: [{ name: "nostakes-patterns", specifier: plugin }],
-      rules: Object.fromEntries(rules.map((rule) => [rule, "error"])),
-    })
-  );
-  writeFileSync(file, source);
-
-  try {
-    const result = spawnSync(oxlint, ["-c", config, "--no-ignore", file], {
-      cwd: repoRoot,
-      encoding: "utf-8",
-    });
-
-    return {
-      output: `${result.stdout}${result.stderr}`,
-      status: result.status ?? -1,
-    };
-  } finally {
-    rmSync(directory, { force: true, recursive: true });
-  }
-};
+): LintResult => lintPatterns(`${area}/pattern-fixtures/${name}`, source);
 
 const expectRule = (result: LintResult, message: string) => {
   expect(result.status).not.toBe(0);
@@ -280,7 +240,7 @@ describe("nostakes pattern rules", () => {
     ).toBe(0);
   });
 
-  it.each([
+  each([
     ["Deferred", "make"],
     ["Deferred", "makeUnsafe"],
     ["Cache", "make"],
@@ -306,7 +266,7 @@ describe("nostakes pattern rules", () => {
     ["TxSemaphore", "make"],
   ])(
     "keeps %s.%s construction with its invocation owner",
-    (primitive, make) => {
+    ([primitive, make]) => {
       for (const area of ["apps/server/src", "packages/engine/src"]) {
         for (const source of [
           `import { ${primitive} as P } from "effect"; export const shared = P.${make}(1);`,
@@ -344,10 +304,7 @@ describe("nostakes pattern rules", () => {
   );
 
   it("turns every pattern rule on in the repo config", () => {
-    const configSource = readFileSync(
-      path.join(repoRoot, "oxlint.config.ts"),
-      "utf-8"
-    );
+    const configSource = repoLintConfig();
 
     for (const rule of rules) {
       expect(configSource).toContain(`"${rule}": "error"`);
@@ -405,7 +362,7 @@ describe("nostakes pattern rules", () => {
     expect(result.status).toBe(0);
   });
 
-  it.each(["cached", "cachedWithTTL", "cachedInvalidateWithTTL"])(
+  each(["cached", "cachedWithTTL", "cachedInvalidateWithTTL"])(
     "rejects %s in shared initialization and permits request-local work",
     (name) => {
       const message = "Effect.cached* at this scope shares pending work";

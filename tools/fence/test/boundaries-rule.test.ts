@@ -1,62 +1,23 @@
-// @effect-diagnostics nodeBuiltinImport:off -- These tests create temporary source fixtures and run the real oxlint binary against them.
-import { spawnSync } from "node:child_process";
-import {
-  mkdirSync,
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
-import { tmpdir } from "node:os";
-import path from "node:path";
+import { describe } from "vitest";
 
-import { describe, expect, it } from "vitest";
+import { fixtureSuite, fromRepo, repoLintConfig } from "./lint-batch.js";
+import type { LintResult } from "./lint-batch.js";
 
-const repoRoot = path.resolve(import.meta.dirname, "../../..");
+const plugin = fromRepo("scripts/oxlint-plugin-boundaries.ts");
 
-const oxlint = path.join(repoRoot, "node_modules/.bin/oxlint");
+const { expect, it, linter } = fixtureSuite();
 
-const plugin = path.join(repoRoot, "scripts/oxlint-plugin-boundaries.ts");
+const lintBoundaries = linter({
+  jsPlugins: [{ name: "nostakes-boundaries", specifier: plugin }],
+  rules: {
+    "nostakes-boundaries/no-browser-globals-on-server": "error",
+    "nostakes-boundaries/no-cross-layer-imports": "error",
+    "nostakes-boundaries/no-media-library-outside-bindings": "error",
+  },
+});
 
-interface LintResult {
-  readonly output: string;
-  readonly status: number;
-}
-
-const lintFixture = (area: string, source: string): LintResult => {
-  const directory = mkdtempSync(path.join(tmpdir(), "nostakes-boundaries-"));
-  const fixtureDirectory = path.join(directory, area, "boundary-fixtures");
-  const config = path.join(directory, "oxlint.json");
-  const file = path.join(fixtureDirectory, "fixture.ts");
-
-  mkdirSync(fixtureDirectory, { recursive: true });
-  writeFileSync(
-    config,
-    JSON.stringify({
-      jsPlugins: [{ name: "nostakes-boundaries", specifier: plugin }],
-      rules: {
-        "nostakes-boundaries/no-browser-globals-on-server": "error",
-        "nostakes-boundaries/no-cross-layer-imports": "error",
-        "nostakes-boundaries/no-media-library-outside-bindings": "error",
-      },
-    })
-  );
-  writeFileSync(file, source);
-
-  try {
-    const result = spawnSync(oxlint, ["-c", config, "--no-ignore", file], {
-      cwd: repoRoot,
-      encoding: "utf-8",
-    });
-
-    return {
-      output: `${result.stdout}${result.stderr}`,
-      status: result.status ?? -1,
-    };
-  } finally {
-    rmSync(directory, { force: true, recursive: true });
-  }
-};
+const lintFixture = (area: string, source: string): LintResult =>
+  lintBoundaries(`${area}/boundary-fixtures/fixture.ts`, source);
 
 const expectRule = (result: LintResult, message: string) => {
   expect(result.status).not.toBe(0);
@@ -70,10 +31,7 @@ const expectRuleSoft = (result: LintResult, message: string) => {
 
 describe("architecture boundary rules", () => {
   it("turns every boundary rule on in the repo config", () => {
-    const configSource = readFileSync(
-      path.join(repoRoot, "oxlint.config.ts"),
-      "utf-8"
-    );
+    const configSource = repoLintConfig();
 
     for (const rule of [
       "nostakes-boundaries/no-browser-globals-on-server",

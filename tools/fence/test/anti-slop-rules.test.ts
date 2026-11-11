@@ -1,23 +1,15 @@
-// @effect-diagnostics nodeBuiltinImport:off -- These tests write temporary source fixtures and run the real oxlint binary against them.
-import { spawnSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import path from "node:path";
+import { describe } from "vitest";
 
-import { describe, expect, it } from "vitest";
-
-const repoRoot = path.resolve(import.meta.dirname, "../../..");
-
-const oxlint = path.join(repoRoot, "node_modules/.bin/oxlint");
+import { fixtureSuite, fromRepo, repoLintConfig } from "./lint-batch.js";
 
 const plugins = [
   {
     name: "anti-slop",
-    specifier: path.join(repoRoot, "tools/oxlint/anti-slop/index.ts"),
+    specifier: fromRepo("tools/oxlint/anti-slop/index.ts"),
   },
   {
     name: "anti-slop-effect",
-    specifier: path.join(repoRoot, "tools/oxlint/anti-slop/effect/index.ts"),
+    specifier: fromRepo("tools/oxlint/anti-slop/effect/index.ts"),
   },
 ];
 
@@ -27,32 +19,6 @@ interface Case {
   readonly rejected: string;
   readonly rule: string;
 }
-
-const lint = (rule: string, file: string, source: string) => {
-  const directory = mkdtempSync(path.join(tmpdir(), "nostakes-anti-slop-"));
-  const config = path.join(directory, "oxlint.json");
-  const target = path.join(directory, file);
-
-  writeFileSync(
-    config,
-    JSON.stringify({ jsPlugins: plugins, rules: { [rule]: "error" } })
-  );
-  writeFileSync(target, source);
-
-  try {
-    const result = spawnSync(oxlint, ["-c", config, "--no-ignore", target], {
-      cwd: repoRoot,
-      encoding: "utf-8",
-    });
-
-    return {
-      output: `${result.stdout}${result.stderr}`,
-      status: result.status ?? -1,
-    };
-  } finally {
-    rmSync(directory, { force: true, recursive: true });
-  }
-};
 
 const cases: readonly Case[] = [
   {
@@ -226,8 +192,18 @@ const reportedAs = (rule: string) => {
   return `${plugin}(${name})`;
 };
 
+const { each, expect, it, linter } = fixtureSuite();
+
+const lintAll = linter({
+  jsPlugins: plugins,
+  rules: Object.fromEntries(cases.map(({ rule }) => [rule, "error"])),
+});
+
+const lint = (rule: string, file: string, source: string) =>
+  lintAll(file, source, [rule]);
+
 describe("anti-slop rules", () => {
-  it.each(cases)(
+  each(cases)(
     "$rule rejects the slop and accepts the fix",
     ({ accepted, file, rejected, rule }) => {
       const slop = lint(rule, file, rejected);
@@ -241,10 +217,7 @@ describe("anti-slop rules", () => {
   );
 
   it("has a case for every anti-slop rule the repo config turns on", () => {
-    const configSource = readFileSync(
-      path.join(repoRoot, "oxlint.config.ts"),
-      "utf-8"
-    );
+    const configSource = repoLintConfig();
 
     const enabled = [
       ...configSource.matchAll(/"(?<rule>anti-slop[\w-]*\/[\w-]+)": "error"/gu),
