@@ -5,7 +5,7 @@ import { Option } from "effect";
 import { CLOSE_VERDICTS, closeReasonIn } from "../src/index.js";
 
 describe("close reasons", () => {
-  it("refuses a bad token, a halted or missing room, a room taken over by the player's newer sockets, a pass the host removed, and anything the client sent wrong", () => {
+  it("refuses a bad token, a halted or missing room, a room taken over by the player's newer sockets, a pass the host removed, a pass that only knocks, and anything the client sent wrong", () => {
     const refusals = CloseReasonSchema.literals.filter(
       (reason) => CLOSE_VERDICTS[reason] === "Refuse"
     );
@@ -18,6 +18,7 @@ describe("close reasons", () => {
       "NotFound",
       "OpenedElsewhere",
       "Removed",
+      "Knocking",
     ]);
   });
 

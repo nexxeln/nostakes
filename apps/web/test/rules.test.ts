@@ -167,6 +167,7 @@ describe("the house rules copy", () => {
 
   it("hides the rules that do not matter under the others", () => {
     expect(hidden(openDraft(AN_EVENING))).toEqual([
+      "knockSeconds",
       "table.ante.amount",
       "timeBankRefill.everyHands",
       "timeBankRefill.seconds",

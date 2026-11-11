@@ -90,6 +90,7 @@ const answer = (deadline: Deadline, now: number, seed: number): RoomCommand => {
 
   return Deadlines.$match(deadline, {
     DealDue: () => serverAnswer(Deadlines.DealDue({ at }), seed),
+    KnockLapses: () => serverAnswer(Deadlines.KnockLapses({ at }), seed),
     QueueDue: () => serverAnswer(Deadlines.QueueDue({ at }), seed),
     QuietDue: () => serverAnswer(Deadlines.QuietDue({ at }), seed),
     RunChoiceClock: expire,
@@ -103,6 +104,7 @@ const answer = (deadline: Deadline, now: number, seed: number): RoomCommand => {
 
 const freshJoinRefused = (state: Open) =>
   state.settings.locked ||
+  state.settings.approval.joins ||
   state.members.length + state.departed.length >= MOST_PEOPLE;
 
 const returning = (state: Open, without?: PlayerId) =>

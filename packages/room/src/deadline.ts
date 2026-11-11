@@ -6,6 +6,7 @@ import { MillisSchema } from "./time.js";
 
 export const DeadlineSchema = Schema.TaggedUnion({
   DealDue: { at: MillisSchema },
+  KnockLapses: { at: MillisSchema },
   QueueDue: { at: MillisSchema },
   QuietDue: { at: MillisSchema },
   RunChoiceClock: { at: MillisSchema },

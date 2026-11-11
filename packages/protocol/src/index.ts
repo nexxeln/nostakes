@@ -33,6 +33,8 @@ export {
 export {
   haltedStandings,
   joinRefused,
+  knockStandings,
+  knockingPass,
   revokedStandings,
   HttpRefusalSchema,
   PlainRefusalSchema,

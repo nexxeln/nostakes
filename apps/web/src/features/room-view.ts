@@ -1,11 +1,15 @@
+import { avatarFor } from "@nostakes/avatar";
 import type { PlayerId } from "@nostakes/protocol";
 import { MemberCommandSchema, RoomViews } from "@nostakes/room";
+import type { KnockView } from "@nostakes/room";
 import { Option } from "effect";
 import type { Html, HtmlBuilder } from "foldkit/html";
 
 import { attendanceLine } from "./attendance-line.js";
 import { commandButton } from "./buttons.js";
 import { faceButton } from "./chrome.js";
+import { DOOR_LINES, knocksAgain } from "./door.js";
+import { face } from "./face-builder.js";
 import {
   fairLabel,
   fairParagraph,
@@ -25,10 +29,17 @@ import type { Message } from "./message.js";
 import {
   FairMarks,
   HaltedStandings,
+  KnockAnswers,
   RemovedResults,
   pageTheme,
 } from "./model.js";
-import type { HaltedStanding, InRoom, Model, RemovedResult } from "./model.js";
+import type {
+  DoorAnswer,
+  HaltedStanding,
+  InRoom,
+  Model,
+  RemovedResult,
+} from "./model.js";
 import { momentElement } from "./moments/element.js";
 import { handEnded } from "./moments/watch.js";
 import { updateLine } from "./page-update.js";
@@ -361,10 +372,58 @@ const requestPill = (
     [h.span([h.Class("request-text")], [text]), ...buttons]
   );
 
-const hostRequests = (room: InRoom, view: OpenView, h: H): Html => {
+const KNOCK_FACE_PX = 36;
+
+const knockLine = (
+  model: Model,
+  room: InRoom,
+  knock: OpenView["knocking"][number],
+  h: H
+): Html =>
+  h.div(
+    [h.Key(`knock-${knock.player}`), h.Class("request knock")],
+    [
+      face(
+        avatarFor(knock.avatar),
+        "Resting",
+        { size: KNOCK_FACE_PX, theme: pageTheme(model) },
+        "face-frame request-face",
+        h
+      ),
+      h.span(
+        [h.Class("request-text")],
+        [h.bdi([], [knock.name]), " is at the door"]
+      ),
+      commandButton(
+        h,
+        room,
+        Commands.LetIn.make({ player: knock.player }),
+        "Let in",
+        "Letting them in",
+        "button primary small"
+      ),
+      commandButton(
+        h,
+        room,
+        Commands.TurnAway.make({ player: knock.player }),
+        "Turn away",
+        "Turning them away",
+        "button quiet small"
+      ),
+    ]
+  );
+
+const hostRequests = (
+  model: Model,
+  room: InRoom,
+  view: OpenView,
+  h: H
+): Html => {
   if (!isYou(view, view.host)) {
     return h.empty;
   }
+
+  const knocks = view.knocking.map((knock) => knockLine(model, room, knock, h));
 
   const seats = view.requests.seats.map((request) =>
     requestPill(
@@ -418,9 +477,9 @@ const hostRequests = (room: InRoom, view: OpenView, h: H): Html => {
     )
   );
 
-  return seats.length + chips.length === 0
+  return knocks.length + seats.length + chips.length === 0
     ? h.empty
-    : h.div([h.Class("requests")], [...seats, ...chips]);
+    : h.div([h.Class("requests")], [...knocks, ...seats, ...chips]);
 };
 
 const waitingCall = (room: InRoom, view: OpenView, h: H): Html => {
@@ -509,7 +568,7 @@ const openRoomView = (
     [h.Class("room-body")],
     [
       tableView(model, room, view, presence, h),
-      hostRequests(room, view, h),
+      hostRequests(model, room, view, h),
       activeSheet(model, room, view, presence, h),
     ]
   );
@@ -639,6 +698,63 @@ const homeButton = (label: string, h: H): Html =>
     [h.Type("button"), h.Class("button"), h.OnClick(Messages.ClickedHome())],
     [label]
   );
+
+const DOOR_FACE_PX = 96;
+
+const knockPanel = (model: Model, knock: KnockView, h: H): Html => {
+  const waiting = knock.answer === "Waiting";
+
+  return h.section(
+    [h.Class("card-panel door")],
+    [
+      face(
+        avatarFor(knock.avatar),
+        "Resting",
+        { size: DOOR_FACE_PX, theme: pageTheme(model) },
+        "face-frame door-face",
+        h
+      ),
+      h.h2(
+        [h.Class("sheet-title"), h.Role("status")],
+        [DOOR_LINES[knock.answer]]
+      ),
+      waiting
+        ? h.p(
+            [h.Class("muted")],
+            [h.bdi([], [knock.name]), ` · room ${knock.code}`]
+          )
+        : h.empty,
+      knocksAgain(knock.answer)
+        ? h.button(
+            [
+              h.Type("button"),
+              h.Class("button primary"),
+              h.OnClick(Messages.ClickedKnockAgain()),
+            ],
+            [knock.answer === "NameTaken" ? "Pick another name" : "Knock again"]
+          )
+        : h.empty,
+      homeButton(waiting ? "Stop waiting" : "Back home", h),
+    ]
+  );
+};
+
+const doorView = (model: Model, door: DoorAnswer, h: H): Html =>
+  KnockAnswers.match(door, {
+    Asking: () => h.p([h.Class("muted opening")], ["Checking the door…"]),
+    Missing: ({ reason }) =>
+      h.section(
+        [h.Class("card-panel door")],
+        [
+          h.p(
+            [h.Class("problem"), h.Role("alert")],
+            [`The door could not be checked: ${reason}. Trying again.`]
+          ),
+          homeButton("Back home", h),
+        ]
+      ),
+    Shown: ({ knock }) => knockPanel(model, knock, h),
+  });
 
 const stillPlayingOut = (view: OpenView) =>
   view.seats.some(({ occupant }) =>
@@ -860,42 +976,56 @@ const haltedView = (room: InRoom, standing: HaltedStanding, h: H): Html =>
       }),
   });
 
-export const roomView = (model: Model, room: InRoom, h: H): Html => {
+const roomBody = (
+  model: Model,
+  room: InRoom,
+  presence: readonly PlayerId[],
+  h: H
+): Html => {
   const view = viewOf(room);
-  const open = view.pipe(Option.filter(RoomViews.$is("Open")));
+  const refused = Option.exists(room.link, ({ phase }) => phase === "Refused");
+
+  return Option.match(room.removed, {
+    onNone: () =>
+      Option.isSome(room.halted)
+        ? haltedView(room, room.halted.value, h)
+        : Option.match(view, {
+            onNone: () =>
+              refused
+                ? refusedView(room, h)
+                : h.p([h.Class("muted opening")], ["Opening the room…"]),
+            onSome: (current) =>
+              RoomViews.$match(current, {
+                Closed: (closed) => closedRoomView(model, room, closed, h),
+                Open: (live) =>
+                  hasLeft(live)
+                    ? leftRoomView(live, h)
+                    : openRoomView(model, room, live, presence, h),
+              }),
+          }),
+    onSome: (removed) => removedView(removed, h),
+  });
+};
+
+export const roomView = (model: Model, room: InRoom, h: H): Html => {
+  const open = viewOf(room).pipe(Option.filter(RoomViews.$is("Open")));
 
   const presence = Option.match(room.link, {
     onNone: () => [],
     onSome: (link) => link.presence,
   });
 
-  const refused = Option.exists(room.link, ({ phase }) => phase === "Refused");
-
-  return h.main(
-    [h.Class("page room")],
-    [
-      header(model, room, open, h),
-      noticeLine(model, room, h),
-      Option.match(room.removed, {
-        onNone: () =>
-          Option.isSome(room.halted)
-            ? haltedView(room, room.halted.value, h)
-            : Option.match(view, {
-                onNone: () =>
-                  refused
-                    ? refusedView(room, h)
-                    : h.p([h.Class("muted opening")], ["Opening the room…"]),
-                onSome: (current) =>
-                  RoomViews.$match(current, {
-                    Closed: (closed) => closedRoomView(model, room, closed, h),
-                    Open: (live) =>
-                      hasLeft(live)
-                        ? leftRoomView(live, h)
-                        : openRoomView(model, room, live, presence, h),
-                  }),
-              }),
-        onSome: (removed) => removedView(removed, h),
-      }),
-    ]
-  );
+  return Option.match(room.door, {
+    onNone: () =>
+      h.main(
+        [h.Class("page room")],
+        [
+          header(model, room, open, h),
+          noticeLine(model, room, h),
+          roomBody(model, room, presence, h),
+        ]
+      ),
+    onSome: (door) =>
+      h.main([h.Class("page room at-the-door")], [doorView(model, door, h)]),
+  });
 };

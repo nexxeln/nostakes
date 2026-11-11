@@ -3,6 +3,7 @@ import { Clock, Effect, Option, Predicate, Ref, Schema, Stream } from "effect";
 import { Subscription } from "foldkit";
 import type { ManagedResource } from "foldkit";
 
+import { DOOR_POLL_MS, stillWaiting } from "../features/door.js";
 import { Messages } from "../features/message.js";
 import type { Message } from "../features/message.js";
 import type { Link, Model } from "../features/model.js";
@@ -105,6 +106,11 @@ const ticks = Stream.tick(TICK).pipe(
   Stream.map((now) => Messages.Ticked({ now }))
 );
 
+const doorPolls = Stream.tick(DOOR_POLL_MS).pipe(
+  Stream.drop(1),
+  Stream.map(() => Messages.PolledDoor())
+);
+
 const schemeChanges = Stream.suspend(() =>
   Stream.fromEventListener(globalThis.matchMedia(DARK_SCHEME), "change")
 ).pipe(Stream.map(() => Messages.ChangedSystemTheme({ theme: systemTheme() })));
@@ -196,6 +202,16 @@ export const subscriptions = Subscription.make<
           (room) =>
             clockRunning(room) || signalsShowing(room) || waitsToClaimHost(room)
         ),
+      }),
+    }
+  ),
+  door: entry(
+    { waiting: Schema.Boolean },
+    {
+      dependenciesToStream: ({ waiting }) =>
+        waiting ? doorPolls : Stream.empty,
+      modelToDependencies: (model) => ({
+        waiting: Option.exists(roomOf(model), stillWaiting),
       }),
     }
   ),

@@ -74,6 +74,10 @@ export const DEFAULT_PAUSE_WHEN_AWAY_SECONDS = 120;
 
 export const MIN_SEATS = 2;
 
+export const MIN_KNOCK_SECONDS = 10;
+
+export const DEFAULT_KNOCK_SECONDS = 300;
+
 export const SeatCountSchema = Schema.Int.check(
   Schema.isBetween({ maximum: SEAT_COUNT, minimum: MIN_SEATS })
 );
@@ -83,6 +87,11 @@ export const ApprovalSchema = Schema.Struct({
     description:
       "The host approves every buy-in and top-up from another player before the chips arrive.",
     title: "Approve chips",
+  }),
+  joins: setting(Schema.Boolean, false, {
+    description:
+      "Whether someone new knocks instead of joining. On: a person the room has not seen waits at the door until the host lets them in or turns them away, and learns nothing about the room meanwhile. Someone who left still comes back with their pass. Off: anyone with the link joins at once.",
+    title: "Approve joins",
   }),
   seats: Schema.Boolean.annotate({
     description:
@@ -139,6 +148,15 @@ const settingsFields = (shuffleWhenAbsent: Shuffle) => ({
       "Automatic deals the next hand once the pause after a hand is over. Host waits for the host to deal each hand.",
     title: "Who deals",
   }),
+  knockSeconds: setting(
+    wholeSeconds(MIN_KNOCK_SECONDS, MAX_CLOCK_SECONDS),
+    DEFAULT_KNOCK_SECONDS,
+    {
+      description:
+        "Seconds a knock waits for the host to answer before it lapses. The person may knock again once it has.",
+      title: "Knocks wait",
+    }
+  ),
   leavingMidHand: setting(LeavingMidHandSchema, "ActedFor", {
     description:
       "What happens to a player who leaves their seat during a hand they are in. ActedFor: the room checks or folds for them whenever the action reaches them. PlaysOn: they play the hand out on their own clock, and stand up when it ends. A player who leaves the room is always acted for.",

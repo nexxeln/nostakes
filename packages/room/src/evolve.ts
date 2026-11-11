@@ -33,7 +33,7 @@ import type {
   Sealed,
   SealedDeals,
 } from "./state.js";
-import { latest } from "./time.js";
+import { latest, secondsAfter } from "./time.js";
 import type { Millis } from "./time.js";
 
 export const opened = (event: RoomEventOf<"RoomOpened">): Open =>
@@ -57,6 +57,7 @@ export const opened = (event: RoomEventOf<"RoomOpened">): Open =>
     handStacks: new Map(),
     host: event.host,
     hostAway: Option.none(),
+    knocks: [],
     members: [],
     now: event.at,
     posters: [],
@@ -380,6 +381,28 @@ const evolveOpen = (state: Open, event: RoomEvent): RoomState =>
       host,
       hostAway: Option.none(),
     }),
+    KnockAnswered: ({ outcome, player }) => ({
+      ...state,
+      knocks: state.knocks.map((knock) =>
+        knock.player === player
+          ? { ...knock, outcome: Option.some(outcome) }
+          : knock
+      ),
+    }),
+    Knocked: ({ at, avatar, name, player }) => ({
+      ...state,
+      knocks: [
+        ...state.knocks,
+        {
+          avatar,
+          lapsesAt: secondsAfter(at, state.settings.knockSeconds),
+          name,
+          outcome: Option.none(),
+          player,
+          since: at,
+        },
+      ],
+    }),
     LeaveQueued: ({ player }) => ({
       ...state,
       queued: {
@@ -453,6 +476,7 @@ const evolveOpen = (state: Open, event: RoomEvent): RoomState =>
         code: state.code,
         departed: state.departed,
         entries: state.entries,
+        knocks: state.knocks,
         members: state.members,
         now: at,
         recap: NO_RECAP,

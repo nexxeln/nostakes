@@ -6,6 +6,7 @@ import type { Step } from "./batch.js";
 import { RoomCommands } from "./commands.js";
 import type { RoomCommandOf } from "./commands.js";
 import type { Decision } from "./decision.js";
+import { answered, knock, waitingKnock } from "./door.js";
 import { RoomEvents } from "./events.js";
 import type { RoomEvent } from "./events.js";
 import { Actors } from "./identity.js";
@@ -13,6 +14,7 @@ import { leaveSeat } from "./money.js";
 import { sameName } from "./names.js";
 import {
   AlreadyAMember,
+  AlreadyKnocked,
   AlreadyRemoved,
   AlreadyTheHost,
   HostStillHere,
@@ -28,6 +30,7 @@ import {
   SEATS,
   isMember,
   isRemoved,
+  knockOf,
   namedPeople,
   occupantAt,
   seatOf,
@@ -68,6 +71,26 @@ const nameHeldByAnother = (state: Open, player: PlayerId, name: string) =>
     (holder) => holder.player !== player && sameName(holder.name, name)
   );
 
+interface Arrival {
+  readonly at: Millis;
+  readonly avatar: string;
+  readonly name: string;
+}
+
+const peopleNow = (state: Open) => state.members.length + state.departed.length;
+
+const arrived = (
+  state: Open,
+  player: PlayerId,
+  { at, avatar, name }: Arrival
+): readonly RoomEvent[] => {
+  const joined = RoomEvents.MemberJoined({ at, avatar, name, player });
+
+  return state.members.length === 0 && state.host !== player
+    ? [RoomEvents.HostChanged({ at, host: player }), joined]
+    : [joined];
+};
+
 export const joinRoom = (
   state: Open,
   player: PlayerId,
@@ -81,37 +104,51 @@ export const joinRoom = (
     return Result.fail(new RemovedFromRoom({ player }));
   }
 
+  if (Option.isSome(knockOf(state, player))) {
+    return Result.fail(new AlreadyKnocked({ player }));
+  }
+
   const returning = state.departed.some((member) => member.player === player);
 
   if (state.settings.locked && !returning) {
     return Result.fail(new RoomLocked({ code: state.code }));
   }
 
-  const people = state.members.length + state.departed.length;
+  const people = peopleNow(state);
 
   if (!returning && people >= MOST_PEOPLE) {
     return Result.fail(new TooManyPeople({ most: MOST_PEOPLE, people }));
+  }
+
+  if (!returning && state.settings.approval.joins) {
+    return knock(state, player, command);
   }
 
   if (nameHeldByAnother(state, player, command.name)) {
     return Result.fail(new NameTaken({ wanted: command.name }));
   }
 
-  const joined = RoomEvents.MemberJoined({
-    at: command.at,
-    avatar: command.avatar,
-    name: command.name,
-    player,
-  });
-
-  const takesOver = state.members.length === 0 && state.host !== player;
-
-  return Result.succeed(
-    takesOver
-      ? [RoomEvents.HostChanged({ at: command.at, host: player }), joined]
-      : [joined]
-  );
+  return Result.succeed(arrived(state, player, command));
 };
+
+export const letIn = (state: Open, command: RoomCommandOf<"LetIn">): Decision =>
+  Result.flatMap(waitingKnock(state, command.player), (waiting) => {
+    const { at } = command;
+    const { player } = waiting;
+
+    if (nameHeldByAnother(state, player, waiting.name)) {
+      return Result.succeed([answered(player, at, "NameTaken")]);
+    }
+
+    const people = peopleNow(state);
+
+    return people >= MOST_PEOPLE
+      ? Result.fail(new TooManyPeople({ most: MOST_PEOPLE, people }))
+      : Result.succeed([
+          answered(player, at, "LetIn"),
+          ...arrived(state, player, { ...waiting, at }),
+        ]);
+  });
 
 export const setProfile = (
   state: Open,

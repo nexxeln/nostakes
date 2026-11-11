@@ -201,7 +201,7 @@ const quietSettings = (setup: number, grace: number): RoomSettings => {
 
   return {
     ...base,
-    approval: { chips: false, seats: false },
+    approval: { chips: false, joins: false, seats: false },
     dealing: "Automatic",
     pauseWhenAwaySeconds: grace,
     sitOutAfterTimeouts: 0,

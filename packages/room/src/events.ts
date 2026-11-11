@@ -60,6 +60,26 @@ export const WithdrawalReasonSchema = Schema.Literals([
 
 export type WithdrawalReason = typeof WithdrawalReasonSchema.Type;
 
+export const KnockOutcomeSchema = Schema.Literals([
+  "LetIn",
+  "TurnedAway",
+  "Lapsed",
+  "Locked",
+  "NameTaken",
+]);
+
+export type KnockOutcome = typeof KnockOutcomeSchema.Type;
+
+export const knockFields = {
+  KnockAnswered: { at, outcome: KnockOutcomeSchema, player: PlayerIdSchema },
+  Knocked: {
+    at,
+    avatar: AvatarSchema,
+    name: NameSchema,
+    player: PlayerIdSchema,
+  },
+};
+
 const chainWhenAbsent = Effect.succeed(QUICKNET);
 
 export const roomEventFields = {
@@ -196,6 +216,7 @@ export const roomEventFields = {
 
 export const RoomEventSchema = Schema.TaggedUnion({
   ...roomEventFields,
+  ...knockFields,
   HandSealed: {
     ...sealFields,
     decks: Schema.Tuple([SealedDeckSchema, SealedDeckSchema]),

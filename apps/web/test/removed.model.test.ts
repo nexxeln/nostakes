@@ -31,6 +31,7 @@ const opened = init({
       record: {
         closed: false,
         code: CODE,
+        door: "Inside",
         left: false,
         others: ["Ana"],
         removed: false,

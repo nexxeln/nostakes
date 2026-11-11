@@ -167,6 +167,20 @@ export const RULES: readonly RuleCopy[] = [
     brief: (draft) => when(draft.locked === "true", () => "room locked"),
     help: "Nobody new can join, while people already in come and go.",
   }),
+  rule("approval.joins", "Table", "Approve joins", toggle(), {
+    brief: (draft) =>
+      when(
+        draft["approval.joins"] === "true" && draft.locked !== "true",
+        () => "host lets people in"
+      ),
+    help: "Someone new waits at the door until you let them in.",
+    relevant: (draft) => draft.locked !== "true",
+  }),
+  rule("knockSeconds", "Table", "Knocks wait", stepper("s", 10, by(60)), {
+    help: "A knock nobody answers ends after this.",
+    relevant: (draft) =>
+      draft["approval.joins"] === "true" && draft.locked !== "true",
+  }),
   rule("approval.seats", "Table", "Approve seats", toggle(), {
     brief: (draft) =>
       when(draft["approval.seats"] === "true", () => "host seats players"),
@@ -602,8 +616,10 @@ export const STANDARD = new Map<string, string>(
   Object.entries({
     ...PRESETS.Standard,
     "approval.chips": "false",
+    "approval.joins": "false",
     "approval.seats": "false",
     dealing: "Automatic",
+    knockSeconds: "300",
     leavingMidHand: "ActedFor",
     locked: "false",
     moments: "All",

@@ -39,6 +39,12 @@ export const revokedStandings = <Revoked extends WireSchema>(
   revoked: Revoked
 ) => Schema.Struct({ removed: revoked });
 
+export const knockingPass = <Knock extends WireSchema>(knock: Knock) =>
+  Schema.Struct({ ...RoomPassSchema.fields, knock });
+
+export const knockStandings = <Knock extends WireSchema>(knock: Knock) =>
+  Schema.Struct({ knock });
+
 export const joinRefused = <Rejection extends WireSchema>(
   rejection: Rejection
 ) => Schema.Struct({ refusal: Schema.Literal("JoinRefused"), rejection });

@@ -55,6 +55,8 @@ export const serverAnswer = (deadline: Deadline, seed: number): RoomCommand =>
         by: Actors.Server(),
         shuffleBytes: bytesFrom(seed),
       }),
+    KnockLapses: ({ at }) =>
+      RoomCommands.LapseKnocks({ at, by: Actors.Server() }),
     QueueDue: ({ at }) => RoomCommands.RunQueue({ at, by: Actors.Server() }),
     QuietDue: ({ at }) => RoomCommands.QuietTable({ at, by: Actors.Server() }),
     RunChoiceClock: ({ at }) =>

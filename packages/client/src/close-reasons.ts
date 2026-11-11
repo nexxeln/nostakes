@@ -9,6 +9,7 @@ export const CLOSE_VERDICTS: Readonly<Record<CloseReason, CloseVerdict>> = {
   ClientOutdated: "Outdated",
   FrameTooLarge: "Refuse",
   HelloTimeout: "Retry",
+  Knocking: "Refuse",
   NotAuthorized: "Refuse",
   NotFound: "Refuse",
   OpenedElsewhere: "Refuse",

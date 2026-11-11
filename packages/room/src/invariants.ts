@@ -3,6 +3,7 @@ import type { PlayerId, Violation } from "@nostakes/engine";
 import { balances } from "@nostakes/ledger";
 import { Option } from "effect";
 
+import { MOST_KNOCKS, MOST_WAITING } from "./door.js";
 import { MOST_PEOPLE } from "./members.js";
 import { chipsOnTable, allEntries } from "./money.js";
 import { sameName } from "./names.js";
@@ -13,9 +14,11 @@ import {
   RoomStates,
   SEATS,
   isMember,
+  isRemoved,
   namedPeople,
   occupantAt,
   seatOf,
+  waitingKnocks,
 } from "./state.js";
 import type { Closed, Entries, Open, RoomState } from "./state.js";
 
@@ -111,6 +114,38 @@ const peopleViolations = (state: Open) => [
   ),
   ...check(clashingNames(state).length === 0, "NamesAreDistinct", () =>
     clashingNames(state).join(",")
+  ),
+];
+
+const cameIn = (state: Open | Closed, player: PlayerId) =>
+  isMember(state, player) ||
+  isRemoved(state, player) ||
+  state.entries.has(player) ||
+  state.departed.some((member) => member.player === player);
+
+const knockViolations = (state: Open | Closed) => [
+  ...check(
+    waitingKnocks(state).length <= MOST_WAITING,
+    "KnocksWaitWithinTheDoor",
+    () => `${waitingKnocks(state).length} waiting, more than ${MOST_WAITING}`
+  ),
+  ...check(
+    state.knocks.length <= MOST_KNOCKS,
+    "KnocksWithinTheNight",
+    () => `${state.knocks.length} knocks, more than ${MOST_KNOCKS}`
+  ),
+  ...check(
+    !hasDuplicates(state.knocks.map(({ player }) => player)),
+    "KnockersAreDistinct",
+    () => state.knocks.map(({ player }) => player).join(",")
+  ),
+  ...state.knocks.flatMap(({ outcome, player }) =>
+    check(
+      Option.contains(outcome, "LetIn") || !cameIn(state, player),
+      "KnockersWaitOutside",
+      () =>
+        `${player} came in with a knock ${Option.getOrElse(outcome, () => "still waiting")}`
+    )
   ),
 ];
 
@@ -256,6 +291,7 @@ const openViolations = (state: Open): readonly Violation[] => [
     () => "the room's table rules differ from the engine's"
   ),
   ...peopleViolations(state),
+  ...knockViolations(state),
   ...requestViolations(state),
   ...queueViolations(state),
   ...markViolations(state),
@@ -278,6 +314,7 @@ const closedViolations = (state: Closed): readonly Violation[] => {
   }
 
   return [
+    ...knockViolations(state),
     ...check(nets === 0, "SettlementBalances", () => `nets sum to ${nets}`),
     ...check(
       [...owed.values()].every((left) => left === 0),

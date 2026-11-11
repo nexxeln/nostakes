@@ -91,13 +91,16 @@ const plainRoom = {
 
 const hashOf = (index: number) => index.toString(16).padStart(64, "0");
 
+const hashOfHexName = (name: string) =>
+  Result.getOrThrow(Hex.decode(name.padEnd(64, "0")));
+
 describe("the poker room adapter", () => {
   it("opens a room without settings at the agreed defaults, as members see them on the wire", () => {
     const room = openPokerHost({ avatar: "fox", name: "Ana" });
     const view = openView(welcomeView(room, ana, 1000));
 
     expect(encodeSettings(view.settings)).toBe(
-      '{"approval":{"chips":false,"seats":false},"betweenHandsSeconds":5,"buyIn":{"max":400,"min":40},"dealing":"Automatic","leavingMidHand":"ActedFor","locked":false,"moments":"All","pauseWhenAwaySeconds":120,"peeking":true,"runChoiceSeconds":15,"seats":9,"showdownSeconds":15,"shuffle":"Checked","sitOutAfterTimeouts":1,"table":{"allInHands":"FaceUp","ante":{"_tag":"NoAnte"},"bigBlind":2,"blindPosting":"HomeGame","maxRuns":1,"rabbitHunt":false,"rabbitHunters":"DealtIn","runCount":"Vote","showdown":"Interactive","showdownOrder":"RiverAggressor","smallBlind":1,"straddle":{"button":false,"underTheGun":0},"straddleSize":"Doubling","voluntaryShows":"EitherCard"},"timeBankRefill":{"_tag":"NoRefill"},"timeBankSeconds":60,"topUps":"UpToMax","turnSeconds":30}'
+      '{"approval":{"chips":false,"joins":false,"seats":false},"betweenHandsSeconds":5,"buyIn":{"max":400,"min":40},"dealing":"Automatic","knockSeconds":300,"leavingMidHand":"ActedFor","locked":false,"moments":"All","pauseWhenAwaySeconds":120,"peeking":true,"runChoiceSeconds":15,"seats":9,"showdownSeconds":15,"shuffle":"Checked","sitOutAfterTimeouts":1,"table":{"allInHands":"FaceUp","ante":{"_tag":"NoAnte"},"bigBlind":2,"blindPosting":"HomeGame","maxRuns":1,"rabbitHunt":false,"rabbitHunters":"DealtIn","runCount":"Vote","showdown":"Interactive","showdownOrder":"RiverAggressor","smallBlind":1,"straddle":{"button":false,"underTheGun":0},"straddleSize":"Doubling","voluntaryShows":"EitherCard"},"timeBankRefill":{"_tag":"NoRefill"},"timeBankSeconds":60,"topUps":"UpToMax","turnSeconds":30}'
     );
   });
 
@@ -520,6 +523,51 @@ describe("catching up after a reconnect", () => {
 
     expect(again(cy)).toBe(room.welcome(cy, Option.some(before), 1010));
     expect(again(ben)).toBe(room.welcome(ben, Option.some(before), 1010));
+  });
+
+  it("holds a place for a knock only while it waits, answers a knock pass with its own answer, never delivers a batch to it, and lapses a knock nobody answers", () => {
+    const room = openPokerHost({
+      ...plainRoom,
+      settings: {
+        ...plainRoom.settings,
+        approval: { ...plainRoom.settings.approval, joins: true },
+      },
+    });
+
+    const benSees = room.watch(ben);
+
+    room.join(ben, 1001, "Abe");
+    room.join(cy, 1002, "Cad");
+
+    const waiting = room.host.placesHeld();
+
+    room.send(ana, "away-ben", 1003, Commands.TurnAway.make({ player: ben }));
+
+    const lapsesAt = 1002 + DEFAULT_SETTINGS.knockSeconds * 1000;
+    const lapsed = room.runDue(lapsesAt);
+
+    const answerOf = (name: string) =>
+      StandingsAnswers.$match(room.host.standings(hashOfHexName(name), 9000), {
+        Halted: () => "halted",
+        Knocking: ({ knock }) => knock.answer,
+        NotAuthorized: () => "unknown",
+        NotHalted: () => "open",
+        Removed: () => "removed",
+      });
+
+    expect({
+      answers: [answerOf("Abe"), answerOf("Cad")],
+      benFrames: benSees.frames.length,
+      closed: room.closed,
+      lapsed: lapsed.pipe(Option.map(({ reply }) => reply._tag)),
+      places: [waiting, room.host.placesHeld()],
+    }).toStrictEqual({
+      answers: ["TurnedAway", "Lapsed"],
+      benFrames: 0,
+      closed: [{ player: ben, reason: "Knocking" }],
+      lapsed: Option.some("Accepted"),
+      places: [3, 1],
+    });
   });
 
   it("holds no place for a pass the host revoked: a host who removes more people than the server keeps passes for still has room for the next, and every removed pass still reads its own result", () => {

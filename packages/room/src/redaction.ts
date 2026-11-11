@@ -66,6 +66,8 @@ export type SeenTableEvent = typeof SeenTableEventSchema.Type;
 export const SeenEventSchema = Schema.TaggedUnion({
   ...roomEventFields,
   HandSealed: sealFields,
+  KnockAnswered: { at: MillisSchema },
+  Knocked: { at: MillisSchema },
   Table: { at: MillisSchema, event: SeenTableEventSchema },
 });
 
@@ -119,6 +121,14 @@ export const redact = (event: RoomEvent, audience: Audience): SeenEvent => {
       round: event.round,
       seats: event.seats,
     });
+  }
+
+  if (RoomEvents.$is("Knocked")(event)) {
+    return SeenEvents.Knocked({ at: event.at });
+  }
+
+  if (RoomEvents.$is("KnockAnswered")(event)) {
+    return SeenEvents.KnockAnswered({ at: event.at });
   }
 
   return RoomEvents.$is("CardsOpened")(event) && !holds(audience, event.holder)

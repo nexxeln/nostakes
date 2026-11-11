@@ -45,8 +45,10 @@ export const RoomCommandSchema = Schema.TaggedUnion({
   DenySeat: naming,
   ExpireClock: { ...envelope, deadline: MillisSchema },
   Join: { ...envelope, avatar: AvatarSchema, name: NameSchema },
+  LapseKnocks: envelope,
   LeaveRoom: envelope,
   LeaveSeat: envelope,
+  LetIn: naming,
   MuckHand: envelope,
   NoteAttendance: { ...envelope, connected: Schema.Array(PlayerIdSchema) },
   NoteStall: { ...envelope, deadline: DeadlineSchema },
@@ -71,6 +73,7 @@ export const RoomCommandSchema = Schema.TaggedUnion({
   StartGame: envelope,
   TableHand: envelope,
   TransferHost: { ...envelope, to: PlayerIdSchema },
+  TurnAway: naming,
 });
 
 export type RoomCommand = typeof RoomCommandSchema.Type;

@@ -90,6 +90,14 @@ const roomState = (record: RoomRecord) => {
     return "Removed";
   }
 
+  if (record.door === "Knocking") {
+    return "Waiting";
+  }
+
+  if (record.door !== "Inside") {
+    return "Not let in";
+  }
+
   if (record.closed) {
     return "Settled";
   }
@@ -129,7 +137,10 @@ const yourRooms = (model: Model, h: H): Html =>
                         h.span(
                           [
                             h.Class(
-                              record.closed || record.left || record.removed
+                              record.closed ||
+                                record.left ||
+                                record.removed ||
+                                record.door !== "Inside"
                                 ? "tag"
                                 : "tag is-open"
                             ),

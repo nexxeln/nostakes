@@ -195,6 +195,7 @@ export const RULES: readonly RuleChange[] = [
     change: (settings) => ({
       ...settings,
       approval: {
+        ...settings.approval,
         chips: !settings.approval.chips,
         seats: !settings.approval.seats,
       },

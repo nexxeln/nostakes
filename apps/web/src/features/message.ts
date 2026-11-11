@@ -1,6 +1,7 @@
 import { AvatarSchema } from "@nostakes/avatar";
 import { PlayerIdSchema, RoomCodeSchema } from "@nostakes/protocol";
 import {
+  KnockViewSchema,
   MemberCommandSchema,
   RemovedViewSchema,
   RoomRejectionSchema,
@@ -60,6 +61,7 @@ export const Messages = defineMessageUnion({
   ClickedFairness: {},
   ClickedHome: {},
   ClickedHouseRules: {},
+  ClickedKnockAgain: {},
   ClickedKnownRoom: { code: RoomCodeSchema },
   ClickedMember: { player: PlayerIdSchema },
   ClickedMenu: {},
@@ -82,6 +84,7 @@ export const Messages = defineMessageUnion({
   EnteredRoom: { code: RoomCodeSchema, player: PlayerIdSchema },
   FailedConnection: { problem: Schema.String },
   FailedEntry: { problem: Schema.String },
+  GotKnock: { at: Schema.Int, knock: KnockViewSchema },
   GotLink: { link: LinkSchema },
   GotOwnResult: { result: RemovedViewSchema },
   GotReply: { key: Schema.Int, outcome: ReplyOutcomes },
@@ -101,9 +104,18 @@ export const Messages = defineMessageUnion({
     signal: RoomSignalSchema,
   },
   JudgedHand: { hand: Schema.Int, mark: FairMarks },
+  KnockedAtRoom: {
+    at: Schema.Int,
+    code: RoomCodeSchema,
+    knock: KnockViewSchema,
+    player: PlayerIdSchema,
+  },
+  LetInside: {},
+  MissedKnock: { reason: Schema.String },
   MissedOwnResult: { reason: Schema.String },
   MissedStandings: { reason: Schema.String },
   PickedAvatar: { avatar: AvatarSchema },
+  PolledDoor: {},
   ReleasedConnection: {},
   SentSignal: {
     at: Schema.Int,

@@ -214,17 +214,20 @@ const HOSTING = new Set<RoomCommand["_tag"]>([
   "DealNextHand",
   "DenyChips",
   "DenySeat",
+  "LetIn",
   "PauseGame",
   "RemoveFromSeat",
   "RemoveMember",
   "StartGame",
   "TransferHost",
+  "TurnAway",
 ]);
 
 const SERVER_ONLY = new Set<RoomCommand["_tag"]>([
   "Deal",
   "DealSealed",
   "ExpireClock",
+  "LapseKnocks",
   "NoteAttendance",
   "NoteStall",
   "QuietTable",

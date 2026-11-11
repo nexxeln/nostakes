@@ -25,6 +25,7 @@ export type {
 
 export {
   HolderSchema,
+  KnockOutcomeSchema,
   OpenedCardSchema,
   RoomEventSchema,
   RoomEvents,
@@ -34,6 +35,7 @@ export {
 
 export type {
   Holder,
+  KnockOutcome,
   OpenedCard,
   RoomEvent,
   RoomEventOf,
@@ -42,13 +44,15 @@ export type {
 
 export { attendanceCommand, quietDueAt, seatedPlayers } from "./attendance.js";
 
-export { isRemoved } from "./state.js";
+export { isRemoved, knockOf, waitingKnocks } from "./state.js";
 
 export { stallCommand } from "./stalls.js";
 
 export { ClosingSchema } from "./closing.js";
 
 export { HOST_CLAIM_AFTER_SECONDS, MOST_PEOPLE } from "./members.js";
+
+export { MOST_KNOCKS, MOST_WAITING } from "./door.js";
 
 export type { Closing } from "./closing.js";
 
@@ -88,6 +92,7 @@ export {
   ActionNotOnSeat,
   AlreadyAMember,
   AlreadyLeaving,
+  AlreadyKnocked,
   AlreadyRemoved,
   AlreadySeated,
   AlreadyTheHost,
@@ -105,10 +110,12 @@ export {
   MembersOnly,
   NameTaken,
   NoChipRequest,
+  NoKnockDue,
   NobodyToClear,
   NoSeatRequest,
   NoSuchDeadline,
   NotAMember,
+  NotKnocking,
   NotSeated,
   NotTheHost,
   NothingSealed,
@@ -131,6 +138,8 @@ export {
   SettlesAfterHand,
   ShuffleRanOut,
   TableRejected,
+  TooManyKnocking,
+  TooManyKnocks,
   TooManyPeople,
   TopUpNotAllowed,
   Unbalanced,
@@ -158,12 +167,14 @@ export {
   ApprovalSchema,
   BuyInRangeSchema,
   ChipAmountSchema,
+  DEFAULT_KNOCK_SECONDS,
   DEFAULT_PAUSE_WHEN_AWAY_SECONDS,
   DealingSchema,
   LeavingMidHandSchema,
   MAX_CHIP_AMOUNT,
   MAX_REFILL_HANDS,
   MAX_TIMEOUTS_IN_A_ROW,
+  MIN_KNOCK_SECONDS,
   MIN_SEATS,
   MomentCalloutsSchema,
   RequestedSettingsSchema,
@@ -308,6 +319,9 @@ export {
   SealedDealsViewSchema,
   HandViewSchema,
   HostAwayViewSchema,
+  KnockAnswerSchema,
+  KnockViewSchema,
+  KnockerViewSchema,
   LastHandViewSchema,
   PublicHandStartedSchema,
   RemovedViewSchema,
@@ -321,6 +335,8 @@ export {
   StallViewSchema,
   audienceOf,
   clearableOf,
+  holdsPlace,
+  knockView,
   redact,
   removedView,
   viewFor,
@@ -328,6 +344,8 @@ export {
 
 export type {
   Audience,
+  KnockAnswer,
+  KnockView,
   RemovedView,
   RoomView,
   SeenEvent,

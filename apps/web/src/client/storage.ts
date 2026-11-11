@@ -158,6 +158,7 @@ export const knownRooms = Effect.gen(function* readKnownRooms() {
       record: records.find((record) => record.code === code) ?? {
         closed: false,
         code,
+        door: "Inside",
         left: false,
         others: [],
         removed: false,

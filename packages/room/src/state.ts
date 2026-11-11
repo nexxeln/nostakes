@@ -26,7 +26,7 @@ import type {
 import { Data, Option, Result } from "effect";
 
 import type { Deadline } from "./deadline.js";
-import type { Holder, OpenedCard } from "./events.js";
+import type { Holder, KnockOutcome, OpenedCard } from "./events.js";
 import type { RoomCode } from "./identity.js";
 import type { NightRecap, NightTally } from "./recap.js";
 import { NotSeated } from "./rejection.js";
@@ -39,6 +39,15 @@ export interface Member {
   readonly joinedAt: Millis;
   readonly name: string;
   readonly player: PlayerId;
+}
+
+export interface Knock {
+  readonly avatar: string;
+  readonly lapsesAt: Millis;
+  readonly name: string;
+  readonly outcome: Option.Option<KnockOutcome>;
+  readonly player: PlayerId;
+  readonly since: Millis;
 }
 
 export interface SeatRequest {
@@ -171,6 +180,7 @@ export type RoomState = Data.TaggedEnum<{
     readonly code: RoomCode;
     readonly departed: readonly Member[];
     readonly entries: Entries;
+    readonly knocks: readonly Knock[];
     readonly members: readonly Member[];
     readonly now: Millis;
     readonly recap: NightRecap;
@@ -190,6 +200,7 @@ export type RoomState = Data.TaggedEnum<{
     readonly handStacks: ReadonlyMap<SeatIndex, Chips>;
     readonly host: PlayerId;
     readonly hostAway: Option.Option<Millis>;
+    readonly knocks: readonly Knock[];
     readonly members: readonly Member[];
     readonly now: Millis;
     readonly posters: readonly PlayerId[];
@@ -233,6 +244,12 @@ export const isMember = (state: Open | Closed, player: PlayerId) =>
 
 export const isRemoved = (state: Open | Closed, player: PlayerId) =>
   state.removed.some((removed) => removed.player === player);
+
+export const knockOf = (state: Open | Closed, player: PlayerId) =>
+  Option.fromUndefinedOr(state.knocks.find((knock) => knock.player === player));
+
+export const waitingKnocks = (state: Open | Closed) =>
+  state.knocks.filter((knock) => Option.isNone(knock.outcome));
 
 export const removedInTheSettlement = (state: Open | Closed) =>
   state.removed.filter(({ player }) => state.entries.has(player));

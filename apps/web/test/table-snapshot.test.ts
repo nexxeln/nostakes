@@ -33,6 +33,7 @@ const roomWith = (
   confirm: Option.none(),
   connected: true,
   copied: "Nothing",
+  door: Option.none(),
   drafts: { buyIn: "", chips: "", seat: Option.none() },
   events: [],
   fairness: [],

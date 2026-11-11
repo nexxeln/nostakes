@@ -191,6 +191,7 @@ export interface ToyTypes {
   readonly JoinRequest: Profile;
   readonly Signal: ToySignal;
   readonly Revoked: ToyView;
+  readonly Knock: ToyView;
 }
 
 const emptyRoom: ToyState = {
@@ -586,9 +587,11 @@ export const toyRoom: HostedRoom<ToyTypes> = {
   eventKind: (event) => event._tag,
   evolve,
   haltedView: viewFor,
+  holdsPlace: () => true,
   invariants,
   joinCommand: ({ avatar, name }) =>
     ToyMemberCommandSchema.cases.Join.make({ avatar, name }),
+  knockOf: () => Option.none(),
   nextDeadline,
   open: ({ at, code, host, request }) => [
     ToyEventSchema.cases.Opened.make({ at, code, host }),
@@ -607,6 +610,7 @@ export const toyRoom: HostedRoom<ToyTypes> = {
   schemas: {
     event: ToyEventSchema,
     joinRequest: ProfileSchema,
+    knock: ToyViewSchema,
     memberCommand: ToyMemberCommandSchema,
     openRequest: ProfileSchema,
     redacted: ToyRedactedSchema,

@@ -15,6 +15,7 @@ export interface RoomTypes {
   readonly JoinRequest: unknown;
   readonly Signal: unknown;
   readonly Revoked: unknown;
+  readonly Knock: unknown;
 }
 
 export interface RoomSchemas<T extends RoomTypes> {
@@ -27,6 +28,7 @@ export interface RoomSchemas<T extends RoomTypes> {
   readonly joinRequest: WireCodec<T["JoinRequest"]>;
   readonly signal: WireCodec<T["Signal"]>;
   readonly revoked: WireCodec<T["Revoked"]>;
+  readonly knock: WireCodec<T["Knock"]>;
 }
 
 export interface OpenInput<OpenRequest> {
@@ -103,6 +105,11 @@ export interface HostedRoom<T extends RoomTypes> {
     at: number,
     halted: boolean
   ) => T["Revoked"];
+  readonly knockOf: (
+    state: T["State"],
+    player: PlayerId
+  ) => Option.Option<T["Knock"]>;
+  readonly holdsPlace: (state: T["State"], player: PlayerId) => boolean;
   readonly invariants: (state: T["State"]) => readonly string[];
   readonly signalAllowed: (
     state: T["State"],

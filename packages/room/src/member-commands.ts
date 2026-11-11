@@ -24,6 +24,7 @@ export const MemberCommandSchema = Schema.TaggedUnion({
   Join: { avatar: cases.Join.fields.avatar, name: cases.Join.fields.name },
   LeaveRoom: {},
   LeaveSeat: {},
+  LetIn: { player: cases.LetIn.fields.player },
   MuckHand: {},
   PauseGame: {},
   RabbitHunt: {},
@@ -44,6 +45,7 @@ export const MemberCommandSchema = Schema.TaggedUnion({
   StartGame: {},
   TableHand: {},
   TransferHost: { to: cases.TransferHost.fields.to },
+  TurnAway: { player: cases.TurnAway.fields.player },
 });
 
 export type MemberCommand = typeof MemberCommandSchema.Type;

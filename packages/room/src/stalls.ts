@@ -30,6 +30,7 @@ const DEADLINE_ANSWERS: ReadonlySet<RoomCommand["_tag"]> = new Set([
   "Deal",
   "DealSealed",
   "ExpireClock",
+  "LapseKnocks",
   "QuietTable",
   "RunQueue",
   "SealHand",

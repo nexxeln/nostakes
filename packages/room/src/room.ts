@@ -17,6 +17,7 @@ import { RoomCommands } from "./commands.js";
 import type { RoomCommand } from "./commands.js";
 import { callNextHand, deal, pauseGame, startGame } from "./dealing.js";
 import type { Decision } from "./decision.js";
+import { lapseKnocks, lockedOut, turnAway } from "./door.js";
 import { RoomEvents } from "./events.js";
 import type { RoomEvent } from "./events.js";
 import { evolveAllWithoutRecap } from "./evolve.js";
@@ -27,6 +28,7 @@ import {
   clearRoom,
   joinRoom,
   leaveRoom,
+  letIn,
   removeMember,
   setProfile,
   transferHost,
@@ -138,10 +140,13 @@ const decideOpen = (state: Open, command: RoomCommand): Decision =>
       Result.flatMap(fromSomeone(join), (player) =>
         joinRoom(state, player, join)
       ),
+    LapseKnocks: (lapse) =>
+      Result.flatMap(fromServer(lapse), () => lapseKnocks(state, lapse.at)),
     LeaveRoom: (leave) =>
       byMember(state, leave, (player) => leaveRoom(state, player, leave.at)),
     LeaveSeat: (leave) =>
       byMember(state, leave, (player) => leaveSeat(state, player, leave.at)),
+    LetIn: (admit) => byHost(state, admit, () => letIn(state, admit)),
     MuckHand: (muck) =>
       byMember(state, muck, (player) => play(state, player, muck)),
     NoteAttendance: (note) =>
@@ -190,6 +195,7 @@ const decideOpen = (state: Open, command: RoomCommand): Decision =>
       byMember(state, table, (player) => play(state, player, table)),
     TransferHost: (transfer) =>
       byHost(state, transfer, () => transferHost(state, transfer)),
+    TurnAway: (away) => byHost(state, away, () => turnAway(state, away)),
   });
 
 interface Batch {
@@ -272,6 +278,7 @@ const followThrough = (
         : drain(spent, (state) => endOfHand(state, at))
     ),
     Result.map((ended) => appended(ended, (state) => withdrawStale(state, at))),
+    Result.map((ended) => appended(ended, (state) => lockedOut(state, at))),
     Result.map(
       (ended) =>
         appended(ended, (state) => clockEvents(state, ended.events, at)).events

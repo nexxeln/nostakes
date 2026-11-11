@@ -7,6 +7,7 @@ import {
   RoomCodeSchema,
 } from "@nostakes/protocol";
 import {
+  KnockViewSchema,
   MemberCommandSchema,
   ReactionSchema,
   RemovedViewSchema,
@@ -179,6 +180,14 @@ export const RemovedResults = defineTaggedUnion({
 
 export type RemovedResult = typeof RemovedResults.Type;
 
+export const KnockAnswers = defineTaggedUnion({
+  Asking: {},
+  Missing: { reason: Schema.String },
+  Shown: { knock: KnockViewSchema },
+});
+
+export type DoorAnswer = typeof KnockAnswers.Type;
+
 export const InRoomSchema = Schema.Struct({
   addingChips: Schema.Boolean,
   clockSamples: Schema.Array(Schema.Int),
@@ -186,6 +195,7 @@ export const InRoomSchema = Schema.Struct({
   confirm: Schema.Option(ConfirmSchema),
   connected: Schema.Boolean,
   copied: CopiedSchema,
+  door: Schema.Option(KnockAnswers),
   drafts: DraftsSchema,
   events: Schema.Array(TableEventSchema),
   fairness: Schema.Array(FairHandSchema),
@@ -236,9 +246,21 @@ export const Screens = defineTaggedUnion({
 
 export type Screen = typeof Screens.Type;
 
+export const DoorSchema = Schema.Literals([
+  "Inside",
+  "Knocking",
+  "TurnedAway",
+  "NotLetIn",
+]);
+
+export type Door = typeof DoorSchema.Type;
+
 export const RoomRecordSchema = Schema.Struct({
   closed: Schema.Boolean,
   code: RoomCodeSchema,
+  door: DoorSchema.pipe(
+    Schema.withDecodingDefaultTypeKey(Effect.succeed("Inside" as const))
+  ),
   left: Schema.Boolean,
   others: Schema.Array(Schema.String),
   removed: Schema.Boolean.pipe(

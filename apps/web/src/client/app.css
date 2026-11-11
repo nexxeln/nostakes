@@ -1037,6 +1037,24 @@ html:has(.room) {
   flex: 1;
 }
 
+.knock {
+  padding-left: var(--space-2);
+}
+
+.request-face {
+  flex: none;
+}
+
+.door {
+  align-items: center;
+  margin-top: var(--space-6);
+  text-align: center;
+}
+
+.door-face {
+  margin-bottom: var(--space-2);
+}
+
 .button.small {
   min-height: 2.25rem;
   padding: var(--space-1) var(--space-3);

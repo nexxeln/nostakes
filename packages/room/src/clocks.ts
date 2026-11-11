@@ -17,6 +17,7 @@ import { Deadlines } from "./deadline.js";
 import type { Deadline } from "./deadline.js";
 import { dealDue } from "./dealing.js";
 import type { Decision } from "./decision.js";
+import { nextLapse } from "./door.js";
 import { RoomEvents } from "./events.js";
 import type { RoomEvent } from "./events.js";
 import { ActionNotOnSeat, ClockNotDue, NoSuchDeadline } from "./rejection.js";
@@ -72,29 +73,43 @@ export const nextDealAt = (state: Open): Option.Option<Millis> =>
     Option.orElse(() => dealDue(state))
   );
 
+const roomDeadline = (open: Open): Option.Option<Deadline> =>
+  Option.match(open.clocks.decision, {
+    onNone: () =>
+      queueWaiting(open)
+        ? Option.some(Deadlines.QueueDue({ at: open.now }))
+        : dealingDeadline(open).pipe(
+            Option.map((dealing) => pausingFirst(open, dealing))
+          ),
+    onSome: (clock) =>
+      Option.some(
+        DecisionClocks.$match(clock, {
+          RunChoice: ({ deadline }) =>
+            Deadlines.RunChoiceClock({ at: deadline }),
+          Showdown: ({ deadline, seat }) =>
+            Deadlines.ShowdownClock({ at: deadline, seat }),
+          Turn: ({ deadline, seat }) =>
+            Deadlines.TurnClock({ at: deadline, seat }),
+        })
+      ),
+  });
+
+const knocksFirst = (
+  open: Open,
+  other: Option.Option<Deadline>
+): Option.Option<Deadline> =>
+  Option.match(nextLapse(open), {
+    onNone: () => other,
+    onSome: (at) =>
+      Option.exists(other, (deadline) => deadline.at <= at)
+        ? other
+        : Option.some(Deadlines.KnockLapses({ at })),
+  });
+
 export const nextDeadline = (state: RoomState): Option.Option<Deadline> =>
   RoomStates.$match(state, {
     Closed: () => Option.none(),
-    Open: (open) =>
-      Option.match(open.clocks.decision, {
-        onNone: () =>
-          queueWaiting(open)
-            ? Option.some(Deadlines.QueueDue({ at: open.now }))
-            : dealingDeadline(open).pipe(
-                Option.map((dealing) => pausingFirst(open, dealing))
-              ),
-        onSome: (clock) =>
-          Option.some(
-            DecisionClocks.$match(clock, {
-              RunChoice: ({ deadline }) =>
-                Deadlines.RunChoiceClock({ at: deadline }),
-              Showdown: ({ deadline, seat }) =>
-                Deadlines.ShowdownClock({ at: deadline, seat }),
-              Turn: ({ deadline, seat }) =>
-                Deadlines.TurnClock({ at: deadline, seat }),
-            })
-          ),
-      }),
+    Open: (open) => knocksFirst(open, roomDeadline(open)),
   });
 
 const ONE_RUN = RunCountSchema.make(1);

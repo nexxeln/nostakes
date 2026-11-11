@@ -109,15 +109,16 @@ export interface MemberAnswer<T extends RoomTypes> {
   }>;
 }
 
-export type Standings<View, Revoked> = Data.TaggedEnum<{
+export type Standings<View, Revoked, Knock> = Data.TaggedEnum<{
   Halted: { readonly view: View; readonly reason: string };
+  Knocking: { readonly knock: Knock };
   NotHalted: { readonly headSeq: number };
   NotAuthorized: { readonly halted: boolean };
   Removed: { readonly revoked: Revoked };
 }>;
 
-interface StandingsDefinition extends Data.TaggedEnum.WithGenerics<2> {
-  readonly taggedEnum: Standings<this["A"], this["B"]>;
+interface StandingsDefinition extends Data.TaggedEnum.WithGenerics<3> {
+  readonly taggedEnum: Standings<this["A"], this["B"], this["C"]>;
 }
 
 export const StandingsAnswers = Data.taggedEnum<StandingsDefinition>();
@@ -356,6 +357,9 @@ export const hostRoom = <T extends RoomTypes>(
   const codec = roomCodec(core);
   let current = loaded;
 
+  const outside = (state: T["State"], player: PlayerId) =>
+    core.revoked(state, player) || Option.isSome(core.knockOf(state, player));
+
   const expiresAt = () => current.lastEventAt + retainFor;
 
   const keyOf = (deadline: Deadline<T["Due"]>) =>
@@ -435,7 +439,7 @@ export const hostRoom = <T extends RoomTypes>(
     const problems: string[] = [];
 
     for (const { player } of viewers) {
-      if (frames.has(player) || core.revoked(next, player)) {
+      if (frames.has(player) || outside(next, player)) {
         continue;
       }
 
@@ -667,6 +671,8 @@ export const hostRoom = <T extends RoomTypes>(
     )) {
       if (core.revoked(next, player)) {
         connections.closePlayer(player, "Removed");
+      } else if (Option.isSome(core.knockOf(next, player))) {
+        connections.closePlayer(player, "Knocking");
       }
     }
 
@@ -999,8 +1005,16 @@ export const hostRoom = <T extends RoomTypes>(
   const standings = (
     hash: Uint8Array,
     at: number
-  ): Standings<T["View"], T["Revoked"]> => {
+  ): Standings<T["View"], T["Revoked"], T["Knock"]> => {
     const player = matchCredential(current.credentials, hash);
+
+    const knock = player.pipe(
+      Option.flatMap((known) => core.knockOf(current.state, known))
+    );
+
+    if (Option.isSome(knock)) {
+      return StandingsAnswers.Knocking({ knock: knock.value });
+    }
 
     const removed = player.pipe(
       Option.filter((known) => core.revoked(current.state, known))
@@ -1046,11 +1060,14 @@ export const hostRoom = <T extends RoomTypes>(
     dueAt,
     expiresAt,
     keepReplies,
+    knockOf: (player: PlayerId) => core.knockOf(current.state, player),
+    knocking: (player: PlayerId) =>
+      Option.isSome(core.knockOf(current.state, player)),
     nextDeadline,
     noteAttendance,
     placesHeld: () =>
-      current.credentials.filter(
-        ({ player }) => !core.revoked(current.state, player)
+      current.credentials.filter(({ player }) =>
+        core.holdsPlace(current.state, player)
       ).length,
     revoked: (player: PlayerId) => core.revoked(current.state, player),
     snapshot: () => current,

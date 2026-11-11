@@ -3,27 +3,31 @@ import {
   haltedStandings,
   HttpRefusalSchema,
   joinRefused,
+  knockStandings,
+  knockingPass,
   revokedStandings,
   RoomCodeSchema,
   RoomPassSchema,
   StandingsRequestSchema,
 } from "@nostakes/protocol";
-import type { UnavailableReason } from "@nostakes/protocol";
+import type { RoomPass, UnavailableReason } from "@nostakes/protocol";
 import {
   JoinRequestSchema,
+  KnockViewSchema,
   MemberCommandSchema,
   RemovedViewSchema,
   RoomRejectionSchema,
   RoomSignalSchema,
   RoomViewSchema,
 } from "@nostakes/room";
-import type { JoinRequest } from "@nostakes/room";
+import type { JoinRequest, KnockView } from "@nostakes/room";
 import { Clock, Effect, Match, Option, Schema } from "effect";
 import * as FetchHttpClient from "effect/http/FetchHttpClient";
 import * as HttpClient from "effect/http/HttpClient";
 import * as HttpClientRequest from "effect/http/HttpClientRequest";
 import { Command, Navigation } from "foldkit";
 
+import { pauseText } from "../features/door.js";
 import { Messages, ReplyOutcomes } from "../features/message.js";
 import {
   CopiedSchema,
@@ -67,6 +71,29 @@ const entryRefusalText = (refusal: typeof EntryRefusalSchema.Type) =>
     ? rejectionText(refusal.rejection, Option.none())
     : refusalText(refusal);
 
+const KnockingPassSchema = knockingPass(Schema.toCodecJson(KnockViewSchema));
+
+interface Entry {
+  readonly knock: Option.Option<KnockView>;
+  readonly pass: RoomPass;
+}
+
+const decodeEntry = Schema.decodeUnknownEffect(
+  Schema.Union([KnockingPassSchema, RoomPassSchema])
+);
+
+const entryOf = (granted: typeof KnockingPassSchema.Type | RoomPass): Entry =>
+  "knock" in granted
+    ? {
+        knock: Option.some(granted.knock),
+        pass: {
+          code: granted.code,
+          player: granted.player,
+          token: granted.token,
+        },
+      }
+    : { knock: Option.none(), pass: granted };
+
 class EntryRefused extends Schema.TaggedError<
   EntryRefused,
   { readonly brand: unique symbol }
@@ -90,7 +117,8 @@ const passFrom = (url: string, request: JoinRequest) =>
           () => new EntryRefused({ reason: "The room server sent nonsense." })
         ),
         Effect.flatMap((json) =>
-          Schema.decodeUnknownEffect(RoomPassSchema)(json).pipe(
+          decodeEntry(json).pipe(
+            Effect.map(entryOf),
             Effect.mapError(
               () =>
                 new EntryRefused({
@@ -108,26 +136,73 @@ const passFrom = (url: string, request: JoinRequest) =>
         )
       )
     ),
-    Effect.tap(storePass),
+    Effect.tap(({ pass }) => storePass(pass)),
     Effect.tap(() => storeProfile(request)),
+    Effect.flatMap((entry) =>
+      Clock.currentTimeMillis.pipe(Effect.map((at) => ({ ...entry, at })))
+    ),
     Effect.match({
       onFailure: (failure) => Messages.FailedEntry({ problem: failure.reason }),
-      onSuccess: (pass) =>
-        Messages.EnteredRoom({ code: pass.code, player: pass.player }),
+      onSuccess: ({ at, knock, pass }) =>
+        Option.match(knock, {
+          onNone: () =>
+            Messages.EnteredRoom({ code: pass.code, player: pass.player }),
+          onSome: (answer) =>
+            Messages.KnockedAtRoom({
+              at,
+              code: pass.code,
+              knock: answer,
+              player: pass.player,
+            }),
+        }),
+    })
+  );
+
+type FailedEntry = ReturnType<typeof Messages.FailedEntry>;
+
+const unlessPaused = <M, R>(
+  pausedUntil: Option.Option<number>,
+  entry: Effect.Effect<M, never, R>
+) =>
+  Clock.currentTimeMillis.pipe(
+    Effect.flatMap((now): Effect.Effect<M | FailedEntry, never, R> => {
+      const paused = pausedUntil.pipe(Option.filter((until) => until > now));
+
+      return Option.isSome(paused)
+        ? Effect.succeed(
+            Messages.FailedEntry({ problem: pauseText(paused.value - now) })
+          )
+        : entry;
     })
   );
 
 export const CreateRoom = Command.define("CreateRoom", {
   args: { avatar: Schema.String, name: Schema.String },
   execute: (request) => passFrom("/rooms", request),
-  messages: [Messages.EnteredRoom, Messages.FailedEntry],
+  messages: [
+    Messages.EnteredRoom,
+    Messages.KnockedAtRoom,
+    Messages.FailedEntry,
+  ],
 });
 
 export const JoinRoom = Command.define("JoinRoom", {
-  args: { avatar: Schema.String, code: RoomCodeSchema, name: Schema.String },
-  execute: ({ avatar, code, name }) =>
-    passFrom(`/rooms/${code}/members`, { avatar, name }),
-  messages: [Messages.EnteredRoom, Messages.FailedEntry],
+  args: {
+    avatar: Schema.String,
+    code: RoomCodeSchema,
+    name: Schema.String,
+    pausedUntil: Schema.Option(Schema.Int),
+  },
+  execute: ({ avatar, code, name, pausedUntil }) =>
+    unlessPaused(
+      pausedUntil,
+      passFrom(`/rooms/${code}/members`, { avatar, name })
+    ),
+  messages: [
+    Messages.EnteredRoom,
+    Messages.KnockedAtRoom,
+    Messages.FailedEntry,
+  ],
 });
 
 const LOST_TEXT = {
@@ -228,6 +303,42 @@ export const ReadOwnResult = Command.define("ReadOwnResult", {
       })
     ),
   messages: [Messages.GotOwnResult, Messages.MissedOwnResult],
+});
+
+const DoorAnswerSchema = Schema.Union([
+  knockStandings(Schema.toCodecJson(KnockViewSchema)),
+  standingsBody,
+  HttpRefusalSchema,
+]);
+
+type DoorAnswerBody = typeof DoorAnswerSchema.Type;
+
+const doorMessage = (answer: DoorAnswerBody, at: number) => {
+  if ("knock" in answer) {
+    return Messages.GotKnock({ at, knock: answer.knock });
+  }
+
+  if ("view" in answer || answer.refusal === "RoomOpen") {
+    return Messages.LetInside();
+  }
+
+  return Messages.MissedKnock({ reason: refusalText(answer) });
+};
+
+export const ReadKnock = Command.define("ReadKnock", {
+  args: { code: RoomCodeSchema },
+  execute: ({ code }) =>
+    Clock.currentTimeMillis.pipe(
+      Effect.flatMap((at) =>
+        askedStandings(code, DoorAnswerSchema).pipe(
+          Effect.match({
+            onFailure: (reason) => Messages.MissedKnock({ reason }),
+            onSuccess: (answer) => doorMessage(answer, at),
+          })
+        )
+      )
+    ),
+  messages: [Messages.GotKnock, Messages.LetInside, Messages.MissedKnock],
 });
 
 export const SignalRoom = Command.define("SignalRoom", {

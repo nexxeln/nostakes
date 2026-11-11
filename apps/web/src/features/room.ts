@@ -19,7 +19,10 @@ export const roomOf = (model: Model): Option.Option<InRoom> =>
     : Option.none();
 
 export const connectionTarget = (model: Model): Option.Option<SavedPass> =>
-  roomOf(model).pipe(Option.map(({ code, player }) => ({ code, player })));
+  roomOf(model).pipe(
+    Option.filter(({ door }) => Option.isNone(door)),
+    Option.map(({ code, player }) => ({ code, player }))
+  );
 
 export const isYou = (view: RoomView, player: PlayerId) =>
   Option.contains(view.you, player);
@@ -39,6 +42,7 @@ export const hasLeft = (view: RoomView) =>
 export const recordOf = (view: RoomView, seenAt: number): RoomRecord => ({
   closed: RoomViews.$is("Closed")(view),
   code: view.code,
+  door: "Inside",
   left: hasLeft(view),
   others: view.members
     .filter(({ player }) => !isYou(view, player))
@@ -51,6 +55,7 @@ const RECORD_REFRESH_MS = 5 * 60 * 1000;
 
 export const recordChanged = (before: RoomRecord, after: RoomRecord) =>
   before.closed !== after.closed ||
+  before.door !== after.door ||
   before.left !== after.left ||
   before.removed !== after.removed ||
   before.others.join("\n") !== after.others.join("\n") ||

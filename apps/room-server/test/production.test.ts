@@ -7,6 +7,7 @@ import {
   CommandIdSchema,
   HttpRefusalSchema,
   PROTOCOL_VERSION,
+  RoomPassSchema,
   StandingsRequestSchema,
 } from "@nostakes/protocol";
 import type { PlayerId, RoomPass } from "@nostakes/protocol";
@@ -386,6 +387,143 @@ test(
     });
 
     yield* ana.socket.disconnect;
+  }).pipe(Effect.provide(FetchHttpClient.layer)),
+  { timeout: 60_000 }
+);
+
+test(
+  "with join approval on, a newcomer's join answers 202 with a pass that only knocks: its Hello is closed as Knocking and nothing else, the standings route gives it only its own answer, the host's view lists it, and once let in the same pass says Hello as a member",
+  Effect.gen(function* knocking() {
+    const { url } = yield* deployed;
+    const base = yield* Effect.fromNullishOr(url).pipe(Effect.orDie);
+
+    const anaPass = yield* createPokerRoom(base, {
+      avatar: "fox",
+      name: "Ana",
+    });
+
+    const ana = yield* greet(base, anaPass, "ana");
+
+    yield* ask(
+      ana.socket,
+      "approve-joins",
+      Commands.ChangeSettings.make({
+        settings: {
+          ...DEFAULT_SETTINGS,
+          approval: { ...DEFAULT_SETTINGS.approval, joins: true },
+        },
+      })
+    );
+
+    const knock = (name: string) =>
+      postJson(new URL(`/rooms/${anaPass.code}/members`, base), {
+        avatar: "owl",
+        name,
+      }).pipe(
+        Effect.orDie,
+        Effect.flatMap((response) =>
+          response.json.pipe(
+            Effect.orDie,
+            Effect.flatMap((body) =>
+              Schema.decodeUnknownEffect(RoomPassSchema)(body).pipe(
+                Effect.orDie,
+                Effect.map((granted) => ({
+                  body: JSON.stringify(body).replace(
+                    /"token":"[^"]+"/u,
+                    '"token":"TOKEN"'
+                  ),
+                  pass: granted,
+                  status: response.status,
+                }))
+              )
+            )
+          )
+        )
+      );
+
+    const standingsOf = (token: RoomPass["token"]) =>
+      postJson(
+        new URL(`/rooms/${anaPass.code}/standings`, base),
+        Schema.encodeSync(StandingsRequestSchema)({ token })
+      ).pipe(
+        Effect.orDie,
+        Effect.flatMap((response) =>
+          response.json.pipe(
+            Effect.orDie,
+            Effect.map((body) => `${response.status} ${JSON.stringify(body)}`)
+          )
+        )
+      );
+
+    const ben = yield* knock("Ben");
+
+    const door = yield* openSocket(base, anaPass.code, "ben at the door");
+
+    yield* door.send(
+      pokerCodec.client.cases.Hello.make({
+        after: Option.none(),
+        token: ben.pass.token,
+      })
+    );
+
+    const shut = yield* awaitArrival(door, "knocking", guards.Closing);
+
+    const listed = yield* awaitArrival(
+      ana.socket,
+      "the knock in the host's view",
+      (message): message is typeof pokerCodec.server.cases.Events.Type =>
+        guards.Events(message) &&
+        RoomViews.$is("Open")(message.view) &&
+        message.view.knocking.some(({ player }) => player === ben.pass.player)
+    );
+
+    const waiting = yield* standingsOf(ben.pass.token);
+
+    const letIn = yield* ask(
+      ana.socket,
+      "let-ben-in",
+      Commands.LetIn.make({ player: ben.pass.player })
+    );
+
+    const inside = yield* greet(base, ben.pass, "ben inside");
+
+    const cy = yield* knock("Cy");
+
+    yield* ask(
+      ana.socket,
+      "turn-cy-away",
+      Commands.TurnAway.make({ player: cy.pass.player })
+    );
+
+    const turnedAway = yield* standingsOf(cy.pass.token);
+
+    expect({
+      door: door.arrivals.map(({ message }) => message._tag),
+      inside: RoomViews.$is("Open")(inside.welcome.view)
+        ? inside.welcome.view.members.map(({ name }) => name)
+        : [],
+      join: [ben.status, ben.body],
+      letIn: letIn.result._tag,
+      listed: listed._tag,
+      shut: shut.reason,
+      turnedAway,
+      waiting,
+    }).toEqual({
+      door: ["Closing"],
+      inside: ["Ana", "Ben"],
+      join: [
+        202,
+        `{"code":"${anaPass.code}","player":"${ben.pass.player}","token":"TOKEN","knock":{"answer":"Waiting","avatar":"owl","code":"${anaPass.code}","name":"Ben"}}`,
+      ],
+      letIn: "Accepted",
+      listed: "Events",
+      shut: "Knocking",
+      turnedAway: `200 {"knock":{"answer":"TurnedAway","avatar":"owl","code":"${anaPass.code}","name":"Cy"}}`,
+      waiting: `200 {"knock":{"answer":"Waiting","avatar":"owl","code":"${anaPass.code}","name":"Ben"}}`,
+    });
+
+    yield* ana.socket.disconnect;
+    yield* inside.socket.disconnect;
   }).pipe(Effect.provide(FetchHttpClient.layer)),
   { timeout: 60_000 }
 );

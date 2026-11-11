@@ -12,6 +12,7 @@ import {
   RoomRejectionSchema,
   RoomSettingsSchema,
   RoomSignalSchema,
+  KnockViewSchema,
   RemovedViewSchema,
   RoomViewSchema,
   SealedDealSources,
@@ -22,7 +23,9 @@ import {
   decide,
   evolve,
   invariants,
+  holdsPlace,
   isRemoved,
+  knockView,
   millis,
   nextDeadline,
   openRoom,
@@ -45,6 +48,7 @@ import type {
   RoomEvent,
   RoomRejection,
   RoomSettings,
+  KnockView,
   RemovedView,
   RoomSignal,
   RoomState,
@@ -126,6 +130,7 @@ export interface PokerTypes {
   readonly JoinRequest: JoinRequest;
   readonly Signal: RoomSignal;
   readonly Revoked: RemovedView;
+  readonly Knock: KnockView;
 }
 
 export class LogNotOpened extends Schema.TaggedError<
@@ -161,6 +166,7 @@ export const pokerRoomOn = (chain: DrandChain): HostedRoom<PokerTypes> => ({
   entropyFor: (due) =>
     Deadlines.$match(due, {
       DealDue: () => DEAL_SHUFFLE_BYTES,
+      KnockLapses: () => 0,
       QueueDue: () => 0,
       QuietDue: () => 0,
       RunChoiceClock: () => 0,
@@ -173,9 +179,11 @@ export const pokerRoomOn = (chain: DrandChain): HostedRoom<PokerTypes> => ({
   evolve,
   haltedView: (state, audience, at) =>
     standingsView(state, audience, millis(at)),
+  holdsPlace,
   invariants: (state) =>
     invariants(state).map(({ detail, invariant }) => `${invariant}: ${detail}`),
   joinCommand: (request) => MemberCommandSchema.cases.Join.make(request),
+  knockOf: knockView,
   nextDeadline: (state) =>
     nextDeadline(state).pipe(Option.map((due) => ({ at: due.at, due }))),
   open: ({ at, code, host, request }) =>
@@ -199,6 +207,7 @@ export const pokerRoomOn = (chain: DrandChain): HostedRoom<PokerTypes> => ({
   schemas: {
     event: Schema.toCodecJson(RoomEventSchema),
     joinRequest: Schema.toCodecJson(JoinRequestSchema),
+    knock: Schema.toCodecJson(KnockViewSchema),
     memberCommand: Schema.toCodecJson(MemberCommandSchema),
     openRequest: Schema.toCodecJson(OpenRequestSchema),
     redacted: Schema.toCodecJson(SeenEventSchema),
@@ -215,6 +224,8 @@ export const pokerRoomOn = (chain: DrandChain): HostedRoom<PokerTypes> => ({
           by: Actors.Server(),
           shuffleBytes: entropy,
         }),
+      KnockLapses: () =>
+        RoomCommands.LapseKnocks({ at: millis(at), by: Actors.Server() }),
       QueueDue: () =>
         RoomCommands.RunQueue({ at: millis(at), by: Actors.Server() }),
       QuietDue: () =>

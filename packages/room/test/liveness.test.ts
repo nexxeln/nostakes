@@ -261,7 +261,7 @@ const silentNight = (
 
 const silenced = (base: RoomSettings, below: (bound: number) => number) => ({
   ...base,
-  approval: { chips: false, seats: false },
+  approval: { chips: false, joins: false, seats: false },
   turnSeconds: 1 + below(30),
 });
 
@@ -332,7 +332,7 @@ describe("liveness", () => {
 
       const settings: RoomSettings = {
         ...base,
-        approval: { chips: false, seats: false },
+        approval: { chips: false, joins: false, seats: false },
         dealing: "Automatic",
         table: {
           ...base.table,
@@ -437,7 +437,7 @@ describe("liveness at an interactive showdown", () => {
 
       const settings: RoomSettings = {
         ...base,
-        approval: { chips: false, seats: false },
+        approval: { chips: false, joins: false, seats: false },
         dealing: "Automatic",
         table: { ...base.table, showdown: "Interactive" },
         turnSeconds: 0,

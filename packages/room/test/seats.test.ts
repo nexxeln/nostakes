@@ -65,7 +65,10 @@ const requestSeat = (who: typeof ann, index: number, buyIn: number) =>
     seat: seat(index),
   });
 
-const approving = { ...settings, approval: { chips: true, seats: true } };
+const approving = {
+  ...settings,
+  approval: { chips: true, joins: false, seats: true },
+};
 
 const guarded = runAll(openedBy(ann, approving), [join(bob), join(cat)]);
 

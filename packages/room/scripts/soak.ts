@@ -28,6 +28,7 @@ import { ROOM_CODE_ALPHABET, ROOM_CODE_LENGTH } from "@nostakes/protocol";
 import {
   Actors,
   Audiences,
+  DEFAULT_KNOCK_SECONDS,
   Deadlines,
   RoomCodeSchema,
   RoomCommandSchema,
@@ -176,10 +177,15 @@ const roomSettings = (random: Random): RoomSettings => {
   const min = 40 + random.below(60);
 
   return {
-    approval: { chips: random.chance(50), seats: random.chance(50) },
+    approval: {
+      chips: random.chance(50),
+      joins: false,
+      seats: random.chance(50),
+    },
     betweenHandsSeconds: random.below(4),
     buyIn: { max: chips(min * (3 + random.below(5))), min: chips(min) },
     dealing: random.chance(30) ? "Host" : "Automatic",
+    knockSeconds: DEFAULT_KNOCK_SECONDS,
     leavingMidHand: random.chance(40) ? "PlaysOn" : "ActedFor",
     locked: false,
     moments: random.pick(["All", "SkipPainful", "Off"] as const) ?? "All",

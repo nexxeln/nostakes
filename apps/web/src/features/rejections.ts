@@ -160,6 +160,8 @@ export const rejectionText = (
         `It is not ${voice.possessive(player)} turn, so there is nothing to do for ${voice.name(player)}.`,
       AlreadyAMember: ({ player }) =>
         `${voice.subject(player)} ${voice.isYou(player) ? "are" : "is"} already in this room.`,
+      AlreadyKnocked: () =>
+        "This pass already knocked. Go back and knock again from the room link.",
       AlreadyLeaving: ({ player }) =>
         `${voice.subject(player)} already ${voice.isYou(player) ? "stand" : "stands"} up when this hand ends.`,
       AlreadyRemoved: ({ player }) =>
@@ -194,6 +196,7 @@ export const rejectionText = (
         `Someone here is already called ${wanted}. Try adding an initial.`,
       NoChipRequest: ({ player }) =>
         `${voice.subject(player)} ${voice.isYou(player) ? "have" : "has"} no chip request waiting.`,
+      NoKnockDue: () => DEALER_BUSY,
       NoSeatRequest: ({ player }) =>
         `${voice.subject(player)} ${voice.isYou(player) ? "have" : "has"} no seat request waiting.`,
       NoSuchDeadline: () => "That clock already stopped.",
@@ -201,6 +204,7 @@ export const rejectionText = (
         "Everyone here has a seat, so there is nobody to clear.",
       NotAMember: ({ player }) =>
         `${voice.subject(player)} ${voice.isYou(player) ? "are" : "is"} not in the room.`,
+      NotKnocking: () => "They are no longer waiting at the door.",
       NotSeated: ({ player }) =>
         voice.isYou(player)
           ? "You need a seat for that."
@@ -233,6 +237,10 @@ export const rejectionText = (
       ShuffleRanOut: () => DEALER_BUSY,
       TableRejected: ({ rejection: refused }) =>
         tableText(refused, voice, handRunning(view)),
+      TooManyKnocking: () =>
+        "A few people are already waiting at the door. Try again in a few minutes.",
+      TooManyKnocks: () =>
+        "This room has had too many knocks tonight. Ask the host to let people join without knocking.",
       TooManyPeople: ({ most }) =>
         `This room is full at ${most} people. The host can make room by removing someone.`,
       TopUpNotAllowed: ({ duringHand, holding, min, player, rule }) => {

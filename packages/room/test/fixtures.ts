@@ -51,10 +51,11 @@ export const cat = player("cat");
 export const dan = player("dan");
 
 export const settings: RoomSettings = {
-  approval: { chips: false, seats: false },
+  approval: { chips: false, joins: false, seats: false },
   betweenHandsSeconds: 0,
   buyIn: { max: chipCount(1000), min: chipCount(100) },
   dealing: "Automatic",
+  knockSeconds: 300,
   leavingMidHand: "ActedFor",
   locked: false,
   moments: "All",

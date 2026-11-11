@@ -3,6 +3,8 @@ import {
   MAX_BODY_BYTES,
   haltedStandings,
   joinRefused,
+  knockStandings,
+  knockingPass,
   revokedStandings,
   RoomCodeSchema,
   RoomPassSchema,
@@ -118,6 +120,23 @@ const joinRefusedBody = HttpServerResponse.schemaJson(joinRefused(Schema.Json));
 const removedBody = HttpServerResponse.schemaJson(
   revokedStandings(Schema.Json)
 );
+
+const knockBody = HttpServerResponse.schemaJson(knockStandings(Schema.Json));
+
+const knockingBody = HttpServerResponse.schemaJson(knockingPass(Schema.Json));
+
+const knocking = (
+  code: RoomCode,
+  player: string,
+  token: string,
+  knock: Schema.Json
+) =>
+  Schema.decodeEffect(RoomPassSchema)({ code, player, token }).pipe(
+    Effect.flatMap((granted) =>
+      knockingBody({ ...granted, knock }, { status: 202 })
+    ),
+    Effect.orDie
+  );
 
 const created = (code: RoomCode, player: string, token: string) =>
   Schema.decodeEffect(RoomPassSchema)({ code, player, token }).pipe(
@@ -284,6 +303,8 @@ export const roomRoutes = <R>(
         Faulted: () => refuse("ServerFault"),
         Invalid: () => refuse("BadRequest"),
         Joined: ({ player, token }) => created(code.value, player, token),
+        Knocking: ({ knock, player, token }) =>
+          knocking(code.value, player, token, knock),
         NotFound: () => refuse("NotFound"),
         Refused: ({ rejection }) =>
           joinRefusedBody(
@@ -326,6 +347,7 @@ export const roomRoutes = <R>(
       return yield* StandingsOutcomeSchema.match(outcome, {
         Halted: ({ view }) => standingsBody({ view }).pipe(Effect.orDie),
         Invalid: () => refuse("BadRequest"),
+        Knocking: ({ view }) => knockBody({ knock: view }).pipe(Effect.orDie),
         NotAuthorized: () => refuse("NotAuthorized"),
         NotFound: () => refuse("NotFound"),
         NotHalted: () => refuse("RoomOpen"),

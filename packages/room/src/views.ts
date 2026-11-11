@@ -39,12 +39,23 @@ import {
   RoomStates,
   SEATS,
   isMember,
+  isOpen,
+  isRemoved,
+  knockOf,
   namedPeople,
   occupantAt,
   removedInTheSettlement,
   seatOf,
+  waitingKnocks,
 } from "./state.js";
-import type { Closed, Member, Open, RoomState, Sealed } from "./state.js";
+import type {
+  Closed,
+  Knock,
+  Member,
+  Open,
+  RoomState,
+  Sealed,
+} from "./state.js";
 import { MillisSchema, latest, millis } from "./time.js";
 import type { Millis } from "./time.js";
 
@@ -235,6 +246,14 @@ const MemberViewSchema = Schema.Struct({
 
 const youField = absentAs(Schema.Option(PlayerIdSchema), Option.none());
 
+export const KnockerViewSchema = Schema.Struct({
+  ...MemberViewSchema.fields,
+  lapsesAt: MillisSchema,
+  since: MillisSchema,
+});
+
+const knockingField = absentAs(Schema.Array(KnockerViewSchema), []);
+
 export const AttendanceViewSchema = Schema.TaggedUnion({
   Attended: { since: MillisSchema },
   Quiet: { pausedAt: MillisSchema, since: MillisSchema },
@@ -287,6 +306,7 @@ export const RoomViewSchema = Schema.TaggedUnion({
     holeCards: cards,
     host: PlayerIdSchema,
     hostAway: hostAwayField,
+    knocking: knockingField,
     lastHand: Schema.Option(LastHandViewSchema),
     legal: Schema.Option(LegalActionsSchema),
     members: Schema.Array(MemberViewSchema),
@@ -320,6 +340,26 @@ export const RoomViewSchema = Schema.TaggedUnion({
 });
 
 export type RoomView = typeof RoomViewSchema.Type;
+
+export const KnockAnswerSchema = Schema.Literals([
+  "Waiting",
+  "TurnedAway",
+  "Lapsed",
+  "Locked",
+  "NameTaken",
+  "NightOver",
+]);
+
+export type KnockAnswer = typeof KnockAnswerSchema.Type;
+
+export const KnockViewSchema = Schema.Struct({
+  answer: KnockAnswerSchema,
+  avatar: AvatarSchema,
+  code: RoomCodeSchema,
+  name: NameSchema,
+});
+
+export type KnockView = typeof KnockViewSchema.Type;
 
 export const RemovedViewSchema = Schema.Struct({
   balance: BalanceSchema,
@@ -604,6 +644,24 @@ const showdownFor = (state: Open, viewer: Option.Option<Audience>) => {
     : Option.none();
 };
 
+const hosting = (state: Open, audience: Audience) =>
+  Audiences.$match(audience, {
+    Seated: ({ player }) => player === state.host,
+    Spectator: () => false,
+    Unseated: ({ player }) => player === state.host,
+  });
+
+const knockingView = (state: Open, audience: Audience) =>
+  hosting(state, audience)
+    ? waitingKnocks(state).map(({ avatar, lapsesAt, name, player, since }) => ({
+        avatar,
+        lapsesAt,
+        name,
+        player,
+        since,
+      }))
+    : [];
+
 const openView = (state: Open, audience: Audience, at: Millis): RoomView => {
   const viewer = viewerSeat(state, audience);
   const { table } = state;
@@ -626,6 +684,7 @@ const openView = (state: Open, audience: Audience, at: Millis): RoomView => {
       claimableAt: hostClaimableAt(state),
       since: state.hostAway,
     }),
+    knocking: knockingView(state, audience),
     lastHand: lastHandView(state, audience),
     legal: legalFor(state, viewer),
     members: membersView(state),
@@ -665,6 +724,35 @@ export const viewFor = (
         }),
       }),
     Open: (open) => openView(open, audience, at),
+  });
+
+const answerOf = (state: RoomState, knock: Knock): Option.Option<KnockAnswer> =>
+  Option.match(knock.outcome, {
+    onNone: () => Option.some(isOpen(state) ? "Waiting" : "NightOver"),
+    onSome: (outcome) =>
+      outcome === "LetIn" ? Option.none() : Option.some(outcome),
+  });
+
+export const knockView = (
+  state: RoomState,
+  player: PlayerId
+): Option.Option<KnockView> =>
+  knockOf(state, player).pipe(
+    Option.flatMap((knock) =>
+      Option.map(answerOf(state, knock), (answer) => ({
+        answer,
+        avatar: knock.avatar,
+        code: state.code,
+        name: knock.name,
+      }))
+    )
+  );
+
+export const holdsPlace = (state: RoomState, player: PlayerId) =>
+  !isRemoved(state, player) &&
+  Option.match(knockView(state, player), {
+    onNone: () => true,
+    onSome: ({ answer }) => answer === "Waiting",
   });
 
 const nothingYet = (player: PlayerId) => ({

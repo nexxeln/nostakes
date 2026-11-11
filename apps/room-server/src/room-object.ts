@@ -637,6 +637,12 @@ export const roomObject = <T extends RoomTypes, Tally>(
             return;
           }
 
+          if (room.knocking(player.value)) {
+            closeSocket(socket, "Knocking");
+
+            return;
+          }
+
           const wasConnected = connectedPlayers(Option.none()).includes(
             player.value
           );
@@ -1194,9 +1200,18 @@ export const roomObject = <T extends RoomTypes, Tally>(
 
             return codecOf(room).reply.match(result.reply, {
               Accepted: () =>
-                JoinOutcomeSchema.cases.Joined.make({
-                  player: minted.player,
-                  token: minted.token,
+                Option.match(room.knockOf(minted.player), {
+                  onNone: () =>
+                    JoinOutcomeSchema.cases.Joined.make({
+                      player: minted.player,
+                      token: minted.token,
+                    }),
+                  onSome: (knock) =>
+                    JoinOutcomeSchema.cases.Knocking.make({
+                      knock: Schema.encodeSync(core.schemas.knock)(knock),
+                      player: minted.player,
+                      token: minted.token,
+                    }),
                 }),
               Rejected: ({ rejection }) =>
                 JoinOutcomeSchema.cases.Refused.make({
@@ -1303,6 +1318,10 @@ export const roomObject = <T extends RoomTypes, Tally>(
               Halted: ({ view }) =>
                 StandingsOutcomeSchema.cases.Halted.make({
                   view: Schema.encodeSync(core.schemas.view)(view),
+                }),
+              Knocking: ({ knock }) =>
+                StandingsOutcomeSchema.cases.Knocking.make({
+                  view: Schema.encodeSync(core.schemas.knock)(knock),
                 }),
               NotAuthorized: () =>
                 StandingsOutcomeSchema.cases.NotAuthorized.make({}),

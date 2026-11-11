@@ -41,6 +41,7 @@ import {
   replay,
   replayWithoutRecap,
   seatOf,
+  waitingKnocks,
 } from "../src/index.js";
 import type {
   Actor,
@@ -135,14 +136,21 @@ const TOP_UPS: readonly TopUpRule[] = [
 
 const AWAY_SECONDS = [0, 1, 30, 120];
 
+const KNOCK_SECONDS = [10, 30, 300];
+
 const drawnSettings = (random: SeededRandom): Omit<RoomSettings, "locked"> => ({
-  approval: { chips: random.chance(1, 2), seats: random.chance(1, 2) },
+  approval: {
+    chips: random.chance(1, 2),
+    joins: false,
+    seats: random.chance(1, 2),
+  },
   betweenHandsSeconds: random.below(3),
   buyIn: {
     max: chips(400 + random.below(400)),
     min: chips(20 + random.below(60)),
   },
   dealing: random.chance(1, 3) ? "Host" : "Automatic",
+  knockSeconds: KNOCK_SECONDS[random.below(KNOCK_SECONDS.length)] ?? 10,
   leavingMidHand: random.chance(1, 2) ? "PlaysOn" : "ActedFor",
   moments: (["All", "SkipPainful", "Off"] as const)[random.below(3)] ?? "All",
   pauseWhenAwaySeconds: AWAY_SECONDS[random.below(AWAY_SECONDS.length)] ?? 0,
@@ -421,6 +429,10 @@ const playOrDeal = (
           return RoomCommands.RunQueue({ at: millis(when), by: server });
         }
 
+        if (Deadlines.$is("KnockLapses")(deadline)) {
+          return RoomCommands.LapseKnocks({ at: millis(when), by: server });
+        }
+
         return Deadlines.$is("DealDue")(deadline)
           ? RoomCommands.Deal({
               at: millis(when),
@@ -498,6 +510,10 @@ const serverCommand = (
         return RoomCommands.QuietTable({ at: sent, by });
       }
 
+      if (Deadlines.$is("KnockLapses")(deadline)) {
+        return RoomCommands.LapseKnocks({ at: sent, by });
+      }
+
       if (Deadlines.$is("SealDue")(deadline)) {
         const sealed = sealAt(sent, random.below(1_000_000_000));
 
@@ -550,11 +566,46 @@ const serverCommand = (
   });
 };
 
+const newcomer = (state: Open, random: SeededRandom): PlayerId =>
+  state.settings.approval.joins && random.chance(1, 2)
+    ? PlayerIdSchema.make(`k${state.knocks.length}`)
+    : Option.getOrElse(pickFrom(random, POOL), () => state.host);
+
+const answerKnock = (
+  state: Open,
+  random: SeededRandom,
+  at: number
+): Option.Option<RoomCommand> => {
+  const waiting = waitingKnocks(state).map(({ player }) => player);
+
+  if (waiting.length === 0 || random.chance(1, 2)) {
+    return Option.none();
+  }
+
+  const by = hostOrNot(state, random);
+
+  const player = random.chance(1, 10)
+    ? Option.getOrElse(pickFrom(random, POOL), () => state.host)
+    : Option.getOrElse(pickFrom(random, waiting), () => state.host);
+
+  return Option.some(
+    random.chance(2, 3)
+      ? RoomCommands.LetIn({ at: millis(at), by, player })
+      : RoomCommands.TurnAway({ at: millis(at), by, player })
+  );
+};
+
 const membership = (
   state: Open,
   random: SeededRandom,
   at: number
 ): RoomCommand => {
+  const answer = answerKnock(state, random, at);
+
+  if (Option.isSome(answer)) {
+    return answer.value;
+  }
+
   const roll = random.below(10);
   const by = someone(state, random);
 
@@ -562,7 +613,7 @@ const membership = (
     return RoomCommands.Join({
       at: millis(at),
       avatar: `a${random.below(5)}`,
-      by: member(Option.getOrElse(pickFrom(random, POOL), () => state.host)),
+      by: member(newcomer(state, random)),
       name: `n${random.below(50)}`,
     });
   }
@@ -743,7 +794,11 @@ const hosting = (
   return RoomCommands.ChangeSettings({
     at: when,
     by,
-    settings: { ...settings, locked: random.chance(1, 4) },
+    settings: {
+      ...settings,
+      approval: { ...settings.approval, joins: random.chance(1, 3) },
+      locked: random.chance(1, 4),
+    },
   });
 };
 
@@ -821,6 +876,14 @@ export const commandFor = (
 
   const { roll } = intent;
 
+  if (waitingKnocks(state).length > 0 && roll % 3 === 0) {
+    const answer = answerKnock(state, random, at);
+
+    if (Option.isSome(answer)) {
+      return answer.value;
+    }
+  }
+
   if (roll < 42) {
     return playOrDeal(state, random, at);
   }
@@ -885,9 +948,12 @@ export const openingCommands = (
   const at = millis(0);
 
   return [
-    ...POOL.slice(1, 6).map((player) =>
-      RoomCommands.Join({ at, avatar: "", by: member(player), name: player })
-    ),
+    ...POOL.slice(1, 6).flatMap((player) => [
+      RoomCommands.Join({ at, avatar: "", by: member(player), name: player }),
+      ...(settings.approval.joins
+        ? [RoomCommands.LetIn({ at, by: member(POOL[0] ?? player), player })]
+        : []),
+    ]),
     ...POOL.slice(0, 5).map((player, index) =>
       RoomCommands.RequestSeat({
         at,

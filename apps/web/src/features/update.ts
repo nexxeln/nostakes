@@ -38,6 +38,7 @@ import {
   CreateRoom,
   ForgetRoom,
   JoinRoom,
+  ReadKnock,
   ReadStandings,
   ReloadPage,
   SaveLearned,
@@ -53,16 +54,33 @@ import {
   WakeRoom,
 } from "../client/commands.js";
 import type { RoomConnection } from "../client/connection.js";
+import {
+  NAME_TAKEN_PROBLEM,
+  answerOf,
+  doorOf,
+  pausedUntil,
+  stillWaiting,
+} from "./door.js";
 import { haltedText } from "./halted.js";
 import { Messages, ReplyOutcomes } from "./message.js";
 import type { Message, ReplyOutcome } from "./message.js";
 import {
   FairMarks,
   HaltedStandings,
+  KnockAnswers,
   RemovedResults,
   Screens,
 } from "./model.js";
-import type { Flags, InRoom, Link, Model, RulesSheet } from "./model.js";
+import type {
+  Door,
+  DoorAnswer,
+  Flags,
+  InRoom,
+  Link,
+  Model,
+  RoomRecord,
+  RulesSheet,
+} from "./model.js";
 import { NO_MOMENTS, watchedMoments } from "./moments/watch.js";
 import { enteredName, nameRefusal } from "./names.js";
 import { considerUpdate } from "./page-update.js";
@@ -118,6 +136,7 @@ const freshRoom = (code: InRoom["code"], player: InRoom["player"]): InRoom => ({
   confirm: Option.none(),
   connected: false,
   copied: "Nothing",
+  door: Option.none(),
   drafts: { buyIn: "", chips: "", seat: Option.none() },
   events: [],
   fairness: [],
@@ -139,6 +158,28 @@ const freshRoom = (code: InRoom["code"], player: InRoom["player"]): InRoom => ({
   shown: Option.none(),
   update: Option.none(),
 });
+
+const atTheDoor = (
+  code: InRoom["code"],
+  player: InRoom["player"],
+  door: DoorAnswer
+): InRoom => ({ ...freshRoom(code, player), door: Option.some(door) });
+
+const roomFor = (
+  rooms: Model["rooms"],
+  code: InRoom["code"],
+  player: InRoom["player"]
+) => {
+  const door =
+    rooms.find(({ record }) => record.code === code)?.record.door ?? "Inside";
+
+  return door === "Inside"
+    ? { commands: [], room: freshRoom(code, player) }
+    : {
+        commands: [ReadKnock({ code })],
+        room: atTheDoor(code, player, KnockAnswers.Asking()),
+      };
+};
 
 const KEPT_FAIR_HANDS = 30;
 
@@ -191,17 +232,20 @@ export const init = (flags: Flags): Return => {
           },
         }),
       }),
-    onSome: ({ code, player }) => ({
-      model: {
-        ...base,
-        screen: Screens.Room({ room: freshRoom(code, player) }),
-      },
-    }),
+    onSome: ({ code, player }) => {
+      const entry = roomFor(flags.rooms, code, player);
+
+      return {
+        commands: entry.commands,
+        model: { ...base, screen: Screens.Room({ room: entry.room }) },
+      };
+    },
   });
 
   return {
     ...opened,
     commands: [
+      ...(opened.commands ?? []),
       ApplyTheme({ theme: flags.theme }),
       ApplyDeck({ deck: flags.deck }),
       ...Option.toArray(flags.reloadedFor).flatMap((target) =>
@@ -217,6 +261,11 @@ export const init = (flags: Flags): Return => {
     ],
   };
 };
+
+const withoutRoom = (model: Model, code: string): Model => ({
+  ...model,
+  rooms: model.rooms.filter(({ record }) => record.code !== code),
+});
 
 const withRoom = (model: Model, room: InRoom): Model => ({
   ...model,
@@ -338,9 +387,153 @@ const askForOwnResult = (step: Return): Return =>
     },
   });
 
+const doorRecord = (
+  model: Model,
+  code: InRoom["code"],
+  door: Door,
+  seenAt: number
+): RoomRecord => ({
+  closed: false,
+  left: false,
+  others: [],
+  removed: false,
+  ...model.rooms.find(({ record }) => record.code === code)?.record,
+  code,
+  door,
+  seenAt,
+});
+
+const rememberDoor = (step: Return, door: Door, seenAt: number): Return =>
+  Option.match(roomOf(step.model), {
+    onNone: () => step,
+    onSome: ({ code, player }) => {
+      const record = doorRecord(step.model, code, door, seenAt);
+      const others = withoutRoom(step.model, code);
+
+      return {
+        commands: [...(step.commands ?? []), RememberRoom({ record })],
+        model: { ...others, rooms: [{ player, record }, ...others.rooms] },
+      };
+    },
+  });
+
+const knockingRefusal = (room: InRoom) =>
+  Option.isNone(room.door) &&
+  Option.exists(
+    room.link,
+    ({ phase, refusal }) =>
+      phase === "Refused" && Option.contains(refusal, "Knocking")
+  );
+
+const askAtTheDoor = (step: Return): Return =>
+  Option.match(roomOf(step.model).pipe(Option.filter(knockingRefusal)), {
+    onNone: () => askForOwnResult(step),
+    onSome: (room) => ({
+      commands: [...(step.commands ?? []), ReadKnock({ code: room.code })],
+      model: withRoom(step.model, {
+        ...room,
+        door: Option.some(KnockAnswers.Asking()),
+      }),
+    }),
+  });
+
+const knockedAt = (
+  model: Model,
+  message: Extract<Message, { readonly _tag: "KnockedAtRoom" }>
+): Return =>
+  rememberDoor(
+    {
+      commands: [ShowPath({ path: roomPath(message.code) })],
+      model: withRoom(
+        model,
+        atTheDoor(
+          message.code,
+          message.player,
+          KnockAnswers.Shown({ knock: message.knock })
+        )
+      ),
+    },
+    "Knocking",
+    message.at
+  );
+
+const gotKnock = (
+  model: Model,
+  message: Extract<Message, { readonly _tag: "GotKnock" }>
+): Return =>
+  inRoom(model, (room) => {
+    const door = doorOf(message.knock.answer);
+
+    const shown = withRoom(model, {
+      ...room,
+      door: Option.some(KnockAnswers.Shown({ knock: message.knock })),
+    });
+
+    const known = model.rooms.find(({ record }) => record.code === room.code);
+
+    return known?.record.door === door
+      ? { model: shown }
+      : rememberDoor({ model: shown }, door, message.at);
+  });
+
+const letInside = (model: Model): Return =>
+  inRoom(model, (room) =>
+    rememberDoor(
+      {
+        model: withRoom(model, {
+          ...room,
+          door: Option.none(),
+          link: Option.none(),
+        }),
+      },
+      "Inside",
+      model.now
+    )
+  );
+
+const knockAgain = (model: Model): Return =>
+  inRoom(model, (room) => {
+    const answer = room.door.pipe(Option.flatMap(answerOf));
+
+    if (Option.contains(answer, "NameTaken")) {
+      return {
+        model: {
+          ...model,
+          screen: Screens.Invited({
+            busy: false,
+            code: room.code,
+            problem: Option.some(NAME_TAKEN_PROBLEM),
+          }),
+        },
+      };
+    }
+
+    return {
+      commands: [
+        JoinRoom({
+          avatar: model.profile.avatar,
+          code: room.code,
+          name: model.profile.name,
+          pausedUntil: pausedUntil(model, room.code),
+        }),
+      ],
+      model: {
+        ...model,
+        screen: Screens.Invited({
+          busy: true,
+          code: room.code,
+          problem: Option.none(),
+        }),
+      },
+    };
+  });
+
+const turnedAway = (room: InRoom) =>
+  Option.contains(room.door.pipe(Option.flatMap(answerOf)), "TurnedAway");
+
 const askForStandings = (step: Return): Return =>
   Option.match(roomOf(step.model).pipe(Option.filter(haltedRefusal)), {
-    onNone: () => askForOwnResult(step),
+    onNone: () => askAtTheDoor(step),
     onSome: (room) => ({
       commands: [...(step.commands ?? []), ReadStandings({ code: room.code })],
       model: withRoom(step.model, {
@@ -349,11 +542,6 @@ const askForStandings = (step: Return): Return =>
       }),
     }),
   });
-
-const withoutRoom = (model: Model, code: string): Model => ({
-  ...model,
-  rooms: model.rooms.filter(({ record }) => record.code !== code),
-});
 
 const noteRoom = (step: Return, view: RoomView, seenAt: number): Return =>
   Option.match(roomOf(step.model), {
@@ -890,7 +1078,7 @@ export const update = (model: Model, message: Message): Return =>
       editRoom(model, (room) => ({ ...room, fairnessOpen: true })),
     ClickedHome: () =>
       inRoom(model, (room) => {
-        const keepsResult = Option.isSome(room.removed);
+        const keepsResult = Option.isSome(room.removed) || turnedAway(room);
 
         return {
           commands: keepsResult
@@ -915,6 +1103,7 @@ export const update = (model: Model, message: Message): Return =>
           }))
         ),
       })),
+    ClickedKnockAgain: () => knockAgain(model),
     ClickedKnownRoom: ({ code }) =>
       Option.match(
         Option.fromNullishOr(
@@ -922,10 +1111,14 @@ export const update = (model: Model, message: Message): Return =>
         ),
         {
           onNone: () => ({ model }),
-          onSome: ({ player }) => ({
-            commands: [ShowPath({ path: roomPath(code) })],
-            model: withRoom(model, freshRoom(code, player)),
-          }),
+          onSome: ({ player }) => {
+            const entry = roomFor(model.rooms, code, player);
+
+            return {
+              commands: [ShowPath({ path: roomPath(code) }), ...entry.commands],
+              model: withRoom(model, entry.room),
+            };
+          },
         }
       ),
     ClickedMember: ({ player }) =>
@@ -1021,6 +1214,7 @@ export const update = (model: Model, message: Message): Return =>
         }),
       },
     }),
+    GotKnock: (knocked) => gotKnock(model, knocked),
     GotLink: ({ link }) =>
       askForStandings(
         editRoomThenUpdate(
@@ -1123,6 +1317,13 @@ export const update = (model: Model, message: Message): Return =>
           }
         : kept;
     },
+    KnockedAtRoom: (knocked) => knockedAt(model, knocked),
+    LetInside: () => letInside(model),
+    MissedKnock: ({ reason }) =>
+      editRoom(model, (room) => ({
+        ...room,
+        door: Option.some(KnockAnswers.Missing({ reason })),
+      })),
     MissedOwnResult: ({ reason }) =>
       editRoom(model, (room) => ({
         ...room,
@@ -1134,6 +1335,12 @@ export const update = (model: Model, message: Message): Return =>
         halted: Option.some(HaltedStandings.Missing({ reason })),
       })),
     PickedAvatar: ({ avatar }) => wearFace(model, avatar, false),
+    PolledDoor: () =>
+      inRoom(model, (room) =>
+        stillWaiting(room)
+          ? { commands: [ReadKnock({ code: room.code })], model }
+          : { model }
+      ),
     ReleasedConnection: () =>
       editRoom(model, (room) => ({ ...room, connected: false })),
     SentSignal: ({ at, sent, signal }) =>
@@ -1194,7 +1401,14 @@ export const update = (model: Model, message: Message): Return =>
 
       return Option.match(nameRefusal(name), {
         onNone: () => ({
-          commands: [JoinRoom({ avatar: model.profile.avatar, code, name })],
+          commands: [
+            JoinRoom({
+              avatar: model.profile.avatar,
+              code,
+              name,
+              pausedUntil: pausedUntil(model, code),
+            }),
+          ],
           model: {
             ...model,
             profile: { ...model.profile, name },
@@ -1240,7 +1454,12 @@ export const update = (model: Model, message: Message): Return =>
           Option.match(nameRefusal(name), {
             onNone: () => ({
               commands: [
-                JoinRoom({ avatar: model.profile.avatar, code: valid, name }),
+                JoinRoom({
+                  avatar: model.profile.avatar,
+                  code: valid,
+                  name,
+                  pausedUntil: pausedUntil(model, valid),
+                }),
               ],
               model: {
                 ...model,

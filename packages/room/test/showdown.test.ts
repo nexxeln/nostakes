@@ -15,6 +15,7 @@ import { Effect, Option, Result, Schema } from "effect";
 import * as Arbitrary from "effect/Arbitrary";
 
 import {
+  Actors,
   Audiences,
   Deadlines,
   RoomCommands,
@@ -359,6 +360,15 @@ const everySeatTimesOut = (state: RoomState, started: readonly Event[]) => {
 
   for (let guard = 0; guard < 20; guard += 1) {
     const due = Option.getOrUndefined(nextDeadline(current));
+
+    if (due !== undefined && Deadlines.$is("KnockLapses")(due)) {
+      current = run(
+        current,
+        RoomCommands.LapseKnocks({ at: due.at, by: Actors.Server() })
+      ).state;
+
+      continue;
+    }
 
     if (due === undefined || !Deadlines.$is("ShowdownClock")(due)) {
       break;

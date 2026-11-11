@@ -3,6 +3,7 @@ import { Schema } from "effect";
 
 import { ActionNotOnSeat } from "./rejections/action-not-on-seat.js";
 import { AlreadyAMember } from "./rejections/already-a-member.js";
+import { AlreadyKnocked } from "./rejections/already-knocked.js";
 import { AlreadyLeaving } from "./rejections/already-leaving.js";
 import { AlreadyRemoved } from "./rejections/already-removed.js";
 import { AlreadySeated } from "./rejections/already-seated.js";
@@ -21,10 +22,12 @@ import { HostStillHere } from "./rejections/host-still-here.js";
 import { MembersOnly } from "./rejections/members-only.js";
 import { NameTaken } from "./rejections/name-taken.js";
 import { NoChipRequest } from "./rejections/no-chip-request.js";
+import { NoKnockDue } from "./rejections/no-knock-due.js";
 import { NoSeatRequest } from "./rejections/no-seat-request.js";
 import { NoSuchDeadline } from "./rejections/no-such-deadline.js";
 import { NobodyToClear } from "./rejections/nobody-to-clear.js";
 import { NotAMember } from "./rejections/not-a-member.js";
+import { NotKnocking } from "./rejections/not-knocking.js";
 import { NotSeated } from "./rejections/not-seated.js";
 import { NotTheHost } from "./rejections/not-the-host.js";
 import { NothingSealed } from "./rejections/nothing-sealed.js";
@@ -46,6 +49,8 @@ import { ServerOnly } from "./rejections/server-only.js";
 import { SettlesAfterHand } from "./rejections/settles-after-hand.js";
 import { ShuffleRanOut } from "./rejections/shuffle-ran-out.js";
 import { TableRejected } from "./rejections/table-rejected.js";
+import { TooManyKnocking } from "./rejections/too-many-knocking.js";
+import { TooManyKnocks } from "./rejections/too-many-knocks.js";
 import { TooManyPeople } from "./rejections/too-many-people.js";
 import { TopUpNotAllowed } from "./rejections/top-up-not-allowed.js";
 
@@ -98,6 +103,11 @@ export const RoomRejectionSchema = Schema.Union([
   RoomLocked,
   TooManyPeople,
   NobodyToClear,
+  AlreadyKnocked,
+  TooManyKnocking,
+  TooManyKnocks,
+  NotKnocking,
+  NoKnockDue,
 ]);
 
 export type RoomRejection = typeof RoomRejectionSchema.Type;
@@ -195,5 +205,15 @@ export { RemovingYourself } from "./rejections/removing-yourself.js";
 export { RemovedFromRoom } from "./rejections/removed-from-room.js";
 
 export { AlreadyRemoved } from "./rejections/already-removed.js";
+
+export { AlreadyKnocked } from "./rejections/already-knocked.js";
+
+export { TooManyKnocking } from "./rejections/too-many-knocking.js";
+
+export { TooManyKnocks } from "./rejections/too-many-knocks.js";
+
+export { NotKnocking } from "./rejections/not-knocking.js";
+
+export { NoKnockDue } from "./rejections/no-knock-due.js";
 
 export { Unbalanced } from "@nostakes/ledger";

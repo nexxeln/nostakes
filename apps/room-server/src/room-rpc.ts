@@ -21,6 +21,11 @@ export const JoinOutcomeSchema = Schema.TaggedUnion({
   Faulted: {},
   Invalid: {},
   Joined: { player: PlayerIdSchema, token: TokenTextSchema },
+  Knocking: {
+    knock: Schema.Json,
+    player: PlayerIdSchema,
+    token: TokenTextSchema,
+  },
   NotFound: {},
   Refused: { rejection: Schema.Json },
   RoomFull: { members: Schema.Int },
@@ -39,6 +44,7 @@ export type CheckOutcome = typeof CheckOutcomeSchema.Type;
 export const StandingsOutcomeSchema = Schema.TaggedUnion({
   Halted: { view: Schema.Json },
   Invalid: {},
+  Knocking: { view: Schema.Json },
   NotAuthorized: {},
   NotFound: {},
   NotHalted: {},
