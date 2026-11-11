@@ -82,7 +82,7 @@ class LongNightFailed extends Schema.TaggedError<
   detail: Schema.String,
 }) {
   override get message() {
-    return `After ${this.batches} batches ${this.detail}. A client that does more for each batch the longer a night runs slows down and then stops applying the room; check that patches/xstate@6.0.0-beta.1.patch is applied and profile one window of batches.`;
+    return `After ${this.batches} batches ${this.detail}. A client that does more for each batch the longer a night runs slows down and then stops applying the room; check that the installed xstate is 6.0.0-beta.2 or later, which releases earlier snapshot system views and records sent[] only during a transition, and profile one window of batches.`;
   }
 }
 
