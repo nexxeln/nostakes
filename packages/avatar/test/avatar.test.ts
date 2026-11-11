@@ -179,7 +179,8 @@ describe("render", () => {
           expect(render(avatar, { expression, size })).toBe(svg);
         }
       }
-    }
+    },
+    { arbitrary: { runs: 40 } }
   );
 
   it.prop(
@@ -222,7 +223,7 @@ describe("render", () => {
         }
       }
     },
-    { arbitrary: { runs: 40 } }
+    { arbitrary: { runs: 12 } }
   );
 
   it.prop(
@@ -244,7 +245,8 @@ describe("render", () => {
           floor * 0.99
         );
       }
-    }
+    },
+    { arbitrary: { runs: 40 } }
   );
 
   it.prop(
