@@ -1048,6 +1048,10 @@ export const hostRoom = <T extends RoomTypes>(
     keepReplies,
     nextDeadline,
     noteAttendance,
+    placesHeld: () =>
+      current.credentials.filter(
+        ({ player }) => !core.revoked(current.state, player)
+      ).length,
     revoked: (player: PlayerId) => core.revoked(current.state, player),
     snapshot: () => current,
     standings,

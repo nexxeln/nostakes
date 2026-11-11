@@ -1,5 +1,6 @@
 import { describe, expect, it } from "@effect/vitest";
 import { Actions, Events, SeatIndexSchema } from "@nostakes/engine";
+import { PlayerIdSchema } from "@nostakes/protocol";
 import {
   Actors,
   ChipAmountSchema,
@@ -14,6 +15,7 @@ import {
 } from "@nostakes/room";
 import type { RoomView } from "@nostakes/room";
 import { Option, Result, Schema } from "effect";
+import * as Hex from "effect/encoding/Hex";
 
 import {
   DEAL_SHUFFLE_BYTES,
@@ -21,7 +23,14 @@ import {
   MemberCommandSchema,
   pokerRoom,
 } from "../src/poker-room.js";
-import { hostRoom, loadRoom, ROOM_RETENTION_MS } from "../src/room-host.js";
+import {
+  hostRoom,
+  loadRoom,
+  Origins,
+  ROOM_RETENTION_MS,
+  StandingsAnswers,
+} from "../src/room-host.js";
+import { MAX_MEMBERS } from "../src/room-rpc.js";
 import { ana, ben, cy, openPokerHost } from "./fixtures/poker-host.js";
 
 const Commands = MemberCommandSchema.cases;
@@ -79,6 +88,8 @@ const plainRoom = {
   name: "Ana",
   settings: { ...DEFAULT_SETTINGS, shuffle: "Plain" as const },
 };
+
+const hashOf = (index: number) => index.toString(16).padStart(64, "0");
 
 describe("the poker room adapter", () => {
   it("opens a room without settings at the agreed defaults, as members see them on the wire", () => {
@@ -509,5 +520,54 @@ describe("catching up after a reconnect", () => {
 
     expect(again(cy)).toBe(room.welcome(cy, Option.some(before), 1010));
     expect(again(ben)).toBe(room.welcome(ben, Option.some(before), 1010));
+  });
+
+  it("holds no place for a pass the host revoked: a host who removes more people than the server keeps passes for still has room for the next, and every removed pass still reads its own result", () => {
+    const room = openPokerHost(plainRoom);
+
+    const removed = Array.from({ length: MAX_MEMBERS }, (_, index) => {
+      const player = PlayerIdSchema.make(`guest-${index}`.padEnd(16, "x"));
+      const at = 2000 + index * 10;
+
+      const joined = room.host.commit(
+        {
+          at,
+          command: pokerRoom.stamp(
+            player,
+            at,
+            pokerRoom.joinCommand({ avatar: "owl", name: `Guest ${index}` })
+          ),
+          grant: Option.some({ hash: hashOf(index + 1), player }),
+          origin: Origins.Server({ trigger: "Join" }),
+        },
+        room.connections()
+      );
+
+      const gone = room.send(
+        ana,
+        `remove-${index}`,
+        at + 5,
+        Commands.RemoveMember.make({ player })
+      );
+
+      return [joined.reply._tag, gone.reply._tag];
+    });
+
+    const results = Array.from({ length: MAX_MEMBERS }, (_, index) =>
+      StandingsAnswers.$is("Removed")(
+        room.host.standings(
+          Result.getOrThrow(Hex.decode(hashOf(index + 1))),
+          9000
+        )
+      )
+    );
+
+    expect(removed).toStrictEqual(
+      Array.from({ length: MAX_MEMBERS }, () => ["Accepted", "Accepted"])
+    );
+    expect(room.host.placesHeld()).toBeLessThan(MAX_MEMBERS);
+    expect(room.host.placesHeld()).toBe(1);
+    expect(room.host.snapshot().credentials).toHaveLength(MAX_MEMBERS + 1);
+    expect(results.every(Boolean)).toBe(true);
   });
 });

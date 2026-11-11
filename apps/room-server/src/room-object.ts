@@ -1157,7 +1157,7 @@ export const roomObject = <T extends RoomTypes, Tally>(
             }
 
             const room = host.value;
-            const members = room.snapshot().credentials.length;
+            const members = room.placesHeld();
 
             if (Option.isSome(room.snapshot().halted)) {
               return JoinOutcomeSchema.cases.RoomHalted.make({});
