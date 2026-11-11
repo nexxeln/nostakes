@@ -5,6 +5,7 @@ import * as FileSystem from "effect/FileSystem";
 import { defineConfig } from "vite";
 import type { Connect, Plugin, Rolldown } from "vite";
 
+import { MEDIA_PACKAGES } from "./src/client/moments/mediabunny/packages.js";
 import { landingPictures } from "./src/features/landing/pictures.js";
 import {
   HOME_PREVIEW,
@@ -353,6 +354,7 @@ export default defineConfig({
       treeshake: { moduleSideEffects: PURE_MODULES },
     },
   },
+  optimizeDeps: { include: MEDIA_PACKAGES },
   plugins: [
     foldkit({ devToolsMcpPort: false }),
     builtLandingPictures(),

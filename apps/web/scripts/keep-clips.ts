@@ -6,6 +6,7 @@ import { ChildProcessSpawner } from "effect/process/ChildProcessSpawner";
 import { chromium, firefox, webkit } from "playwright-core";
 import type { BrowserType, Page } from "playwright-core";
 
+import { MEDIA_PACKAGES } from "../src/client/moments/mediabunny/packages.ts";
 import {
   NO_CLIP_BELOW_GB,
   SHORT_ONLY_BELOW_GB,
@@ -86,6 +87,7 @@ const policed = (page: Page, name: string) =>
 const stageServer = servedVite("start the stage server", "STAGE_PORT", {
   configFile: false,
   logLevel: "warn",
+  optimizeDeps: { include: MEDIA_PACKAGES },
   plugins: [pagePolicy()],
   root: WEB,
 }).pipe(
