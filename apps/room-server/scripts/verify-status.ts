@@ -6,6 +6,8 @@ import { GhFailed } from "./gh-failed.ts";
 
 const WORKFLOW = "Verify";
 
+const CI_WORKFLOW = "CI";
+
 const COMMITS_SHOWN = 10;
 
 const RUNS_LOOKED_AT = 60;
@@ -30,7 +32,7 @@ class VerifyFailing extends Schema.TaggedError<
   { readonly brand: unique symbol }
 >()("VerifyFailing", { jobs: Schema.Array(Schema.String) }) {
   override get message() {
-    return `The newest finished ${WORKFLOW} result of ${this.jobs.join(", ")} is a failure. Read it with gh run view <run> --log-failed, and fix it forward.`;
+    return `The newest finished result of ${this.jobs.join(", ")} is a failure. Read it with gh run view <run> --log-failed, and fix it forward.`;
   }
 }
 
@@ -49,6 +51,20 @@ const RunsSchema = Schema.fromJsonString(
   )
 );
 
+const CiRunsSchema = Schema.fromJsonString(
+  Schema.Array(
+    Schema.Struct({
+      conclusion: Schema.String,
+      createdAt: Schema.String,
+      databaseId: Schema.Int,
+      event: Schema.String,
+      headSha: Schema.String,
+      status: Schema.String,
+      url: Schema.String,
+    })
+  )
+);
+
 const JobsSchema = Schema.fromJsonString(
   Schema.Array(
     Schema.Struct({
@@ -62,6 +78,8 @@ const JobsSchema = Schema.fromJsonString(
 );
 
 type Run = (typeof RunsSchema.Type)[number];
+
+type CiRun = (typeof CiRunsSchema.Type)[number];
 
 type Job = (typeof JobsSchema.Type)[number];
 
@@ -105,6 +123,58 @@ const outcomeOf = (job: Job): Outcome => {
   return job.steps === 0 ? "never ran" : "cancelled";
 };
 
+const CI_JOB = "CI";
+
+const ciOutcomeOf = (run: CiRun): Outcome => {
+  if (run.status !== "completed") {
+    return run.status === "in_progress" ? "running" : "queued";
+  }
+
+  if (run.conclusion === "success") {
+    return "success";
+  }
+
+  if (
+    run.conclusion === "failure" ||
+    run.conclusion === "timed_out" ||
+    run.conclusion === "startup_failure"
+  ) {
+    return "FAILURE";
+  }
+
+  return run.conclusion === "cancelled" ? "cancelled" : "never ran";
+};
+
+const ciSeen = (run: CiRun): Seen => ({
+  job: {
+    conclusion: run.conclusion,
+    name: CI_JOB,
+    status: run.status,
+    steps: 1,
+    url: run.url,
+  },
+  outcome: ciOutcomeOf(run),
+  run,
+});
+
+const ciRuns = gh([
+  "run",
+  "list",
+  "--workflow",
+  CI_WORKFLOW,
+  "--branch",
+  "main",
+  "--event",
+  "push",
+  "--limit",
+  String(RUNS_LOOKED_AT),
+  "--json",
+  "databaseId,headSha,event,createdAt,status,conclusion,url",
+]).pipe(
+  Effect.flatMap(Schema.decodeUnknownEffect(CiRunsSchema)),
+  Effect.map((runs) => runs.map(ciSeen))
+);
+
 const commitsOnMain = gh([
   "api",
   `repos/{owner}/{repo}/commits?sha=main&per_page=${COMMITS_SHOWN}`,
@@ -147,30 +217,65 @@ const shownFor = (seen: readonly Seen[]): Outcome =>
   newestFirst(seen).find(({ outcome }) => outcome !== "never ran")?.outcome ??
   "never ran";
 
+const CODES: Readonly<Record<Outcome, string>> = {
+  FAILURE: "FAIL",
+  cancelled: "cncl",
+  "never ran": "-",
+  queued: "wait",
+  running: "run",
+  success: "ok",
+};
+
+const SHORT: ReadonlyMap<string, string> = new Map([
+  [CI_JOB, "CI"],
+  ["differential", "diff"],
+  ["engine", "eng"],
+  ["ledger", "ledg"],
+  ["room", "room"],
+  ["room-server", "srv"],
+  ["room-server full soak", "soak"],
+  ["shuffle", "shuf"],
+  ["web", "web"],
+]);
+
+const shortOf = (name: string) => SHORT.get(name) ?? name.slice(0, 4);
+
+const SUBJECT_WIDTH = 36;
+
+const UNEXPANDED_MATRIX = "matrix.";
+
 const report = Effect.gen(function* report() {
-  const [commits, runs] = yield* Effect.all([commitsOnMain, verifyRuns], {
-    concurrency: 2,
-  });
-
-  const seen = (yield* Effect.all(runs.map(jobsOf), { concurrency: 8 })).flat();
-
-  const names = [...new Set(seen.map(({ job }) => job.name))];
-
-  const width = Math.max(
-    ...OUTCOMES.map((outcome) => outcome.length),
-    ...names.map((name) => name.length)
+  const [commits, runs, ci] = yield* Effect.all(
+    [commitsOnMain, verifyRuns, ciRuns],
+    { concurrency: 3 }
   );
 
-  const cell = (text: string) => text.padEnd(width + 2);
+  const verified = (yield* Effect.all(runs.map(jobsOf), {
+    concurrency: 8,
+  })).flat();
+
+  const seen = [...ci, ...verified];
+
+  const names = [
+    CI_JOB,
+    ...new Set(
+      verified.flatMap(({ job }) =>
+        job.name.startsWith(UNEXPANDED_MATRIX) ? [] : [job.name]
+      )
+    ),
+  ];
+
+  const width = Math.max(4, ...names.map((name) => shortOf(name).length)) + 1;
+  const cell = (text: string) => text.padEnd(width);
 
   const rows = commits.map(({ sha, subject }) => {
     const forCommit = seen.filter(({ run }) => run.headSha === sha);
 
     const cells = names.map((name) =>
-      cell(shownFor(forCommit.filter(({ job }) => job.name === name)))
+      cell(CODES[shownFor(forCommit.filter(({ job }) => job.name === name))])
     );
 
-    return `${sha.slice(0, 7)}  ${cells.join("")}${subject.slice(0, 60)}`;
+    return `${sha.slice(0, 7)}  ${cells.join("")}${subject.slice(0, SUBJECT_WIDTH)}`;
   });
 
   const newestFinished = names.map((name) => ({
@@ -186,16 +291,23 @@ const report = Effect.gen(function* report() {
 
   yield* Console.log(
     [
-      `${WORKFLOW} on main, newest commit first. A job that never ran was replaced in the queue by a newer push.`,
-      `commit   ${names.map(cell).join("")}subject`,
+      `${CI_WORKFLOW} and ${WORKFLOW} on main, newest commit first.`,
+      `ok, FAIL, cncl cancelled, run, wait queued, - never ran: a newer push replaced it`,
+      names
+        .flatMap((name) =>
+          name.startsWith(shortOf(name)) ? [] : [`${shortOf(name)} ${name}`]
+        )
+        .join(", "),
+      "",
+      `commit   ${names.map((name) => cell(shortOf(name))).join("")}subject`,
       ...rows,
       "",
-      `Newest finished result of each job over the last ${runs.length} ${WORKFLOW} runs:`,
+      `Newest finished result of each, over the last ${ci.length} ${CI_WORKFLOW} and ${runs.length} ${WORKFLOW} runs:`,
       ...newestFinished.map(({ latest, name }) =>
         Option.match(latest, {
           onNone: () => `  ${name.padEnd(nameWidth)}  none yet`,
-          onSome: ({ job, outcome, run }) =>
-            `  ${name.padEnd(nameWidth)}  ${outcome.padEnd(9)}  ${run.headSha.slice(0, 7)} ${run.event.padEnd(17)} ${job.url}`,
+          onSome: ({ outcome, run }) =>
+            `  ${name.padEnd(nameWidth)}  ${outcome.padEnd(9)}  ${run.headSha.slice(0, 7)}  run ${run.databaseId}`,
         })
       ),
     ].join("\n")
