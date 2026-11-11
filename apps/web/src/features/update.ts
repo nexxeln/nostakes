@@ -56,6 +56,7 @@ import {
   WakeRoom,
 } from "../client/commands.js";
 import type { RoomConnection } from "../client/connection.js";
+import { reportedClear } from "./clearing.js";
 import {
   NAME_TAKEN_PROBLEM,
   answerOf,
@@ -139,6 +140,7 @@ const Commands = MemberCommandSchema.cases;
 
 const freshRoom = (code: InRoom["code"], player: InRoom["player"]): InRoom => ({
   addingChips: false,
+  clearing: Option.none(),
   clockSamples: [],
   code,
   confirm: Option.none(),
@@ -604,6 +606,13 @@ const send = (
       ...withRoom(model, {
         ...room,
         addingChips: false,
+        clearing: MemberCommandSchema.guards.ClearRoom(command)
+          ? Option.some({
+              key,
+              named: command.players,
+              seq: Option.none(),
+            })
+          : room.clearing,
         confirm: Option.none(),
         member: Option.none(),
         notice: Option.none(),
@@ -870,6 +879,23 @@ const remember = (
     : { ...room, events: [...room.events, ...fresh].slice(-KEPT_EVENTS) };
 };
 
+const clearingAnswered = (
+  room: InRoom,
+  key: number,
+  outcome: ReplyOutcome
+): InRoom["clearing"] =>
+  room.clearing.pipe(
+    Option.filter((clearing) => clearing.key === key),
+    Option.flatMap((clearing) =>
+      ReplyOutcomes.guards.Accepted(outcome)
+        ? Option.some({ ...clearing, seq: Option.some(outcome.seq) })
+        : Option.none()
+    ),
+    Option.orElse(() =>
+      room.clearing.pipe(Option.filter((clearing) => clearing.key !== key))
+    )
+  );
+
 const settle = (room: InRoom, key: number, outcome: ReplyOutcome): InRoom => {
   const sent = room.pending.find((pending) => pending.key === key);
 
@@ -878,16 +904,19 @@ const settle = (room: InRoom, key: number, outcome: ReplyOutcome): InRoom => {
   }
 
   const pending = room.pending.filter((entry) => entry.key !== key);
+  const clearing = clearingAnswered(room, key, outcome);
 
   return ReplyOutcomes.match(outcome, {
-    Accepted: () => ({ ...room, pending }),
+    Accepted: () => reportedClear({ ...room, clearing, pending }),
     Lost: ({ reason }) => ({
       ...room,
+      clearing,
       notice: Option.some(`${sent.label} did not reach the room: ${reason}`),
       pending,
     }),
     Rejected: ({ rejection }) => ({
       ...room,
+      clearing,
       notice: Option.some(rejectionText(rejection, viewOf(room))),
       pending,
     }),
@@ -1418,32 +1447,34 @@ export const update = (model: Model, message: Message): Return =>
     GotTableIntent: ({ intent }) => fromTable(model, intent),
     GotUpdate: ({ events, receivedAt, seq, view }) =>
       noteRoom(
-        editRoomThenUpdate({ ...model, now: receivedAt }, (room) => ({
-          ...remember(room, events),
-          clockSamples: RoomViews.$is("Open")(view)
-            ? [...room.clockSamples, clockSampleOf(view, receivedAt)].slice(
-                -KEPT_CLOCK_SAMPLES
-              )
-            : room.clockSamples,
-          moments: watchedMoments(room.moments, events, seatStacksOf(view)),
-          resumed: Option.orElse(
-            Option.fromUndefinedOr(
-              events.findLast(
-                ({ event }) =>
-                  SeenEvents.$is("TableAttended")(event) &&
-                  Option.isSome(event.quietSince)
-              )
-            ).pipe(
-              Option.flatMap(({ event }) =>
-                SeenEvents.$is("TableAttended")(event)
-                  ? Option.some({ player: event.player, receivedAt })
-                  : Option.none()
-              )
+        editRoomThenUpdate({ ...model, now: receivedAt }, (room) =>
+          reportedClear({
+            ...remember(room, events),
+            clockSamples: RoomViews.$is("Open")(view)
+              ? [...room.clockSamples, clockSampleOf(view, receivedAt)].slice(
+                  -KEPT_CLOCK_SAMPLES
+                )
+              : room.clockSamples,
+            moments: watchedMoments(room.moments, events, seatStacksOf(view)),
+            resumed: Option.orElse(
+              Option.fromUndefinedOr(
+                events.findLast(
+                  ({ event }) =>
+                    SeenEvents.$is("TableAttended")(event) &&
+                    Option.isSome(event.quietSince)
+                )
+              ).pipe(
+                Option.flatMap(({ event }) =>
+                  SeenEvents.$is("TableAttended")(event)
+                    ? Option.some({ player: event.player, receivedAt })
+                    : Option.none()
+                )
+              ),
+              () => room.resumed
             ),
-            () => room.resumed
-          ),
-          shown: Option.some({ receivedAt, seq, view }),
-        })),
+            shown: Option.some({ receivedAt, seq, view }),
+          })
+        ),
         view,
         receivedAt
       ),

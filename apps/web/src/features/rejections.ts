@@ -203,7 +203,7 @@ export const rejectionText = (
         `${voice.subject(player)} ${voice.isYou(player) ? "have" : "has"} no seat request waiting.`,
       NoSuchDeadline: () => "That clock already stopped.",
       NobodyToClear: () =>
-        "Everyone here has a seat, so there is nobody to clear.",
+        "Nobody on that list can be removed any more: they took a seat or are in the settle-up, and the room is already locked.",
       NotAMember: ({ player }) =>
         `${voice.subject(player)} ${voice.isYou(player) ? "are" : "is"} not in the room.`,
       NotKnocking: () => "They are no longer waiting at the door.",

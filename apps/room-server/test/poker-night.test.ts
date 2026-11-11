@@ -84,6 +84,7 @@ const CHECKED_HANDS = 2 * CHECKED_HANDS_PER_ROOM;
 interface SmallRoom {
   readonly bombPotEvery?: number;
   readonly knocks?: boolean;
+  readonly race?: boolean;
   readonly regular?: boolean;
   readonly stranger?: StrangerPlan;
   readonly ending: NightEnding;
@@ -131,6 +132,7 @@ const ROOMS: readonly SmallRoom[] = [
     ending: "AsItComes",
     hands: 9,
     players: 4,
+    race: true,
     restarts: 1,
     shuffle: "Plain",
     stranger: "Watches",
@@ -178,6 +180,7 @@ test(
           hands,
           knocks,
           players,
+          race,
           regular,
           restarts,
           shuffle,
@@ -195,6 +198,7 @@ test(
             hands,
             knocks: knocks ?? false,
             players,
+            race: race ?? false,
             regular: regular ?? false,
             restarts,
             rotation: index * 2,

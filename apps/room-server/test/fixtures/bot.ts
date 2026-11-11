@@ -138,7 +138,24 @@ export interface NightControl {
   approval: Option.Option<boolean>;
   readonly knocks: Map<PlayerId, KnockPlan>;
   knocksPending: number;
+  readonly racer: Option.Option<ClearRacer>;
+  heldClear: Option.Option<HeldClear>;
+  raced: boolean;
 }
+
+export interface ClearRacer {
+  readonly player: PlayerId;
+  readonly leaveAtHand: number;
+}
+
+export interface HeldClear {
+  readonly command: MemberCommand;
+  readonly since: number;
+}
+
+const RACE_WAIT_MS = 20_000;
+
+const RACE_PATIENCE_HANDS = 3;
 
 export interface SocketRecord {
   readonly socket: PokerSocket;
@@ -517,6 +534,46 @@ export const plannerFor = (setup: PlannerSetup) => {
       : Option.none();
   };
 
+  const raceStep = (
+    open: OpenView,
+    racer: PlayerId,
+    atHand: number,
+    onlyThem: readonly PlayerId[],
+    clearsAlone: boolean
+  ): Option.Option<Option.Option<Intent>> => {
+    if (Option.isSome(control.heldClear)) {
+      const held = control.heldClear.value;
+
+      if (
+        open.members.some(({ player }) => player === racer) ||
+        wallClock() - held.since > RACE_WAIT_MS
+      ) {
+        control.raced = true;
+
+        return Option.some(intent(held.command));
+      }
+
+      return Option.some(Option.none());
+    }
+
+    if (clearsAlone && open.departed.some(({ player }) => player === racer)) {
+      control.heldClear = Option.some({
+        command: Commands.ClearRoom.make({ players: onlyThem }),
+        since: wallClock(),
+      });
+
+      return Option.some(Option.none());
+    }
+
+    if (handNumberOf(open) < atHand + RACE_PATIENCE_HANDS) {
+      return Option.some(Option.none());
+    }
+
+    control.raced = true;
+
+    return Option.none();
+  };
+
   const strangerIntent = (open: OpenView): Option.Option<Intent> => {
     const intruder = [...control.intruders].find(([stranger, atHand]) => {
       const inRoom = [...open.members, ...open.departed].some(
@@ -537,10 +594,22 @@ export const plannerFor = (setup: PlannerSetup) => {
     }
 
     const onlyThem = clearableOf(open);
+    const clearsAlone = onlyThem.length === 1 && onlyThem[0] === intruder[0];
+
+    const raced = control.racer.pipe(
+      Option.filter(() => !control.raced),
+      Option.flatMap(({ player }) =>
+        raceStep(open, player, intruder[1], onlyThem, clearsAlone)
+      )
+    );
+
+    if (Option.isSome(raced)) {
+      return raced.value;
+    }
 
     return intent(
-      onlyThem.length === 1 && onlyThem[0] === intruder[0]
-        ? Commands.ClearRoom.make({})
+      clearsAlone
+        ? Commands.ClearRoom.make({ players: onlyThem })
         : Commands.RemoveMember.make({ player: intruder[0] })
     );
   };
@@ -852,8 +921,50 @@ export const plannerFor = (setup: PlannerSetup) => {
       })
     );
 
+  const raced = { back: false, left: false };
+
+  const racing = control.racer.pipe(
+    Option.filter(({ player }) => player === pass.player)
+  );
+
+  const raceIntent = (open: OpenView): Option.Option<Intent> => {
+    if (Option.isNone(racing)) {
+      return Option.none();
+    }
+
+    const member = open.members.some(({ player }) => player === pass.player);
+
+    if (
+      member &&
+      !raced.left &&
+      handNumberOf(open) >= racing.value.leaveAtHand &&
+      Option.isSome(seatOf(open, pass.player))
+    ) {
+      raced.left = true;
+
+      return intent(Commands.LeaveRoom.make({}));
+    }
+
+    if (
+      !member &&
+      raced.left &&
+      !raced.back &&
+      Option.isSome(control.heldClear)
+    ) {
+      raced.back = true;
+
+      return intent(Commands.Join.make({ avatar: "back", name: label }));
+    }
+
+    return Option.none();
+  };
+
   const standingIntent = (open: OpenView): Option.Option<Intent> => {
     const member = open.members.some(({ player }) => player === pass.player);
+
+    if (Option.isSome(racing) && (raced.left || raced.back)) {
+      return Option.none();
+    }
 
     if (!member) {
       return random.chance(3)
@@ -948,6 +1059,12 @@ export const plannerFor = (setup: PlannerSetup) => {
 
     if (Option.isSome(regularOut)) {
       return regularOut;
+    }
+
+    const race = raceIntent(open);
+
+    if (Option.isSome(race)) {
+      return race;
     }
 
     if (

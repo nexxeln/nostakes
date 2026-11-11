@@ -28,6 +28,7 @@ const roomWith = (
   acting: boolean
 ): InRoom => ({
   addingChips: false,
+  clearing: Option.none(),
   clockSamples: [],
   code: RoomCodeSchema.make("ABC234"),
   confirm: Option.none(),

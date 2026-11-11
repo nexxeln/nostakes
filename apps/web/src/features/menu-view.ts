@@ -465,7 +465,9 @@ const clearButton = (view: OpenView, h: H): Html =>
               h.Class("text-button"),
               h.OnClick(
                 Messages.ClickedConfirm({
-                  confirm: Commands.ClearRoom.make({}),
+                  confirm: Commands.ClearRoom.make({
+                    players: clearableOf(view),
+                  }),
                 })
               ),
             ],
@@ -475,9 +477,10 @@ const clearButton = (view: OpenView, h: H): Html =>
       )
     : h.empty;
 
-export const clearingText = (view: OpenView) => {
-  const going = clearableOf(view);
-
+export const clearingText = (
+  view: OpenView,
+  going: readonly PlayerId[] = clearableOf(view)
+) => {
   const named = going
     .slice(0, NAMED_IN_CLEARING)
     .map((player) => isolated(nameOf(view, player)));
@@ -738,8 +741,8 @@ const ENDINGS: Readonly<Record<OpenView["closing"], string>> = {
 const confirmText = (view: OpenView, confirm: Confirm) =>
   Match.value(confirm).pipe(
     Match.tagsExhaustive({
-      ClearRoom: () => ({
-        ...clearingText(view),
+      ClearRoom: ({ players }) => ({
+        ...clearingText(view, players),
         pending: "Clearing the room",
         title: "Clear the room?",
       }),

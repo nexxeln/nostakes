@@ -32,6 +32,7 @@ import {
   RoomCommands,
   RoomStates,
   TimeBankRefills,
+  clearable,
   SEATS,
   SealedDealSources,
   decide,
@@ -617,6 +618,27 @@ const answerKnock = (
   );
 };
 
+const namedForClear = (
+  state: Open,
+  random: SeededRandom
+): readonly PlayerId[] => {
+  const shown = clearable(state, state.host);
+  const roll = random.below(20);
+
+  if (roll < 10) {
+    return shown;
+  }
+
+  if (roll < 15) {
+    return [
+      ...shown.filter(() => random.chance(2, 3)),
+      ...POOL.filter(() => random.chance(1, 4)),
+    ];
+  }
+
+  return roll < 19 ? POOL.filter(() => random.chance(1, 3)) : [];
+};
+
 const membership = (
   state: Open,
   random: SeededRandom,
@@ -661,6 +683,7 @@ const membership = (
     return RoomCommands.ClearRoom({
       at: millis(at),
       by: hostOrNot(state, random),
+      players: namedForClear(state, random),
     });
   }
 
@@ -785,7 +808,11 @@ const hosting = (
 
   if (roll < 2) {
     return random.chance(1, 6)
-      ? RoomCommands.ClearRoom({ at: when, by })
+      ? RoomCommands.ClearRoom({
+          at: when,
+          by,
+          players: namedForClear(state, random),
+        })
       : RoomCommands.StartGame({ at: when, by });
   }
 

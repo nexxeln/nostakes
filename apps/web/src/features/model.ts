@@ -172,8 +172,17 @@ export const KnockAnswers = defineTaggedUnion({
 
 export type DoorAnswer = typeof KnockAnswers.Type;
 
+export const ClearingSchema = Schema.Struct({
+  key: Schema.Int,
+  named: Schema.Array(PlayerIdSchema),
+  seq: Schema.Option(Schema.Int),
+});
+
+export type Clearing = typeof ClearingSchema.Type;
+
 export const InRoomSchema = Schema.Struct({
   addingChips: Schema.Boolean,
+  clearing: Schema.Option(ClearingSchema),
   clockSamples: Schema.Array(Schema.Int),
   code: RoomCodeSchema,
   confirm: Schema.Option(ConfirmSchema),

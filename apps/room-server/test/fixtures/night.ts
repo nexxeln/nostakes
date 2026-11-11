@@ -10,7 +10,7 @@ import {
   ROOM_CODE_LENGTH,
   RoomCodeSchema,
 } from "@nostakes/protocol";
-import type { RoomCode, RoomPass } from "@nostakes/protocol";
+import type { PlayerId, RoomCode, RoomPass } from "@nostakes/protocol";
 import {
   DEFAULT_PAUSE_WHEN_AWAY_SECONDS,
   RoomSettingsSchema,
@@ -63,6 +63,7 @@ import type {
 import { createPokerRoom, joinPokerRoom } from "./poker-http.js";
 import { pokerCodec, wallClock } from "./poker-socket.js";
 import type { Arrival } from "./poker-socket.js";
+import { raceProblems } from "./race-checks.js";
 import {
   REGULAR_NAME,
   joinRegular,
@@ -105,6 +106,7 @@ export interface NightPlan {
   readonly intruderSits: boolean;
   readonly regularAtHand: Option.Option<number>;
   readonly knocksAtHand: Option.Option<number>;
+  readonly clearRace: boolean;
 }
 
 export interface PlayedNight {
@@ -116,6 +118,7 @@ export interface PlayedNight {
   readonly intruder: Option.Option<IntruderRecord>;
   readonly regular: Option.Option<RegularRecord>;
   readonly knocks: Option.Option<readonly KnockRecord[]>;
+  readonly racer: Option.Option<PlayerId>;
 }
 
 export interface NightResult {
@@ -304,6 +307,7 @@ export interface NightRecipe {
   readonly stranger?: StrangerPlan;
   readonly regular?: boolean;
   readonly knocks?: boolean;
+  readonly race?: boolean;
 }
 
 const clientIndices = (random: Random, bots: number, percent: number) => {
@@ -401,12 +405,19 @@ const strangerOf = (recipe: NightRecipe, seed: number) => {
       ? Option.some(visitorsAtHand(recipe))
       : Option.none<number>();
 
+  const intruderSits =
+    recipe.stranger === undefined
+      ? randomSource(seed * 13 + 7).chance(70)
+      : recipe.stranger === "Sits";
+
   return {
+    clearRace:
+      Option.isSome(intruderAtHand) &&
+      !intruderSits &&
+      recipe.players >= 2 &&
+      (recipe.race ?? randomSource(seed * 13 + 13).chance(50)),
     intruderAtHand,
-    intruderSits:
-      recipe.stranger === undefined
-        ? randomSource(seed * 13 + 7).chance(70)
-        : recipe.stranger === "Sits",
+    intruderSits,
     knocksAtHand: knocksOf(recipe, seed, intruderAtHand),
     regularAtHand:
       recipe.ending !== "Halted" &&
@@ -416,6 +427,11 @@ const strangerOf = (recipe: NightRecipe, seed: number) => {
         : Option.none(),
   };
 };
+
+const racerIndex = (plan: NightPlan) =>
+  Array.from({ length: plan.players }, (_, index) => index).find(
+    (index) => index > 0 && !plan.clients.includes(index)
+  ) ?? 1;
 
 export const planNight = (
   seed: number,
@@ -717,10 +733,19 @@ export const playNight = (base: string, opened: OpenedNight) =>
       closing: false,
       door: Option.none(),
       head: 0,
+      heldClear: Option.none(),
       intruders: new Map(),
       knocks: new Map(),
       knocksPending: Option.isSome(plan.knocksAtHand) ? KNOCK_PLANS.length : 0,
       quiet: new Set(),
+      raced: false,
+      racer: Option.all({
+        leaveAtHand: plan.intruderAtHand,
+        player: Option.fromUndefinedOr(opened.passes[racerIndex(plan)]).pipe(
+          Option.filter(() => plan.clearRace),
+          Option.map(({ player }) => player)
+        ),
+      }),
       regulars: new Map(),
       ruleChanges: plan.ruleChanges,
       rulesApplied: 0,
@@ -1249,6 +1274,10 @@ export const playNight = (base: string, opened: OpenedNight) =>
       intruder,
       knocks,
       plan,
+      racer: control.racer.pipe(
+        Option.filter(() => Option.isSome(control.heldClear)),
+        Option.map(({ player }) => player)
+      ),
       regular,
     };
 
@@ -1316,6 +1345,18 @@ export const judgeNight = (played: PlayedNight): NightResult => {
             played.events.map((text) => pokerCodec.decodeEvent(text))
           ),
       }),
+      ...Option.match(
+        Option.all({ intruder: played.intruder, racer: played.racer }),
+        {
+          onNone: () => [],
+          onSome: ({ intruder: stranger, racer }) =>
+            raceProblems(
+              racer,
+              stranger.player,
+              played.events.map((text) => pokerCodec.decodeEvent(text))
+            ),
+        }
+      ),
       ...Option.match(played.knocks, {
         onNone: () =>
           Option.isSome(played.plan.knocksAtHand)

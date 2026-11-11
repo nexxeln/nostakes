@@ -9,6 +9,7 @@ import {
   RoomStates,
   RoomViews,
   audienceOf,
+  clearable,
   clearableOf,
   decide,
   evolveWithoutRecap,
@@ -105,19 +106,11 @@ const clearProblems = (step: Step): readonly string[] => {
     return [];
   }
 
-  const seatedNow = (player: PlayerId) =>
-    before.table.seats.some(
-      (seat) => "player" in seat && seat.player === player
-    );
+  const clearableNow = clearable(before, before.host);
 
-  const expected = [
-    ...before.members
-      .filter(({ player }) => player !== before.host && !seatedNow(player))
-      .map(({ player }) => player),
-    ...before.departed
-      .filter(({ player }) => !before.entries.has(player))
-      .map(({ player }) => player),
-  ];
+  const expected = clearableNow.filter((player) =>
+    command.players.includes(player)
+  );
 
   const removed = step.events.flatMap((event) =>
     RoomEvents.$is("MemberRemoved")(event) ? [event.player] : []
@@ -129,6 +122,8 @@ const clearProblems = (step: Step): readonly string[] => {
       expected.includes(event.player) &&
       !RoomEvents.$is("MemberRemoved")(event)
   );
+
+  const unnamed = removed.filter((player) => !command.players.includes(player));
 
   const view = viewFor(before, audienceOf(before, before.host), command.at);
 
@@ -144,10 +139,13 @@ const clearProblems = (step: Step): readonly string[] => {
     ...(JSON.stringify(removed) === JSON.stringify(expected)
       ? []
       : [`clearing removed ${removed.join(",")}, not ${expected.join(",")}`]),
-    ...(JSON.stringify(shown) === JSON.stringify(expected)
+    ...unnamed.map(
+      (player) => `clearing removed ${player}, whom the host did not name`
+    ),
+    ...(JSON.stringify(shown) === JSON.stringify(clearableNow)
       ? []
       : [
-          `the host's view named ${shown.join(",")} to clear, not ${expected.join(",")}`,
+          `the host's view named ${shown.join(",")} to clear, not ${clearableNow.join(",")}`,
         ]),
     ...aboutThem.map(
       (event) => `clearing caused ${event._tag} for someone it removed`
@@ -484,14 +482,19 @@ describe("generated rooms", () => {
       const broken: string[] = [];
 
       for (const step of playSession(source).steps) {
-        broken.push(
-          ...removalProblems(step),
-          ...clearProblems(step),
-          ...lineProblems(step, lines)
-        );
+        broken.push(...removalProblems(step), ...lineProblems(step, lines));
       }
 
       expect(broken).toStrictEqual([]);
+    }
+  );
+  it.prop(
+    "clearing the room removes exactly the people the host named who can still go, never anyone the host did not name, whatever happened between the host's view and the command, moves no ledger line, and locks the room",
+    { source: session },
+    ({ source }) => {
+      expect(playSession(source).steps.flatMap(clearProblems)).toStrictEqual(
+        []
+      );
     }
   );
 });

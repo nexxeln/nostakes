@@ -50,7 +50,7 @@ export { stallCommand } from "./stalls.js";
 
 export { ClosingSchema } from "./closing.js";
 
-export { HOST_CLAIM_AFTER_SECONDS, MOST_PEOPLE } from "./members.js";
+export { HOST_CLAIM_AFTER_SECONDS, MOST_PEOPLE, clearable } from "./members.js";
 
 export { MOST_KNOCKS, MOST_WAITING } from "./door.js";
 

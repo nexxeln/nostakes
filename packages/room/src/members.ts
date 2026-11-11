@@ -280,11 +280,15 @@ const lockedNow = (state: Open, at: Millis): Decision =>
 export const clearRoom = (
   state: Open,
   host: PlayerId,
-  at: Millis
+  command: RoomCommandOf<"ClearRoom">
 ): Decision => {
-  const targets = clearable(state, host);
+  const { at, players: named } = command;
 
-  if (targets.length === 0) {
+  const targets = clearable(state, host).filter((player) =>
+    named.includes(player)
+  );
+
+  if (named.length === 0 || (targets.length === 0 && state.settings.locked)) {
     return Result.fail(new NobodyToClear({ members: state.members.length }));
   }
 

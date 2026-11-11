@@ -120,7 +120,7 @@ const decideOpen = (state: Open, command: RoomCommand): Decision =>
     ClaimHost: (claim) =>
       byMember(state, claim, (player) => claimHost(state, player, claim.at)),
     ClearRoom: (clear) =>
-      byHost(state, clear, (host) => clearRoom(state, host, clear.at)),
+      byHost(state, clear, (host) => clearRoom(state, host, clear)),
     CloseRoom: (close) =>
       byMember(state, close, (player) =>
         player === state.host || isStalled(state)
