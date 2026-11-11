@@ -49,7 +49,6 @@ const program = Effect.gen(function* reels() {
   const files = yield* FileSystem.FileSystem;
   const dir = yield* Config.String("REELS_DIR");
   const hands = yield* listOf("REEL_HANDS", "AcesCracked");
-  const palettes = yield* listOf("REEL_PALETTES", "Paper");
   const themes = yield* listOf("REEL_THEMES", "Light");
 
   const frame = yield* Config.String("REEL_FRAME").pipe(
@@ -82,63 +81,61 @@ const program = Effect.gen(function* reels() {
   );
 
   for (const hand of hands) {
-    for (const palette of palettes) {
-      for (const theme of themes) {
-        const label = `${hand}-${palette}-${theme.toLowerCase()}${frame === "Chat" ? "-chat" : ""}`;
-        const page = yield* attempt("open a page", () => opened.newPage());
+    for (const theme of themes) {
+      const label = `${hand}-${theme.toLowerCase()}${frame === "Chat" ? "-chat" : ""}`;
+      const page = yield* attempt("open a page", () => opened.newPage());
 
-        yield* attempt("open the reel stage", () =>
-          page.goto(
-            `${origin}${STAGE}?hand=${hand}&theme=${theme}&palette=${palette}&frame=${frame}&make=${make}`
+      yield* attempt("open the reel stage", () =>
+        page.goto(
+          `${origin}${STAGE}?hand=${hand}&theme=${theme}&frame=${frame}&make=${make}`
+        )
+      );
+      yield* attempt("wait for the reel", () =>
+        page
+          .locator("html[data-staged]")
+          .waitFor({ state: "attached", timeout: 300_000 })
+      );
+
+      const staged = yield* attempt("read the stage", () =>
+        page
+          .locator("#stage")
+          .evaluate((node) =>
+            node instanceof HTMLElement ? (node.dataset.result ?? "") : ""
           )
-        );
-        yield* attempt("wait for the reel", () =>
-          page
-            .locator("html[data-staged]")
-            .waitFor({ state: "attached", timeout: 300_000 })
-        );
+      ).pipe(
+        Effect.flatMap(
+          Schema.decodeUnknownEffect(Schema.fromJsonString(StagedSchema))
+        ),
+        Effect.mapError(
+          (failure) =>
+            new ReelFailed({ detail: String(failure), step: "read the reel" })
+        )
+      );
 
-        const staged = yield* attempt("read the stage", () =>
-          page
-            .locator("#stage")
-            .evaluate((node) =>
-              node instanceof HTMLElement ? (node.dataset.result ?? "") : ""
-            )
-        ).pipe(
-          Effect.flatMap(
-            Schema.decodeUnknownEffect(Schema.fromJsonString(StagedSchema))
-          ),
-          Effect.mapError(
-            (failure) =>
-              new ReelFailed({ detail: String(failure), step: "read the reel" })
-          )
-        );
+      yield* attempt("close the page", () => page.close());
 
-        yield* attempt("close the page", () => page.close());
-
-        if (staged.failure !== undefined) {
-          return yield* new ReelFailed({ detail: staged.failure, step: label });
-        }
-
-        yield* files.writeFile(
-          `${dir}/${label}-storyboard.png`,
-          bytesOf(staged.sheet ?? "")
-        );
-        yield* files.writeFileString(
-          `${dir}/${label}.json`,
-          JSON.stringify(staged.score ?? null)
-        );
-
-        const file = bytesOf(staged.file ?? "");
-
-        if (file.length > 0) {
-          yield* files.writeFile(`${dir}/${label}.mp4`, file);
-        }
-
-        yield* Console.log(
-          `${label}: "${staged.title ?? ""}", ${((staged.length ?? 0) / 1000).toFixed(1)} s, ${staged.shots ?? 0} shots, told in ${staged.toldMs ?? 0} ms${file.length > 0 ? `, made in ${staged.madeMs ?? 0} ms, ${file.length} bytes` : ""}`
-        );
+      if (staged.failure !== undefined) {
+        return yield* new ReelFailed({ detail: staged.failure, step: label });
       }
+
+      yield* files.writeFile(
+        `${dir}/${label}-storyboard.png`,
+        bytesOf(staged.sheet ?? "")
+      );
+      yield* files.writeFileString(
+        `${dir}/${label}.json`,
+        JSON.stringify(staged.score ?? null)
+      );
+
+      const file = bytesOf(staged.file ?? "");
+
+      if (file.length > 0) {
+        yield* files.writeFile(`${dir}/${label}.mp4`, file);
+      }
+
+      yield* Console.log(
+        `${label}: "${staged.title ?? ""}", ${((staged.length ?? 0) / 1000).toFixed(1)} s, ${staged.shots ?? 0} shots, told in ${staged.toldMs ?? 0} ms${file.length > 0 ? `, made in ${staged.madeMs ?? 0} ms, ${file.length} bytes` : ""}`
+      );
     }
   }
 

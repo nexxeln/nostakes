@@ -8,7 +8,6 @@ import {
 import type { Stereo } from "../src/features/moments/sound/dsp.js";
 import {
   LOUDNESS_TARGET,
-  PALETTES,
   PEAK_CEILING,
 } from "../src/features/moments/sound/sheet.js";
 import type { ScoreSheet } from "../src/features/moments/sound/sheet.js";
@@ -48,8 +47,10 @@ const levelBetween = (mix: Stereo, from: number, to: number) => {
 
 const FRAME_MS = 1000 / 30;
 
-const measured = PALETTES.map((palette) => {
-  const mix = soundtrackOf(SHEET, palette);
+const OUTCOMES = ["Loss", "Split", "Win"] as const;
+
+const measured = OUTCOMES.map((outcome) => {
+  const mix = soundtrackOf({ ...SHEET, outcome });
   const pause = SHEET.pauseMs ?? 0;
   const hit = SHEET.hitMs ?? 0;
 
@@ -59,13 +60,13 @@ const measured = PALETTES.map((palette) => {
     justBefore: levelBetween(mix, hit - 100, hit - 2),
     loudness: integratedLoudness(mix),
     mix,
-    palette,
+    outcome,
     pause: levelBetween(mix, pause + 400, hit - 50),
     peak: decibels(peakOf(mix)),
   };
 });
 
-describe("a replay's soundtrack, in every palette", () => {
+describe("a replay's soundtrack, for a loss, a split, and a win", () => {
   it("is mastered near the loudness social apps play at, under the peak ceiling", () => {
     expect(
       measured.filter(
@@ -78,23 +79,23 @@ describe("a replay's soundtrack, in every palette", () => {
 
   it("drops at least 20 dB for the pause", () => {
     expect(
-      measured
-        .filter(({ build, pause }) => build - pause < 20)
-        .map(({ build, palette, pause }) => ({ build, palette, pause }))
+      measured.flatMap(({ build, outcome, pause }) =>
+        build - pause < 20 ? [{ build, outcome, pause }] : []
+      )
     ).toStrictEqual([]);
   });
 
   it("lands the hit inside the frame the plan names, out of near silence", () => {
     expect(
-      measured
-        .filter(({ hit, justBefore }) => hit - justBefore < 20)
-        .map(({ hit, justBefore, palette }) => ({ hit, justBefore, palette }))
+      measured.flatMap(({ hit, justBefore, outcome }) =>
+        hit - justBefore < 20 ? [{ hit, justBefore, outcome }] : []
+      )
     ).toStrictEqual([]);
   });
 
   it("mixes the same sheet to the same samples", () => {
     const [first] = measured;
-    const again = soundtrackOf(SHEET, "Broadcast");
+    const again = soundtrackOf(SHEET);
 
     expect(
       first?.mix.left.every((sample, at) => sample === again.left[at])

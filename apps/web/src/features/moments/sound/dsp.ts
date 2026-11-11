@@ -191,54 +191,6 @@ export const filtered = (
   return sound;
 };
 
-export const plucked = (
-  frequency: number,
-  seconds: number,
-  look: {
-    readonly bright: number;
-    readonly chance: Chance;
-    readonly ring: number;
-  }
-): Mono => {
-  const out = new Float32Array(samplesFor(seconds));
-  const period = SOUND_RATE / frequency;
-  const size = Math.max(2, Math.floor(period));
-  const part = period - size;
-  const line = new Float32Array(size + 1);
-  let smooth = 0;
-
-  let lean = 0;
-
-  for (let index = 0; index < line.length; index += 1) {
-    smooth += (look.chance() * 2 - 1 - smooth) * look.bright;
-    line[index] = smooth;
-    lean += smooth / line.length;
-  }
-
-  for (let index = 0; index < line.length; index += 1) {
-    line[index] = (line[index] ?? 0) - lean;
-  }
-
-  const keep = 0.5 ** (1 / Math.max(1, frequency * look.ring));
-  let at = 0;
-  let last = 0;
-
-  for (let index = 0; index < out.length; index += 1) {
-    const next = (at + 1) % line.length;
-    const here = line[at] ?? 0;
-    const there = line[next] ?? 0;
-    const read = here + (there - here) * part;
-    const fed = (read + last) * 0.5 * keep;
-
-    out[index] = read;
-    line[at] = fed;
-    last = read;
-    at = next;
-  }
-
-  return out;
-};
-
 export const summed = (sounds: readonly Mono[]): Mono => {
   const out = new Float32Array(
     Math.max(1, ...sounds.map((sound) => sound.length))

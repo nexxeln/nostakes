@@ -11,7 +11,6 @@ import { clipWorker, filmOn } from "../../src/client/moments/film-file.js";
 import { pictureSvg } from "../../src/features/moments/picture.js";
 import { replaySeatsOf } from "../../src/features/moments/replay-plan.js";
 import { shownMomentOf } from "../../src/features/moments/scene.js";
-import { PALETTES } from "../../src/features/moments/sound/sheet.js";
 import { filmSheet } from "./film-sheet.js";
 import { replayHand } from "./replay-hands.js";
 
@@ -20,9 +19,6 @@ const params = new URLSearchParams(globalThis.location.search);
 const theme = params.get("theme") === "Dark" ? "Dark" : "Light";
 
 const frame = params.get("frame") === "Chat" ? "Chat" : "Story";
-
-const palette =
-  PALETTES.find((name) => name === params.get("palette")) ?? "Paper";
 
 const filmed = params.get("make") === "file";
 
@@ -95,7 +91,6 @@ const program = Effect.gen(function* reel() {
       boxes,
       budgetMs: null,
       frame,
-      palette,
       principals: seats,
       record: hand.record,
       seats: replaySeatsOf(hand),

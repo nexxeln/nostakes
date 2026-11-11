@@ -5,7 +5,6 @@ import {
   held,
   hertz,
   hiss,
-  plucked,
   ramp,
   scaled,
   spliced,
@@ -131,66 +130,6 @@ export const brass = (
     held(0.03, Math.max(0, seconds - 0.2), 0.17)
   );
 };
-
-const KEY_PARTIALS: readonly (readonly [number, number, number])[] = [
-  [1, 1, 1],
-  [2.003, 0.5, 0.7],
-  [3.009, 0.26, 0.5],
-  [4.02, 0.12, 0.35],
-  [5.04, 0.06, 0.25],
-];
-
-export const keys = (midi: number, seconds: number, chance: Chance): Mono =>
-  summed([
-    ...KEY_PARTIALS.map(([ratio, level, ring]) =>
-      scaled(
-        contoured(
-          tone("Sine", steady(hertz(midi) * ratio), seconds * ring),
-          struck(0.003, seconds * ring)
-        ),
-        level
-      )
-    ),
-    scaled(tick(chance, 2400, 0.012, 0.8), 0.25),
-  ]);
-
-export const string = (
-  midi: number,
-  seconds: number,
-  chance: Chance,
-  bright = 0.55
-): Mono =>
-  contoured(
-    plucked(hertz(midi), seconds, { bright, chance, ring: seconds * 0.5 }),
-    held(0.001, Math.max(0, seconds - 0.05), 0.045)
-  );
-
-export const upright = (midi: number, seconds: number, chance: Chance): Mono =>
-  summed([
-    scaled(
-      plucked(hertz(midi), seconds, {
-        bright: 0.22,
-        chance,
-        ring: seconds * 0.45,
-      }),
-      1.4
-    ),
-    scaled(
-      contoured(
-        tone("Sine", steady(hertz(midi)), seconds),
-        struck(0.004, seconds * 0.8)
-      ),
-      0.55
-    ),
-    scaled(
-      contoured(
-        tone("Triangle", steady(hertz(midi) * 2), seconds),
-        struck(0.004, seconds * 0.5)
-      ),
-      0.3
-    ),
-    scaled(tick(chance, 900, 0.02, 0.8), 0.35),
-  ]);
 
 export const riser = (chance: Chance, seconds: number, top: number): Mono =>
   contoured(

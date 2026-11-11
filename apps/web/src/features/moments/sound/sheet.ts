@@ -1,3 +1,5 @@
+import type { Chance, Mono } from "./dsp.js";
+
 export type Outcome = "Loss" | "Split" | "Win";
 
 export type SmallSound =
@@ -26,9 +28,43 @@ export interface ScoreSheet {
   readonly tagMs: number;
 }
 
-export const PALETTES = ["Broadcast", "Paper", "BackRoom"] as const;
+export interface ScoreTimes {
+  readonly build: number;
+  readonly hit: number | null;
+  readonly length: number;
+  readonly pause: number | null;
+  readonly result: number;
+  readonly tag: number;
+}
 
-export type PaletteName = (typeof PALETTES)[number];
+export type Bus = "Bed" | "Hits";
+
+export interface Laid {
+  readonly at: number;
+  readonly gain: number;
+  readonly pan?: number;
+  readonly wet?: number;
+}
+
+export interface Scoring {
+  readonly chance: Chance;
+  readonly lay: (bus: Bus, sound: Mono, place: Laid) => void;
+  readonly sheet: ScoreSheet;
+  readonly times: ScoreTimes;
+}
+
+export interface ScoreKit {
+  readonly aftermath: (scoring: Scoring) => void;
+  readonly bed: (scoring: Scoring) => void;
+  readonly hit: (scoring: Scoring, at: number) => void;
+  readonly lean: number;
+  readonly pause: (scoring: Scoring, from: number, to: number) => void;
+  readonly room: { readonly damp: number; readonly size: number };
+  readonly small: (scoring: Scoring, cue: SmallCue) => void;
+  readonly sting: (scoring: Scoring) => void;
+  readonly tag: (scoring: Scoring) => void;
+  readonly wet: number;
+}
 
 export const LOUDNESS_TARGET = -14;
 

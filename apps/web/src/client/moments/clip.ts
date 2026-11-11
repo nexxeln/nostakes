@@ -36,7 +36,6 @@ import {
   shiftedScore,
 } from "../../features/moments/score.js";
 import type { SoundStep } from "../../features/moments/score.js";
-import type { PaletteName } from "../../features/moments/sound/sheet.js";
 import { FRAME_SIZES, paletteFor } from "../../features/pictures/paper.js";
 import type { KeptFrame } from "../../features/pictures/paper.js";
 import { cardParts, ClipUnavailable, failedAt } from "./clip-layers.js";
@@ -300,10 +299,7 @@ export const clipFile = (
     Effect.map((made) => made.file)
   );
 
-export const CLIP_PALETTE: PaletteName = "Paper";
-
 export interface ReplayOrder extends ClipOrder {
-  readonly palette?: PaletteName;
   readonly principals: readonly SeatIndex[];
   readonly record: readonly SeenTableEvent[];
   readonly seats: readonly ReplaySeat[];
@@ -417,9 +413,7 @@ export const replayStory = (
 
     const sprites = yield* spriteShots(plan, look, slot);
 
-    const sound = support.sound
-      ? yield* mixedOffThread(plan.sheet, order.palette ?? CLIP_PALETTE)
-      : null;
+    const sound = support.sound ? yield* mixedOffThread(plan.sheet) : null;
 
     return {
       film: {

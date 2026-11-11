@@ -1,6 +1,5 @@
 import { Effect, Schema } from "effect";
 
-import { PALETTES } from "../../features/moments/sound/sheet.js";
 import { soundtrackOf } from "../../features/moments/sound/soundtrack.js";
 
 const SMALL_SOUNDS = [
@@ -14,7 +13,6 @@ const SMALL_SOUNDS = [
 ] as const;
 
 export const SoundRequestSchema = Schema.Struct({
-  palette: Schema.Literals(PALETTES),
   sheet: Schema.Struct({
     cues: Schema.Array(
       Schema.Struct({
@@ -38,7 +36,7 @@ export type SoundRequest = typeof SoundRequestSchema.Type;
 globalThis.addEventListener("message", (event: MessageEvent<unknown>) => {
   Effect.runFork(
     Schema.decodeUnknownEffect(SoundRequestSchema)(event.data).pipe(
-      Effect.map(({ palette, sheet }) => soundtrackOf(sheet, palette)),
+      Effect.map(({ sheet }) => soundtrackOf(sheet)),
       Effect.match({
         onFailure: (failure) => {
           globalThis.postMessage(
