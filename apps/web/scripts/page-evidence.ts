@@ -23,11 +23,18 @@ const SHOWN_VALUES = new Set([
   "nostakes.theme",
 ]);
 
+const EventGlimpse = Schema.Struct({
+  _tag: Schema.String,
+  event: Schema.optional(Schema.Struct({ _tag: Schema.String })),
+});
+
 const FrameGlimpseJson = Schema.fromJsonString(
   Schema.Struct({
     _tag: Schema.String,
     build: Schema.optional(Schema.Json),
     catchUp: Schema.optional(Schema.Struct({ _tag: Schema.String })),
+    events: Schema.optional(Schema.Array(EventGlimpse)),
+    from: Schema.optional(Schema.Json),
     reason: Schema.optional(Schema.Json),
     result: Schema.optional(Schema.Struct({ _tag: Schema.String })),
     seq: Schema.optional(Schema.Json),
@@ -142,9 +149,14 @@ const shown = (label: string, value: Schema.Json | undefined) =>
 
 const glimpse = (payload: string | Buffer) =>
   Schema.decodeUnknownOption(FrameGlimpseJson)(payload).pipe(
-    Option.map(({ _tag, build, catchUp, reason, result, seq }) =>
+    Option.map(({ _tag, build, catchUp, events, from, reason, result, seq }) =>
       [
         _tag,
+        ...shown("from", from),
+        ...shown(
+          "kinds",
+          events?.map((event) => event.event?._tag ?? event._tag).join(",")
+        ),
         ...shown("reason", reason),
         ...shown("build", build),
         ...shown("seq", seq),
