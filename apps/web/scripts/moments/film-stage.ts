@@ -3,10 +3,13 @@ import { codeFor, randomAvatar } from "@nostakes/avatar";
 import { replayOf } from "@nostakes/room";
 import { Clock, Effect, Option } from "effect";
 
+import { drawAreas, placementsAt } from "../../src/client/moments/clip-draw.js";
+import { shotAtlas } from "../../src/client/moments/clip-layers.js";
 import { measureParts } from "../../src/client/moments/clip-measure.js";
 import { filmSupport, replayFilm } from "../../src/client/moments/clip.js";
 import { clipWorker, filmOn } from "../../src/client/moments/film-file.js";
 import type { FilmChecks } from "../../src/client/moments/film-file.js";
+import { EMBEDDED_FONTS } from "../../src/client/pictures/png.js";
 import type {
   Film,
   FilmKey,
@@ -46,7 +49,16 @@ const fps = number("fps", 30) === 24 ? 24 : 30;
 
 const stage = document.querySelector("#stage");
 
+const asked = (name: string) => {
+  const text = params.get(name);
+
+  return text === null ? null : Number(text);
+};
+
+const cut = params.get("frame") === "Story" ? "Story" : "Chat";
+
 const checks: FilmChecks = {
+  bitrate: asked("bitrate"),
   compare: params.get("compare") === "true",
   redraw: params.get("redraw") === "Whole" ? "Whole" : "Changed",
 };
@@ -415,14 +427,14 @@ const filmFor = Effect.gen(function* chooseFilm() {
         pictureSvg(picture, { deck, fonts: "", frame: "Table", theme })
       ),
       budgetMs: null,
-      frame: "Chat",
+      frame: cut,
       notes: replayNotesOf(hand),
       principals: seats,
       record: hand.record,
       seats: replaySeatsOf(hand),
       slot: Effect.void,
       support: { codec: "", sound: false },
-      svg: pictureSvg(picture, { deck, fonts: "", frame: "Chat", theme }),
+      svg: pictureSvg(picture, { deck, fonts: "", frame: cut, theme }),
     }
   );
 
@@ -444,6 +456,31 @@ const filmText = (file: Blob) =>
       })
     )
   );
+
+const references = (film: Film, times: readonly number[]) =>
+  Effect.gen(function* drawReferences() {
+    const atlas = yield* shotAtlas(film.shots, EMBEDDED_FONTS, Effect.void);
+    const reel = { ...film, shots: atlas.shots };
+    const canvas = new OffscreenCanvas(film.width, film.height);
+    const context = canvas.getContext("2d");
+    const drawn: string[] = [];
+
+    for (const ms of times) {
+      if (context !== null) {
+        drawAreas(context, atlas.bands, reel, placementsAt(reel, ms), [
+          { height: film.height, width: film.width, x: 0, y: 0 },
+        ]);
+      }
+
+      const blob = yield* Effect.promise(() =>
+        canvas.convertToBlob({ type: "image/png" })
+      );
+
+      drawn.push(yield* Effect.promise(() => filmText(blob)));
+    }
+
+    return drawn;
+  });
 
 const program = Effect.gen(function* makeFilm() {
   const { film, worker } = yield* filmFor;
@@ -469,9 +506,18 @@ const program = Effect.gen(function* makeFilm() {
 
   const finished = yield* Clock.currentTimeMillis;
 
+  const referenceTimes = (params.get("refs") ?? "")
+    .split(",")
+    .filter((each) => each.length > 0)
+    .map(Number);
+
+  const drawnReferences =
+    referenceTimes.length > 0 ? yield* references(film, referenceTimes) : [];
+
   Object.assign(globalThis, {
     __film: made.file,
     __filmText: () => filmText(made.file),
+    __references: drawnReferences,
   });
 
   return {

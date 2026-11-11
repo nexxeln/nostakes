@@ -49,11 +49,16 @@ export interface FilmCompared {
 }
 
 export interface FilmChecks {
+  readonly bitrate: number | null;
   readonly compare: boolean;
   readonly redraw: FilmRequest["redraw"];
 }
 
-const EVERYDAY: FilmChecks = { compare: false, redraw: "Changed" };
+const EVERYDAY: FilmChecks = {
+  bitrate: null,
+  compare: false,
+  redraw: "Changed",
+};
 
 type Progress = (made: number) => Option.Option<ClipTooSlow>;
 
@@ -137,10 +142,25 @@ export const clipWorker: Effect.Effect<
   }))
 );
 
-const BITS_PER_PIXEL = 0.07;
+const BITS_PER_PIXEL = 0.013;
 
-export const videoBitrate = (film: Pick<Film, "fps" | "height" | "width">) =>
-  Math.round(film.width * film.height * film.fps * BITS_PER_PIXEL);
+const LEAST_BITRATE = 500_000;
+
+const MOST_BITRATE = 3_000_000;
+
+const PICTURE_BYTES_ANY_CLIP_MAY_SPEND = 1_000_000;
+
+export const videoBitrate = (
+  film: Pick<Film, "fps" | "height" | "length" | "width">
+) =>
+  Math.max(
+    LEAST_BITRATE,
+    Math.round(film.width * film.height * film.fps * BITS_PER_PIXEL),
+    Math.min(
+      MOST_BITRATE,
+      Math.round((PICTURE_BYTES_ANY_CLIP_MAY_SPEND * 8 * 1000) / film.length)
+    )
+  );
 
 const MONO_BITRATE = 96_000;
 
@@ -222,7 +242,7 @@ export const filmOn = (
 
     const request: FilmRequest = {
       bands: atlas.bands,
-      bitrate: videoBitrate(film),
+      bitrate: checks.bitrate ?? videoBitrate(film),
       camera: film.camera,
       codec: order.support.codec,
       compare: checks.compare,

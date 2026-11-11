@@ -1659,6 +1659,165 @@ const syncedFilm = (engine: BrowserType) =>
     });
   }).pipe(Effect.scoped);
 
+const SHARP_TIMES = [1500, 5000, 9000, 13_000, 17_000];
+
+const LEAST_PSNR = 36;
+
+const MOST_EDGE_ERROR = 12;
+
+const EDGE_GRADIENT = 60;
+
+const lumaOf = (rgb: Uint8Array) =>
+  Float32Array.from(
+    { length: rgb.length / 3 },
+    (_, at) =>
+      0.2126 * (rgb[at * 3] ?? 0) +
+      0.7152 * (rgb[at * 3 + 1] ?? 0) +
+      0.0722 * (rgb[at * 3 + 2] ?? 0)
+  );
+
+const sharpnessOf = (
+  reference: Float32Array,
+  shown: Float32Array,
+  width: number
+) => {
+  let squared = 0;
+  let edges = 0;
+  let edgeError = 0;
+
+  for (let at = width + 1; at < reference.length - width - 1; at += 1) {
+    const gap = (reference[at] ?? 0) - (shown[at] ?? 0);
+
+    squared += gap * gap;
+
+    const gradient =
+      Math.abs((reference[at + 1] ?? 0) - (reference[at - 1] ?? 0)) +
+      Math.abs((reference[at + width] ?? 0) - (reference[at - width] ?? 0));
+
+    if (gradient > EDGE_GRADIENT) {
+      edges += 1;
+      edgeError += Math.abs(gap);
+    }
+  }
+
+  return {
+    edge: edgeError / Math.max(1, edges),
+    psnr:
+      10 * Math.log10((255 * 255) / Math.max(1e-9, squared / reference.length)),
+  };
+};
+
+const rgbFrame = (args: readonly string[], out: string) =>
+  ffmpegTo([
+    ...args,
+    "-frames:v",
+    "1",
+    "-f",
+    "rawvideo",
+    "-pix_fmt",
+    "rgb24",
+    out,
+  ]);
+
+const sharpFilm = (engine: BrowserType) =>
+  Effect.gen(function* checkSharpness() {
+    const label = `${engine.name()}-sharpness`;
+    const origin = yield* StageOrigin;
+    const fs = yield* FileSystem.FileSystem;
+    const opened = yield* mutedBrowser(engine);
+    const page = yield* attempt("open a page", () => opened.newPage());
+
+    yield* policed(page, engine.name());
+    yield* attempt("open the film stage", () =>
+      page.goto(
+        `${origin}${STAGE}/film.html?scene=replay&frame=Story&refs=${SHARP_TIMES.join(",")}`
+      )
+    );
+    yield* attempt("wait for the film", () =>
+      page.waitForFunction(
+        () => {
+          const stage = document.querySelector("#stage");
+
+          return (
+            stage instanceof HTMLElement && stage.dataset.result !== undefined
+          );
+        },
+        undefined,
+        { timeout: 300_000 }
+      )
+    );
+
+    const dir = yield* fs.makeTempDirectoryScoped({ prefix: "nostakes-sharp" });
+    const path = `${dir}/film.mp4`;
+    const bytes = yield* filmBytes(page);
+
+    yield* fs.writeFile(path, bytes);
+
+    const references = yield* read(
+      page,
+      "JSON.stringify(window.__references)",
+      Schema.Array(Schema.String),
+      "read the reference frames"
+    );
+
+    const scores: {
+      readonly ms: number;
+      readonly edge: number;
+      readonly psnr: number;
+    }[] = [];
+
+    for (const [index, ms] of SHARP_TIMES.entries()) {
+      const png = `${dir}/reference-${ms}.png`;
+
+      yield* fs.writeFile(png, Buffer.from(references[index] ?? "", "base64"));
+
+      const drawn = yield* rgbFrame(["-i", png], `${png}.rgb`);
+
+      const shown = yield* rgbFrame(
+        [
+          "-i",
+          path,
+          "-vf",
+          `select=eq(n\\,${Math.round((ms * SYNC_FPS) / 1000)})`,
+        ],
+        `${path}.${ms}.rgb`
+      );
+
+      if (Option.isSome(drawn) && Option.isSome(shown)) {
+        scores.push({
+          ms,
+          ...sharpnessOf(
+            lumaOf(yield* fs.readFile(`${png}.rgb`)),
+            lumaOf(yield* fs.readFile(`${path}.${ms}.rgb`)),
+            1080
+          ),
+        });
+      }
+    }
+
+    if (scores.length === 0) {
+      return {
+        label,
+        line: `${label}: no ffmpeg to read the film with`,
+        problems: [],
+      };
+    }
+
+    const worstEdge = Math.max(...scores.map((score) => score.edge));
+    const worstPsnr = Math.min(...scores.map((score) => score.psnr));
+
+    return {
+      label,
+      line: `${label}: ${bytes.length} bytes; against the frames drawn from the film, PSNR ${worstPsnr.toFixed(1)} dB at worst and ${worstEdge.toFixed(2)} levels on text and card edges at worst (${scores.map((score) => `${(score.ms / 1000).toFixed(1)} s ${score.edge.toFixed(1)}`).join(", ")})`,
+      problems:
+        worstPsnr >= LEAST_PSNR && worstEdge <= MOST_EDGE_ERROR
+          ? []
+          : [
+              `${label}: the vertical replay drifts from its own frames by PSNR ${worstPsnr.toFixed(1)} dB and ${worstEdge.toFixed(2)} levels on edges`,
+            ],
+    };
+  }).pipe(Effect.scoped);
+
 const EDGE_NOISE_LEVELS = 12;
 
 const EDGE_NOISE_PIXELS = 50;
@@ -1995,6 +2154,7 @@ const checks = Effect.gen(function* checkClips() {
         lingeredClip(engine),
         redrawnFilms(engine),
         syncedFilm(engine),
+        sharpFilm(engine),
         guardedClip(engine, 1),
         guardedClip(engine, 2),
         guardedClip(engine, 8),
