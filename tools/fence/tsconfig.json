@@ -8,5 +8,5 @@
       }
     ]
   },
-  "include": ["test/**/*.ts"]
+  "include": ["test/**/*.ts", "budget/**/*.ts"]
 }

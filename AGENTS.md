@@ -81,6 +81,7 @@ A long-running check, such as an exhaustive enumeration or a simulator, is a scr
 The fence makes cheating uncomfortable. If a hook fails, fix the failure. Do not disable the fence.
 
 - Lefthook pre-commit runs `pnpm check` and `pnpm test`.
+- Every vitest config spreads `testBudget` from `tools/fence/budget/config.ts`. Its setup file measures each test's CPU time and fails a test that spends more than a third of its own limit (`CPU_SHARE_OF_LIMIT`), with a message that says to make it cheaper rather than raise the limit. CPU time barely moves when the runner is busy, so a contended runner does not trip it; a test that trips it would time out on a slow one. Its reporter prints the tests that used the most of their limit after every run, in CI too.
 - Never skip the hooks: no `--no-verify`, no `commit -n`, no `LEFTHOOK=0`, no `core.hooksPath` override. The Claude Code hook in `.claude/settings.json` denies these commands. The policy lives in `scripts/vcs-command-policy.js`.
 - `tsconfig.base.json` owns the Effect diagnostic severities. A package tsconfig may add an exact `allowedUnstableApis` entry only for a module the checker warns about. `engine` and `ledger` already allow `@effect/vitest` and `effect/Arbitrary`, because every test needs them. `apps/room-server` also allows the `effect/http` modules it uses, and `effect/FileSystem` and `@effect/platform-node/NodeFileSystem` for the soak's saved logs.
 - Some rules collide with common Effect forms. Use the form that passes both:
