@@ -163,6 +163,10 @@ export const RULES: readonly RuleCopy[] = [
     brief: (draft) => said(`${draft.seats} seats`),
     card: "Headline",
   }),
+  rule("locked", "Table", "Lock the room", toggle(), {
+    brief: (draft) => when(draft.locked === "true", () => "room locked"),
+    help: "Nobody new can join, while people already in come and go.",
+  }),
   rule("approval.seats", "Table", "Approve seats", toggle(), {
     brief: (draft) =>
       when(draft["approval.seats"] === "true", () => "host seats players"),
@@ -601,6 +605,7 @@ export const STANDARD = new Map<string, string>(
     "approval.seats": "false",
     dealing: "Automatic",
     leavingMidHand: "ActedFor",
+    locked: "false",
     moments: "All",
     pauseWhenAwaySeconds: "120",
     peeking: "true",

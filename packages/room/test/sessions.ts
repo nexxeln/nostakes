@@ -135,7 +135,7 @@ const TOP_UPS: readonly TopUpRule[] = [
 
 const AWAY_SECONDS = [0, 1, 30, 120];
 
-export const settingsFrom = (random: SeededRandom): RoomSettings => ({
+const drawnSettings = (random: SeededRandom): Omit<RoomSettings, "locked"> => ({
   approval: { chips: random.chance(1, 2), seats: random.chance(1, 2) },
   betweenHandsSeconds: random.below(3),
   buyIn: {
@@ -163,6 +163,11 @@ export const settingsFrom = (random: SeededRandom): RoomSettings => ({
   timeBankSeconds: BANK_SECONDS[random.below(3)] ?? 0,
   topUps: TOP_UPS[random.below(TOP_UPS.length)] ?? "UpToMax",
   turnSeconds: CLOCK_SECONDS[random.below(3)] ?? 0,
+});
+
+export const settingsFrom = (random: SeededRandom): RoomSettings => ({
+  ...drawnSettings(random),
+  locked: false,
 });
 
 const member = (player: PlayerId) => Actors.Member({ player });
@@ -724,10 +729,12 @@ const hosting = (
     });
   }
 
+  const settings = settingsFrom(random);
+
   return RoomCommands.ChangeSettings({
     at: when,
     by,
-    settings: settingsFrom(random),
+    settings: { ...settings, locked: random.chance(1, 4) },
   });
 };
 

@@ -82,6 +82,7 @@ export const DEFAULT_SETTINGS: RoomSettings = Schema.decodeSync(
   buyIn: { max: 400, min: 40 },
   dealing: "Automatic",
   leavingMidHand: "ActedFor",
+  locked: false,
   pauseWhenAwaySeconds: DEFAULT_PAUSE_WHEN_AWAY_SECONDS,
   peeking: true,
   runChoiceSeconds: 15,

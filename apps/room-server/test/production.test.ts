@@ -334,6 +334,62 @@ test(
   { timeout: 60_000 }
 );
 
+test(
+  "while the host has the room locked a new join is refused 409 with RoomLocked, and once unlocked it is let in",
+  Effect.gen(function* lockedDoor() {
+    const { url } = yield* deployed;
+    const base = yield* Effect.fromNullishOr(url).pipe(Effect.orDie);
+
+    const anaPass = yield* createPokerRoom(base, {
+      avatar: "fox",
+      name: "Ana",
+    });
+
+    const ana = yield* greet(base, anaPass, "ana");
+
+    const lockedTo = (locked: boolean, id: string) =>
+      ask(
+        ana.socket,
+        id,
+        Commands.ChangeSettings.make({
+          settings: { ...DEFAULT_SETTINGS, locked },
+        })
+      );
+
+    const knock = postJson(new URL(`/rooms/${anaPass.code}/members`, base), {
+      avatar: "owl",
+      name: "Ben",
+    }).pipe(
+      Effect.orDie,
+      Effect.flatMap((response) =>
+        response.json.pipe(
+          Effect.orDie,
+          Effect.map((body) => `${response.status} ${JSON.stringify(body)}`)
+        )
+      )
+    );
+
+    yield* lockedTo(true, "lock");
+
+    const whileLocked = yield* knock;
+
+    yield* lockedTo(false, "unlock");
+
+    const afterwards = yield* knock;
+
+    expect({
+      afterwards: afterwards.startsWith("201 "),
+      whileLocked,
+    }).toEqual({
+      afterwards: true,
+      whileLocked: `409 {"refusal":"JoinRefused","rejection":{"_tag":"RoomLocked","code":"${anaPass.code}"}}`,
+    });
+
+    yield* ana.socket.disconnect;
+  }).pipe(Effect.provide(FetchHttpClient.layer)),
+  { timeout: 60_000 }
+);
+
 const Signals = RoomSignalSchema.cases;
 
 const sendSignal = (socket: PokerSocket, signal: RoomSignal) =>

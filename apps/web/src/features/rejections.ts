@@ -213,6 +213,8 @@ export const rejectionText = (
       RemovingYourself: () =>
         "You cannot remove yourself. Leave the room instead, and someone else becomes host.",
       RoomIsClosed: () => "This room is closed.",
+      RoomLocked: () =>
+        "The host locked this room, so nobody new can join. Ask them to unlock it.",
       SaltSecretSize: () => DEALER_BUSY,
       SealNotDue: () => DEALER_BUSY,
       SealRoundTooSoon: () => DEALER_BUSY,
@@ -229,6 +231,8 @@ export const rejectionText = (
       ShuffleRanOut: () => DEALER_BUSY,
       TableRejected: ({ rejection: refused }) =>
         tableText(refused, voice, handRunning(view)),
+      TooManyPeople: ({ most }) =>
+        `This room is full at ${most} people. The host can make room by removing someone.`,
       TopUpNotAllowed: ({ duringHand, holding, min, player, rule }) => {
         if (duringHand) {
           return `${voice.subject(player)} can add chips when this hand ends.`;

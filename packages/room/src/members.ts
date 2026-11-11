@@ -16,6 +16,8 @@ import {
   NotAMember,
   RemovedFromRoom,
   RemovingYourself,
+  RoomLocked,
+  TooManyPeople,
 } from "./rejection.js";
 import {
   SEATS,
@@ -30,6 +32,8 @@ import { secondsAfter } from "./time.js";
 import type { Millis } from "./time.js";
 
 export const HOST_CLAIM_AFTER_SECONDS = 120;
+
+export const MOST_PEOPLE = 20;
 
 export const hostClaimableAt = (state: Open): Option.Option<Millis> =>
   state.hostAway.pipe(
@@ -70,6 +74,18 @@ export const joinRoom = (
 
   if (isRemoved(state, player)) {
     return Result.fail(new RemovedFromRoom({ player }));
+  }
+
+  const returning = state.departed.some((member) => member.player === player);
+
+  if (state.settings.locked && !returning) {
+    return Result.fail(new RoomLocked({ code: state.code }));
+  }
+
+  const people = state.members.length + state.departed.length;
+
+  if (!returning && people >= MOST_PEOPLE) {
+    return Result.fail(new TooManyPeople({ most: MOST_PEOPLE, people }));
   }
 
   if (nameHeldByAnother(state, player, command.name)) {

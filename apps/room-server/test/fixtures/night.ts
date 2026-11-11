@@ -35,10 +35,13 @@ import type { Timeline } from "./client-wire.js";
 import { haltMidHand } from "./halt-night.js";
 import { HeldArrival, KEPT_DECODED } from "./held-arrival.js";
 import {
+  DOOR_WAIT_MS,
   INTRUDER_NAME,
+  KNOCKER_NAME,
   intrude,
   intruderProblems,
   joinIntruder,
+  knockAt,
 } from "./intruder.js";
 import type { IntruderRecord } from "./intruder.js";
 import { checkNight } from "./night-checks.js";
@@ -597,6 +600,7 @@ export const playNight = (base: string, opened: OpenedNight) =>
 
     const control: NightControl = {
       closing: false,
+      door: Option.none(),
       head: 0,
       intruders: new Map(),
       quiet: new Set(),
@@ -659,6 +663,8 @@ export const playNight = (base: string, opened: OpenedNight) =>
     const handsNow = () =>
       Option.match(freshest(), { onNone: () => 0, onSome: handsSeen });
 
+    let lateJoined = 0;
+
     const lateJoiner = (index: number, atHand: number) =>
       Effect.gen(function* joinLate() {
         while (handsNow() < atHand && !control.closing && !control.stop) {
@@ -678,6 +684,8 @@ export const playNight = (base: string, opened: OpenedNight) =>
           },
           Option.fromUndefinedOr(plan.devices[index])
         );
+
+        lateJoined += 1;
 
         yield* launch(pass, index);
       });
@@ -914,7 +922,11 @@ export const playNight = (base: string, opened: OpenedNight) =>
       onNone: () => Effect.void,
       onSome: (atHand) =>
         Effect.gen(function* letAStrangerIn() {
-          while (handsNow() < atHand && !control.closing && !control.stop) {
+          while (
+            (handsNow() < atHand || lateJoined < plan.lateJoiners) &&
+            !control.closing &&
+            !control.stop
+          ) {
             yield* Effect.sleep(Duration.millis(100));
           }
 
@@ -922,11 +934,47 @@ export const playNight = (base: string, opened: OpenedNight) =>
             return;
           }
 
+          const lockedFor = (locked: boolean) =>
+            Effect.gen(function* doorAt() {
+              control.door = Option.some(locked);
+
+              const since = wallClock();
+
+              while (
+                !freshest().pipe(
+                  Option.exists(
+                    (view) =>
+                      RoomViews.$is("Open")(view) &&
+                      view.settings.locked === locked
+                  )
+                ) &&
+                wallClock() - since < DOOR_WAIT_MS &&
+                !control.stop
+              ) {
+                yield* Effect.sleep(Duration.millis(100));
+              }
+            });
+
+          yield* lockedFor(true);
+          note("the host locked the room; a stranger knocks");
+
+          const knocked = yield* knockAt(base, plan.code);
+
+          yield* lockedFor(false);
+          control.door = Option.none();
+          note("the host unlocked the room; the stranger joins");
+
           const pass = yield* joinIntruder(base, plan.code);
 
-          intruder = Option.some(
-            yield* intrude(base, pass, control, () => handsNow() + 1, note)
+          const record = yield* intrude(
+            base,
+            pass,
+            control,
+            () => handsNow() + 1,
+            note
           );
+
+          intruder = Option.some({ ...record, knocked });
         }),
     });
 
@@ -980,6 +1028,7 @@ export const playNight = (base: string, opened: OpenedNight) =>
           ...plan.devices,
           ...plan.devices.map((_, index) => `bot${index}`),
           INTRUDER_NAME,
+          KNOCKER_NAME,
         ],
       },
       durationMs: wallClock() - started,

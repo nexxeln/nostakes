@@ -48,7 +48,7 @@ export { stallCommand } from "./stalls.js";
 
 export { ClosingSchema } from "./closing.js";
 
-export { HOST_CLAIM_AFTER_SECONDS } from "./members.js";
+export { HOST_CLAIM_AFTER_SECONDS, MOST_PEOPLE } from "./members.js";
 
 export type { Closing } from "./closing.js";
 
@@ -115,6 +115,7 @@ export {
   RemovedFromRoom,
   RemovingYourself,
   RoomIsClosed,
+  RoomLocked,
   RoomRejectionSchema,
   SaltSecretSize,
   SealNotDue,
@@ -128,6 +129,7 @@ export {
   SettlesAfterHand,
   ShuffleRanOut,
   TableRejected,
+  TooManyPeople,
   TopUpNotAllowed,
   Unbalanced,
 } from "./rejection.js";

@@ -115,6 +115,7 @@ export interface NightControl {
   readonly quiet: Set<PlayerId>;
   readonly seats: number;
   readonly intruders: Map<PlayerId, number>;
+  door: Option.Option<boolean>;
 }
 
 export interface SocketRecord {
@@ -513,6 +514,18 @@ export const plannerFor = (setup: PlannerSetup) => {
           ? Commands.ApproveChips.make({ player: chipRequest.player })
           : Commands.DenyChips.make({ player: chipRequest.player }),
         random.below(150)
+      );
+    }
+
+    const lockedWanted = control.door.pipe(
+      Option.filter((locked) => locked !== open.settings.locked)
+    );
+
+    if (Option.isSome(lockedWanted)) {
+      return intent(
+        Commands.ChangeSettings.make({
+          settings: { ...open.settings, locked: lockedWanted.value },
+        })
       );
     }
 

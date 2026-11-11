@@ -3,6 +3,7 @@ import type { PlayerId, Violation } from "@nostakes/engine";
 import { balances } from "@nostakes/ledger";
 import { Option } from "effect";
 
+import { MOST_PEOPLE } from "./members.js";
 import { chipsOnTable, allEntries } from "./money.js";
 import { nameKey } from "./names.js";
 import { sameTableRules } from "./rules.js";
@@ -87,6 +88,12 @@ const peopleViolations = (state: Open) => [
       "RemovedAreGone",
       () => `${player} was removed but is still a member or departed`
     )
+  ),
+  ...check(
+    state.members.length + state.departed.length <= MOST_PEOPLE,
+    "PeopleWithinTheRoom",
+    () =>
+      `${state.members.length} members and ${state.departed.length} who left, more than ${MOST_PEOPLE}`
   ),
   ...check(
     !hasDuplicates(state.removed.map((member) => member.player)),

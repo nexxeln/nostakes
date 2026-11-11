@@ -21,11 +21,16 @@ const { guards } = pokerCodec.server;
 
 export const INTRUDER_NAME = "stranger";
 
+export const KNOCKER_NAME = "knocker";
+
 const REMOVAL_WAIT_MS = 90_000;
+
+export const DOOR_WAIT_MS = 30_000;
 
 const FINISHING_WAIT_MS = 30_000;
 
 export interface IntruderRecord {
+  readonly knocked: string;
   readonly player: PlayerId;
   readonly removedVia: Option.Option<"Live" | "Hello">;
   readonly ranges: readonly { readonly from: number; readonly to: number }[];
@@ -236,6 +241,22 @@ export const intrude = (
     };
   });
 
+export const knockAt = (base: string, code: RoomPass["code"]) =>
+  postJson(new URL(`/rooms/${code}/members`, base), {
+    avatar: "stranger",
+    name: KNOCKER_NAME,
+  }).pipe(
+    Effect.flatMap((response) =>
+      response.json.pipe(
+        Effect.map((body) => `${response.status} ${JSON.stringify(body)}`)
+      )
+    ),
+    Effect.orDie
+  );
+
+export const lockedOut = (code: string) =>
+  `409 {"refusal":"JoinRefused","rejection":{"_tag":"RoomLocked","code":"${code}"}}`;
+
 export const joinIntruder = (base: string, code: RoomPass["code"]) =>
   joinPokerRoom(base, code, { avatar: "stranger", name: INTRUDER_NAME });
 
@@ -255,7 +276,25 @@ const FORBIDDEN_AFTER_REMOVAL = new Set<RoomEvent["_tag"]>([
   "StraddleDeclared",
 ]);
 
-export const intruderProblems = (
+const doorProblems = (
+  record: IntruderRecord,
+  events: readonly RoomEvent[]
+): readonly string[] => {
+  const [opened] = events;
+
+  const code =
+    opened !== undefined && RoomEvents.$is("RoomOpened")(opened)
+      ? opened.code
+      : "";
+
+  return record.knocked === lockedOut(code)
+    ? []
+    : [
+        `a stranger knocked while the host had the room locked and got ${record.knocked}, not ${lockedOut(code)}`,
+      ];
+};
+
+const removalProblems = (
   record: IntruderRecord,
   events: readonly RoomEvent[]
 ): readonly string[] => {
@@ -323,3 +362,11 @@ export const intruderProblems = (
     ),
   ];
 };
+
+export const intruderProblems = (
+  record: IntruderRecord,
+  events: readonly RoomEvent[]
+): readonly string[] => [
+  ...doorProblems(record, events),
+  ...removalProblems(record, events),
+];

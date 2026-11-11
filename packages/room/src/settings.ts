@@ -144,6 +144,11 @@ const settingsFields = (shuffleWhenAbsent: Shuffle) => ({
       "What happens to a player who leaves their seat during a hand they are in. ActedFor: the room checks or folds for them whenever the action reaches them. PlaysOn: they play the hand out on their own clock, and stand up when it ends. A player who leaves the room is always acted for.",
     title: "Leaving during a hand",
   }),
+  locked: setting(Schema.Boolean, false, {
+    description:
+      "Whether people new to the room may join. On: only people who already joined may come in, including someone who left and comes back with their pass. Off: anyone with the link may join.",
+    title: "Locked",
+  }),
   moments: setting(MomentCalloutsSchema, "All", {
     description:
       "Whether the table calls out a hand worth talking about once it ends: a big hand, a bluff shown, a hero call, a suckout, a split. All also calls out bad beats and coolers. SkipPainful leaves those two out, so nobody's loss gets a banner. Off calls out nothing.",

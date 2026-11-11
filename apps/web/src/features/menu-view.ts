@@ -399,6 +399,40 @@ const peopleList = (
   );
 };
 
+const doorSwitch = (room: InRoom, view: OpenView, h: H): Html =>
+  isYou(view, view.host)
+    ? h.div(
+        [h.Class("rule-line menu-line door-line")],
+        [
+          h.span([h.Class("rule-name")], ["Lock the room"]),
+          h.button(
+            [
+              h.Type("button"),
+              h.Class(view.settings.locked ? "switch is-on" : "switch"),
+              h.Role("switch"),
+              h.AriaChecked(view.settings.locked),
+              h.AriaLabel("Lock the room"),
+              h.Disabled(!isLive(room)),
+              h.OnClick(
+                Messages.ClickedRoomCommand({
+                  command: Commands.ChangeSettings.make({
+                    settings: {
+                      ...view.settings,
+                      locked: !view.settings.locked,
+                    },
+                  }),
+                  label: view.settings.locked
+                    ? "Unlocking the room"
+                    : "Locking the room",
+                })
+              ),
+            ],
+            []
+          ),
+        ]
+      )
+    : h.empty;
+
 const confirmLink = (label: string, confirm: Confirm, h: H): Html =>
   h.button(
     [
@@ -517,6 +551,7 @@ export const menuSheet = (
           [h.Class("menu-column")],
           [
             peopleList(view, presence, pageTheme(model), h),
+            doorSwitch(room, view, h),
             menuFoot(model, view, h),
           ]
         ),
@@ -611,13 +646,17 @@ const removalText = (view: OpenView, player: PlayerId) => {
     players.some((seated) => seated.player === player)
   );
 
+  const door = view.settings.locked
+    ? ""
+    : " Lock the room to keep the link from letting them back in.";
+
   if (inHand) {
-    return `${name}'s pass stops working. Their seat plays out this hand, then their chips are counted for the settle-up.`;
+    return `${name}'s pass stops working. Their seat plays out this hand, then their chips are counted for the settle-up.${door}`;
   }
 
   return Option.isSome(occupantOf(view, player))
-    ? `${name}'s pass stops working. Their chips are counted for the settle-up.`
-    : `${name}'s pass stops working.`;
+    ? `${name}'s pass stops working. Their chips are counted for the settle-up.${door}`
+    : `${name}'s pass stops working.${door}`;
 };
 
 const ENDINGS: Readonly<Record<OpenView["closing"], string>> = {

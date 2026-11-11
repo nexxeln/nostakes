@@ -32,6 +32,7 @@ import { QuietNotDue } from "./rejections/quiet-not-due.js";
 import { RemovedFromRoom } from "./rejections/removed-from-room.js";
 import { RemovingYourself } from "./rejections/removing-yourself.js";
 import { RoomIsClosed } from "./rejections/room-is-closed.js";
+import { RoomLocked } from "./rejections/room-locked.js";
 import { SaltSecretSize } from "./rejections/salt-secret-size.js";
 import { SealNotDue } from "./rejections/seal-not-due.js";
 import { SealRoundTooSoon } from "./rejections/seal-round-too-soon.js";
@@ -44,6 +45,7 @@ import { ServerOnly } from "./rejections/server-only.js";
 import { SettlesAfterHand } from "./rejections/settles-after-hand.js";
 import { ShuffleRanOut } from "./rejections/shuffle-ran-out.js";
 import { TableRejected } from "./rejections/table-rejected.js";
+import { TooManyPeople } from "./rejections/too-many-people.js";
 import { TopUpNotAllowed } from "./rejections/top-up-not-allowed.js";
 
 export const RoomRejectionSchema = Schema.Union([
@@ -92,6 +94,8 @@ export const RoomRejectionSchema = Schema.Union([
   AlreadyRemoved,
   RemovedFromRoom,
   RemovingYourself,
+  RoomLocked,
+  TooManyPeople,
 ]);
 
 export type RoomRejection = typeof RoomRejectionSchema.Type;
@@ -177,6 +181,10 @@ export { SealedSeatsMoved } from "./rejections/sealed-seats-moved.js";
 export { QueueNotDue } from "./rejections/queue-not-due.js";
 
 export { QuietNotDue } from "./rejections/quiet-not-due.js";
+
+export { TooManyPeople } from "./rejections/too-many-people.js";
+
+export { RoomLocked } from "./rejections/room-locked.js";
 
 export { RemovingYourself } from "./rejections/removing-yourself.js";
 
