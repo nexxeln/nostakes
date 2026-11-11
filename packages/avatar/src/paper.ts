@@ -2,7 +2,25 @@ export type Point = readonly [number, number];
 
 export type Polygon = readonly Point[];
 
-export const fmt = (value: number): string => String(Number(value.toFixed(2)));
+const EXACT_IN_FIFTEEN_DIGITS = 1e13;
+
+const roundedToHundredths = (value: number): string => {
+  const fixed = value.toFixed(2);
+
+  if (Math.abs(value) >= EXACT_IN_FIFTEEN_DIGITS) {
+    return String(Number(fixed));
+  }
+
+  if (fixed.endsWith("00")) {
+    const whole = fixed.slice(0, -3);
+
+    return whole === "-0" ? "0" : whole;
+  }
+
+  return fixed.endsWith("0") ? fixed.slice(0, -1) : fixed;
+};
+
+export const fmt = (value: number): string => roundedToHundredths(value);
 
 const PARK_MILLER_MODULUS = 2_147_483_647;
 
