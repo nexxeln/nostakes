@@ -47,9 +47,9 @@ export interface HandStory {
 
 const HOLE_CARDS = 2;
 
-const opening = (handNumber: number): HandStory => ({
+const opening = (handNumber: number, bigBlind: number): HandStory => ({
   allIn: [],
-  bigBlind: 0,
+  bigBlind,
   boards: [[]],
   bounty: 0,
   committed: Array.from({ length: SEAT_COUNT }, () => 0),
@@ -266,7 +266,7 @@ export const storyOf = (
     return Option.none();
   }
 
-  let story = opening(first.handNumber);
+  let story = opening(first.handNumber, first.bombPot?.bigBlind ?? 0);
 
   for (const event of rest) {
     story = told(story, event);

@@ -1,6 +1,7 @@
 import { Schema } from "effect";
 
 import { AmountNotPositive } from "./rejections/amount-not-positive.js";
+import { BombPotsOff } from "./rejections/bomb-pots-off.js";
 import { CardAlreadyPublic } from "./rejections/card-already-public.js";
 import { CardNotHeld } from "./rejections/card-not-held.js";
 import { ChipLimitExceeded } from "./rejections/chip-limit-exceeded.js";
@@ -36,6 +37,7 @@ export const RejectionSchema = Schema.Union([
   RabbitHuntOff,
   ShowBothCards,
   AmountNotPositive,
+  BombPotsOff,
   ChipLimitExceeded,
   HandInProgress,
   IllegalAction,
@@ -57,6 +59,8 @@ export const RejectionSchema = Schema.Union([
 export type Rejection = typeof RejectionSchema.Type;
 
 export { AmountNotPositive } from "./rejections/amount-not-positive.js";
+
+export { BombPotsOff } from "./rejections/bomb-pots-off.js";
 
 export { ChipLimitExceeded } from "./rejections/chip-limit-exceeded.js";
 

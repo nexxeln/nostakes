@@ -252,6 +252,7 @@ interface Watched {
     readonly eligible: readonly number[];
     readonly winners: readonly number[];
   }[];
+  readonly bombPot: boolean;
   readonly dealt: readonly number[];
   readonly holes: ReadonlyMap<number, readonly Card[]>;
   readonly rule: SevenDeuce;
@@ -282,7 +283,11 @@ const expectedBounty = (hand: Watched, ended: TableState) => {
 
   const [collector] = collectors;
 
-  if (collector === undefined || SevenDeuces.$is("NoBounty")(hand.rule)) {
+  if (
+    collector === undefined ||
+    hand.bombPot ||
+    SevenDeuces.$is("NoBounty")(hand.rule)
+  ) {
     return { collectors, payers: [] };
   }
 
@@ -307,6 +312,7 @@ const bountyProblems = (source: Session) => {
 
   let hand: Watched = {
     awards: [],
+    bombPot: false,
     dealt: [],
     holes: new Map(),
     rule,
@@ -324,7 +330,13 @@ const bountyProblems = (source: Session) => {
     }
 
     if (Events.$is("HandStarted")(event)) {
-      hand = { awards: [], dealt: event.dealtIn, holes: new Map(), rule };
+      hand = {
+        awards: [],
+        bombPot: event.bombPot !== undefined,
+        dealt: event.dealtIn,
+        holes: new Map(),
+        rule,
+      };
     }
 
     if (Events.$is("HoleCardsDealt")(event)) {
@@ -449,6 +461,8 @@ const seededSession = (seed: number): Session => {
     anteAmount: 1 + random.below(12),
     anteKind: random.below(3),
     bigBlindExtra: random.below(13),
+    bombAnte: 0,
+    bombEvery: 0,
     bounty: 20 + random.below(41),
     button: random.chance(1, 2),
     casinoBlinds: random.chance(1, 2),

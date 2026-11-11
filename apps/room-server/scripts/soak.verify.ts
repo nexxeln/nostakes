@@ -1,6 +1,7 @@
 import * as Cloudflare from "@alchemy.run/cloudflare";
 import * as Test from "@alchemy.run/test/Vitest";
 import { NodeFileSystem } from "@effect/platform-node";
+import { BombPots, ChipsSchema } from "@nostakes/engine";
 import {
   Config,
   Console,
@@ -133,8 +134,36 @@ const temperFor = (turnSeconds: number): Temper =>
       }
     : TEMPER;
 
-const tableRulesFor = (turnSeconds: number): TableRules =>
-  turnSeconds === 0 ? UNCLOCKED_TABLE : {};
+const BOMB_POT_ANTE = 4;
+
+const BOMB_POT_EVERY = 3;
+
+const bombPotsFor = (index: number): TableRules => {
+  if (index % 4 === 1) {
+    return {
+      bombPot: BombPots.BombPots({
+        ante: ChipsSchema.make(BOMB_POT_ANTE),
+        everyHands: BOMB_POT_EVERY,
+      }),
+    };
+  }
+
+  return index % 4 === 3
+    ? {
+        bombPot: BombPots.BombPots({
+          ante: ChipsSchema.make(BOMB_POT_ANTE),
+          everyHands: 0,
+        }),
+      }
+    : {};
+};
+
+const CLOCKED_TABLE: TableRules = {};
+
+const tableRulesFor = (turnSeconds: number, index: number): TableRules => ({
+  ...(turnSeconds === 0 ? UNCLOCKED_TABLE : CLOCKED_TABLE),
+  ...bombPotsFor(index),
+});
 
 const CHECKED_ROOMS_IN_TEN = 7;
 
@@ -262,6 +291,7 @@ const ENDINGS: readonly NightEnding[] = [
 ];
 
 const INFORMATIONAL: ReadonlySet<CountName> = new Set([
+  "bombPotsCalled",
   "bounties",
   "endedBetweenHands",
   "handsCancelled",
@@ -470,7 +500,7 @@ test(
               ? "Checked"
               : "Plain",
           silences: 3,
-          tableRules: tableRulesFor(turnSeconds),
+          tableRules: tableRulesFor(turnSeconds, index),
           turnSeconds,
         },
         temperFor(turnSeconds),

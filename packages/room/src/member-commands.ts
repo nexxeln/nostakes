@@ -11,6 +11,7 @@ export const MemberCommandSchema = Schema.TaggedUnion({
   ActForSeat: { player: cases.ActForSeat.fields.player },
   ApproveChips: { player: cases.ApproveChips.fields.player },
   ApproveSeat: { player: cases.ApproveSeat.fields.player },
+  CallBombPot: { on: cases.CallBombPot.fields.on },
   ChangeSettings: { settings: cases.ChangeSettings.fields.settings },
   ChoosePosting: { post: cases.ChoosePosting.fields.post },
   ChooseRuns: { runs: cases.ChooseRuns.fields.runs },

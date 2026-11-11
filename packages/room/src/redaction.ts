@@ -1,4 +1,5 @@
 import {
+  BombPotStartSchema,
   EventSchema,
   Events,
   PlayerIdSchema,
@@ -25,6 +26,7 @@ const { cases } = EventSchema;
 
 export const PublicHandStartedSchema = Schema.TaggedStruct("HandStarted", {
   bigBlindSeat: SeatIndexSchema,
+  bombPot: Schema.optionalKey(BombPotStartSchema),
   button: SeatIndexSchema,
   dealtIn: Schema.Array(SeatIndexSchema),
   handNumber: Schema.Int,
@@ -81,13 +83,17 @@ const holdsSeat = (audience: Audience, seat: SeatIndex) =>
 
 const seenTableEvent = (event: Event, audience: Audience): SeenTableEvent => {
   if (Events.$is("HandStarted")(event)) {
-    return PublicHandStartedSchema.make({
+    const shown = {
       bigBlindSeat: event.bigBlindSeat,
       button: event.button,
       dealtIn: event.dealtIn,
       handNumber: event.handNumber,
       smallBlindSeat: event.smallBlindSeat,
-    });
+    };
+
+    return PublicHandStartedSchema.make(
+      event.bombPot === undefined ? shown : { ...shown, bombPot: event.bombPot }
+    );
   }
 
   if (Events.$is("HoleCardsDealt")(event) && !holdsSeat(audience, event.seat)) {

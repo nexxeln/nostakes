@@ -1,6 +1,6 @@
 import { Array as Arr, Option, Result } from "effect";
 
-import { continueBetting, openRound } from "./betting.js";
+import { closedStreet, continueBetting, openRound } from "./betting.js";
 import type { Card } from "./cards.js";
 import type { CommandOf } from "./commands.js";
 import { Events } from "./events.js";
@@ -8,18 +8,20 @@ import type { Event, EventOf } from "./events.js";
 import { NO_CHIPS, SEAT_INDEXES, chips } from "./primitives.js";
 import type { Chips, SeatIndex } from "./primitives.js";
 import {
+  BombPotsOff,
   HandInProgress,
   NotEnoughPlayers,
   StraddleNotAllowed,
 } from "./rejection.js";
 import type { StraddleProblem } from "./rejection.js";
-import { Antes, straddleAmount } from "./rules.js";
+import { Antes, BombPots, straddleAmount } from "./rules.js";
 import type { TableConfig } from "./rules.js";
 import {
   NO_DEBT,
   Phases,
   TableStates,
   commit,
+  isBombPot,
   isInHand,
   isOccupied,
   owesNothing,
@@ -37,6 +39,7 @@ import type {
   HandPlayer,
   InHand,
   Occupied,
+  Rotation,
   Seat,
   Straddle,
   TableState,
@@ -454,14 +457,92 @@ const holeCards = (deck: readonly Card[], dealOrder: readonly SeatIndex[]) =>
     })
   );
 
-export const startHand = (
-  state: TableState,
+export const bombPotDue = (state: TableState, called: boolean) =>
+  BombPots.$match(state.config.bombPot, {
+    BombPots: ({ everyHands }) =>
+      called || (everyHands > 0 && (state.handNumber + 1) % everyHands === 0),
+    NoBombPots: () => false,
+  });
+
+const bombAnteFor = (
+  state: BetweenHands,
   command: CommandOf<"StartHand">
-) => {
-  if (isInHand(state)) {
-    return Result.fail(new HandInProgress({ handNumber: state.handNumber }));
+): Result.Result<Option.Option<Chips>, BombPotsOff> => {
+  const called = command.bombPot === true;
+
+  return BombPots.$match(state.config.bombPot, {
+    BombPots: ({ ante }) =>
+      Result.succeed(
+        bombPotDue(state, called) ? Option.some(ante) : Option.none()
+      ),
+    NoBombPots: () =>
+      called
+        ? Result.fail(new BombPotsOff({ handNumber: state.handNumber + 1 }))
+        : Result.succeed(Option.none()),
+  });
+};
+
+type Started = Result.Result<
+  readonly Event[],
+  BombPotsOff | HandInProgress | NotEnoughPlayers | StraddleNotAllowed
+>;
+
+const startBombPot = (
+  state: BetweenHands,
+  command: CommandOf<"StartHand">,
+  ante: Chips
+): Started => {
+  const dealtIn = dealtInSeats(state);
+
+  if (!Arr.isReadonlyArrayNonEmpty(dealtIn) || dealtIn.length < 2) {
+    return Result.fail(new NotEnoughPlayers({ dealtIn }));
   }
 
+  if (command.straddles.length > 0) {
+    return Result.fail(
+      new StraddleNotAllowed({
+        reason: "BombPot",
+        straddles: command.straddles,
+      })
+    );
+  }
+
+  const button = nextButton(
+    Option.orElse(state.bombButton, () => state.button),
+    dealtIn
+  );
+
+  const blinds = blindSeats(dealtIn, button);
+  const dealOrder = clockwiseFrom(dealtIn, button);
+
+  return Result.succeed([
+    Events.HandStarted({
+      bigBlindSeat: blinds.big,
+      bombPot: { ante, bigBlind: state.config.bigBlind },
+      button,
+      dealtIn,
+      deck: command.deck,
+      handNumber: state.handNumber + 1,
+      smallBlindSeat: blinds.small,
+    }),
+    ...dealOrder.map((seat) => {
+      const stack = stackOf(state, seat);
+      const amount = Math.min(ante, stack);
+
+      return Events.AntePosted({
+        allIn: amount === stack,
+        amount: chips(amount),
+        seat,
+      });
+    }),
+    ...holeCards(command.deck, dealOrder),
+  ]);
+};
+
+const startBlindHand = (
+  state: BetweenHands,
+  command: CommandOf<"StartHand">
+): Started => {
   const deal = dealFor(state, command.posts ?? []);
   const { dealtIn } = deal;
 
@@ -502,6 +583,22 @@ export const startHand = (
     ...postings(state, dealOrder, blinds, straddles.success, entries),
     ...holeCards(command.deck, dealOrder),
   ]);
+};
+
+export const startHand = (
+  state: TableState,
+  command: CommandOf<"StartHand">
+): Started => {
+  if (isInHand(state)) {
+    return Result.fail(new HandInProgress({ handNumber: state.handNumber }));
+  }
+
+  return Result.flatMap(bombAnteFor(state, command), (bomb) =>
+    Option.match(bomb, {
+      onNone: () => startBlindHand(state, command),
+      onSome: (ante) => startBombPot(state, command, ante),
+    })
+  );
 };
 
 const dealtInPlayer = (state: TableState, seat: SeatIndex): HandPlayer[] => {
@@ -581,6 +678,18 @@ export const clearDebtsAtHome = (state: TableState): TableState =>
       }
     : state;
 
+const pausedBy = (
+  state: TableState,
+  event: EventOf<"HandStarted">
+): Option.Option<Rotation> =>
+  event.bombPot === undefined
+    ? Option.none()
+    : Option.some(
+        TableStates.$is("BetweenHands")(state)
+          ? { button: state.button, lastBlinds: state.lastBlinds }
+          : { button: Option.none(), lastBlinds: Option.none() }
+      );
+
 export const beginHand = (
   state: TableState,
   event: EventOf<"HandStarted">
@@ -595,6 +704,7 @@ export const beginHand = (
       board: [],
       deadMoney: NO_CHIPS,
       deck: event.deck,
+      paused: pausedBy(state, event),
       phase: Phases.Settling({ lastAggressor: Option.none() }),
       players: event.dealtIn.flatMap((seat) => dealtInPlayer(state, seat)),
       smallBlindSeat: event.smallBlindSeat,
@@ -603,12 +713,16 @@ export const beginHand = (
       wonAlone: [],
     },
     handNumber: event.handNumber,
-    seats: seatsAfterDeal(state, event),
+    seats:
+      event.bombPot === undefined ? seatsAfterDeal(state, event) : state.seats,
   });
 
 export const postAnte = (state: TableState, event: EventOf<"AntePosted">) =>
   whenInHand(state, (inHand) => {
-    if (!Antes.$is("BigBlindPays")(inHand.config.ante)) {
+    if (
+      isBombPot(inHand.hand) ||
+      !Antes.$is("BigBlindPays")(inHand.config.ante)
+    ) {
       return commit(inHand, event.seat, event.amount, false);
     }
 
@@ -652,6 +766,12 @@ export const postStraddle = (
     });
   });
 
+const openWithoutBetting = (state: InHand): InHand =>
+  withHand(state, {
+    ...state.hand,
+    phase: closedStreet(state.config, state.hand, Option.none()),
+  });
+
 const openPreflop = (state: InHand): InHand => {
   const lastStraddle = state.hand.straddles.at(-1);
   const reference = lastStraddle?.seat ?? state.hand.bigBlindSeat;
@@ -685,7 +805,9 @@ export const dealHoleCards = (
 
     const next = withHand(inHand, hand);
 
-    return hand.players.every((player) => player.holeCards.length > 0)
-      ? openPreflop(next)
-      : next;
+    if (!hand.players.every((player) => player.holeCards.length > 0)) {
+      return next;
+    }
+
+    return isBombPot(hand) ? openWithoutBetting(next) : openPreflop(next);
   });

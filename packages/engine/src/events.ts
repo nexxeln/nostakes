@@ -26,6 +26,13 @@ export const ShowdownEntrySchema = Schema.TaggedUnion({
   },
 });
 
+export const BombPotStartSchema = Schema.Struct({
+  ante: ChipsSchema,
+  bigBlind: ChipsSchema,
+});
+
+export type BombPotStart = typeof BombPotStartSchema.Type;
+
 export const EventSchema = Schema.TaggedUnion({
   AntePosted: {
     allIn: Schema.Boolean,
@@ -56,6 +63,7 @@ export const EventSchema = Schema.TaggedUnion({
   HandMucked: { seat: SeatIndexSchema },
   HandStarted: {
     bigBlindSeat: SeatIndexSchema,
+    bombPot: Schema.optionalKey(BombPotStartSchema),
     button: SeatIndexSchema,
     dealtIn: Schema.Array(SeatIndexSchema),
     deck: DeckSchema,

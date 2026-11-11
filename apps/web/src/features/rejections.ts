@@ -77,6 +77,7 @@ const illegalText = (action: Action, legal: LegalActions) =>
   );
 
 const STRADDLE_TEXT = {
+  BombPot: "There are no straddles in a bomb pot.",
   ButtonStraddleOff: "This room has no straddle on the button.",
   CannotCover: "You do not have the chips to straddle.",
   HeadsUp: "There is no straddle heads-up.",
@@ -103,6 +104,7 @@ const tableText = (
   Match.value(rejection).pipe(
     Match.tagsExhaustive({
       AmountNotPositive: () => "Add at least one chip.",
+      BombPotsOff: () => "This room has bomb pots off.",
       CardAlreadyPublic: ({ card }) =>
         `The ${cardText(card)} is already shown.`,
       CardNotHeld: ({ card }) => `You did not hold the ${cardText(card)}.`,

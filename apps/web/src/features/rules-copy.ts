@@ -239,6 +239,34 @@ export const RULES: readonly RuleCopy[] = [
       help: "Post: post a big blind or wait, and pay missed blinds.",
     }
   ),
+  rule(
+    "table.bombPot._tag",
+    "Blinds",
+    "Bomb pots",
+    toggle("BombPots", "NoBombPots"),
+    {
+      brief: (draft) =>
+        when(draft["table.bombPot._tag"] === "BombPots", () =>
+          numberAt(draft, "table.bombPot.everyHands") > 0
+            ? `bomb pot ${draft["table.bombPot.ante"]} every ${draft["table.bombPot.everyHands"]}`
+            : `bomb pot ${draft["table.bombPot.ante"]}`
+        ),
+      help: "Everyone antes, the flop is dealt, and the betting starts there.",
+    }
+  ),
+  rule(
+    "table.bombPot.ante",
+    "Blinds",
+    "Bomb pot ante",
+    stepper("", 1, bigBlindOf, 4)
+  ),
+  rule(
+    "table.bombPot.everyHands",
+    "Blinds",
+    "Bomb pot every",
+    stepper("hands", 0, by(1), 0),
+    { help: "0 means only when the host calls one from the menu." }
+  ),
   rule("turnSeconds", "Clock", "Turn", stepper("s", 0, by(5)), {
     brief: (draft) =>
       said(
@@ -648,6 +676,7 @@ export const STANDARD = new Map<string, string>(
     shuffle: "Checked",
     sitOutAfterTimeouts: "1",
     "table.ante._tag": "NoAnte",
+    "table.bombPot._tag": "NoBombPots",
     "table.sevenDeuce._tag": "NoBounty",
     topUps: "UpToMax",
   })

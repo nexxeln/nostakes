@@ -4,6 +4,7 @@ import * as Arbitrary from "effect/Arbitrary";
 import {
   Actions,
   Antes,
+  BombPots,
   CardSchema,
   Commands,
   DeckSchema,
@@ -14,6 +15,7 @@ import {
   ShownCardsSchema,
   TableConfigSchema,
   TableStates,
+  bombPotDue,
   decide,
   evolve,
   initialTable,
@@ -21,6 +23,7 @@ import {
 } from "../src/index.js";
 import type {
   Ante,
+  BombPot,
   Command,
   Event,
   LegalActions,
@@ -47,6 +50,8 @@ export const SessionSchema = Schema.Struct({
   anteAmount: between(1, 12),
   anteKind: between(0, 2),
   bigBlindExtra: between(0, 12),
+  bombAnte: between(0, 40),
+  bombEvery: between(0, 4),
   bounty: between(0, 60),
   button: Schema.Boolean,
   casinoBlinds: Schema.Boolean,
@@ -92,12 +97,23 @@ const bountyOf = (roll: number): SevenDeuce =>
     ? SevenDeuces.NoBounty()
     : SevenDeuces.Bounty({ amount: chipCount(roll - BOUNTY_OFF_BELOW + 1) });
 
+const BOMB_OFF_BELOW = 12;
+
+const bombOf = (roll: number, every: number): BombPot =>
+  roll < BOMB_OFF_BELOW
+    ? BombPots.NoBombPots()
+    : BombPots.BombPots({
+        ante: chipCount(roll - BOMB_OFF_BELOW + 1),
+        everyHands: every,
+      });
+
 export const configOf = (source: Session): TableConfig =>
   TableConfigSchema.make({
     allInHands: source.hiddenAllIns ? "Hidden" : "FaceUp",
     ante: anteOf(source.anteKind, source.anteAmount),
     bigBlind: chipCount(source.smallBlind + source.bigBlindExtra),
     blindPosting: source.casinoBlinds ? "Casino" : "HomeGame",
+    bombPot: bombOf(source.bombAnte, source.bombEvery),
     maxRuns: runCount(source.maxRuns),
     rabbitHunt: source.rabbitHunt,
     rabbitHunters: source.rabbitStillIn ? "StillIn" : "DealtIn",
@@ -121,6 +137,7 @@ const randomConfig = (random: SeededRandom): TableConfig => {
     ante: anteOf(random.below(3), 1 + random.below(12)),
     bigBlind: chipCount(small + random.below(12)),
     blindPosting: random.chance(1, 2) ? "Casino" : "HomeGame",
+    bombPot: bombOf(random.below(41), random.below(5)),
     maxRuns: runCount(1 + random.below(4)),
     rabbitHunt: random.chance(1, 2),
     rabbitHunters: random.chance(1, 3) ? "StillIn" : "DealtIn",
@@ -411,12 +428,20 @@ export const commandFor = (state: TableState, intent: Intent): Command => {
       ({ occupant }) => !occupant.sittingOut && occupant.stack > 0
     ).length;
 
+    const called = random.chance(1, 6);
+
+    const straddles =
+      bombPotDue(state, called) && random.chance(9, 10)
+        ? []
+        : plannedStraddles(state, random).map((index) => seat(index));
+
     return Commands.StartHand({
+      bombPot: called,
       deck: random.chance(1, 3)
         ? sevenDeuceDeck(random, playable)
         : shuffledDeck(random),
       posts: postingSeats(state, random),
-      straddles: plannedStraddles(state, random).map((index) => seat(index)),
+      straddles,
     });
   }
 

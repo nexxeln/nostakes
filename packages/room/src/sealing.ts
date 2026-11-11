@@ -30,6 +30,7 @@ import { SealedDealSources } from "./commands.js";
 import type { RoomCommandOf } from "./commands.js";
 import {
   betweenHandsDue,
+  bombCalledFor,
   dealDue,
   dealableSeats,
   deckFromBytes,
@@ -88,12 +89,13 @@ export const sealDue = (state: Open): Option.Option<Millis> =>
 const dealOrderOf = (
   state: Open,
   deck: TableDeck,
-  posts: readonly SeatIndex[] = postingSeats(state)
+  posts: readonly SeatIndex[] = postingSeats(state),
+  bombPot: boolean = bombCalledFor(state)
 ): Result.Result<readonly SeatIndex[], TableRejected> =>
   Result.mapBoth(
     decideTable(
       state.table,
-      Commands.StartHand({ deck, posts, straddles: [] })
+      Commands.StartHand({ bombPot, deck, posts, straddles: [] })
     ),
     {
       onFailure: (rejection) => new TableRejected({ rejection }),
@@ -219,12 +221,18 @@ const sameOrder = (left: readonly SeatIndex[], right: readonly SeatIndex[]) =>
 const startSealed =
   (sealed: Sealed, deck: TableDeck, at: Millis): Step =>
   (state) =>
-    Result.flatMap(dealOrderOf(state, deck, sealed.posts), (order): Decision =>
-      sameOrder(order, sealed.seats)
-        ? onTable(state.table, handStart(state, deck, sealed.posts), at)
-        : Result.fail(
-            new SealedSeatsMoved({ dealt: order, sealed: sealed.seats })
-          )
+    Result.flatMap(
+      dealOrderOf(state, deck, sealed.posts, sealed.bombPot),
+      (order): Decision =>
+        sameOrder(order, sealed.seats)
+          ? onTable(
+              state.table,
+              handStart(state, deck, sealed.posts, sealed.bombPot),
+              at
+            )
+          : Result.fail(
+              new SealedSeatsMoved({ dealt: order, sealed: sealed.seats })
+            )
     );
 
 const dealToSealedSeats = (

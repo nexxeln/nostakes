@@ -15,7 +15,13 @@ import {
 import { closeRoom } from "./closing.js";
 import { RoomCommands } from "./commands.js";
 import type { RoomCommand } from "./commands.js";
-import { callNextHand, deal, pauseGame, startGame } from "./dealing.js";
+import {
+  callBombPot,
+  callNextHand,
+  deal,
+  pauseGame,
+  startGame,
+} from "./dealing.js";
 import type { Decision } from "./decision.js";
 import { lapseKnocks, lockedOut, turnAway } from "./door.js";
 import { RoomEvents } from "./events.js";
@@ -104,6 +110,7 @@ const decideOpen = (state: Open, command: RoomCommand): Decision =>
       byHost(state, approve, () => answerChips(state, approve, true)),
     ApproveSeat: (approve) =>
       byHost(state, approve, () => answerSeat(state, approve, true)),
+    CallBombPot: (call) => byHost(state, call, () => callBombPot(state, call)),
     ChangeSettings: (change) =>
       byHost(state, change, () => changeSettings(state, change)),
     ChoosePosting: (choose) =>

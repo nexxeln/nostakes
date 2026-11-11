@@ -19,6 +19,7 @@ import {
   commit,
   isInHand,
   notFolded,
+  owesItsFlop,
   playersClockwiseAfter,
   stackOf,
   updatePlayer,
@@ -94,7 +95,7 @@ export const closedStreet = (
 ): Phase => {
   const maxRuns = runCap(config, hand);
 
-  return choosesRuns(hand, maxRuns)
+  return choosesRuns(hand, maxRuns) && !owesItsFlop(hand)
     ? Phases.ChoosingRuns({
         choices: [],
         maxRuns,

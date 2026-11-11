@@ -27,6 +27,7 @@ export const CommandSchema = Schema.TaggedUnion({
   },
   StandUp: { seat: SeatIndexSchema },
   StartHand: {
+    bombPot: Schema.optionalKey(Schema.Boolean),
     deck: DeckSchema,
     posts: Schema.optionalKey(Schema.Array(SeatIndexSchema)),
     straddles: Schema.Array(SeatIndexSchema),

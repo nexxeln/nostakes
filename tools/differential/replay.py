@@ -44,6 +44,12 @@ NOBODY_CAN_CALL = "There is no reason to complete, bet, or raise"
 ALREADY_ACTED = "The player already acted and hence cannot raise"
 
 CONFIGURATIONS = {
+    "bomb-pot-streets": (
+        "PokerKit has no bomb pot, but it can be built from PokerKit's own parts: the same "
+        "ante from every seat with ante trimming, no blinds or straddles, and a first street "
+        "that deals the hole cards and the flop before its betting round, opened by position. "
+        "The replay builds that state and compares the hand in full."
+    ),
     "no-burn-cards": (
         "Brief rule 9 deals without burn cards. The replay builds PokerKit streets "
         "with no burns and deals every card explicitly from the exported deck."
@@ -177,6 +183,11 @@ REPLAY_ONLY = {
         "(BLIND-POSTING.md). PokerKit has no table, so the replay checks this from the exported "
         "seats on every Casino hand, including the hands it cannot compare any further."
     ),
+    "bomb-pot-table": (
+        "Which hands are bomb pots (the bombPot rule, a call, or every so many hands), that "
+        "every seat with chips that is not sitting out is dealt in whatever it owes, where the "
+        "bomb pot's button sits, and that it takes no straddle. PokerKit has no table model."
+    ),
     "button-and-blinds": "Brief rules 1 and 2, recomputed from the seat snapshot. PokerKit has no table or button model.",
     "straddle-list": "Brief rule 8, recomputed for accepted and rejected straddle lists. PokerKit takes any blind list.",
     "run-cap": "Brief rule 19's cap of maxRuns and the remaining deck. PokerKit has no cap.",
@@ -218,6 +229,15 @@ ANTE_FIELDS = {"BigBlindPays": {"_tag", "amount"}, "EveryPlayer": {"_tag", "amou
 
 BOUNTY_FIELDS = {"Bounty": {"_tag", "amount"}, "NoBounty": {"_tag"}}
 
+BOMB_FIELDS = {"BombPots": {"_tag", "ante", "everyHands"}, "NoBombPots": {"_tag"}}
+
+
+def bomb_due(config, called, hand_number):
+    rule = config.get("bombPot", {"_tag": "NoBombPots"})
+    if rule["_tag"] != "BombPots":
+        return False
+    return called or (rule["everyHands"] > 0 and hand_number % rule["everyHands"] == 0)
+
 
 def known_setting(key, value):
     match key:
@@ -231,6 +251,8 @@ def known_setting(key, value):
             return isinstance(value, dict) and set(value) == {"button", "underTheGun"}
         case "sevenDeuce":
             return isinstance(value, dict) and BOUNTY_FIELDS.get(value.get("_tag")) == set(value)
+        case "bombPot":
+            return isinstance(value, dict) and BOMB_FIELDS.get(value.get("_tag")) == set(value)
         case _:
             return value in SETTING_CHOICES.get(key, ())
 
@@ -285,7 +307,8 @@ class Hand:
         self.engine_folded = set()
         self.engine_all_in = set()
         self.winner_cache = {}
-        self.short_big_blind = not record["straddles"] and not any(
+        self.bomb = record["start"][0].get("bombPot")
+        self.short_big_blind = self.bomb is None and not record["straddles"] and not any(
             e["_tag"] == "BlindPosted" and e["blind"] == "Big" and e["amount"] == self.big_blind for e in record["start"]
         )
 
@@ -344,7 +367,13 @@ class Hand:
 
     def run(self):
         started = self.started()
-        if self.config.get("blindPosting") == "Casino":
+        due = bomb_due(self.config, self.record["bombCalled"], self.record["nextHand"])
+        self.replay_checked.add("bomb-pot-table")
+        if due != (self.bomb is not None):
+            self.differ("bomb-pot-kind", f"engine dealt {'a bomb pot' if self.bomb else 'blinds'}, the rule and the call say {'a bomb pot' if due else 'blinds'}")
+            self.stop("bomb-pot-kind")
+            return
+        if self.bomb is None and self.config.get("blindPosting") == "Casino":
             self.features.add("casino-blinds")
             self.check_casino_rotation(started)
             if self.casino_differs(started):
@@ -352,7 +381,10 @@ class Hand:
                 self.stop("casino-blind-posting")
                 return
         self.button = started["button"]
-        self.check_table(started)
+        if self.bomb is None:
+            self.check_table(started)
+        else:
+            self.check_bomb_table(started)
         self.check_rejected_starts()
         self.order = [s for s in started["dealtIn"] if s > self.button] + [
             s for s in started["dealtIn"] if s <= self.button
@@ -403,8 +435,44 @@ class Hand:
         if problem is not None:
             self.differ("straddle-list", f"engine accepted {self.straddles}, replay finds {problem}")
 
+    def check_bomb_table(self, started):
+        seats = self.record["seats"]
+        dealt = [i for i, seat in enumerate(seats) if seat is not None and not seat["sittingOut"] and seat["stack"] > 0]
+        previous = self.record["bombButton"]
+        if previous is None:
+            previous = self.record["previousButton"]
+        button = dealt[0] if previous is None else next_after(dealt, previous)
+        if dealt != started["dealtIn"] or button != started["button"]:
+            self.differ("bomb-pot-table", f"replay deals {dealt} with the button on {button}, engine {started['dealtIn']} and {started['button']}")
+        if self.straddles:
+            self.differ("bomb-pot-table", f"engine accepted straddles {self.straddles} in a bomb pot")
+        if self.bomb != {"ante": self.config["bombPot"]["ante"], "bigBlind": self.big_blind}:
+            self.differ("bomb-pot-table", f"engine started {self.bomb}, the rules say ante {self.config['bombPot']['ante']} at big blind {self.big_blind}")
+
+    def check_rejected_bomb(self, rejected):
+        tag = rejected["rejection"]["tag"]
+        rule_on = rejected["config"].get("bombPot", {}).get("_tag") == "BombPots"
+        if tag == "BombPotsOff":
+            if rule_on or not rejected["bombCalled"]:
+                self.differ("bomb-pot-table", "engine refused a bomb pot as off while the rule was on or nobody called one")
+            return True
+        if not bomb_due(rejected["config"], rejected["bombCalled"], rejected["nextHand"]):
+            if rejected["bombCalled"] and not rule_on:
+                self.differ("bomb-pot-table", f"engine answered a bomb pot called while off with {tag}")
+                return True
+            return False
+        seats = rejected["seats"]
+        dealt = [i for i, seat in enumerate(seats) if seat is not None and not seat["sittingOut"] and seat["stack"] > 0]
+        expected = "NotEnoughPlayers" if len(dealt) < 2 else ("StraddleNotAllowed" if rejected["straddles"] else None)
+        if tag != expected:
+            self.differ("bomb-pot-table", f"engine refused a bomb pot with {rejected['rejection']}, replay expects {expected}")
+        return True
+
     def check_rejected_starts(self):
         for rejected in self.record["rejectedStarts"]:
+            self.replay_checked.add("bomb-pot-table")
+            if self.check_rejected_bomb(rejected):
+                continue
             if rejected["config"].get("blindPosting") == "Casino":
                 self.excluded.add("casino-blind-posting")
                 continue
@@ -430,6 +498,8 @@ class Hand:
 
     def collect_features(self):
         self.features.add(f"seats-{self.count}")
+        if self.bomb is not None:
+            self.features.add("bomb-pot")
         ante = self.config["ante"]["_tag"]
         self.features.add({"NoAnte": "ante-none", "EveryPlayer": "ante-every-player", "BigBlindPays": "ante-big-blind"}[ante])
         if not self.straddles:
@@ -476,7 +546,9 @@ class Hand:
                 self.features.add("unshown-winner")
         if any(not step["accepted"] for step in self.record["steps"]):
             self.features.add("rejected-commands")
-        if not any(e["_tag"] == "BlindPosted" and e["blind"] == "Big" and e["amount"] == self.big_blind for e in events):
+        if self.bomb is None and not any(
+            e["_tag"] == "BlindPosted" and e["blind"] == "Big" and e["amount"] == self.big_blind for e in events
+        ):
             self.features.add("short-big-blind")
         for step in self.record["after"]:
             if step["command"]["_tag"] == "RabbitHunt":
@@ -499,8 +571,13 @@ class Hand:
                 self.configured.add("big-blind-ante-blind-first")
             antes = {1: paid} if paid > 0 else 0
         blinds = [0] * self.count
-        blinds[0] = self.small_blind
-        blinds[1] = self.big_blind
+        if self.bomb is None:
+            blinds[0] = self.small_blind
+            blinds[1] = self.big_blind
+        else:
+            trimming = True
+            antes = self.bomb["ante"]
+            self.configured.add("bomb-pot-streets")
         opening = self.big_blind
         for position, seat in enumerate(self.straddles):
             opening = straddle_amount(self.config, position)
@@ -509,12 +586,18 @@ class Hand:
             self.configured.add("straddle-sizes-preflop-raise")
         self.configured.add("no-burn-cards")
         self.opening = opening
-        streets = (
-            Street(False, (False, False), 0, False, Opening.POSITION, opening, None),
-            Street(False, (), 3, False, Opening.POSITION, self.big_blind, None),
+        later = (
             Street(False, (), 1, False, Opening.POSITION, self.big_blind, None),
             Street(False, (), 1, False, Opening.POSITION, self.big_blind, None),
         )
+        if self.bomb is None:
+            streets = (
+                Street(False, (False, False), 0, False, Opening.POSITION, opening, None),
+                Street(False, (), 3, False, Opening.POSITION, self.big_blind, None),
+                *later,
+            )
+        else:
+            streets = (Street(False, (False, False), 3, False, Opening.POSITION, self.big_blind, None), *later)
         self.starting = stacks
         self.state = State(
             AUTOMATIONS,
@@ -567,7 +650,8 @@ class Hand:
                     self.differ("hole-cards", f"seat {event['seat']} engine {event['cards']}, deck order {expected}")
         self.pointer = 2 * self.count
         if (
-            self.count == 2
+            self.bomb is None
+            and self.count == 2
             and state.street_index == 0
             and state.actor_index == 0
             and state.bets[0] == state.bets[1]
@@ -638,7 +722,7 @@ class Hand:
     def reset_reference(self):
         state = self.state
         if self.reference is None or self.reference["street"] != state.street_index:
-            preflop = state.street_index == 0
+            preflop = state.street_index == 0 and self.bomb is None
             self.reference = {
                 "street": state.street_index,
                 "bet": self.opening if preflop else 0,
@@ -796,7 +880,7 @@ class Hand:
                 elif raise_excluded == "pokerkit-refuses-raise-nobody-can-call":
                     state.check_or_call()
                     self.note_action(actor, "call")
-                    if state.street_index == 3:
+                    if state.street is state.streets[-1]:
                         self.river_call_for_raise = True
                 else:
                     self.differ("raise-accepted", f"engine accepted raise to {to} by seat {actor_seat}; pokerkit refuses")
@@ -1118,7 +1202,7 @@ class Hand:
             if e["_tag"] == "BountyPaid"
         ]
         expected = []
-        if rule["_tag"] == "Bounty":
+        if rule["_tag"] == "Bounty" and self.bomb is None:
             self.replay_checked.add("seven-deuce-bounty")
             for seat in unbeaten:
                 if sorted(card // 4 for card in self.hole[self.index[seat]]) != [0, 5]:
@@ -1373,7 +1457,7 @@ def summarize(results, path, report):
         + ["short-all-in", "short-big-blind", "side-pots", "split-pots", "odd-chips"]
         + ["fold-out", "showdown", "mucks", "rejected-commands", "rabbit-hunt", "voluntary-show"]
         + ["interactive-showdown", "concession", "unshown-winner", "hidden-run-out", "casino-blinds"]
-        + ["seven-deuce-bounty"]
+        + ["seven-deuce-bounty", "bomb-pot"]
     )
     for feature in order + sorted(set(features) - set(order)):
         counts = features.get(feature, Counter())

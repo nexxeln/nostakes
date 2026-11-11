@@ -1,14 +1,16 @@
 import {
+  BombPots,
   Events,
   Seats,
   TableStates,
   evolve as evolveTable,
   initialTable,
+  rotationAfter,
 } from "@nostakes/engine";
 import type { Chips, Event, PlayerId, SeatIndex } from "@nostakes/engine";
 import { Option } from "effect";
 
-import { postingSeats } from "./dealing.js";
+import { bombCalledFor, postingSeats } from "./dealing.js";
 import { RoomEvents } from "./events.js";
 import type { RoomEvent, RoomEventOf } from "./events.js";
 import { boughtIn, cashedOut, withEntry } from "./money.js";
@@ -40,6 +42,7 @@ export const opened = (event: RoomEventOf<"RoomOpened">): Open =>
   RoomStates.Open({
     attendance: Attendances.Attended({ since: event.at }),
     away: [],
+    bombCalled: false,
     chain: event.chain,
     clocks: {
       bankRefilled: new Map(),
@@ -156,13 +159,9 @@ const cancelled = (state: Open, restored: readonly Restored[]): Open => {
     queued: { ...state.queued, chips: [] },
     record: Option.none(),
     table: TableStates.BetweenHands({
-      button: Option.some(table.button),
+      ...rotationAfter(table),
       config: table.config,
       handNumber: table.handNumber,
-      lastBlinds: Option.some({
-        big: table.hand.bigBlindSeat,
-        small: table.hand.smallBlindSeat,
-      }),
       lastHand: Option.none(),
       seats,
     }),
@@ -179,6 +178,7 @@ const onTable = (state: Open, event: Event, at: Millis): Open => {
     ...(Events.$is("HandStarted")(event)
       ? {
           ...proofFor(dealtInto(state, event.dealtIn), event.handNumber),
+          bombCalled: event.bombPot === undefined && state.bombCalled,
           dealCalled: false,
           handStacks: stacksOf(state, event.dealtIn),
         }
@@ -194,6 +194,8 @@ const onTable = (state: Open, event: Event, at: Millis): Open => {
   if (Events.$is("RulesChanged")(event)) {
     return {
       ...next,
+      bombCalled:
+        next.bombCalled && BombPots.$is("BombPots")(event.config.bombPot),
       queued: { ...next.queued, rules: Option.none() },
       settings: { ...next.settings, table: event.config },
     };
@@ -292,6 +294,7 @@ const countedDeal = (state: Open, kind: keyof SealedDeals): Open =>
 
 const evolveOpen = (state: Open, event: RoomEvent): RoomState =>
   RoomEvents.$match(event, {
+    BombPotCalled: ({ on }): Open => ({ ...state, bombCalled: on }),
     BoughtIn: ({ amount, player, seat }) => ({
       ...state,
       entries: withEntry(state.entries, boughtIn(player, amount)),
@@ -365,6 +368,7 @@ const evolveOpen = (state: Open, event: RoomEvent): RoomState =>
       ...state,
       sealed: Option.some({
         at,
+        bombPot: bombCalledFor(state),
         decks,
         hand,
         posts: postingSeats(state),

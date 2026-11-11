@@ -812,12 +812,14 @@ describe("generated sessions", () => {
       let posted = new Map<number, number>();
       let antes = new Map<number, number>();
       let lastStraddle = 0;
+      let bombPot = false;
 
       playSession(source, (state, event) => {
         if (Events.$is("HandStarted")(event)) {
           posted = new Map();
           antes = new Map();
           lastStraddle = 0;
+          bombPot = event.bombPot !== undefined;
         }
 
         if (Events.$is("AntePosted")(event)) {
@@ -845,7 +847,8 @@ describe("generated sessions", () => {
           return;
         }
 
-        const everyPlayer = Antes.$is("EveryPlayer")(state.config.ante);
+        const everyPlayer =
+          bombPot || Antes.$is("EveryPlayer")(state.config.ante);
 
         for (const player of state.hand.players) {
           const live = posted.get(player.seat) ?? 0;

@@ -31,6 +31,7 @@ export const RoomCommandSchema = Schema.TaggedUnion({
   ActForSeat: naming,
   ApproveChips: naming,
   ApproveSeat: naming,
+  CallBombPot: { ...envelope, on: Schema.Boolean },
   ChangeSettings: { ...envelope, settings: RequestedSettingsSchema },
   ChoosePosting: { ...envelope, post: Schema.Boolean },
   ChooseRuns: { ...envelope, runs: RunCountSchema },

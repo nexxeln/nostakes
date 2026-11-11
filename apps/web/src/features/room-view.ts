@@ -6,6 +6,7 @@ import { Option } from "effect";
 import type { Html, HtmlBuilder } from "foldkit/html";
 
 import { attendanceLine } from "./attendance-line.js";
+import { bombPotLine } from "./bomb-pot.js";
 import { commandButton } from "./buttons.js";
 import { faceButton } from "./chrome.js";
 import { DOOR_LINES, knocksAgain } from "./door.js";
@@ -226,6 +227,10 @@ const noticeLine = (model: Model, room: InRoom, h: H): Html =>
     [
       stuckNotice(room, h),
       Option.match(attendanceLine(room, model.now), {
+        onNone: () => h.empty,
+        onSome: (text) => h.span([h.Class("attendance-line")], [text]),
+      }),
+      Option.match(openViewOf(room).pipe(Option.flatMap(bombPotLine)), {
         onNone: () => h.empty,
         onSome: (text) => h.span([h.Class("attendance-line")], [text]),
       }),

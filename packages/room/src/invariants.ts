@@ -3,6 +3,7 @@ import type { PlayerId, Violation } from "@nostakes/engine";
 import { balances } from "@nostakes/ledger";
 import { Option } from "effect";
 
+import { bombPotsOn } from "./dealing.js";
 import { MOST_KNOCKS, MOST_WAITING } from "./door.js";
 import { MOST_PEOPLE } from "./members.js";
 import { chipsOnTable, allEntries } from "./money.js";
@@ -238,6 +239,11 @@ const clockViolations = (state: Open) => [
     !state.dealCalled || !TableStates.$is("InHand")(state.table),
     "CalledHandsWaitBetweenHands",
     () => "a hand is called while one is in progress"
+  ),
+  ...check(
+    !state.bombCalled || bombPotsOn(state),
+    "BombPotsCalledOnlyWhileOn",
+    () => "a bomb pot is called while the rules have bomb pots off"
   ),
   ...[...state.clocks.bankSpent.values()].flatMap((spent) =>
     check(

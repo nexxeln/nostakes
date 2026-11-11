@@ -26,6 +26,22 @@ export type Ante = typeof AnteSchema.Type;
 
 export const Antes = Data.taggedEnum<Ante>();
 
+export const MAX_BOMB_POT_INTERVAL = 1000;
+
+export const BombPotSchema = Schema.TaggedUnion({
+  BombPots: {
+    ante: PositiveChipsSchema,
+    everyHands: Schema.Int.check(
+      Schema.isBetween({ maximum: MAX_BOMB_POT_INTERVAL, minimum: 0 })
+    ),
+  },
+  NoBombPots: {},
+});
+
+export type BombPot = typeof BombPotSchema.Type;
+
+export const BombPots = Data.taggedEnum<BombPot>();
+
 export const SevenDeuceSchema = Schema.TaggedUnion({
   Bounty: { amount: PositiveChipsSchema },
   NoBounty: {},
@@ -109,6 +125,11 @@ export const TableConfigSchema = Schema.Struct({
     description:
       "HomeGame: a new or returning player is dealt in at the next hand and owes nothing. Casino: a new player waits for the big blind or posts one to come in at once; a player who sits out while a blind passes owes it, and on return waits for the big blind or posts what they owe, the big blind live and the small blind dead.",
     title: "Blinds for new and returning players",
+  }),
+  bombPot: setting(BombPotSchema, BombPots.NoBombPots(), {
+    description:
+      "NoBombPots, or bomb pots: a hand in which every seat dealt in posts the ante, nobody posts a blind or straddles, the flop is dealt at once, and the betting starts on the flop. everyHands deals one every that many hands, and 0 deals one only when the host calls it. A bomb pot deals in every seat with chips that is not sitting out, leaves the blinds and what each seat owes where they were, and pays no seven-deuce bounty.",
+    title: "Bomb pots",
   }),
   maxRuns: RunCountSchema.annotate({
     description:

@@ -1,5 +1,6 @@
 import {
   Actions,
+  BombPots,
   CardSchema,
   ChipsSchema,
   ShownCardsSchema,
@@ -504,8 +505,15 @@ export const plannerFor = (setup: PlannerSetup) => {
       return intent(Commands.PauseGame.make({}));
     }
 
-    return handToCall(open)
-      ? intent(Commands.DealNextHand.make({}), random.below(400))
+    if (handToCall(open)) {
+      return intent(Commands.DealNextHand.make({}), random.below(400));
+    }
+
+    return BombPots.$is("BombPots")(open.settings.table.bombPot) &&
+      !open.bombPot.called &&
+      Option.isSome(open.hand) &&
+      random.chance(4)
+      ? intent(Commands.CallBombPot.make({ on: true }), random.below(200))
       : Option.none();
   };
 

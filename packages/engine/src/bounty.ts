@@ -7,7 +7,7 @@ import type { Event, EventOf, PotShare } from "./events.js";
 import { chips } from "./primitives.js";
 import type { Chips, PlayerId, SeatIndex } from "./primitives.js";
 import { SevenDeuces } from "./rules.js";
-import { isInHand, isOccupied } from "./state.js";
+import { isBombPot, isInHand, isOccupied } from "./state.js";
 import type { InHand, OwedBounty, Seat, TableState } from "./state.js";
 
 const DEUCE = 0;
@@ -62,10 +62,12 @@ const owedTo = (state: InHand, amount: Chips): Option.Option<OwedBounty> =>
   );
 
 export const owedBounty = (state: InHand): Option.Option<OwedBounty> =>
-  SevenDeuces.$match(state.config.sevenDeuce, {
-    Bounty: ({ amount }) => owedTo(state, amount),
-    NoBounty: () => Option.none(),
-  });
+  isBombPot(state.hand)
+    ? Option.none()
+    : SevenDeuces.$match(state.config.sevenDeuce, {
+        Bounty: ({ amount }) => owedTo(state, amount),
+        NoBounty: () => Option.none(),
+      });
 
 export const collectBounty = (state: TableState): readonly Event[] => {
   if (isInHand(state)) {

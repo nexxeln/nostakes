@@ -1,7 +1,12 @@
 import * as Cloudflare from "@alchemy.run/cloudflare";
 import * as Test from "@alchemy.run/test/Vitest";
 import { expect } from "@effect/vitest";
-import { ActionSchema, SeatIndexSchema } from "@nostakes/engine";
+import {
+  ActionSchema,
+  BombPots,
+  ChipsSchema,
+  SeatIndexSchema,
+} from "@nostakes/engine";
 import { CommandIdSchema } from "@nostakes/protocol";
 import type { RoomCode, RoomPass } from "@nostakes/protocol";
 import {
@@ -72,9 +77,12 @@ const SEED = 20_261_110;
 
 const CHECKED_HANDS_PER_ROOM = 2;
 
+const BOMB_POT_ANTE = 4;
+
 const CHECKED_HANDS = 2 * CHECKED_HANDS_PER_ROOM;
 
 interface SmallRoom {
+  readonly bombPotEvery?: number;
   readonly knocks?: boolean;
   readonly regular?: boolean;
   readonly stranger?: StrangerPlan;
@@ -87,6 +95,7 @@ interface SmallRoom {
 
 const ROOMS: readonly SmallRoom[] = [
   {
+    bombPotEvery: 2,
     ending: "AsItComes",
     hands: CHECKED_HANDS_PER_ROOM,
     players: 3,
@@ -101,6 +110,7 @@ const ROOMS: readonly SmallRoom[] = [
     shuffle: "Checked",
   },
   {
+    bombPotEvery: 3,
     ending: "MidHand",
     hands: 9,
     players: 5,
@@ -163,6 +173,7 @@ test(
     const plans = ROOMS.map(
       (
         {
+          bombPotEvery,
           ending,
           hands,
           knocks,
@@ -190,7 +201,15 @@ test(
             shuffle,
             silences: 1,
             stranger: stranger ?? "None",
-            tableRules: {},
+            tableRules:
+              bombPotEvery === undefined
+                ? {}
+                : {
+                    bombPot: BombPots.BombPots({
+                      ante: ChipsSchema.make(BOMB_POT_ANTE),
+                      everyHands: bombPotEvery,
+                    }),
+                  },
             turnSeconds: 1,
           },
           TEMPER,
@@ -268,6 +287,7 @@ test(
     expect(fairness.failedVerdicts).toBe(0);
     expect(fairness.plainHands).toBeGreaterThan(0);
     expect(total((counts) => counts.hands)).toBeGreaterThanOrEqual(30);
+    expect(total((counts) => counts.bombPots)).toBeGreaterThanOrEqual(2);
     expect(total((counts) => counts.restarts)).toBeGreaterThanOrEqual(3);
     expect(total((counts) => counts.timeouts)).toBeGreaterThanOrEqual(3);
     expect(total((counts) => counts.reconnects)).toBeGreaterThanOrEqual(3);

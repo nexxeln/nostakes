@@ -1,6 +1,7 @@
 import {
   Actions,
   Antes,
+  BombPots,
   CardSchema,
   ChipsSchema,
   PendingDecisions,
@@ -111,6 +112,12 @@ export const tableConfigFrom = (random: SeededRandom): TableConfig => {
     ante: anteOf(random.below(3), 1 + random.below(small * 2)),
     bigBlind: chips(small * (1 + random.below(2))),
     blindPosting: random.chance(1, 2) ? "Casino" : "HomeGame",
+    bombPot: random.chance(1, 2)
+      ? BombPots.BombPots({
+          ante: chips(1 + random.below(small * 8)),
+          everyHands: [0, 0, 1, 2, 5][random.below(5)] ?? 0,
+        })
+      : BombPots.NoBombPots(),
     maxRuns: RunCountSchema.make(1 + random.below(3)),
     rabbitHunt: random.chance(1, 2),
     rabbitHunters: random.chance(1, 3) ? "StillIn" : "DealtIn",
@@ -783,7 +790,9 @@ const hosting = (
   }
 
   if (roll < 3) {
-    return RoomCommands.PauseGame({ at: when, by });
+    return random.chance(1, 2)
+      ? RoomCommands.PauseGame({ at: when, by })
+      : RoomCommands.CallBombPot({ at: when, by, on: random.chance(4, 5) });
   }
 
   if (roll < 7) {

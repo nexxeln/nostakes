@@ -11,6 +11,7 @@ import {
   TableConfigSchema,
   TableStates,
   buildPots,
+  isBombPot,
   pendingDecisions,
 } from "@nostakes/engine";
 import type { Card, Hand, PlayerId, SeatIndex } from "@nostakes/engine";
@@ -20,6 +21,7 @@ import { Data, Effect, Option, Schema } from "effect";
 
 import { nextDealAt, timeBankLeft } from "./clocks.js";
 import { ClosingSchema, closingOf } from "./closing.js";
+import { bombCalledFor, nextIsBombPot } from "./dealing.js";
 import { HandNumberSchema, OpenedCardSchema, sealFields } from "./events.js";
 import { AvatarSchema, NameSchema, RoomCodeSchema } from "./identity.js";
 import { hostClaimableAt } from "./members.js";
@@ -132,6 +134,7 @@ export const SeatViewSchema = Schema.Struct({
 export const HandViewSchema = Schema.Struct({
   bigBlindSeat: SeatIndexSchema,
   boards: Schema.Array(cards),
+  bombPot: absentAs(Schema.Boolean, false),
   button: SeatIndexSchema,
   choosingRuns: Schema.Option(
     Schema.Struct({
@@ -289,6 +292,11 @@ const hostAwayField = absentAs(
 
 const stalledField = absentAs(Schema.Option(StallViewSchema), Option.none());
 
+export const BombPotViewSchema = Schema.Struct({
+  called: Schema.Boolean,
+  next: Schema.Boolean,
+});
+
 export const RoomViewSchema = Schema.TaggedUnion({
   Closed: {
     code: RoomCodeSchema,
@@ -302,6 +310,7 @@ export const RoomViewSchema = Schema.TaggedUnion({
   Open: {
     attendance: attendanceField,
     balances: Schema.Array(BalanceSchema),
+    bombPot: absentAs(BombPotViewSchema, { called: false, next: false }),
     clocks: ClocksViewSchema,
     closing: absentAs(ClosingSchema, "Now"),
     code: RoomCodeSchema,
@@ -451,6 +460,7 @@ const handView = (state: Open): Option.Option<HandView> => {
       onNone: () => [hand.board],
       onSome: (record) => record.boards,
     }),
+    bombPot: isBombPot(hand),
     button: table.button,
     choosingRuns: PendingDecisions.$is("ChooseRuns")(pending)
       ? Option.some({ maxRuns: pending.maxRuns, seats: pending.seats })
@@ -676,6 +686,7 @@ const openView = (state: Open, audience: Audience, at: Millis): RoomView => {
   return RoomViews.Open({
     attendance: state.attendance,
     balances: balances(allEntries(state.entries)),
+    bombPot: { called: bombCalledFor(state), next: nextIsBombPot(state) },
     clocks: clocksView(state, latest(at, state.now)),
     closing: closingOf(state, state.now),
     code: state.code,

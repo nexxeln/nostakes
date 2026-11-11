@@ -83,6 +83,7 @@ export const knockFields = {
 const chainWhenAbsent = Effect.succeed(QUICKNET);
 
 export const roomEventFields = {
+  BombPotCalled: { at, on: Schema.Boolean },
   BoughtIn: {
     amount: ChipAmountSchema,
     at,

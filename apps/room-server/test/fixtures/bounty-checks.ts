@@ -164,13 +164,13 @@ export const watchedBounty = (
   event: Event
 ): BountySeen =>
   Match.value(event).pipe(
-    Match.tag("HandStarted", ({ dealtIn, handNumber }) =>
+    Match.tag("HandStarted", ({ bombPot, dealtIn, handNumber }) =>
       seen(
         {
           ...NO_BOUNTY_WATCH,
           dealt: dealtIn,
           hand: handNumber,
-          rule: ruleOf(after),
+          rule: bombPot === undefined ? ruleOf(after) : SevenDeuces.NoBounty(),
         },
         unpaid(watch, "the next hand")
       )

@@ -284,6 +284,7 @@ describe("JSON codecs for phase 2 storage and transport", () => {
         ).toStrictEqual([]);
         expect(tags(rejections)).toStrictEqual([
           "AmountNotPositive",
+          "BombPotsOff",
           "CardAlreadyPublic",
           "CardNotHeld",
           "FoldedSeatCannotHunt",

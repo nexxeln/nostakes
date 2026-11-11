@@ -223,7 +223,7 @@ export const orbitsAfter = (
   const started = events.find(Events.$is("HandStarted"));
   const problems: string[] = [];
 
-  if (started === undefined) {
+  if (started === undefined || started.bombPot !== undefined) {
     return { orbits, problems };
   }
 
@@ -266,12 +266,39 @@ export const orbitsAfter = (
   return { orbits: counted, problems };
 };
 
+const bombPotProblems = (
+  before: TableState,
+  events: readonly Event[],
+  after: TableState
+): readonly string[] => [
+  ...(events.some(
+    (event) =>
+      Events.$is("BlindPosted")(event) || Events.$is("StraddlePosted")(event)
+  )
+    ? ["a bomb pot posted a blind or a straddle"]
+    : []),
+  ...SEAT_NUMBERS.flatMap((index) => {
+    const owed = occupantAt(before, index)?.owes ?? NO_DEBT;
+    const owesAfter = occupantAt(after, index)?.owes ?? NO_DEBT;
+
+    return JSON.stringify(owed) === JSON.stringify(owesAfter)
+      ? []
+      : [
+          `a bomb pot changed what seat ${index} owes from ${JSON.stringify(owed)} to ${JSON.stringify(owesAfter)}`,
+        ];
+  }),
+];
+
 export const dealProblems = (
   before: TableState,
   events: readonly Event[],
   after: TableState
 ): readonly string[] => {
   const started = events.find(Events.$is("HandStarted"));
+
+  if (started !== undefined && started.bombPot !== undefined) {
+    return bombPotProblems(before, events, after);
+  }
 
   if (started === undefined || before.config.blindPosting !== "Casino") {
     return [];

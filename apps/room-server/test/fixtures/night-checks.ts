@@ -107,6 +107,8 @@ export const COUNT_NAMES = [
   "approvals",
   "bankStarts",
   "bigBlindAnteHands",
+  "bombPots",
+  "bombPotsCalled",
   "bounties",
   "catchUps",
   "catchUpsSkipped",
@@ -200,6 +202,8 @@ export const emptyCounts = (): NightCounts => ({
   approvals: 0,
   bankStarts: 0,
   bigBlindAnteHands: 0,
+  bombPots: 0,
+  bombPotsCalled: 0,
   bounties: 0,
   catchUps: 0,
   catchUpsSkipped: 0,
@@ -1143,6 +1147,7 @@ const observeTable = (
     }
 
     ledger.decks.add(deck);
+    counts.bombPots += table.bombPot === undefined ? 0 : 1;
     countHandStart(checker, state);
   }
 
@@ -1363,6 +1368,8 @@ const countRoomEvent = (checker: Checker, event: RoomEvent) => {
       ? 1
       : 0;
   counts.rulesQueued += RoomEvents.$is("RulesQueued")(event) ? 1 : 0;
+  counts.bombPotsCalled +=
+    RoomEvents.$is("BombPotCalled")(event) && event.on ? 1 : 0;
   counts.settingsChanged += RoomEvents.$is("SettingsChanged")(event) ? 1 : 0;
   counts.closeQueued += RoomEvents.$is("CloseQueued")(event) ? 1 : 0;
 };

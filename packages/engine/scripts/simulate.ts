@@ -1,6 +1,7 @@
 import {
   Actions,
   Antes,
+  BombPots,
   CHIP_LIMIT,
   ChipsSchema,
   Commands,
@@ -18,10 +19,12 @@ import {
   ShownCardsSchema,
   TableConfigSchema,
   TableStates,
+  bombPotDue,
   decide,
   evolve,
   initialTable,
   invariants,
+  isBombPot,
   pendingDecisions,
 } from "@nostakes/engine";
 import type {
@@ -115,6 +118,12 @@ const randomConfig = (random: Random): TableConfig => {
     ante: anteOf(random, bigBlind),
     bigBlind: chipCount(bigBlind),
     blindPosting: random.chance(40) ? "Casino" : "HomeGame",
+    bombPot: random.chance(40)
+      ? BombPots.BombPots({
+          ante: chipCount(1 + random.below(bigBlind * 6)),
+          everyHands: random.pick([0, 0, 1, 3, 7]) ?? 0,
+        })
+      : BombPots.NoBombPots(),
     maxRuns: runCount(1 + random.below(4)),
     rabbitHunt: random.chance(50),
     rabbitHunters: random.chance(30) ? "StillIn" : "DealtIn",
@@ -448,6 +457,7 @@ const skippedDecision = (after: TableState, event: Event) => {
   if (
     !closesStreet(event) ||
     !TableStates.$is("InHand")(after) ||
+    isBombPot(after.hand) ||
     after.hand.street !== "Preflop" ||
     Phases.$is("Betting")(after.hand.phase) ||
     after.hand.players.some((player) => player.holeCards.length === 0)
@@ -560,6 +570,11 @@ const newCounts = () => ({
   boardsRunFour: 0,
   boardsRunThree: 0,
   boardsRunTwo: 0,
+  bombPots: 0,
+  bombPotsCalled: 0,
+  bombPotsInARow: 0,
+  bombPotsRefusedWhileOff: 0,
+  bombPotsWithShortAntes: 0,
   bounties: 0,
   bountiesFromShortStacks: 0,
   bountiesShownForTheTable: 0,
@@ -1119,6 +1134,69 @@ const orbitProblems = (
   return [...problems, ...rotationProblems(before, started)];
 };
 
+const bombPotProblems = (
+  counts: Counts,
+  before: TableState,
+  started: HandStart,
+  events: readonly Event[],
+  after: TableState
+): readonly string[] => {
+  const ante = started.bombPot?.ante ?? 0;
+  const seats = dealtIn(before);
+
+  const lastBomb = TableStates.$is("BetweenHands")(before)
+    ? before.bombButton
+    : Option.none();
+
+  const previous = Option.getOrUndefined(
+    Option.orElse(lastBomb, () =>
+      TableStates.$is("BetweenHands")(before) ? before.button : Option.none()
+    )
+  );
+
+  const button =
+    previous === undefined
+      ? seats[0]
+      : (seats.find((index) => index > previous) ?? seats[0]);
+
+  const antes = events.filter(Events.$is("AntePosted"));
+
+  counts.bombPots += 1;
+  counts.bombPotsInARow += Option.isSome(lastBomb) ? 1 : 0;
+  counts.bombPotsWithShortAntes += antes.some((posted) => posted.amount < ante)
+    ? 1
+    : 0;
+
+  return [
+    ...(seatsText(started.dealtIn) === seatsText(seats) &&
+    started.button === button
+      ? []
+      : [
+          `a bomb pot dealt ${started.dealtIn.join(",")} with the button on ${started.button}, expected ${seats.join(",")} and ${button}`,
+        ]),
+    ...(events.some(
+      (event) =>
+        Events.$is("BlindPosted")(event) || Events.$is("StraddlePosted")(event)
+    )
+      ? ["a bomb pot posted a blind or a straddle"]
+      : []),
+    ...seats.flatMap((index) => {
+      const posted = antes.find((each) => each.seat === index)?.amount;
+      const owed = Math.min(ante, occupantAt(before, index)?.stack ?? 0);
+
+      return posted === owed
+        ? []
+        : [`a bomb pot took ${posted} from seat ${index}, which owed ${owed}`];
+    }),
+    ...SEAT_NUMBERS.flatMap((index) =>
+      JSON.stringify(occupantAt(before, index)?.owes ?? NO_DEBT) ===
+      JSON.stringify(occupantAt(after, index)?.owes ?? NO_DEBT)
+        ? []
+        : [`a bomb pot changed what seat ${index} owes`]
+    ),
+  ];
+};
+
 const casinoProblems = (
   orbits: Map<string, Orbit>,
   counts: Counts,
@@ -1130,6 +1208,10 @@ const casinoProblems = (
 
   if (started === undefined) {
     return [];
+  }
+
+  if (started.bombPot !== undefined) {
+    return bombPotProblems(counts, before, started, events, after);
   }
 
   if (before.config.blindPosting !== "Casino" || forgivenDeal(before)) {
@@ -1190,6 +1272,9 @@ const countRejection = (
     rejection,
     "StraddleAboveChipLimit"
   )
+    ? 1
+    : 0;
+  counts.bombPotsRefusedWhileOff += Predicate.isTagged(rejection, "BombPotsOff")
     ? 1
     : 0;
 };
@@ -1414,10 +1499,19 @@ const simulate = (
       apply(shown.value, false);
     }
 
-    const straddled = plannedStraddles(state, random).map(seatAt);
+    const calledBomb = random.chance(5);
+    const bombDue = bombPotDue(state, calledBomb);
+
+    const straddled =
+      bombDue && random.chance(95)
+        ? []
+        : plannedStraddles(state, random).map(seatAt);
+
+    counts.bombPotsCalled += calledBomb && bombDue ? 1 : 0;
 
     return apply(
       Commands.StartHand({
+        bombPot: calledBomb,
         deck: random.chance(4)
           ? sevenDeuceDeck(random, Math.max(1, dealtIn(state).length))
           : shuffledDeck(random),

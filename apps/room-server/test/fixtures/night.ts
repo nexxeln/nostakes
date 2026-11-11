@@ -1,4 +1,10 @@
-import { Antes, ChipsSchema, SEAT_COUNT, SevenDeuces } from "@nostakes/engine";
+import {
+  Antes,
+  BombPots,
+  ChipsSchema,
+  SEAT_COUNT,
+  SevenDeuces,
+} from "@nostakes/engine";
 import {
   ROOM_CODE_ALPHABET,
   ROOM_CODE_LENGTH,
@@ -178,6 +184,9 @@ const withTable = (
 const paysBounty = (table: EncodedSettings["table"]) =>
   table.sevenDeuce !== undefined && SevenDeuces.$is("Bounty")(table.sevenDeuce);
 
+const dealsBombPots = (table: EncodedSettings["table"]) =>
+  table.bombPot !== undefined && BombPots.$is("BombPots")(table.bombPot);
+
 export const RULES: readonly RuleChange[] = [
   {
     atHand: 0,
@@ -262,6 +271,19 @@ export const RULES: readonly RuleChange[] = [
       }),
     label: "the seven-deuce bounty flips between off and five big blinds",
   },
+  {
+    atHand: 0,
+    change: (settings) =>
+      withTable(settings, {
+        bombPot: dealsBombPots(settings.table)
+          ? BombPots.NoBombPots()
+          : BombPots.BombPots({
+              ante: ChipsSchema.make(settings.table.bigBlind * 2),
+              everyHands: 3,
+            }),
+      }),
+    label: "bomb pots flip between off and every third hand",
+  },
 ];
 
 export type StrangerPlan = "None" | "Sits" | "Watches";
@@ -308,6 +330,12 @@ const tableFrom = (
   ante: Antes.NoAnte(),
   bigBlind: small * 2,
   blindPosting: random.chance(30) ? "Casino" : "HomeGame",
+  bombPot: random.chance(40)
+    ? BombPots.BombPots({
+        ante: ChipsSchema.make(small * 4),
+        everyHands: [0, 3, 4][random.below(3)] ?? 0,
+      })
+    : BombPots.NoBombPots(),
   maxRuns: random.between(1, 3),
   rabbitHunt: random.chance(50),
   rabbitHunters: random.chance(30) ? "StillIn" : "DealtIn",

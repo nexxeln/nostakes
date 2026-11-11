@@ -169,6 +169,8 @@ describe("the house rules copy", () => {
     expect(hidden(openDraft(AN_EVENING))).toEqual([
       "knockSeconds",
       "table.ante.amount",
+      "table.bombPot.ante",
+      "table.bombPot.everyHands",
       "timeBankRefill.everyHands",
       "timeBankRefill.seconds",
       "timeBankRefill.upTo",

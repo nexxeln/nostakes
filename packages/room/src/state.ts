@@ -135,6 +135,7 @@ export interface Sealed {
   readonly roots: readonly [Digest, Digest];
   readonly seats: readonly SeatIndex[];
   readonly posts: readonly SeatIndex[];
+  readonly bombPot: boolean;
   readonly decks: readonly [SealedDeck, SealedDeck];
   readonly secret: SaltSecret;
 }
@@ -199,6 +200,7 @@ export type RoomState = Data.TaggedEnum<{
   Open: {
     readonly attendance: Attendance;
     readonly away: readonly SeatIndex[];
+    readonly bombCalled: boolean;
     readonly chain: DrandChain;
     readonly clocks: Clocks;
     readonly code: RoomCode;

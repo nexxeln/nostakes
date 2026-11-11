@@ -83,12 +83,16 @@ export const bountyHappenings = (
 
 const tableHappenings = (
   event: SeenTableEvent,
-  facing: number
+  facing: number,
+  bombPot: boolean
 ): readonly Happening[] =>
   Match.value(event).pipe(
     Match.tagsExhaustive({
       AntePosted: ({ amount, seat }) => [
         Happenings.Post.make({ amount, kind: "Ante", seat }),
+        ...(bombPot
+          ? [Happenings.Say.make({ seat, text: `Bomb pot ${amount}` })]
+          : []),
       ],
       BlindPosted: ({ amount, blind, dead, seat }) => [
         Happenings.Post.make({
@@ -170,10 +174,11 @@ const tableHappenings = (
 export const happeningsOf = (
   seq: number,
   event: SeenEvent,
-  facing: number
+  facing: number,
+  bombPot = false
 ): readonly TableEvent[] =>
   SeenEvents.$is("Table")(event)
-    ? tableHappenings(event.event, facing).map((happening, index) => ({
+    ? tableHappenings(event.event, facing, bombPot).map((happening, index) => ({
         happening,
         id: seq * HAPPENINGS_PER_EVENT + index,
       }))
@@ -231,14 +236,28 @@ export const facingEach = <Entry extends { readonly event: SeenEvent }>(
   return faced;
 };
 
+const startsBombPot = (event: SeenEvent): Option.Option<boolean> =>
+  SeenEvents.$is("Table")(event)
+    ? Match.value(event.event).pipe(
+        Match.tag("HandStarted", ({ bombPot }) =>
+          Option.some(bombPot !== undefined)
+        ),
+        Match.orElse(() => Option.none<boolean>())
+      )
+    : Option.none();
+
 export const happeningsFrom = (
   facingFirst: number,
   applied: readonly { readonly event: SeenEvent; readonly seq: number }[]
 ): readonly TableEvent[] => {
   const happenings: TableEvent[] = [];
+  let bombPot = false;
 
   for (const { event, facing, seq } of facingEach(facingFirst, applied)) {
-    happenings.push(...happeningsOf(seq, event, facing));
+    const started = startsBombPot(event);
+
+    bombPot = Option.isSome(started) ? started.value : bombPot;
+    happenings.push(...happeningsOf(seq, event, facing, bombPot));
   }
 
   return happenings;

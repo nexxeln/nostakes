@@ -1,6 +1,7 @@
 import {
   Actions,
   Antes,
+  BombPots,
   ChipsSchema,
   Commands,
   DeckSchema,
@@ -15,6 +16,7 @@ import {
   ShownCardsSchema,
   TableConfigSchema,
   TableStates,
+  bombPotDue,
   decide,
   evolve,
   initialTable,
@@ -94,6 +96,12 @@ const randomConfig = (random: Random): TableConfig => {
     ante: anteOf(random, bigBlind),
     bigBlind: chipCount(bigBlind),
     blindPosting: random.chance(40) ? "Casino" : "HomeGame",
+    bombPot: random.chance(40)
+      ? BombPots.BombPots({
+          ante: chipCount(1 + random.below(bigBlind * 6)),
+          everyHands: random.pick([0, 0, 1, 3, 7]) ?? 0,
+        })
+      : BombPots.NoBombPots(),
     maxRuns: runCount(1 + random.below(4)),
     rabbitHunt: random.chance(50),
     rabbitHunters: random.chance(30) ? "StillIn" : "DealtIn",
@@ -194,6 +202,11 @@ const lastDealtOf = (state: TableState) =>
         onSome: (lastHand) => lastHand.players.map((dealt) => dealt.seat),
       })
     : [];
+
+const previousBombButton = (state: TableState) =>
+  TableStates.$is("BetweenHands")(state)
+    ? Option.getOrNull(state.bombButton)
+    : null;
 
 const plannedStraddles = (state: TableState, random: Random) => {
   const seats = dealtIn(state);
@@ -526,9 +539,12 @@ interface AfterStep extends Step {
 }
 
 interface TableSnapshot {
+  readonly bombButton: number | null;
+  readonly bombCalled: boolean;
   readonly config: TableConfig;
   readonly lastBlinds: { readonly big: number; readonly small: number } | null;
   readonly lastDealt: readonly number[];
+  readonly nextHand: number;
   readonly previousButton: number | null;
   readonly seats: ReturnType<typeof seatsRecord>;
 }
@@ -684,16 +700,24 @@ const exportHands = (seed: number, wanted: number) =>
     };
 
     const startHand = (): HandRecord | null => {
-      const straddles = plannedStraddles(state, random).map(seatAt);
+      const bombCalled = random.chance(5);
+
+      const straddles =
+        bombPotDue(state, bombCalled) && random.chance(95)
+          ? []
+          : plannedStraddles(state, random).map(seatAt);
 
       const deck = random.chance(6)
         ? sevenDeuceDeck(random, Math.max(1, dealtIn(state).length))
         : shuffledDeck(random);
 
       const before: TableSnapshot = {
+        bombButton: previousBombButton(state),
+        bombCalled,
         config: state.config,
         lastBlinds: lastBlindsOf(state),
         lastDealt: lastDealtOf(state),
+        nextHand: state.handNumber + 1,
         previousButton: previousButton(state),
         seats: seatsRecord(state),
       };
@@ -702,7 +726,14 @@ const exportHands = (seed: number, wanted: number) =>
         .filter(() => random.chance(50))
         .map((seat) => seatAt(seat.index));
 
-      const outcome = apply(Commands.StartHand({ deck, posts, straddles }));
+      const outcome = apply(
+        Commands.StartHand({
+          bombPot: bombCalled,
+          deck,
+          posts,
+          straddles,
+        })
+      );
 
       if (Result.isFailure(outcome)) {
         rejectedStarts.push({

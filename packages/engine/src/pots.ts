@@ -9,6 +9,7 @@ import {
   Phases,
   TableStates,
   notFolded,
+  rotationAfter,
   updatePlayer,
   whenInHand,
   withStackChange,
@@ -190,13 +191,9 @@ const undealtBoard = (hand: Hand) =>
 export const endHand = (state: TableState) =>
   whenInHand(state, (inHand) =>
     TableStates.BetweenHands({
-      button: Option.some(inHand.button),
+      ...rotationAfter(inHand),
       config: inHand.config,
       handNumber: inHand.handNumber,
-      lastBlinds: Option.some({
-        big: inHand.hand.bigBlindSeat,
-        small: inHand.hand.smallBlindSeat,
-      }),
       lastHand: Option.some({
         bounty: owedBounty(inHand),
         hunted: false,

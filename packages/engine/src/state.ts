@@ -106,6 +106,11 @@ export interface Straddle {
   readonly seat: SeatIndex;
 }
 
+export interface Rotation {
+  readonly button: Option.Option<SeatIndex>;
+  readonly lastBlinds: Option.Option<Blinds>;
+}
+
 export interface Hand {
   readonly aggressor: Option.Option<SeatIndex>;
   readonly beaten: readonly SeatIndex[];
@@ -113,6 +118,7 @@ export interface Hand {
   readonly board: readonly Card[];
   readonly deadMoney: Chips;
   readonly deck: readonly Card[];
+  readonly paused: Option.Option<Rotation>;
   readonly phase: Phase;
   readonly players: readonly HandPlayer[];
   readonly smallBlindSeat: SeatIndex;
@@ -143,6 +149,7 @@ export interface LastHand {
 
 export type TableState = Data.TaggedEnum<{
   BetweenHands: {
+    readonly bombButton: Option.Option<SeatIndex>;
     readonly button: Option.Option<SeatIndex>;
     readonly config: TableConfig;
     readonly handNumber: number;
@@ -169,6 +176,7 @@ export const isInHand = TableStates.$is("InHand");
 
 export const initialTable = (config: TableConfig): TableState =>
   TableStates.BetweenHands({
+    bombButton: Option.none(),
     button: Option.none(),
     config,
     handNumber: 0,
@@ -236,6 +244,28 @@ export const withStackChange = (
       ? { ...current, stack: chips(current.stack + change) }
       : current
   );
+
+export const isBombPot = (hand: Hand) => Option.isSome(hand.paused);
+
+export const owesItsFlop = (hand: Hand) =>
+  isBombPot(hand) && hand.board.length === 0;
+
+export const rotationAfter = (state: InHand) =>
+  Option.match(state.hand.paused, {
+    onNone: () => ({
+      bombButton: Option.none<SeatIndex>(),
+      button: Option.some(state.button),
+      lastBlinds: Option.some({
+        big: state.hand.bigBlindSeat,
+        small: state.hand.smallBlindSeat,
+      }),
+    }),
+    onSome: (paused) => ({
+      bombButton: Option.some(state.button),
+      button: paused.button,
+      lastBlinds: paused.lastBlinds,
+    }),
+  });
 
 export const withHand = (state: InHand, hand: Hand): InHand => ({
   ...state,

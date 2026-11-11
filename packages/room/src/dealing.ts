@@ -1,9 +1,12 @@
 import {
+  BombPots,
+  BombPotsOff,
   CardSchema,
   Commands,
   DECK_SIZE,
   DeckSchema,
   Events,
+  bombPotDue,
   decide as decideTable,
 } from "@nostakes/engine";
 import type { Deck, SeatIndex, TableState } from "@nostakes/engine";
@@ -17,6 +20,7 @@ import {
   DealingIsAutomatic,
   GameAlready,
   ShuffleRanOut,
+  TableRejected,
 } from "./rejection.js";
 import { Attendances, SEATS, handInProgress, occupantAt } from "./state.js";
 import type { Open } from "./state.js";
@@ -150,12 +154,32 @@ export const postingSeats = (state: Open): readonly SeatIndex[] =>
     )
   );
 
+export const bombPotsOn = (state: Open) =>
+  BombPots.$is("BombPots")(state.table.config.bombPot);
+
+export const bombCalledFor = (state: Open) =>
+  state.bombCalled && bombPotsOn(state);
+
+export const nextIsBombPot = (state: Open) =>
+  bombPotDue(
+    state.table,
+    Option.match(state.sealed, {
+      onNone: () => bombCalledFor(state),
+      onSome: (sealed) => sealed.bombPot,
+    })
+  );
+
 const startHand = (
   state: Open,
   deck: Deck,
   straddles: readonly SeatIndex[],
-  posts: readonly SeatIndex[]
-) => decideTable(state.table, Commands.StartHand({ deck, posts, straddles }));
+  posts: readonly SeatIndex[],
+  bombPot: boolean
+) =>
+  decideTable(
+    state.table,
+    Commands.StartHand({ bombPot, deck, posts, straddles })
+  );
 
 const clockwiseAfter = (seats: readonly SeatIndex[], after: SeatIndex) => [
   ...seats.filter((seat) => seat > after),
@@ -174,15 +198,20 @@ const leadingWhile = (
 export const straddlesFor = (
   state: Open,
   deck: Deck,
-  posts: readonly SeatIndex[]
+  posts: readonly SeatIndex[],
+  bombPot: boolean
 ): readonly SeatIndex[] => {
-  const dryRun = startHand(state, deck, [], posts);
+  const dryRun = startHand(state, deck, [], posts, bombPot);
 
   const started = Result.isSuccess(dryRun)
     ? dryRun.success.find(Events.$is("HandStarted"))
     : undefined;
 
-  if (started === undefined || state.straddlers.length === 0) {
+  if (
+    started === undefined ||
+    started.bombPot !== undefined ||
+    state.straddlers.length === 0
+  ) {
     return [];
   }
 
@@ -208,7 +237,7 @@ export const straddlesFor = (
 
   return (
     candidates.find((straddles) =>
-      Result.isSuccess(startHand(state, deck, straddles, posts))
+      Result.isSuccess(startHand(state, deck, straddles, posts, bombPot))
     ) ?? []
   );
 };
@@ -216,13 +245,36 @@ export const straddlesFor = (
 export const handStart = (
   state: Open,
   deck: Deck,
-  posts: readonly SeatIndex[] = postingSeats(state)
+  posts: readonly SeatIndex[] = postingSeats(state),
+  bombPot: boolean = bombCalledFor(state)
 ) =>
   Commands.StartHand({
+    bombPot,
     deck,
     posts,
-    straddles: straddlesFor(state, deck, posts),
+    straddles: straddlesFor(state, deck, posts, bombPot),
   });
+
+export const callBombPot = (
+  state: Open,
+  command: RoomCommandOf<"CallBombPot">
+): Decision => {
+  if (!bombPotsOn(state)) {
+    return Result.fail(
+      new TableRejected({
+        rejection: new BombPotsOff({
+          handNumber: state.table.handNumber + 1,
+        }),
+      })
+    );
+  }
+
+  return Result.succeed(
+    state.bombCalled === command.on
+      ? []
+      : [RoomEvents.BombPotCalled({ at: command.at, on: command.on })]
+  );
+};
 
 export const deal = (state: Open, command: RoomCommandOf<"Deal">): Decision =>
   Option.match(notDue(state, command.at), {

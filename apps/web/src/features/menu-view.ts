@@ -4,6 +4,7 @@ import { MemberCommandSchema, clearableOf } from "@nostakes/room";
 import { Match, Option } from "effect";
 import type { Html, HtmlBuilder } from "foldkit/html";
 
+import { mayCallBombPot } from "./bomb-pot.js";
 import { commandButton } from "./buttons.js";
 import { deviceToggles } from "./chrome.js";
 import { face } from "./face-builder.js";
@@ -281,6 +282,18 @@ const hostStrip = (room: InRoom, view: OpenView, h: H): Html => {
         "Pausing",
         "button small"
       ),
+      mayCallBombPot(view)
+        ? commandButton(
+            h,
+            room,
+            Commands.CallBombPot.make({ on: !view.bombPot.called }),
+            view.bombPot.called
+              ? "Call off the bomb pot"
+              : "Bomb pot next hand",
+            "Calling",
+            "button small"
+          )
+        : h.empty,
     ]
   );
 };

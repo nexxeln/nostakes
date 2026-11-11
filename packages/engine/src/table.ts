@@ -64,7 +64,13 @@ import {
   recordTabled,
   tableHand,
 } from "./showing-down.js";
-import { Phases, initialTable, isInHand, notFolded } from "./state.js";
+import {
+  Phases,
+  initialTable,
+  isInHand,
+  notFolded,
+  owesItsFlop,
+} from "./state.js";
 import type { InHand, TableState } from "./state.js";
 
 type Decision = Result.Result<readonly Event[], Rejection>;
@@ -268,7 +274,7 @@ const afterStreet = (
       : showdown(state, lastAggressor);
   }
 
-  return streetIsOpen(state.hand)
+  return streetIsOpen(state.hand) || owesItsFlop(state.hand)
     ? [nextStreet(state.hand)]
     : runOut(state, ONE_RUN);
 };
