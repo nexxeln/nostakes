@@ -200,6 +200,9 @@ importers:
       '@effect/tsgo':
         specifier: 0.67.7
         version: 0.67.7
+      '@foldkit/oxlint-plugin':
+        specifier: 0.15.4
+        version: 0.15.4(effect@4.1.2)
       '@oxlint/plugins':
         specifier: 1.93.0
         version: 1.93.0
@@ -813,6 +816,10 @@ packages:
 
   '@emnapi/runtime@1.11.3':
     resolution: {integrity: sha512-Xz4Tpyki7XyrpbUK1jR1AhdAdaXyhhY4lZ3neLodmhpuWfy2PAQN5B46sAiU4liOXGLkHypn/qU+jvfWSCYYLA==}
+
+  '@foldkit/oxlint-plugin@0.15.4':
+    resolution: {integrity: sha512-qBFoApW7UAn5gu2GWyhL5lwyQpD9scCwESJOWQ3uC3h1oVnpToDmlCvFNC3HmfNZjQUxcGSwvWtL9LOB+ECyjg==}
+    engines: {node: '>=20.19.0 || >=22.12.0'}
 
   '@foldkit/vite-plugin@0.29.0':
     resolution: {integrity: sha512-nLRScsxd7qzFI0omrkBsP9HtF+B0qhJ+wBEDhWSix+6yy2pmo8GXInq/Cdwu1OnaNkvo2+K4BOC/ZaV+/U7q0Q==}
@@ -1926,6 +1933,11 @@ packages:
     resolution: {integrity: sha512-Btj2BOOO83o3WyH59e8MgXsxEQVcarkUOpEYrubB0urwnN10yQ364rsiByU11nZlqWYZm05i/of7io4mzihBtQ==}
     engines: {node: '>=8'}
 
+  effect-oxlint@0.4.0:
+    resolution: {integrity: sha512-IA3ihFKGK0JoZVSPPgPP58988jj4PZ5/asFOhaSYHwDyRRRbkBJn7FX8RiPi++MFpXQvb+3fQpKdPzOvUK9xPQ==}
+    peerDependencies:
+      effect: ^4.0.0
+
   effect@4.1.2:
     resolution: {integrity: sha512-d3Oah1WyKxFLFh19yWheS5IXIVaITzxZ71JkE1rkUozq/6EcJSU5nPk5bF2QrSygZ3SQoiNQB8TsxFriyMeMaQ==}
 
@@ -2913,6 +2925,12 @@ snapshots:
       tslib: 2.9.1
     optional: true
 
+  '@foldkit/oxlint-plugin@0.15.4(effect@4.1.2)':
+    dependencies:
+      effect-oxlint: 0.4.0(effect@4.1.2)
+    transitivePeerDependencies:
+      - effect
+
   '@foldkit/vite-plugin@0.29.0(effect@4.1.2)(foldkit@0.170.0(@effect/platform-browser@4.1.2(effect@4.1.2))(effect@4.1.2))(redis@6.3.1)(vite@8.3.6(@types/node@24.19.2)(yaml@2.9.1))':
     dependencies:
       '@effect/platform-node': 4.1.2(effect@4.1.2)(redis@6.3.1)
@@ -3562,6 +3580,11 @@ snapshots:
   deepmerge@4.3.1: {}
 
   detect-libc@2.1.2: {}
+
+  effect-oxlint@0.4.0(effect@4.1.2):
+    dependencies:
+      '@oxlint/plugins': 1.93.0
+      effect: 4.1.2
 
   effect@4.1.2: {}
 

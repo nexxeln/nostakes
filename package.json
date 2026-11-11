@@ -33,6 +33,7 @@
   },
   "devDependencies": {
     "@effect/tsgo": "0.67.7",
+    "@foldkit/oxlint-plugin": "0.15.4",
     "@oxlint/plugins": "1.93.0",
     "@types/node": "24.19.2",
     "@yielded/effect-tsrs": "0.2.3",
