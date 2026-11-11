@@ -2,6 +2,7 @@ import { describe, expect, it } from "@effect/vitest";
 import { Actions, ChipsSchema, Events } from "@nostakes/engine";
 import type { Action } from "@nostakes/engine";
 import { AmountSchema, BoughtIn, CashedOut } from "@nostakes/ledger";
+import { Option } from "effect";
 
 import { AlreadyLeaving, RoomCommands, RoomEvents } from "../src/index.js";
 import type { RoomEvent } from "../src/index.js";
@@ -274,6 +275,30 @@ describe("rules changes", () => {
     );
     expect(openOf(ended.state).settings).toStrictEqual(raised);
     expect(openOf(ended.state).table.config).toStrictEqual(raised.table);
+  });
+
+  it("keeps a queued table change when the host later sends the queued table with another setting, and drops it when they send the table in play", () => {
+    const changed = run(
+      midHand,
+      RoomCommands.ChangeSettings({ at: ms(15), by: as(ann), settings: raised })
+    ).state;
+
+    const locking = (table: typeof settings.table) =>
+      openOf(
+        run(
+          changed,
+          RoomCommands.ChangeSettings({
+            at: ms(16),
+            by: as(ann),
+            settings: { ...openOf(changed).settings, locked: true, table },
+          })
+        ).state
+      ).queued.rules;
+
+    expect([locking(raised.table), locking(settings.table)]).toStrictEqual([
+      Option.some(raised.table),
+      Option.some(settings.table),
+    ]);
   });
 
   it("changes the table rules at once between hands", () => {

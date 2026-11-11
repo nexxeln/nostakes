@@ -399,6 +399,12 @@ const peopleList = (
   );
 };
 
+export const lockedSettings = (view: OpenView, locked: boolean) => ({
+  ...view.settings,
+  locked,
+  table: Option.getOrElse(view.queued.rules, () => view.settings.table),
+});
+
 const doorSwitch = (room: InRoom, view: OpenView, h: H): Html =>
   isYou(view, view.host)
     ? h.div(
@@ -416,10 +422,7 @@ const doorSwitch = (room: InRoom, view: OpenView, h: H): Html =>
               h.OnClick(
                 Messages.ClickedRoomCommand({
                   command: Commands.ChangeSettings.make({
-                    settings: {
-                      ...view.settings,
-                      locked: !view.settings.locked,
-                    },
+                    settings: lockedSettings(view, !view.settings.locked),
                   }),
                   label: view.settings.locked
                     ? "Unlocking the room"

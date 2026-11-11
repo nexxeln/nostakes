@@ -1,11 +1,12 @@
 import { describe, expect, it } from "@effect/vitest";
 import { PlayerIdSchema, RoomCodeSchema } from "@nostakes/protocol";
 import { RoomViewSchema } from "@nostakes/room";
-import { Option } from "effect";
+import { Option, Schema } from "effect";
 import * as Arbitrary from "effect/Arbitrary";
 import { Scene } from "foldkit";
 import { attr, findAll } from "foldkit/scene";
 
+import { lockedSettings } from "../src/features/menu-view.js";
 import { Messages } from "../src/features/message.js";
 import type { Message } from "../src/features/message.js";
 import type { Model } from "../src/features/model.js";
@@ -104,6 +105,18 @@ describe("the door in the menu", () => {
       }).toStrictEqual({
         host: [String(table.settings.locked)],
         other: [],
+      });
+    }
+  );
+
+  it.prop(
+    "sends the table change the host queued for the next hand, not the table in play, so locking never drops it",
+    { locked: Arbitrary.schema(Schema.Boolean), table: tables },
+    ({ locked, table }) => {
+      expect(lockedSettings(table, locked)).toStrictEqual({
+        ...table.settings,
+        locked,
+        table: Option.getOrElse(table.queued.rules, () => table.settings.table),
       });
     }
   );

@@ -524,7 +524,14 @@ export const plannerFor = (setup: PlannerSetup) => {
     if (Option.isSome(lockedWanted)) {
       return intent(
         Commands.ChangeSettings.make({
-          settings: { ...open.settings, locked: lockedWanted.value },
+          settings: {
+            ...open.settings,
+            locked: lockedWanted.value,
+            table: Option.getOrElse(
+              open.queued.rules,
+              () => open.settings.table
+            ),
+          },
         })
       );
     }
