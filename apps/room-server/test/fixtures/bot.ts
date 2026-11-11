@@ -11,8 +11,15 @@ import type {
   LegalActions,
   ShowdownChoices,
 } from "@nostakes/engine";
-import { CommandIdSchema, SeqSchema } from "@nostakes/protocol";
-import type { PlayerId, RoomPass } from "@nostakes/protocol";
+import {
+  COMMAND_BURST,
+  COMMANDS_PER_SECOND,
+  CommandIdSchema,
+  fullBucket,
+  SeqSchema,
+  spendToken,
+} from "@nostakes/protocol";
+import type { Allowance, PlayerId, RoomPass } from "@nostakes/protocol";
 import {
   ChipAmountSchema,
   RoomSettingsSchema,
@@ -35,6 +42,13 @@ import {
 import type { PokerSocket } from "./poker-socket.js";
 import { signalPlanner, signalSeedFor } from "./signal-plan.js";
 import type { SignalTally } from "./signal-plan.js";
+
+const BOT_COMMANDS: Allowance = {
+  burst: COMMAND_BURST,
+  perSecond: COMMANDS_PER_SECOND,
+};
+
+const COMMAND_REFILL_MS = Math.ceil(1000 / COMMANDS_PER_SECOND);
 
 export type OpenView = typeof RoomViewSchema.cases.Open.Type;
 
@@ -1046,8 +1060,32 @@ export const startBot = (setup: BotSetup) => {
       })
     );
 
+  let commandBucket = fullBucket(BOT_COMMANDS, wallClock());
+
+  const takeCommandToken = Effect.suspend(() =>
+    Option.match(spendToken(BOT_COMMANDS, commandBucket, wallClock()), {
+      onNone: () =>
+        Effect.sleep(Duration.millis(COMMAND_REFILL_MS)).pipe(
+          Effect.andThen(
+            Effect.sync(() => {
+              for (const bucket of Option.toArray(
+                spendToken(BOT_COMMANDS, commandBucket, wallClock())
+              )) {
+                commandBucket = bucket;
+              }
+            })
+          )
+        ),
+      onSome: (bucket) =>
+        Effect.sync(() => {
+          commandBucket = bucket;
+        }),
+    })
+  );
+
   const sendCounted = (socket: PokerSocket, id: string, text: string) =>
-    socket.sendText(text).pipe(
+    takeCommandToken.pipe(
+      Effect.andThen(socket.sendText(text)),
       Effect.tap(() =>
         Effect.sync(() => {
           sent.set(id, (sent.get(id) ?? 0) + 1);

@@ -1,6 +1,6 @@
 import * as Cloudflare from "@alchemy.run/cloudflare";
 import * as Test from "@alchemy.run/test/Vitest";
-import { FRAMES_PER_SECOND } from "@nostakes/protocol";
+import { COMMANDS_PER_SECOND } from "@nostakes/protocol";
 import { Array as Arr, Console, Effect, Order, pipe } from "effect";
 import * as FetchHttpClient from "effect/http/FetchHttpClient";
 
@@ -31,7 +31,9 @@ afterAll(destroy(ToyStack));
 
 const MESSAGES = 1000;
 
-const SPACING_MS = Math.ceil(1000 / (FRAMES_PER_SECOND - 2));
+const PLAYERS = 4;
+
+const SPACING_MS = Math.ceil(1000 / (COMMANDS_PER_SECOND * PLAYERS));
 
 const percentile = (sorted: readonly number[], fraction: number) =>
   sorted[
@@ -65,11 +67,11 @@ const summary = (samples: readonly number[]) => {
 };
 
 test(
-  "round trip: one sender to three clients over 1,000 messages",
+  "round trip: 1,000 messages, each from one of four players to the other three, every player within the command rate",
   Effect.gen(function* roundTrip() {
     const { url } = yield* deployed;
     const base = yield* Effect.fromNullishOr(url).pipe(Effect.orDie);
-    const passes = yield* openRoomWith(base, ["Sender", "Ana", "Ben", "Cy"]);
+    const passes = yield* openRoomWith(base, ["Dee", "Ana", "Ben", "Cy"]);
 
     const clients = yield* pipe(
       passes,
@@ -80,14 +82,12 @@ test(
       )
     );
 
-    const [sender, ...receivers] = clients;
-
     for (const client of clients) {
       yield* keepAlive(client);
     }
 
-    const from = yield* Effect.fromNullishOr(
-      receivers.length === 3 ? sender : undefined
+    yield* Effect.fromNullishOr(
+      clients.length === PLAYERS ? clients : undefined
     ).pipe(
       Effect.mapError(
         () => new RoundTripFailed({ round: 0, step: "connect four sockets" })
@@ -100,6 +100,14 @@ test(
     for (let index = 0; index < MESSAGES; index += 1) {
       const id = `rt-${index}`;
       const sentAt = performance.now();
+
+      const from = yield* Effect.fromNullishOr(clients[index % PLAYERS]).pipe(
+        Effect.mapError(
+          () => new RoundTripFailed({ round: index, step: "pick a sender" })
+        )
+      );
+
+      const receivers = clients.filter((client) => client !== from);
 
       yield* from.send(
         command(id, ToyMemberCommandSchema.cases.Increment.make({ times: 1 }))
