@@ -70,6 +70,7 @@ interface ReadTrack {
   readonly durations: readonly number[];
   readonly handler: string;
   readonly samples: readonly Uint8Array[];
+  readonly segment: number | null;
   readonly skip: number;
   readonly sync: readonly number[] | null;
   readonly timescale: number;
@@ -113,7 +114,7 @@ const readTrack = (bytes: Uint8Array, trak: Found): ReadTrack => {
     (each) => each.type === "edts"
   );
 
-  const [, skip = 0] =
+  const [segment = null, skip = 0] =
     edit === undefined
       ? []
       : u32s(bytes, fullBody(child(bytes, edit, ["elst"])) + 4, 2);
@@ -122,6 +123,7 @@ const readTrack = (bytes: Uint8Array, trak: Found): ReadTrack => {
     durations,
     handler: typeAt(bytes, fullBody(hdlr) + 4),
     samples,
+    segment,
     skip,
     sync: syncBox === undefined ? null : table(bytes, syncBox, 1).flat(),
     timescale,
@@ -166,6 +168,9 @@ const movies = Arbitrary.schema(
   Schema.Struct({
     audio: Schema.NullOr(
       Schema.Struct({
+        playable: Schema.NullOr(
+          Schema.Int.check(Schema.isBetween({ maximum: 400_000, minimum: 1 }))
+        ),
         priming: Schema.Int.check(
           Schema.isBetween({ maximum: 2112, minimum: 0 })
         ),
@@ -194,6 +199,19 @@ const samplesFor = (
     sync: index === 0 || sample.sync,
   }));
 
+const editOf = (audio: NonNullable<Movie["audio"]>) => {
+  const total = audio.samples.reduce((sum, sample) => sum + sample.duration, 0);
+
+  const played = Math.max(
+    0,
+    Math.min(audio.playable ?? total - audio.priming, total - audio.priming)
+  );
+
+  return audio.priming > 0 || played !== total
+    ? Math.round((played * 1000) / audio.sampleRate)
+    : null;
+};
+
 const movieOf = (plan: Plan): Movie => ({
   audio:
     plan.audio === null
@@ -201,6 +219,7 @@ const movieOf = (plan: Plan): Movie => ({
       : {
           bitrate: 96_000,
           channels: 1,
+          playable: plan.audio.playable,
           priming: plan.audio.priming,
           sampleRate: 48_000,
           samples: samplesFor(2, plan.audio.samples),
@@ -285,7 +304,7 @@ describe("the clip's MP4 file", () => {
   );
 
   it.prop(
-    "keeps each sample's duration, the key frames, and the sound's priming to skip",
+    "keeps each sample's duration, the key frames, the sound's priming to skip, and plays exactly the sound it was given",
     { plan: movies },
     ({ plan }) => {
       const movie = movieOf(plan);
@@ -297,6 +316,7 @@ describe("the clip's MP4 file", () => {
         {
           durations: movie.video.samples.map((sample) => sample.duration),
           handler: "vide",
+          segment: null,
           skip: 0,
           sync: movie.video.samples.flatMap((sample, index) =>
             sample.sync ? [index + 1] : []
@@ -309,6 +329,7 @@ describe("the clip's MP4 file", () => {
               {
                 durations: movie.audio.samples.map((sample) => sample.duration),
                 handler: "soun",
+                segment: editOf(movie.audio),
                 skip: movie.audio.priming,
                 sync: null,
                 timescale: 48_000,
@@ -319,14 +340,17 @@ describe("the clip's MP4 file", () => {
   );
 
   it.prop(
-    "lasts as long as its longest track, to the millisecond",
+    "lasts as long as its longest track as played, to the millisecond",
     { plan: movies },
     ({ plan }) => {
       const movie = movieOf(plan);
 
       const longest = Math.max(
         seconds(movie.video.samples, 30_000),
-        movie.audio === null ? 0 : seconds(movie.audio.samples, 48_000)
+        movie.audio === null
+          ? 0
+          : (editOf(movie.audio) ??
+              seconds(movie.audio.samples, 48_000) * 1000) / 1000
       );
 
       expect(Math.abs(read(mp4Of(movie)).duration - longest)).toBeLessThan(

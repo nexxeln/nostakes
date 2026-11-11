@@ -12,6 +12,8 @@ import { ClipUnavailable, failedAt, shotAtlas } from "./clip-layers.js";
 import { ClipReplySchema } from "./clip-wire.js";
 import type { ClipReply, FilmRequest, WorkerRequest } from "./clip-wire.js";
 
+type ClipReplyDelay = Extract<ClipReply, { tag: "Made" }>["delay"];
+
 export class ClipTooSlow extends Schema.TaggedError<
   ClipTooSlow,
   { readonly brand: unique symbol }
@@ -35,6 +37,7 @@ export interface FilmOrder {
 
 export interface FilmMade {
   readonly compared: FilmCompared | null;
+  readonly delay: ClipReplyDelay;
   readonly file: File;
   readonly redrawn: number;
 }
@@ -251,6 +254,7 @@ export const filmOn = (
 
     return {
       compared: reply.compared,
+      delay: reply.delay,
       file: new File([reply.file], order.name, { type: "video/mp4" }),
       redrawn: reply.redrawn,
     };

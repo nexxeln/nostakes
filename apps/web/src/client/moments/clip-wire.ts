@@ -92,6 +92,12 @@ export const ClipReplySchema = Schema.Union([
         pixels: Schema.Int,
       })
     ),
+    delay: Schema.NullOr(
+      Schema.Struct({
+        samples: Schema.Int,
+        source: Schema.Literals(["Assumed", "Measured"]),
+      })
+    ),
     file: Schema.instanceOf(Blob),
     redrawn: Schema.Int,
     tag: Schema.Literal("Made"),

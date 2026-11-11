@@ -1370,6 +1370,298 @@ const filmResult = (engine: BrowserType, query: string) =>
     );
   }).pipe(Effect.scoped);
 
+const SyncResultSchema = Schema.Struct({
+  flashes: Schema.optionalKey(Schema.Array(Schema.Finite)),
+  state: Schema.String,
+});
+
+const SoundProbeSchema = Schema.Struct({
+  streams: Schema.Array(
+    Schema.Struct({
+      bit_rate: Schema.optional(Schema.String),
+      channel_layout: Schema.optional(Schema.String),
+      channels: Schema.optional(Schema.Int),
+      codec_name: Schema.optional(Schema.String),
+      profile: Schema.optional(Schema.String),
+      sample_rate: Schema.optional(Schema.String),
+    })
+  ),
+});
+
+const SYNC_FPS = 30;
+
+const SYNC_RATE = 48_000;
+
+const SYNC_TOLERANCE_MS = 2;
+
+const QUIET_LEVEL = 1500;
+
+const SEARCH_MS = 250;
+
+const filmBytes = (page: Page) =>
+  attempt("read the film's bytes", () =>
+    page.evaluate<string>("window.__filmText()")
+  ).pipe(Effect.map((text) => Uint8Array.from(Buffer.from(text, "base64"))));
+
+const ffmpegTo = (args: readonly string[]) =>
+  ChildProcessSpawner.pipe(
+    Effect.flatMap((spawner) =>
+      spawner.exitCode(
+        ChildProcess.make("ffmpeg", ["-v", "error", "-y", ...args])
+      )
+    ),
+    Effect.option
+  );
+
+interface Onset {
+  readonly at: number;
+  readonly quiet: boolean;
+}
+
+const onsetOf = (pcm: Int16Array, channel: number, around: number) => {
+  const from = Math.max(
+    0,
+    Math.round(((around - SEARCH_MS) / 1000) * SYNC_RATE)
+  );
+
+  const to = Math.min(
+    pcm.length / 2,
+    Math.round(((around + SEARCH_MS) / 1000) * SYNC_RATE)
+  );
+
+  let loudest = 0;
+
+  for (let at = from; at < to; at += 1) {
+    loudest = Math.max(loudest, Math.abs(pcm[at * 2 + channel] ?? 0));
+  }
+
+  let found = -1;
+
+  for (let at = from; at < to && found === -1; at += 1) {
+    if (Math.abs(pcm[at * 2 + channel] ?? 0) > loudest / 2) {
+      found = at;
+    }
+  }
+
+  const onset: Onset = {
+    at: found === -1 ? Number.NaN : (found * 1000) / SYNC_RATE,
+    quiet: loudest < QUIET_LEVEL,
+  };
+
+  return onset;
+};
+
+type SoundStream = (typeof SoundProbeSchema.Type)["streams"][number];
+
+interface Decoded {
+  readonly flashes: readonly number[];
+  readonly pcm: Int16Array;
+  readonly sound: SoundStream | undefined;
+}
+
+const decodedSync = (path: string) =>
+  Effect.gen(function* decodeSync() {
+    const fs = yield* FileSystem.FileSystem;
+    const spawner = yield* ChildProcessSpawner;
+
+    const probe = yield* spawner
+      .string(
+        ChildProcess.make("ffprobe", [
+          "-v",
+          "error",
+          "-select_streams",
+          "a:0",
+          "-show_entries",
+          "stream=codec_name,profile,channels,channel_layout,sample_rate,bit_rate",
+          "-of",
+          "json",
+          path,
+        ])
+      )
+      .pipe(Effect.option);
+
+    const pictures = yield* ffmpegTo([
+      "-i",
+      path,
+      "-map",
+      "0:v",
+      "-vf",
+      "scale=8:8,format=gray",
+      "-fps_mode",
+      "passthrough",
+      "-f",
+      "rawvideo",
+      `${path}.gray`,
+    ]);
+
+    const sounds = yield* ffmpegTo([
+      "-i",
+      path,
+      "-map",
+      "0:a",
+      "-f",
+      "s16le",
+      "-acodec",
+      "pcm_s16le",
+      "-ac",
+      "2",
+      "-ar",
+      String(SYNC_RATE),
+      `${path}.pcm`,
+    ]);
+
+    if (
+      Option.isNone(probe) ||
+      Option.isNone(pictures) ||
+      Option.isNone(sounds)
+    ) {
+      return Option.none<Decoded>();
+    }
+
+    const gray = yield* fs.readFile(`${path}.gray`);
+    const raw = yield* fs.readFile(`${path}.pcm`);
+
+    const { streams } = yield* decoded(
+      SoundProbeSchema,
+      "read ffprobe's answer"
+    )(probe.value);
+
+    const flashes = Array.from(
+      { length: gray.length / 64 },
+      (_, frame) =>
+        gray
+          .subarray(frame * 64, frame * 64 + 64)
+          .reduce((total, value) => total + value, 0) / 64
+    ).flatMap((mean, frame) => (mean > 128 ? [(frame * 1000) / SYNC_FPS] : []));
+
+    return Option.some<Decoded>({
+      flashes,
+      pcm: new Int16Array(
+        raw.buffer,
+        raw.byteOffset,
+        Math.floor(raw.byteLength / 2)
+      ),
+      sound: streams[0],
+    });
+  });
+
+const soundText = (sound: SoundStream | undefined) =>
+  sound === undefined
+    ? "no sound"
+    : [
+        sound.codec_name,
+        sound.profile,
+        sound.channel_layout,
+        `${sound.sample_rate ?? "?"} Hz`,
+        `at ${Math.round(Number(sound.bit_rate ?? "0") / 1000)} kb/s`,
+      ].join(" ");
+
+const syncVerdict = (
+  label: string,
+  planned: readonly number[],
+  found: Decoded
+) => {
+  const [first = 0, last = 0] = planned;
+  const [shownFirst = Number.NaN, shownLast = Number.NaN] = found.flashes;
+  const left = onsetOf(found.pcm, 0, shownFirst);
+  const right = onsetOf(found.pcm, 1, shownLast);
+
+  const apart =
+    onsetOf(found.pcm, 1, shownFirst).quiet &&
+    onsetOf(found.pcm, 0, shownLast).quiet;
+
+  const lateFirst = left.at - shownFirst;
+  const lateLast = right.at - shownLast;
+  const half = 500 / SYNC_FPS;
+  const { sound } = found;
+
+  const placed =
+    found.flashes.length === 2 &&
+    Math.abs(shownFirst - first) < half &&
+    Math.abs(shownLast - last) < half;
+
+  const timed =
+    Math.abs(lateFirst) <= SYNC_TOLERANCE_MS &&
+    Math.abs(lateLast) <= SYNC_TOLERANCE_MS;
+
+  return {
+    label,
+    line: `${label}: ${soundText(sound)}; flashes at ${found.flashes.map((at) => (at / 1000).toFixed(3)).join(" and ")} s; the left click ${lateFirst.toFixed(2)} ms after the first, the right click ${lateLast.toFixed(2)} ms after the last; ${apart ? "each click only in its own channel" : "a click leaks into the other channel"}`,
+    problems: [
+      ...(placed
+        ? []
+        : [
+            `${label}: the flashes show at ${found.flashes.join(", ")} ms, not ${first} and ${last}`,
+          ]),
+      ...(sound?.channels === 2
+        ? []
+        : [`${label}: the sound is ${soundText(sound)}`]),
+      ...(timed
+        ? []
+        : [
+            `${label}: the clicks land ${lateFirst.toFixed(2)} and ${lateLast.toFixed(2)} ms from their flashes, more than ${SYNC_TOLERANCE_MS} ms`,
+          ]),
+      ...(apart ? [] : [`${label}: a click is heard in the other channel`]),
+    ],
+  };
+};
+
+const syncedFilm = (engine: BrowserType) =>
+  Effect.gen(function* checkSync() {
+    const label = `${engine.name()}-sync`;
+    const origin = yield* StageOrigin;
+    const fs = yield* FileSystem.FileSystem;
+    const opened = yield* mutedBrowser(engine);
+    const page = yield* attempt("open a page", () => opened.newPage());
+
+    yield* policed(page, engine.name());
+    yield* attempt("open the film stage", () =>
+      page.goto(`${origin}${STAGE}/film.html?scene=sync&seconds=25`)
+    );
+    yield* attempt("wait for the film", () =>
+      page.waitForFunction(
+        () => {
+          const stage = document.querySelector("#stage");
+
+          return (
+            stage instanceof HTMLElement && stage.dataset.result !== undefined
+          );
+        },
+        undefined,
+        { timeout: 300_000 }
+      )
+    );
+
+    const result = yield* read(
+      page,
+      'document.querySelector("#stage").dataset.result',
+      SyncResultSchema,
+      "read the film's result"
+    );
+
+    if (result.state !== "Made") {
+      return {
+        label,
+        line: `${label}: no film (${result.state})`,
+        problems: [`${label}: the sync film was not made`],
+      };
+    }
+
+    const dir = yield* fs.makeTempDirectoryScoped({ prefix: "nostakes-sync" });
+    const path = `${dir}/sync.mp4`;
+
+    yield* fs.writeFile(path, yield* filmBytes(page));
+
+    return Option.match(yield* decodedSync(path), {
+      onNone: () => ({
+        label,
+        line: `${label}: no ffmpeg to read the film with`,
+        problems: [],
+      }),
+      onSome: (found) => syncVerdict(label, result.flashes ?? [], found),
+    });
+  }).pipe(Effect.scoped);
+
 const EDGE_NOISE_LEVELS = 12;
 
 const EDGE_NOISE_PIXELS = 50;
@@ -1705,6 +1997,7 @@ const checks = Effect.gen(function* checkClips() {
         abandonedClip(engine),
         lingeredClip(engine),
         redrawnFilms(engine),
+        syncedFilm(engine),
         guardedClip(engine, 1),
         guardedClip(engine, 2),
         guardedClip(engine, 8),

@@ -425,6 +425,22 @@ const filmFor = Effect.gen(function* chooseFilm() {
   return { film, worker };
 });
 
+const filmText = (file: Blob) =>
+  Effect.runPromise(
+    Effect.promise(() => file.arrayBuffer()).pipe(
+      Effect.map((buffer) => {
+        const bytes = new Uint8Array(buffer);
+        let binary = "";
+
+        for (let at = 0; at < bytes.length; at += 32_768) {
+          binary += String.fromCodePoint(...bytes.subarray(at, at + 32_768));
+        }
+
+        return btoa(binary);
+      })
+    )
+  );
+
 const program = Effect.gen(function* makeFilm() {
   const { film, worker } = yield* filmFor;
   const support = yield* filmSupport(film);
@@ -449,11 +465,15 @@ const program = Effect.gen(function* makeFilm() {
 
   const finished = yield* Clock.currentTimeMillis;
 
-  Object.assign(globalThis, { __film: made.file });
+  Object.assign(globalThis, {
+    __film: made.file,
+    __filmText: () => filmText(made.file),
+  });
 
   return {
     bytes: made.file.size,
     compared: made.compared,
+    delay: made.delay,
     flashes:
       params.get("scene") === "sync" ? syncTimes(number("seconds", 25)) : [],
     frames: Math.ceil((film.length * film.fps) / 1000),

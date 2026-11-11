@@ -17,6 +17,7 @@ export interface VideoTrack {
 export interface AudioTrack {
   readonly bitrate: number;
   readonly channels: number;
+  readonly playable: number | null;
   readonly priming: number;
   readonly sampleRate: number;
   readonly samples: readonly Sample[];
@@ -129,6 +130,7 @@ const SELF_CONTAINED = 0x00_00_01;
 
 interface Track {
   readonly duration: number;
+  readonly edited: number;
   readonly id: number;
   readonly samples: readonly Sample[];
   readonly timescale: number;
@@ -266,7 +268,7 @@ const hdlr = (handler: "soun" | "vide", name: string) =>
   fullBox("hdlr", 0, 0, u32(0), ascii(handler), zeros(12), ascii(name), u8(0));
 
 const movieDuration = (track: Track) =>
-  Math.round((track.duration * MOVIE_TIMESCALE) / track.timescale);
+  Math.round((track.edited * MOVIE_TIMESCALE) / track.timescale);
 
 const tkhd = (
   track: Track,
@@ -387,11 +389,7 @@ const elst = (track: Track, skip: number) =>
       0,
       0,
       u32(1),
-      u32(
-        Math.round(
-          ((track.duration - skip) * MOVIE_TIMESCALE) / track.timescale
-        )
-      ),
+      u32(movieDuration(track)),
       u32(skip),
       u16(1),
       u16(0)
@@ -414,7 +412,9 @@ const trackBox = (
   return box(
     "trak",
     parts.header,
-    parts.skip > 0 ? elst(track, parts.skip) : new Uint8Array(0),
+    parts.skip > 0 || track.edited !== track.duration
+      ? elst(track, parts.skip)
+      : new Uint8Array(0),
     box(
       "mdia",
       mdhd(track),
@@ -467,6 +467,7 @@ export const mp4Parts = (movie: Movie): readonly Uint8Array<ArrayBuffer>[] => {
   const tracks: Track[] = [
     {
       duration: totalDuration(video.samples),
+      edited: totalDuration(video.samples),
       id: VIDEO_ID,
       samples: video.samples,
       timescale: video.timescale,
@@ -476,6 +477,13 @@ export const mp4Parts = (movie: Movie): readonly Uint8Array<ArrayBuffer>[] => {
       : [
           {
             duration: totalDuration(audio.samples),
+            edited: Math.max(
+              0,
+              Math.min(
+                audio.playable ?? totalDuration(audio.samples) - audio.priming,
+                totalDuration(audio.samples) - audio.priming
+              )
+            ),
             id: AUDIO_ID,
             samples: audio.samples,
             timescale: audio.sampleRate,
