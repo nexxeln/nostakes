@@ -296,19 +296,26 @@ const ACTING_STACKS = [1100, 620, 1180, 940, 1010, 600, 720, 1320, 380];
 
 const ACTING_FOLDED = 3;
 
+const nobodyActs = params.get("actor") === "none";
+
 const actor = Math.min(
   players - 1,
   Math.max(0, Number(params.get("actor") ?? "2"))
 );
 
+const everyoneBets = Number(params.get("bets") ?? "0");
+
+const sameName = params.get("name");
+
 const actingSeat = (index: number): SeatSnapshot => {
-  const folded = index === ACTING_FOLDED && index !== actor;
+  const folded = index === ACTING_FOLDED && (nobodyActs || index !== actor);
 
   return {
     ...seatOf(index),
+    bet: everyoneBets,
     cardsHeld: folded ? 0 : 2,
-    name: ACTING_NAMES[index] ?? `Seat ${index + 1}`,
-    peeking: index === actor,
+    name: sameName ?? ACTING_NAMES[index] ?? `Seat ${index + 1}`,
+    peeking: !nobodyActs && index === actor,
     shown: [],
     stack: ACTING_STACKS[index] ?? 1000,
     status: folded ? "Folded" : "In",
@@ -319,17 +326,26 @@ const acting: TableSnapshot = {
   ...showdown,
   boards: [["Ah", "Kd", "7s", "2c"]],
   buttonSeat: 1 % players,
-  clock: {
-    key: `acting-${actor}`,
-    remainingMs: 17_000,
-    seat: actor,
-    totalMs: 30_000,
-  },
+  clock: nobodyActs
+    ? null
+    : {
+        key: `acting-${actor}`,
+        remainingMs: 17_000,
+        seat: actor,
+        totalMs: 30_000,
+      },
   heroCards: ["Ad", "Kh"],
-  legal: actor === 0 ? turn.legal : null,
+  legal: actor === 0 && !nobodyActs ? turn.legal : null,
+  posts:
+    everyoneBets > 0
+      ? [
+          { posted: "SmallBlind", seat: 1 % players, settled: false },
+          { posted: "BigBlind", seat: 2 % players, settled: false },
+        ]
+      : [],
   pots: [960],
   seats: Array.from({ length: players }, (_, index) => actingSeat(index)),
-  toAct: actor,
+  toAct: nobodyActs ? null : actor,
 };
 
 const BOUNTY = 20;

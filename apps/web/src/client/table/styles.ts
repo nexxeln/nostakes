@@ -105,6 +105,7 @@ export const tableCss = `
 }
 .pile.empty { opacity: 0; }
 .pile .dot { position: relative; width: 14px; height: 14px; }
+.compact-piles .pile .dot { display: none; }
 .pile .dot::before { content: ""; position: absolute; inset: 0; translate: 0 -3px; background: inherit; box-shadow: inherit; }
 .pile .dot, .pile .dot::before { border-radius: 50%; }
 .pile .amt { font-size: var(--text-2); font-weight: var(--weight-strong); color: var(--color-ink); }

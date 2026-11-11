@@ -51,6 +51,8 @@ export interface Geo {
   readonly keys: Pt;
   readonly handKeys: Pt;
   readonly zone: { readonly top: number; readonly bottom: number };
+  readonly pileW: number;
+  readonly laneW: number;
 }
 
 interface TrackPoint extends Pt {
@@ -268,7 +270,7 @@ const fitTile = (pts: readonly Pt[], cap: number) => {
     tile = Math.min(tile, Math.max(byX, byY));
   }
 
-  return Math.max(MIN_TILE, tile);
+  return Math.max(Math.min(MIN_TILE, cap), tile);
 };
 
 const footprintReach = (dx: number, dy: number, tile: number) => {
@@ -323,6 +325,13 @@ const heroRow = (
 
 const ITERATIONS = 8;
 
+interface Room {
+  readonly cap: number;
+  readonly laneW: number;
+  readonly pileW: number;
+  readonly round: number;
+}
+
 interface Solved {
   readonly tile: number;
   readonly t: Track;
@@ -334,7 +343,8 @@ const solveStadium = (
   pad: number,
   count: number,
   cap: number,
-  bottom: number
+  bottom: number,
+  round = 0
 ): Solved => {
   let tile = cap;
   let t = stadium(0, 0, 0, 0, 0);
@@ -344,7 +354,13 @@ const solveStadium = (
     const yTop = TOP + tile / 2 + 6;
     const yBottom = Math.max(yTop + tile * 0.6, bottom - tile / 2 - CAPTION);
 
-    t = stadium(pad + tile / 2, w - pad - tile / 2, yTop, yBottom, tile * 0.55);
+    t = stadium(
+      pad + tile / 2,
+      w - pad - tile / 2,
+      yTop,
+      yBottom,
+      Math.max(tile * 0.55, round)
+    );
     pts = spread(t, count);
 
     const next = Math.min(cap, fitTile(pts, cap));
@@ -399,7 +415,9 @@ const stripMiddle = (
   w: number,
   sizes: ReturnType<typeof tallSizes>,
   heroTop: number,
-  count: number
+  count: number,
+  cap: number,
+  round: number
 ): Middle => {
   const { pad } = sizes;
   const cx = w / 2;
@@ -412,8 +430,9 @@ const stripMiddle = (
     w,
     pad,
     count,
-    Math.min(MAX_TILE, sizes.tileCap),
-    stripY - 16
+    Math.min(MAX_TILE, sizes.tileCap, cap),
+    stripY - 16,
+    round
   );
 
   const boardW = cardW * BOARD_CARDS + gap * (BOARD_CARDS - 1);
@@ -537,7 +556,7 @@ const potHeight = (stacked: boolean, cardW: number) =>
 const potGap = (stacked: boolean) =>
   stacked ? POT_ABOVE_BOARD : POT_FLAT_ABOVE_BOARD;
 
-const tallGeo = (w: number, h: number, count: number): Geo => {
+const tallGeo = (w: number, h: number, count: number, room: Room): Geo => {
   const sizes = tallSizes(w);
   const cx = w / 2;
   const handH = sizes.handCardW * 1.4;
@@ -567,8 +586,9 @@ const tallGeo = (w: number, h: number, count: number): Geo => {
     w,
     sizes.pad,
     count,
-    Math.min(MAX_TILE, sizes.tileCap),
-    heroTop - 12
+    Math.min(MAX_TILE, sizes.tileCap, room.cap),
+    heroTop - 12,
+    room.round
   );
 
   const innerW = w - 2 * sizes.pad - 2 * inside.tile - 32;
@@ -576,7 +596,7 @@ const tallGeo = (w: number, h: number, count: number): Geo => {
   const boardInStrip = sizes.compact || cardInside < 54 || count >= 6;
 
   const middle = boardInStrip
-    ? stripMiddle(w, sizes, heroTop, count)
+    ? stripMiddle(w, sizes, heroTop, count, room.cap, room.round)
     : ovalMiddle(w, inside, cardInside);
 
   const railTop = Math.max(
@@ -599,6 +619,8 @@ const tallGeo = (w: number, h: number, count: number): Geo => {
     heroBet: { x: cx, y: heroTop + 18 },
     interior: middle.interior,
     keys: { x: chip.x, y: chip.y + sizes.chip / 2 + 16 },
+    laneW: room.laneW,
+    pileW: room.pileW,
     pot: middle.pot,
     potStacked: true,
     railTop,
@@ -665,9 +687,10 @@ const solveOval = (
   count: number,
   sizes: ReturnType<typeof wideSizes>,
   hand: Pt,
-  clusterHalf: number
+  clusterHalf: number,
+  most: number
 ): Oval => {
-  const cap = Math.min(MAX_TILE, sizes.tileCap);
+  const cap = Math.min(MAX_TILE, sizes.tileCap, most);
   let tile = cap;
   let pts: readonly TrackPoint[] = [];
   let cy = 0;
@@ -704,7 +727,13 @@ const solveOval = (
   return { cy, pts, rx, ry, tile };
 };
 
-const wideGeo = (w: number, h: number, count: number, lift: number): Geo => {
+const wideGeo = (
+  w: number,
+  h: number,
+  count: number,
+  lift: number,
+  room: Room
+): Geo => {
   const sizes = wideSizes(w, h);
   const cx = w / 2;
   const handH = sizes.handCardW * 1.4;
@@ -743,7 +772,7 @@ const wideGeo = (w: number, h: number, count: number, lift: number): Geo => {
     Math.max(sizes.self, sizes.chip) +
     (sizes.compact ? 16 : 44);
 
-  const oval = solveOval(w, h, count, sizes, hand, clusterHalf);
+  const oval = solveOval(w, h, count, sizes, hand, clusterHalf, room.cap);
   const { tile } = oval;
 
   const table = {
@@ -788,6 +817,8 @@ const wideGeo = (w: number, h: number, count: number, lift: number): Geo => {
     heroBet: { x: cx, y: heroTop + 6 },
     interior: { x: cx, y: boardY },
     keys: { x: chip.x, y: chip.y + sizes.chip / 2 + 16 },
+    laneW: room.laneW,
+    pileW: room.pileW,
     pot,
     potStacked,
     railTop,
@@ -1027,7 +1058,7 @@ const leastBy = <T>(items: readonly T[], cost: (item: T) => number) => {
   return best?.item;
 };
 
-const PILE_BOX = { h: 22, w: 44 };
+const PILE_BOX = { h: 22 };
 
 const BUTTON_CLEARANCE = 2;
 
@@ -1082,10 +1113,10 @@ const footprintOf = (centre: Pt, size: number): Footprint => {
   };
 };
 
-export const pileBox = (point: Pt): Box => ({
+export const pileBox = (point: Pt, width: number): Box => ({
   h: PILE_BOX.h,
-  w: PILE_BOX.w,
-  x: point.x - PILE_BOX.w / 2,
+  w: width,
+  x: point.x - width / 2,
   y: point.y - PILE_BOX.h / 2,
 });
 
@@ -1097,6 +1128,10 @@ const gapTo = (point: Pt, box: Box) =>
 
 const gapToSeat = (point: Pt, footprint: Footprint) =>
   Math.min(...footprint.seat.map((box) => gapTo(point, box)));
+
+const LANE_OWNERSHIP = 2;
+
+const nearerBy = (own: number, other: number) => own + LANE_OWNERSHIP < other;
 
 export const ownedBy = (own: number, other: number) =>
   other - own >= Math.max(OWNERSHIP_MARGIN, own / 2);
@@ -1128,31 +1163,39 @@ const onTable = (geo: Geo, box: Box) =>
   box.x + box.w <= geo.w &&
   box.y + box.h <= geo.h;
 
+const clearIn = (geo: Geo, blocked: readonly Box[], box: Box) =>
+  onTable(geo, box) && blocked.every((other) => overlap(box, other) === 0);
+
 export type TagSide = "Before" | "After" | "Below" | "Above";
 
 export const POST_TAG_HEIGHT = 20;
 
-export const POST_TAG_WIDTHS = { narrow: 34, wide: 64 } as const;
+export const POST_TAG_WIDTHS = { narrow: 38, wide: 64 } as const;
 
 const TAG_GAP = 4;
 
-const PILE_HALF = { h: 11, w: 24 };
+export const postTagBox = (
+  pile: Pt,
+  side: TagSide,
+  width: number,
+  pileW: number
+): Box => {
+  const half = { h: PILE_BOX.h / 2, w: pileW / 2 };
 
-export const postTagBox = (pile: Pt, side: TagSide, width: number): Box => {
   const across = {
     Above: {
       x: pile.x - width / 2,
-      y: pile.y - PILE_HALF.h - TAG_GAP - POST_TAG_HEIGHT,
+      y: pile.y - half.h - TAG_GAP - POST_TAG_HEIGHT,
     },
     After: {
-      x: pile.x + PILE_HALF.w + TAG_GAP,
+      x: pile.x + half.w + TAG_GAP,
       y: pile.y - POST_TAG_HEIGHT / 2,
     },
     Before: {
-      x: pile.x - PILE_HALF.w - TAG_GAP - width,
+      x: pile.x - half.w - TAG_GAP - width,
       y: pile.y - POST_TAG_HEIGHT / 2,
     },
-    Below: { x: pile.x - width / 2, y: pile.y + PILE_HALF.h + TAG_GAP },
+    Below: { x: pile.x - width / 2, y: pile.y + half.h + TAG_GAP },
   }[side];
 
   return { ...across, h: POST_TAG_HEIGHT, w: width };
@@ -1200,7 +1243,9 @@ export const postTagGround = (geo: Geo): readonly PostTagGround[] => {
       ...owners
         .filter((__, other) => other !== index)
         .flatMap(({ footprint }) => footprint.seat),
-      ...piles.filter((__, other) => other !== index).map(pileBox),
+      ...piles
+        .filter((__, other) => other !== index)
+        .map((pile) => pileBox(pile, geo.pileW)),
     ],
     own: owners[index]?.footprint.seat ?? [],
   }));
@@ -1208,7 +1253,7 @@ export const postTagGround = (geo: Geo): readonly PostTagGround[] => {
 
 const OTHERS_WEIGH = 4;
 
-export const postTagSides = (geo: Geo, width: number): readonly TagSide[] => {
+const postTagSides = (geo: Geo, width: number): readonly TagSide[] => {
   const grounds = postTagGround(geo);
 
   return pilesOf(geo).map((pile, index) => {
@@ -1216,7 +1261,7 @@ export const postTagSides = (geo: Geo, width: number): readonly TagSide[] => {
     const ground = grounds[index] ?? { others: [], own: [] };
 
     const crowding = (side: TagSide) => {
-      const box = postTagBox(pile, side, width);
+      const box = postTagBox(pile, side, width, geo.pileW);
       const offTable = onTable(geo, box) ? 0 : box.w * box.h;
 
       return (
@@ -1257,18 +1302,22 @@ const faceAndName = (footprint: Footprint): readonly Box[] => {
       ];
 };
 
-export const handHintGround = (geo: Geo): readonly Box[] => [
+const hintFixedGround = (geo: Geo): readonly Box[] => [
   geo.strip,
   ...ownersOf(geo).flatMap(({ footprint }, index, all) =>
     index === all.length - 1 ? faceAndName(footprint) : footprint.boxes
   ),
-  ...geo.seats.map(({ bet }) => pileBox(bet)),
   {
     h: geo.chip.size,
     w: geo.chip.size,
     x: geo.chip.x - geo.chip.size / 2,
     y: geo.chip.y - geo.chip.size / 2,
   },
+];
+
+export const handHintGround = (geo: Geo): readonly Box[] => [
+  ...hintFixedGround(geo),
+  ...geo.seats.map(({ bet }) => pileBox(bet, geo.pileW)),
 ];
 
 const handTopOf = (geo: Geo) => geo.hand.y - (geo.handCardW * 1.4) / 2;
@@ -1286,15 +1335,24 @@ const nearestClear = (
 ): Box | undefined => {
   let best: { readonly box: Box; readonly cost: number } | undefined;
 
-  for (let rise = 0; rise <= rises; rise += HINT_STEP) {
-    for (let shift = 0; shift <= geo.w / 2; shift += HINT_STEP) {
+  for (
+    let rise = 0;
+    rise <= rises && (best === undefined || rise * 2 < best.cost);
+    rise += HINT_STEP
+  ) {
+    for (
+      let shift = 0;
+      shift <= geo.w / 2 &&
+      (best === undefined || shift + rise * 2 < best.cost);
+      shift += HINT_STEP
+    ) {
       for (const side of shift === 0 ? [0] : [-1, 1]) {
         const box = { ...start, x: start.x + side * shift, y: start.y - rise };
         const cost = shift + rise * 2;
 
         if (
           (best === undefined || cost < best.cost) &&
-          crowdingIn(geo, blocked, box) === 0
+          clearIn(geo, blocked, box)
         ) {
           best = { box, cost };
         }
@@ -1305,9 +1363,8 @@ const nearestClear = (
   return best?.box;
 };
 
-export const handHint = (geo: Geo): HandHint => {
+const hintAmong = (geo: Geo, blocked: readonly Box[]): HandHint => {
   const w = Math.min(HAND_HINT.w, geo.w - 16);
-  const blocked = handHintGround(geo);
   const x = geo.hand.x - w / 2;
   const top = handTopOf(geo) - HAND_HINT.gap;
 
@@ -1372,8 +1429,9 @@ export const handHint = (geo: Geo): HandHint => {
   };
 };
 
-export const handHintBox = (geo: Geo): Box => {
-  const { foot, say } = handHint(geo);
+const handHint = (geo: Geo): HandHint => hintAmong(geo, handHintGround(geo));
+
+const hintBoxOf = ({ foot, say }: HandHint): Box => {
   const top = Math.min(say.y, foot.y);
   const left = Math.min(say.x, foot.x);
 
@@ -1385,39 +1443,51 @@ export const handHintBox = (geo: Geo): Box => {
   };
 };
 
-const middleObstacles = (geo: Geo): readonly Box[] => {
+export const handHintBox = (geo: Geo, hint = handHint(geo)): Box =>
+  hintBoxOf(hint);
+
+const PEEK_LIFT = 30;
+
+const liftedHand = (geo: Geo): Box => {
   const handW = geo.handCardW * 2.2;
   const handH = geo.handCardW * 1.4;
 
-  return [
-    ...pilesOf(geo).map(pileBox),
-    handHintBox(geo),
-    {
-      h: handH + 30,
-      w: handW,
-      x: geo.hand.x - handW / 2,
-      y: geo.hand.y - handH / 2 - 30,
-    },
-    {
-      h: geo.chip.size,
-      w: geo.chip.size,
-      x: geo.chip.x - geo.chip.size / 2,
-      y: geo.chip.y - geo.chip.size / 2,
-    },
-    geo.strip,
-  ];
+  return {
+    h: handH + PEEK_LIFT,
+    w: handW,
+    x: geo.hand.x - handW / 2,
+    y: geo.hand.y - handH / 2 - PEEK_LIFT,
+  };
 };
+
+const middleObstacles = (geo: Geo, hint: Box): readonly Box[] => [
+  ...pilesOf(geo).map((pile) => pileBox(pile, geo.pileW)),
+  hint,
+  liftedHand(geo),
+  {
+    h: geo.chip.size,
+    w: geo.chip.size,
+    x: geo.chip.x - geo.chip.size / 2,
+    y: geo.chip.y - geo.chip.size / 2,
+  },
+  geo.strip,
+];
 
 const tagObstacles = (geo: Geo): readonly Box[] => {
   const sides = postTagSides(geo, POST_TAG_WIDTHS.narrow);
 
   return pilesOf(geo).map((pile, index) =>
-    postTagBox(pile, sides[index] ?? "Before", POST_TAG_WIDTHS.narrow)
+    postTagBox(
+      pile,
+      sides[index] ?? "Before",
+      POST_TAG_WIDTHS.narrow,
+      geo.pileW
+    )
   );
 };
 
 const sharedObstacles = (geo: Geo): readonly Box[] => [
-  ...middleObstacles(geo),
+  ...middleObstacles(geo, handHintBox(geo)),
   ...tagObstacles(geo),
 ];
 
@@ -1429,8 +1499,11 @@ export interface ButtonGround {
   readonly untouchable: readonly Box[];
 }
 
-export const buttonGround = (geo: Geo): readonly ButtonGround[] => {
-  const middle = middleObstacles(geo);
+export const buttonGround = (
+  geo: Geo,
+  hint = handHintBox(geo)
+): readonly ButtonGround[] => {
+  const middle = middleObstacles(geo, hint);
   const tags = tagObstacles(geo);
   const owners = ownersOf(geo);
 
@@ -1487,9 +1560,19 @@ const onTheFelt = (
   const nearest = owner.size / 2 + RING_REACH + r;
   const farthest = owner.size / 2 + CAPTION + r * 4 + 40;
   const facing = Math.atan2(owner.inward.y, owner.inward.x);
+
+  const seatReach = Math.hypot(
+    owner.size * 0.65,
+    owner.size / 2 + CAPTION_DEPTH
+  );
+
   let best: { readonly spot: ButtonSpot; readonly cost: number } | undefined;
 
-  for (let reach = nearest; reach <= farthest; reach += BUTTON_STEP) {
+  for (
+    let reach = nearest;
+    reach <= farthest && (best === undefined || reach - seatReach < best.cost);
+    reach += BUTTON_STEP
+  ) {
     for (let step = 0; step < BUTTON_ANGLES; step += 1) {
       const turn = (step / BUTTON_ANGLES) * 2 * Math.PI;
       const spot = { ...around(centre, reach, facing + turn), r };
@@ -1499,7 +1582,7 @@ const onTheFelt = (
 
       if (
         (best === undefined || cost < best.cost) &&
-        crowdingOf(geo, blocked, spot) === 0 &&
+        clearIn(geo, blocked, buttonBox(spot)) &&
         rivals.every((rival) => ownedBy(own, gapToSeat(spot, rival)))
       ) {
         best = { cost, spot };
@@ -1575,7 +1658,7 @@ const feltSpotsAt = (
 const missing = (spots: readonly (ButtonSpot | undefined)[]) =>
   spots.filter((spot) => spot === undefined).length;
 
-export const buttonSpots = (geo: Geo): ButtonSpots => {
+const buttonSpots = (geo: Geo): ButtonSpots => {
   const owners = ownersOf(geo);
   const grounds = buttonGround(geo);
   const smallest = feltSpotsAt(geo, owners, grounds, MIN_BUTTON_RADIUS);
@@ -1635,7 +1718,7 @@ export const deadButtonSpot = (
       };
 
       if (
-        crowdingOf(geo, blocked, spot) === 0 &&
+        clearIn(geo, blocked, buttonBox(spot)) &&
         seats.every((seat) => gapToSeat(spot, seat) >= r * 2)
       ) {
         return spot;
@@ -1681,9 +1764,8 @@ const BOARD_LIFT_STEP = 4;
 
 const BOARD_LIFT_MOST = 64;
 
-const hintCrowding = (geo: Geo) => {
-  const { foot, onCards, say, stacked } = handHint(geo);
-  const blocked = handHintGround(geo);
+const hintCrowding = (geo: Geo, blocked: readonly Box[]) => {
+  const { foot, onCards, say, stacked } = hintAmong(geo, blocked);
   const apart = stacked ? 0 : 1;
 
   return (
@@ -1694,33 +1776,66 @@ const hintCrowding = (geo: Geo) => {
   );
 };
 
-const boardCrowding = (geo: Geo) =>
-  coveredBy(geo.strip, [
-    ...ownersOf(geo).flatMap(({ footprint }) => footprint.seat),
-    ...geo.seats.map(({ bet }) => pileBox(bet)),
-  ]);
+const seatsOnBoard = (geo: Geo) =>
+  coveredBy(
+    geo.strip,
+    ownersOf(geo).flatMap(({ footprint }) => footprint.seat)
+  );
 
-const liftedForHint = (w: number, h: number, count: number): Geo => {
-  const level = wideGeo(w, h, count, 0);
+interface LiftJudge {
+  readonly board: (geo: Geo) => number;
+  readonly hint: (geo: Geo) => number;
+}
 
-  if (hintCrowding(level) === 0) {
+const TODAYS_LIFT: LiftJudge = {
+  board: (geo) =>
+    seatsOnBoard(geo) +
+    coveredBy(
+      geo.strip,
+      geo.seats.map(({ bet }) => pileBox(bet, geo.pileW))
+    ),
+  hint: (geo) => hintCrowding(geo, handHintGround(geo)),
+};
+
+const LANES_LIFT: LiftJudge = {
+  board: seatsOnBoard,
+  hint: (geo) => hintCrowding(geo, hintFixedGround(geo)),
+};
+
+const potTabBox = (geo: Geo): Box => {
+  const tab = potTabOf(geo);
+
+  return { h: tab.h, w: tab.w, x: tab.x - tab.w / 2, y: tab.y - tab.h / 2 };
+};
+
+const liftedForHint = (
+  w: number,
+  h: number,
+  count: number,
+  room: Room,
+  judge: LiftJudge,
+  finish: (geo: Geo) => Geo
+): Geo => {
+  const level = finish(wideGeo(w, h, count, 0, room));
+
+  if (judge.hint(level) === 0) {
     return level;
   }
 
-  const crowded = boardCrowding(level);
+  const crowded = judge.board(level);
 
   for (
     let lift = BOARD_LIFT_STEP;
     lift <= BOARD_LIFT_MOST;
     lift += BOARD_LIFT_STEP
   ) {
-    const lifted = wideGeo(w, h, count, lift);
+    const lifted = finish(wideGeo(w, h, count, lift, room));
 
-    if (boardCrowding(lifted) > crowded) {
+    if (judge.board(lifted) > crowded) {
       break;
     }
 
-    if (hintCrowding(lifted) === 0) {
+    if (judge.hint(lifted) === 0) {
       return lifted;
     }
   }
@@ -1750,6 +1865,7 @@ export interface SeatsAtRest<Plan extends SeatPlan> {
   readonly bets: readonly number[];
   readonly heroBet: boolean;
   readonly button: ButtonRide | null;
+  readonly tags: readonly Box[];
 }
 
 const ACTIVE_SCALE_MAX = 1.26;
@@ -1759,6 +1875,8 @@ const ACTIVE_TILE_MAX = 176;
 const WINNER_SCALE = 1.12;
 
 const FOLDED_SCALE = 0.8;
+
+const FOLDED_SHIFT = 0.07;
 
 const WAITING_SCALE = 0.95;
 
@@ -1917,7 +2035,13 @@ const makeRoom = (
   geo: Geo,
   placed: readonly Placement[],
   actor: number,
-  piles: readonly Box[]
+  piles: readonly Box[],
+  rides: (which: number, place: Placement) => readonly Box[],
+  strays: (
+    which: number,
+    place: Placement,
+    placed: readonly Placement[]
+  ) => boolean
 ) => {
   const acting = placed[actor];
 
@@ -1957,7 +2081,11 @@ const makeRoom = (
       const safe = moves.find(
         ({ moved }) =>
           (moved.x !== mover.x || moved.y !== mover.y) &&
-          !touches(roomyBoxes(geo, moved), others)
+          !touches(
+            [...roomyBoxes(geo, moved), ...rides(which, moved)],
+            others
+          ) &&
+          !strays(which, moved, placed)
       );
 
       if (safe !== undefined) {
@@ -1967,6 +2095,8 @@ const makeRoom = (
     }
   }
 };
+
+export const ridingScale = (scale: number) => Math.max(1, scale);
 
 const ridingButton = (
   geo: Geo,
@@ -1984,12 +2114,34 @@ const ridingButton = (
 
   return buttonBox({
     r: button.spot.r,
-    x: owner.x + (button.spot.x - home.x) * owner.scale,
-    y: owner.y + (button.spot.y - home.y) * owner.scale,
+    x: owner.x + (button.spot.x - home.x) * ridingScale(owner.scale),
+    y: owner.y + (button.spot.y - home.y) * ridingScale(owner.scale),
   });
 };
 
 type BoxesOf = (geo: Geo, place: SeatPlace) => readonly Box[];
+
+const middleGround = (geo: Geo): readonly Box[] => {
+  const handW = geo.handCardW * 2.2;
+  const handH = geo.handCardW * 1.4;
+
+  return [
+    geo.strip,
+    potTabBox(geo),
+    {
+      h: handH,
+      w: handW,
+      x: geo.hand.x - handW / 2,
+      y: geo.hand.y - handH / 2,
+    },
+    {
+      h: geo.chip.size,
+      w: geo.chip.size,
+      x: geo.chip.x - geo.chip.size / 2,
+      y: geo.chip.y - geo.chip.size / 2,
+    },
+  ];
+};
 
 const actorGround = (
   geo: Geo,
@@ -2005,14 +2157,13 @@ const actorGround = (
       which === actor ? [] : boxes(geo, place)
     ),
     ...footprintOf(geo.self, geo.self.size).seat,
-    ...rest.bets
-      .filter((index) => index !== owner)
-      .flatMap((index) => {
-        const bet = geo.seats[index]?.bet;
+    ...rest.bets.flatMap((index) => {
+      const bet = geo.seats[index]?.bet;
 
-        return bet === undefined ? [] : [pileBox(bet)];
-      }),
-    ...(rest.heroBet ? [pileBox(geo.heroBet)] : []),
+      return bet === undefined ? [] : [pileBox(bet, geo.pileW)];
+    }),
+    ...(rest.heroBet ? [pileBox(geo.heroBet, geo.pileW)] : []),
+    ...rest.tags,
     ...(rest.button === null || rest.button.owner === owner
       ? []
       : [ridingButton(geo, rest.button, placed, rest.seats)]),
@@ -2024,11 +2175,19 @@ const fitActor = (
   place: Placement,
   ground: readonly Box[],
   boxes: BoxesOf,
-  floor: number
+  floor: number,
+  rides: (place: Placement) => readonly Box[]
 ): number | undefined => {
+  const middle = [...middleGround(geo), liftedHand(geo)];
+
   const clear = (scale: number) =>
     boxes(geo, { ...place, scale }).every((box) =>
       ground.every((other) => overlap(box, other) === 0)
+    ) &&
+    rides({ ...place, scale }).every(
+      (box) =>
+        onTable(geo, box) &&
+        [...ground, ...middle].every((other) => overlap(box, other) === 0)
     );
 
   const steps = Math.max(
@@ -2064,6 +2223,18 @@ const firstFit = (
   return null;
 };
 
+const awayFromLane = (geo: Geo, home: SeatGeo, scale: number): Pt => {
+  const dx = home.bet.x - home.x;
+  const dy = home.bet.y - home.y;
+  const length = Math.hypot(dx, dy) || 1;
+  const grow = (scale - 1) * (geo.tile / 2 + CAPTION_DEPTH);
+
+  return {
+    x: home.x - (dx / length) * grow,
+    y: home.y - (dy / length) * grow,
+  };
+};
+
 export const placeSeats = <Plan extends SeatPlan>(
   geo: Geo,
   rest: SeatsAtRest<Plan>
@@ -2075,11 +2246,65 @@ export const placeSeats = <Plan extends SeatPlan>(
   });
 
   const seats = homes.map(({ plan }) => plan);
+  const { button } = rest;
+
+  const rides = (which: number, place: Placement): readonly Box[] => {
+    const owner = seats[which]?.index;
+    const from = geo.seats[owner ?? -1];
+
+    return button === null || from === undefined || button.owner !== owner
+      ? []
+      : [
+          buttonBox({
+            r: button.spot.r,
+            x: place.x + (button.spot.x - from.x) * ridingScale(place.scale),
+            y: place.y + (button.spot.y - from.y) * ridingScale(place.scale),
+          }),
+        ];
+  };
+
+  const laid = [
+    ...rest.bets.flatMap((index) => {
+      const bet = geo.seats[index]?.bet;
+
+      return bet === undefined ? [] : [pileBox(bet, geo.pileW)];
+    }),
+    ...(rest.heroBet ? [pileBox(geo.heroBet, geo.pileW)] : []),
+    ...rest.tags,
+  ];
+
+  const middle = [...middleGround(geo), liftedHand(geo)];
+
+  const strays = (
+    which: number,
+    place: Placement,
+    placed: readonly Placement[]
+  ) =>
+    touches(roomyBoxes(geo, place), [
+      ...laid,
+      ...placed.flatMap((other, slot) =>
+        slot === which ? [] : rides(slot, other)
+      ),
+    ]) ||
+    rides(which, place).some(
+      (box) =>
+        !onTable(geo, box) ||
+        touches(
+          [box],
+          [
+            ...laid,
+            ...middle,
+            ...placed.flatMap((other, slot) =>
+              slot === which ? [] : seatBoxes(geo, other)
+            ),
+          ]
+        )
+    );
 
   const settle = (lit: boolean) => {
     const placed = homes.map(({ plan, spot }): Placement => {
       const active = lit && plan.active;
-      const shrink = plan.folded ? 0.07 : 0;
+      const shrink = plan.folded ? FOLDED_SHIFT : 0;
       const lean = active ? 0.05 : 0;
 
       return {
@@ -2091,7 +2316,28 @@ export const placeSeats = <Plan extends SeatPlan>(
       };
     });
 
+    for (const place of placed) {
+      keptIn(geo, place);
+    }
+
+    const before = placed.map((place) => ({ ...place }));
+
     separate(placed, geo);
+
+    for (const [which, place] of placed.entries()) {
+      const was = before[which];
+
+      if (
+        was !== undefined &&
+        !place.fixed &&
+        (place.x !== was.x || place.y !== was.y) &&
+        strays(which, place, placed) &&
+        !strays(which, was, placed)
+      ) {
+        place.x = was.x;
+        place.y = was.y;
+      }
+    }
 
     return placed;
   };
@@ -2099,16 +2345,7 @@ export const placeSeats = <Plan extends SeatPlan>(
   const actor = seats.findIndex((plan) => plan.active && !plan.winner);
   const lit = settle(true);
 
-  makeRoom(
-    geo,
-    lit,
-    actor,
-    rest.bets.flatMap((index) => {
-      const bet = geo.seats[index]?.bet;
-
-      return bet === undefined ? [] : [pileBox(bet)];
-    })
-  );
+  makeRoom(geo, lit, actor, laid, rides, strays);
 
   const acting = lit[actor];
   const home = geo.seats[seats[actor]?.index ?? -1];
@@ -2117,7 +2354,11 @@ export const placeSeats = <Plan extends SeatPlan>(
     acting === undefined || home === undefined
       ? null
       : firstFit(
-          [{ x: acting.x, y: acting.y }, home].flatMap((spot) =>
+          [
+            { x: acting.x, y: acting.y },
+            home,
+            awayFromLane(geo, home, acting.scale),
+          ].flatMap((spot) =>
             [roomyBoxes, seatBoxes].map((boxes) => ({ boxes, spot }))
           ),
           ({ boxes, spot }) =>
@@ -2126,7 +2367,8 @@ export const placeSeats = <Plan extends SeatPlan>(
               { ...acting, x: spot.x, y: spot.y },
               actorGround(geo, { ...rest, seats }, lit, actor, boxes),
               boxes,
-              Math.min(acting.scale, restingScale(rest.someoneElse))
+              Math.min(acting.scale, restingScale(rest.someoneElse)),
+              (place) => rides(actor, place)
             )
         );
 
@@ -2147,7 +2389,1187 @@ export const placeSeats = <Plan extends SeatPlan>(
   });
 };
 
-export const computeGeo = (w: number, h: number, count: number): Geo =>
-  w > h * WIDE_RATIO
-    ? liftedForHint(w, h, Math.max(1, count))
-    : tallGeo(w, h, Math.max(1, count));
+interface Attempt {
+  readonly cap: number;
+  readonly compact: boolean;
+  readonly round: number;
+}
+
+interface Laned {
+  readonly clashes: number;
+  readonly geo: Geo;
+  readonly hint: HandHint;
+  readonly lanes: Arrangement;
+}
+
+const firstFitting = (
+  attempts: readonly Attempt[],
+  run: (attempt: Attempt) => Laned
+): { readonly attempt: Attempt; readonly result: Laned } | null => {
+  for (const attempt of attempts) {
+    const result = run(attempt);
+
+    if (result.clashes === 0) {
+      return { attempt, result };
+    }
+  }
+
+  return null;
+};
+
+const DEFAULT_MOST = 9999;
+
+const CHIPS_W = 20;
+
+const DIGIT_W = 9.6;
+
+const COMMA_W = 4.5;
+
+export const pileWidthFor = (most: number, compact: boolean) => {
+  const digits = String(Math.trunc(Math.max(0, most))).length;
+  const commas = Math.floor((digits - 1) / 3);
+
+  return Math.ceil(
+    (compact ? 0 : CHIPS_W) + digits * DIGIT_W + commas * COMMA_W
+  );
+};
+
+const FACE_FLOOR = 40;
+
+const LANE_STEP = 2;
+
+const LANE_COARSE = 8;
+
+const capsDown = (top: number, step: number): readonly number[] =>
+  Array.from(
+    { length: Math.max(0, Math.ceil((top - FACE_FLOOR) / step)) + 1 },
+    (__, taken) => Math.max(FACE_FLOOR, top - taken * step)
+  );
+
+const LANE_GAP = 4;
+
+const LANE_ROUNDS = [0, 0.15, 0.3] as const;
+
+export interface TagSides {
+  readonly narrow: readonly TagSide[];
+  readonly wide: readonly TagSide[];
+  readonly wideFits: readonly boolean[];
+}
+
+export interface Table extends Geo {
+  readonly buttons: ButtonSpots;
+  readonly compactPiles: boolean;
+  readonly fits: boolean;
+  readonly hint: HandHint;
+  readonly lanes: boolean;
+  readonly tagSides: TagSides;
+}
+
+interface Arrangement {
+  readonly buttons: readonly ButtonSpot[];
+  readonly piles: readonly Pt[];
+  readonly tags: readonly TagSide[];
+}
+
+const atRest = (geo: Geo): Geo => {
+  const resting = placeSeats(geo, {
+    bets: [],
+    button: null,
+    heroBet: false,
+    seats: geo.seats.map((__, index) => ({
+      active: false,
+      folded: false,
+      index,
+      winner: false,
+    })),
+    someoneElse: false,
+    tags: [],
+  });
+
+  return {
+    ...geo,
+    seats: geo.seats.map((seat, index) => {
+      const place = resting[index];
+
+      return place === undefined
+        ? seat
+        : {
+            ...seat,
+            bet: {
+              x: seat.bet.x + place.x - seat.x,
+              y: seat.bet.y + place.y - seat.y,
+            },
+            x: place.x,
+            y: place.y,
+          };
+    }),
+  };
+};
+
+const ownersAt = (geo: Geo, seats: readonly Pt[]) => [
+  ...seats.map((centre) => footprintOf(centre, geo.tile)),
+  footprintOf(geo.self, geo.self.size),
+];
+
+const shrunkSeats = (
+  geo: Geo,
+  seats: readonly Pt[],
+  except: number
+): readonly Box[] =>
+  seats.flatMap((place, index) => {
+    if (index === except) {
+      return [];
+    }
+
+    const { nx = 0, ny = 0 } = geo.seats[index] ?? {};
+    const out = geo.tile * FOLDED_SHIFT;
+
+    return [
+      ...seatBoxes(geo, { ...place, scale: WAITING_SCALE }),
+      ...seatBoxes(geo, {
+        scale: FOLDED_SCALE,
+        x: place.x - nx * out,
+        y: place.y - ny * out,
+      }),
+    ];
+  });
+
+const SETTLED_PX = 0.01;
+
+const SETTLING_PASSES = 16;
+
+const settled = (geo: Geo): Geo => {
+  let current = geo;
+
+  for (let pass = 0; pass < SETTLING_PASSES; pass += 1) {
+    const previous = current;
+    const next = atRest(previous);
+
+    const moved = Math.max(
+      0,
+      ...next.seats.map((seat, index) => {
+        const was = previous.seats[index] ?? seat;
+
+        return Math.hypot(seat.x - was.x, seat.y - was.y);
+      })
+    );
+
+    current = next;
+
+    if (moved < SETTLED_PX) {
+      break;
+    }
+  }
+
+  return current;
+};
+
+const fixedGround = (geo: Geo, seats: readonly Pt[], except = -1) => [
+  ...ownersAt(geo, seats).flatMap(({ seat }, index) =>
+    index === except ? [] : seat
+  ),
+  ...shrunkSeats(geo, seats, except),
+  ...middleGround(geo),
+];
+
+const centreOf = (box: Box): Pt => ({
+  x: box.x + box.w / 2,
+  y: box.y + box.h / 2,
+});
+
+const SHRUNK_SCALES = [FOLDED_SCALE, WAITING_SCALE] as const;
+
+const clearOfShrunk = (geo: Geo, seat: Pt, button: Box) =>
+  SHRUNK_SCALES.every((scale) =>
+    seatBoxes(geo, { scale, x: seat.x, y: seat.y }).every(
+      (box) => overlap(button, box) === 0
+    )
+  );
+
+const foldingReach = (
+  geo: Geo,
+  seat: { readonly nx: number; readonly ny: number },
+  box: Box
+): Box => {
+  const dx = -seat.nx * geo.tile * FOLDED_SHIFT;
+  const dy = -seat.ny * geo.tile * FOLDED_SHIFT;
+
+  return {
+    h: box.h + Math.abs(dy),
+    w: box.w + Math.abs(dx),
+    x: box.x + Math.min(0, dx),
+    y: box.y + Math.min(0, dy),
+  };
+};
+
+type Judged = "Everything" | "PilesAndTags";
+
+const clashList = (
+  geo: Geo,
+  seats: readonly Pt[],
+  arrangement: Arrangement,
+  hint: Box,
+  judged: Judged = "Everything"
+): readonly string[] => {
+  const owners = ownersAt(geo, seats);
+  const fixed = fixedGround(geo, seats);
+  const buttonsAvoid = [hint, liftedHand(geo)];
+
+  const items = owners.map((__, index) => {
+    const pile = arrangement.piles[index] ?? geo.interior;
+    const home = geo.seats[index];
+    const rested = seats[index];
+
+    const spot = arrangement.buttons[index] ?? {
+      ...geo.interior,
+      r: MIN_BUTTON_RADIUS,
+    };
+
+    const box = buttonBox(spot);
+
+    return {
+      button: home === undefined ? box : foldingReach(geo, home, box),
+      others: fixedGround(geo, seats, index),
+      pile: pileBox(pile, geo.pileW),
+      shrunkClear:
+        (home === undefined ||
+          rested === undefined ||
+          clearOfShrunk(geo, rested, box)) &&
+        (owners[index]?.seat ?? []).every((mine) => overlap(box, mine) === 0),
+      spot,
+      tag: postTagBox(
+        pile,
+        arrangement.tags[index] ?? "Before",
+        POST_TAG_WIDTHS.narrow,
+        geo.pileW
+      ),
+    };
+  });
+
+  const owned = (point: Pt, index: number) => {
+    const own = owners[index];
+
+    return (
+      own !== undefined &&
+      owners.every(
+        (other, slot) =>
+          slot === index ||
+          nearerBy(gapToSeat(point, own), gapToSeat(point, other))
+      )
+    );
+  };
+
+  return items.flatMap((item, index) => {
+    const buttons = judged === "Everything";
+
+    const parts = [
+      ["pile", item.pile, centreOf(item.pile)],
+      ["tag", item.tag, centreOf(item.tag)],
+      ...(buttons ? [["button", item.button, item.spot] as const] : []),
+    ] as const;
+
+    return [
+      ...(item.shrunkClear || !buttons
+        ? []
+        : [`${index} button on its own seat`]),
+      ...(buttons ? buttonsAvoid : []).flatMap((box, which) =>
+        overlap(item.button, box) > 0
+          ? [`${index} button on ${which === 0 ? "the hint" : "your cards"}`]
+          : []
+      ),
+      ...parts.flatMap(([part, box, point]) => [
+        ...(onTable(geo, box) ? [] : [`${index} ${part} off the table`]),
+        ...(part === "button" ? item.others : fixed).flatMap((other, slot) =>
+          overlap(box, other) > 0 ? [`${index} ${part} on ground ${slot}`] : []
+        ),
+        ...items.flatMap((other, slot) =>
+          slot === index && part !== "button"
+            ? []
+            : (
+                [
+                  ["pile", other.pile],
+                  ["tag", other.tag],
+                ] as const
+              ).flatMap(([what, theirs]) =>
+                overlap(box, theirs) > 0
+                  ? [`${index} ${part} on ${slot} ${what}`]
+                  : []
+              )
+        ),
+        ...(owned(point, index) ? [] : [`${index} ${part} not owned`]),
+      ]),
+    ];
+  });
+};
+
+const clashesOf = (
+  geo: Geo,
+  seats: readonly Pt[],
+  arrangement: Arrangement,
+  hint: Box
+): number => clashList(geo, seats, arrangement, hint).length;
+
+interface Lane {
+  readonly button: ButtonSpot;
+  readonly pile: Pt;
+  readonly reach: Box;
+  readonly tag: TagSide;
+}
+
+type Heading = "Down" | "Up" | "Right" | "Left";
+
+const HEADINGS: Record<Heading, Pt> = {
+  Down: { x: 0, y: 1 },
+  Left: { x: -1, y: 0 },
+  Right: { x: 1, y: 0 },
+  Up: { x: 0, y: -1 },
+};
+
+const ALONG: Record<Heading, TagSide> = {
+  Down: "Below",
+  Left: "Below",
+  Right: "Below",
+  Up: "Above",
+};
+
+const laneTowards = (
+  geo: Geo,
+  seat: Pt,
+  heading: Heading
+): readonly Omit<Lane, "reach">[] => {
+  const { tile } = geo;
+  const r = geo.laneW < CHIPS_W * 3 ? MIN_BUTTON_RADIUS : buttonRadius(tile);
+  const disc = 2 * (r + BUTTON_CLEARANCE);
+  const row = PILE_BOX.h;
+  const toward = Math.sign(geo.w / 2 - seat.x) || 1;
+  const tags: readonly TagSide[] = [ALONG[heading], "After", "Before"];
+
+  const placed = (button: Pt, piles: readonly Pt[]) => {
+    const spot = { ...button, r };
+
+    return piles.flatMap((pile) =>
+      tags.map((tag) => ({ button: spot, pile, tag }))
+    );
+  };
+
+  if (heading === "Down" || heading === "Up") {
+    const down = heading === "Down" ? 1 : -1;
+
+    const edge =
+      heading === "Down"
+        ? seat.y + tile / 2 + CAPTION_DEPTH + LANE_GAP
+        : seat.y - tile / 2 - tile * FACE_RISE - LANE_GAP;
+
+    const pileY = edge + down * (disc + LANE_GAP + row / 2);
+
+    return placed(
+      { x: seat.x, y: edge + (down * disc) / 2 },
+      [0, toward / 2, -toward / 2, toward, -toward].map((shift) => ({
+        x: seat.x + shift * geo.laneW,
+        y: pileY,
+      }))
+    );
+  }
+
+  const across = heading === "Right" ? 1 : -1;
+  const face = seat.x + across * (tile / 2 + LANE_GAP);
+  const caption = seat.x + across * (tile * 0.65 + LANE_GAP);
+  const bottom = seat.y + tile / 2 + CAPTION_DEPTH;
+
+  const levels = [
+    seat.y,
+    seat.y - tile / 2 + disc / 2,
+    seat.y + tile / 2 - disc / 2,
+    seat.y + tile / 2 + CAPTION_DEPTH / 2,
+    bottom - disc / 2,
+  ];
+
+  return levels.flatMap((level) => {
+    const beside = level + disc / 2 > seat.y + tile / 2 ? caption : face;
+    const button = { x: beside + (across * disc) / 2, y: level };
+    const below = level + disc / 2 + LANE_GAP + row / 2;
+
+    return placed(button, [
+      { x: caption + (across * geo.laneW) / 2, y: below },
+      {
+        x: button.x + across * (disc / 2 + LANE_GAP + geo.laneW / 2),
+        y: level,
+      },
+      { x: caption + across * (disc + LANE_GAP + geo.laneW / 2), y: below },
+    ]);
+  });
+};
+
+const INWARD_TURNS = [0, -0.35, 0.35, -0.7, 0.7] as const;
+
+const INWARD_TAGS: readonly TagSide[] = ["After", "Before", "Below", "Above"];
+
+const grown = (box: Box, by: number): Box => ({
+  h: box.h + by * 2,
+  w: box.w + by * 2,
+  x: box.x - by,
+  y: box.y - by,
+});
+
+interface Span {
+  readonly from: number;
+  readonly to: number;
+}
+
+const ALWAYS: Span = {
+  from: Number.NEGATIVE_INFINITY,
+  to: Number.POSITIVE_INFINITY,
+};
+
+const spanAlong = (origin: number, step: number, low: number, high: number) => {
+  if (step === 0) {
+    return origin > low && origin < high ? ALWAYS : null;
+  }
+
+  const first = (low - origin) / step;
+  const second = (high - origin) / step;
+
+  return { from: Math.min(first, second), to: Math.max(first, second) };
+};
+
+const overlapSpan = (
+  from: Pt,
+  direction: Pt,
+  half: Pt,
+  other: Box
+): Span | null => {
+  const across = spanAlong(
+    from.x,
+    direction.x,
+    other.x - half.x,
+    other.x + other.w + half.x
+  );
+
+  const down = spanAlong(
+    from.y,
+    direction.y,
+    other.y - half.y,
+    other.y + other.h + half.y
+  );
+
+  if (across === null || down === null) {
+    return null;
+  }
+
+  const span = {
+    from: Math.max(across.from, down.from),
+    to: Math.min(across.to, down.to),
+  };
+
+  return span.from < span.to ? span : null;
+};
+
+const CLEAR_EPSILON = 1e-6;
+
+const spanHolding = (spans: readonly Span[], reach: number) =>
+  spans.find((span) => span.from < reach && reach < span.to);
+
+const firstClearAlong = (
+  from: Pt,
+  direction: Pt,
+  start: number,
+  limit: number,
+  half: Pt,
+  taken: readonly Box[]
+): Pt | undefined => {
+  const spans = taken.flatMap((other) => {
+    const span = overlapSpan(from, direction, half, other);
+
+    return span === null ? [] : [span];
+  });
+
+  let reach = start;
+  let blocked = spanHolding(spans, reach);
+
+  while (blocked !== undefined && reach <= limit) {
+    reach = blocked.to + CLEAR_EPSILON;
+    blocked = spanHolding(spans, reach);
+  }
+
+  return reach <= limit
+    ? { x: from.x + direction.x * reach, y: from.y + direction.y * reach }
+    : undefined;
+};
+
+const lanesInward = (
+  geo: Geo,
+  seat: SeatGeo
+): readonly Omit<Lane, "reach">[] => {
+  const r =
+    geo.laneW < CHIPS_W * 3 ? MIN_BUTTON_RADIUS : buttonRadius(geo.tile);
+
+  const own = [1, ...SHRUNK_SCALES].flatMap((scale) =>
+    seatBoxes(geo, { scale, x: seat.x, y: seat.y }).map((box) =>
+      grown(box, LANE_GAP)
+    )
+  );
+
+  const limit = geo.tile * 1.5 + CAPTION_DEPTH + geo.laneW;
+  const buttonAt = (point: Pt) => buttonBox({ ...point, r });
+  const pileAt = (point: Pt) => pileBox(point, geo.laneW);
+  const buttonHalf = { x: r + BUTTON_CLEARANCE, y: r + BUTTON_CLEARANCE };
+  const pileHalf = { x: geo.laneW / 2, y: PILE_BOX.h / 2 };
+
+  return INWARD_TURNS.flatMap((turn) => {
+    const direction = {
+      x: seat.nx * Math.cos(turn) - seat.ny * Math.sin(turn),
+      y: seat.nx * Math.sin(turn) + seat.ny * Math.cos(turn),
+    };
+
+    const start = geo.tile / 2;
+
+    const button = firstClearAlong(
+      seat,
+      direction,
+      start,
+      limit,
+      buttonHalf,
+      own
+    );
+
+    const pileBeyond =
+      button === undefined
+        ? undefined
+        : firstClearAlong(seat, direction, start, limit, pileHalf, [
+            ...own,
+            grown(buttonAt(button), LANE_GAP),
+          ]);
+
+    const pile = firstClearAlong(seat, direction, start, limit, pileHalf, own);
+
+    const buttonBeyond =
+      pile === undefined
+        ? undefined
+        : firstClearAlong(seat, direction, start, limit, buttonHalf, [
+            ...own,
+            grown(pileAt(pile), LANE_GAP),
+          ]);
+
+    return [
+      ...(button === undefined || pileBeyond === undefined
+        ? []
+        : [{ button, pile: pileBeyond }]),
+      ...(pile === undefined || buttonBeyond === undefined
+        ? []
+        : [{ button: buttonBeyond, pile }]),
+    ].flatMap((placing) => {
+      const spot = { ...placing.button, r };
+
+      return INWARD_TAGS.map((tag) => ({
+        button: spot,
+        pile: placing.pile,
+        tag,
+      }));
+    });
+  });
+};
+
+const HEADING_ORDER: readonly Heading[] = ["Down", "Up", "Right", "Left"];
+
+const facing = (seat: SeatGeo, heading: Heading) =>
+  HEADINGS[heading].x * seat.nx + HEADINGS[heading].y * seat.ny;
+
+const lanesAround = (geo: Geo, seat: SeatGeo): readonly Lane[] => {
+  const reaches = new Map<ButtonSpot, Box>();
+
+  const reachOf = (button: ButtonSpot) => {
+    const known = reaches.get(button);
+
+    if (known !== undefined) {
+      return known;
+    }
+
+    const reach = foldingReach(geo, seat, buttonBox(button));
+    reaches.set(button, reach);
+
+    return reach;
+  };
+
+  return [
+    ...lanesInward(geo, seat),
+    ...HEADING_ORDER.toSorted(
+      (left, right) => facing(seat, right) - facing(seat, left)
+    ).flatMap((heading) => laneTowards(geo, seat, heading)),
+  ].flatMap((lane) =>
+    (lane.pile.x - seat.x) * seat.nx + (lane.pile.y - seat.y) * seat.ny > 0
+      ? [{ ...lane, reach: reachOf(lane.button) }]
+      : []
+  );
+};
+
+const laneBoxes = (geo: Geo, lane: Lane) => [
+  lane.reach,
+  pileBox(lane.pile, geo.pileW),
+  postTagBox(lane.pile, lane.tag, POST_TAG_WIDTHS.narrow, geo.pileW),
+];
+
+interface LaneGround {
+  readonly all: readonly Box[];
+  readonly button: readonly Box[];
+}
+
+const remembered = <Key>(
+  known: Map<Key, boolean>,
+  key: Key,
+  judge: () => boolean
+) => {
+  const was = known.get(key);
+
+  if (was !== undefined) {
+    return was;
+  }
+
+  const now = judge();
+  known.set(key, now);
+
+  return now;
+};
+
+const lanesClearFor = (
+  geo: Geo,
+  index: number,
+  owners: readonly Footprint[],
+  ground: LaneGround
+): readonly Lane[] => {
+  const seat = geo.seats[index];
+  const own = owners[index];
+
+  const nearest = (point: Pt) =>
+    own !== undefined &&
+    owners.every(
+      (other, slot) =>
+        slot === index ||
+        nearerBy(gapToSeat(point, own), gapToSeat(point, other))
+    );
+
+  const fits = (box: Box, point: Pt, taken: readonly Box[]) =>
+    clearIn(geo, taken, box) && nearest(point);
+
+  const buttons = new Map<ButtonSpot, boolean>();
+  const piles = new Map<Pt, boolean>();
+
+  const clear = (lane: Lane) => {
+    const pile = pileBox(lane.pile, geo.pileW);
+
+    const tag = postTagBox(
+      lane.pile,
+      lane.tag,
+      POST_TAG_WIDTHS.narrow,
+      geo.pileW
+    );
+
+    return (
+      remembered(buttons, lane.button, () => {
+        const box = buttonBox(lane.button);
+
+        return (
+          fits(lane.reach, lane.button, ground.button) &&
+          (seat === undefined || clearOfShrunk(geo, seat, box)) &&
+          (own?.seat ?? []).every((mine) => overlap(box, mine) === 0)
+        );
+      }) &&
+      remembered(piles, lane.pile, () =>
+        fits(pile, centreOf(pile), ground.all)
+      ) &&
+      overlap(lane.reach, pile) === 0 &&
+      overlap(lane.reach, tag) === 0 &&
+      fits(tag, centreOf(tag), ground.all)
+    );
+  };
+
+  return seat === undefined ? [] : lanesAround(geo, seat).filter(clear);
+};
+
+const LANE_SEARCH = 4000;
+
+const apart = (geo: Geo, lane: Lane, other: Lane) => {
+  const [button, pile, tag] = laneBoxes(geo, lane);
+  const [theirButton, theirPile, theirTag] = laneBoxes(geo, other);
+  const mine = [pile, tag];
+  const theirs = [theirPile, theirTag];
+
+  return (
+    [button, ...mine].every((box) =>
+      theirs.every(
+        (them) =>
+          box === undefined || them === undefined || overlap(box, them) === 0
+      )
+    ) &&
+    mine.every(
+      (box) =>
+        box === undefined ||
+        theirButton === undefined ||
+        overlap(box, theirButton) === 0
+    )
+  );
+};
+
+const chooseLanes = (
+  geo: Geo,
+  options: readonly (readonly Lane[])[]
+): readonly Lane[] | null => {
+  const order = options
+    .map((choices, index) => ({ choices: choices.length, index }))
+    .toSorted((left, right) => left.choices - right.choices)
+    .map(({ index }) => index);
+
+  const chosen = new Map<number, Lane>();
+  let budget = LANE_SEARCH;
+
+  const place = (step: number): boolean => {
+    const index = order[step];
+
+    if (index === undefined) {
+      return true;
+    }
+
+    for (const lane of options[index] ?? []) {
+      budget -= 1;
+
+      if (budget < 0) {
+        return false;
+      }
+
+      if ([...chosen.values()].every((other) => apart(geo, lane, other))) {
+        chosen.set(index, lane);
+
+        if (place(step + 1)) {
+          return true;
+        }
+
+        chosen.delete(index);
+      }
+    }
+
+    return false;
+  };
+
+  return options.every((choices) => choices.length > 0) && place(0)
+    ? options.flatMap((choices, index) => {
+        const lane = chosen.get(index) ?? choices[0];
+
+        return lane === undefined ? [] : [lane];
+      })
+    : null;
+};
+
+const fallbackLane = (geo: Geo, seat: SeatGeo | undefined): Lane => {
+  const button = { ...geo.interior, r: MIN_BUTTON_RADIUS };
+
+  return (
+    (seat === undefined ? undefined : lanesAround(geo, seat)[0]) ?? {
+      button,
+      pile: geo.interior,
+      reach: buttonBox(button),
+      tag: "Below",
+    }
+  );
+};
+
+const HERO_TAGS: readonly TagSide[] = ["After", "Before", "Above", "Below"];
+
+const yoursNearest = (owners: readonly Footprint[], point: Pt) => {
+  const me = owners.at(-1);
+
+  return (
+    me !== undefined &&
+    owners.every(
+      (other) =>
+        other === me || nearerBy(gapToSeat(point, me), gapToSeat(point, other))
+    )
+  );
+};
+
+const clearOn = (geo: Geo, box: Box, taken: readonly Box[]) =>
+  onTable(geo, box) && taken.every((other) => overlap(box, other) === 0);
+
+const yourButton = (
+  geo: Geo,
+  owners: readonly Footprint[],
+  ground: readonly Box[],
+  hint: readonly Box[]
+): ButtonSpot => {
+  const r = buttonRadius(geo.self.size);
+  const disc = 2 * (r + BUTTON_CLEARANCE);
+  const half = geo.self.size / 2;
+  const you = ownersOf(geo).at(-1);
+  const rivals = owners.slice(0, -1);
+
+  const spots = [
+    { r, x: geo.self.x, y: geo.self.y - half - LANE_GAP - disc / 2 },
+    ...[1, -1].flatMap((side) =>
+      [
+        geo.self.y - half + disc / 2,
+        geo.self.y,
+        geo.self.y + half + CAPTION_DEPTH / 2,
+      ].map((y) => ({
+        r,
+        x: geo.self.x + side * (half * 1.3 + LANE_GAP + disc / 2),
+        y,
+      }))
+    ),
+  ];
+
+  const found = (taken: readonly Box[]) =>
+    spots.find(
+      (spot) =>
+        clearOn(geo, buttonBox(spot), taken) && yoursNearest(owners, spot)
+    ) ??
+    [r, MIN_BUTTON_RADIUS]
+      .map((radius) =>
+        you === undefined
+          ? undefined
+          : onTheFelt(
+              geo,
+              you,
+              rivals,
+              [...taken, ...you.footprint.boxes],
+              radius
+            )
+      )
+      .find((spot) => spot !== undefined);
+
+  return (
+    found([...ground, ...hint]) ??
+    found(ground) ??
+    spots[0] ?? { r, x: geo.self.x, y: geo.self.y }
+  );
+};
+
+const yourPile = (
+  geo: Geo,
+  owners: readonly Footprint[],
+  ground: readonly Box[]
+) => {
+  const half = geo.self.size / 2;
+  const row = PILE_BOX.h;
+
+  const piles = [
+    ...Array.from({ length: 6 }, (__, step) => ({
+      x: geo.heroBet.x + ((geo.self.x - geo.heroBet.x) * step) / 6,
+      y: geo.heroBet.y,
+    })),
+    ...[1, -1].flatMap((side) =>
+      [0, half + CAPTION_DEPTH / 2].map((drop) => ({
+        x: geo.self.x + side * (half * 1.3 + LANE_GAP + geo.laneW / 2),
+        y: geo.self.y - half + row / 2 + drop,
+      }))
+    ),
+    { x: geo.self.x, y: geo.self.y - half - LANE_GAP - row / 2 },
+  ];
+
+  const placings = piles
+    .filter((pile) => pile.y < geo.self.y)
+    .flatMap((pile) => HERO_TAGS.map((tag) => ({ pile, tag })));
+
+  return (
+    placings.find(({ pile, tag }) => {
+      const pileAt = pileBox(pile, geo.pileW);
+      const tagAt = postTagBox(pile, tag, POST_TAG_WIDTHS.narrow, geo.pileW);
+
+      return (
+        clearOn(geo, pileAt, ground) &&
+        clearOn(geo, tagAt, ground) &&
+        yoursNearest(owners, centreOf(pileAt)) &&
+        yoursNearest(owners, centreOf(tagAt))
+      );
+    }) ??
+    placings[0] ?? { pile: geo.heroBet, tag: "After" as const }
+  );
+};
+
+const hintWith = (geo: Geo, button: ButtonSpot, ground: readonly Box[]) =>
+  hintAmong(geo, [...ground, buttonBox(button)]);
+
+interface Laid extends Arrangement {
+  readonly hint: HandHint;
+}
+
+const lanesOf = (geo: Geo): Laid => {
+  const owners = ownersAt(geo, geo.seats);
+  const fixed = fixedGround(geo, geo.seats);
+  const free = hintAmong(geo, hintFixedGround(geo));
+
+  const button = yourButton(
+    geo,
+    owners,
+    [...fixed, liftedHand(geo)],
+    [hintBoxOf(free)]
+  );
+
+  const lines = hintWith(geo, button, hintFixedGround(geo));
+  const hint = hintBoxOf(lines);
+  const middle = [buttonBox(button), lines.say, lines.foot];
+
+  const options = geo.seats.map((__, index) =>
+    lanesClearFor(geo, index, owners, {
+      all: [...fixed, ...middle],
+      button: [
+        ...fixedGround(geo, geo.seats, index),
+        ...middle,
+        hint,
+        liftedHand(geo),
+      ],
+    })
+  );
+
+  const lanes =
+    chooseLanes(geo, options) ??
+    geo.seats.map(
+      (seat, index) => options[index]?.[0] ?? fallbackLane(geo, seat)
+    );
+
+  const yours = yourPile(geo, owners, [
+    ...fixed,
+    buttonBox(button),
+    ...lanes.flatMap((lane) => [
+      pileBox(lane.pile, geo.pileW),
+      postTagBox(lane.pile, lane.tag, POST_TAG_WIDTHS.narrow, geo.pileW),
+    ]),
+  ]);
+
+  return {
+    buttons: [...lanes.map((lane) => lane.button), button],
+    hint: lines,
+    piles: [...lanes.map(({ pile }) => pile), yours.pile],
+    tags: [...lanes.map(({ tag }) => tag), yours.tag],
+  };
+};
+
+const withPiles = (geo: Geo, lanes: Arrangement): Geo => ({
+  ...geo,
+  heroBet: lanes.piles.at(-1) ?? geo.heroBet,
+  seats: geo.seats.map((seat, index) => ({
+    ...seat,
+    bet: lanes.piles[index] ?? seat.bet,
+  })),
+});
+
+const wideTagFits = (
+  geo: Geo,
+  seats: readonly Pt[],
+  arrangement: Arrangement,
+  sides: readonly TagSide[]
+): readonly boolean[] => {
+  const owners = ownersAt(geo, seats);
+  const fixed = fixedGround(geo, seats);
+
+  return arrangement.piles.map((pile, index) => {
+    const box = postTagBox(
+      pile,
+      sides[index] ?? "Before",
+      POST_TAG_WIDTHS.wide,
+      geo.pileW
+    );
+
+    const others = [
+      ...arrangement.buttons.map((spot, slot) => {
+        const home = geo.seats[slot];
+
+        return home === undefined
+          ? buttonBox(spot)
+          : foldingReach(geo, home, buttonBox(spot));
+      }),
+      ...arrangement.piles.flatMap((other, slot) =>
+        slot === index
+          ? []
+          : [
+              pileBox(other, geo.pileW),
+              postTagBox(
+                other,
+                arrangement.tags[slot] ?? "Before",
+                POST_TAG_WIDTHS.narrow,
+                geo.pileW
+              ),
+              postTagBox(
+                other,
+                sides[slot] ?? "Before",
+                POST_TAG_WIDTHS.wide,
+                geo.pileW
+              ),
+            ]
+      ),
+    ];
+
+    const own = owners[index];
+    const middle = centreOf(box);
+
+    return (
+      onTable(geo, box) &&
+      [...fixed, ...others].every((other) => overlap(box, other) === 0) &&
+      own !== undefined &&
+      owners.every(
+        (other) =>
+          other === own ||
+          nearerBy(gapToSeat(middle, own), gapToSeat(middle, other))
+      )
+    );
+  });
+};
+
+const todaysArrangement = (
+  geo: Geo,
+  resting: Geo,
+  tags: readonly TagSide[]
+) => {
+  const spots = buttonSpots(geo);
+
+  return {
+    arrangement: {
+      buttons: [
+        ...spots.seats.map((spot, index) => {
+          const home = geo.seats[index];
+          const rest = resting.seats[index];
+
+          return home === undefined || rest === undefined
+            ? spot
+            : {
+                ...spot,
+                x: spot.x + rest.x - home.x,
+                y: spot.y + rest.y - home.y,
+              };
+        }),
+        spots.self,
+      ],
+      piles: pilesOf(geo),
+      tags,
+    },
+    spots,
+  };
+};
+
+export const computeGeo = (
+  w: number,
+  h: number,
+  count: number,
+  most = DEFAULT_MOST
+): Table => {
+  const seated = Math.max(1, count);
+  const wide = w > h * WIDE_RATIO;
+
+  const laidOut = (room: Room, judge: LiftJudge, finish: (geo: Geo) => Geo) =>
+    wide
+      ? liftedForHint(w, h, seated, room, judge, finish)
+      : finish(tallGeo(w, h, seated, room));
+
+  const full = pileWidthFor(most, false);
+
+  const today = laidOut(
+    { cap: Number.POSITIVE_INFINITY, laneW: full, pileW: full, round: 0 },
+    TODAYS_LIFT,
+    (geo) => geo
+  );
+
+  const resting = atRest(today);
+  const restingSeats = resting.seats.map(({ x, y }) => ({ x, y }));
+  const todaysHint = handHint(today);
+  const todaysTags = postTagSides(today, POST_TAG_WIDTHS.narrow);
+
+  const pilesFit =
+    clashList(
+      today,
+      restingSeats,
+      { buttons: [], piles: pilesOf(today), tags: todaysTags },
+      hintBoxOf(todaysHint),
+      "PilesAndTags"
+    ).length === 0;
+
+  const kept = pilesFit ? todaysArrangement(today, resting, todaysTags) : null;
+
+  if (
+    kept !== null &&
+    clashesOf(today, restingSeats, kept.arrangement, hintBoxOf(todaysHint)) ===
+      0
+  ) {
+    const wideSides = postTagSides(today, POST_TAG_WIDTHS.wide);
+
+    return {
+      ...today,
+      buttons: kept.spots,
+      compactPiles: false,
+      fits: true,
+      hint: todaysHint,
+      lanes: false,
+      tagSides: {
+        narrow: kept.arrangement.tags,
+        wide: wideSides,
+        wideFits: wideTagFits(today, restingSeats, kept.arrangement, wideSides),
+      },
+    };
+  }
+
+  const laned = (cap: number, compact: boolean, round: number) => {
+    const pileW = pileWidthFor(most, compact);
+    const laneW = Math.max(pileW, pileWidthFor(DEFAULT_MOST, compact));
+    const rested = laidOut({ cap, laneW, pileW, round }, LANES_LIFT, settled);
+    const lanes = lanesOf(rested);
+    const geo = withPiles(rested, lanes);
+
+    const hint = hintWith(
+      geo,
+      lanes.buttons.at(-1) ?? { ...geo.self, r: MIN_BUTTON_RADIUS },
+      handHintGround(geo)
+    );
+
+    const moved = JSON.stringify(hint) === JSON.stringify(lanes.hint) ? 0 : 1;
+
+    return {
+      clashes: clashesOf(geo, geo.seats, lanes, hintBoxOf(hint)) + moved,
+      geo,
+      hint,
+      lanes,
+    };
+  };
+
+  const rounds = wide ? [0] : LANE_ROUNDS.map((share) => w * share);
+
+  const fitAmong = (caps: readonly number[], compact: boolean) =>
+    firstFitting(
+      caps.flatMap((cap) => rounds.map((round) => ({ cap, compact, round }))),
+      (attempt) => laned(attempt.cap, attempt.compact, attempt.round)
+    );
+
+  const coarse = capsDown(today.tile, LANE_COARSE);
+  const first = coarse.findIndex((cap) => fitAmong([cap], false) !== null);
+  const above = coarse[first - 1];
+  const found = coarse[first];
+
+  const fitted = (found === undefined
+    ? null
+    : ((above === undefined
+        ? null
+        : fitAmong(
+            capsDown(above, LANE_STEP).filter(
+              (cap) => cap < above && cap > found
+            ),
+            false
+          )) ?? fitAmong([found], false))) ??
+    fitAmong([FACE_FLOOR], true) ?? {
+      attempt: { cap: FACE_FLOOR, compact: true, round: 0 },
+      result: laned(FACE_FLOOR, true, 0),
+    };
+
+  const { geo, hint, lanes } = fitted.result;
+
+  return {
+    ...geo,
+    buttons: {
+      seats: lanes.buttons.slice(0, -1),
+      self: lanes.buttons.at(-1) ?? { ...geo.self, r: MIN_BUTTON_RADIUS },
+    },
+    compactPiles: fitted.attempt.compact,
+    fits: fitted.result.clashes === 0,
+    hint,
+    lanes: true,
+    tagSides: {
+      narrow: lanes.tags,
+      wide: lanes.tags,
+      wideFits: wideTagFits(geo, geo.seats, lanes, lanes.tags),
+    },
+  };
+};

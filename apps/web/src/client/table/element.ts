@@ -29,24 +29,27 @@ import { adoptEarlyProperties } from "../early-properties.js";
 import { Counter, formatChips } from "./counter.js";
 import { cardEl, el, svgEl, toggle } from "./dom.js";
 import {
-  buttonSpots,
   clamp,
   computeGeo,
   deadButtonSpot,
-  handHint,
+  pileWidthFor,
   placeSeats,
   POST_TAG_WIDTHS,
+  postTagBox,
   potTabOf,
-  postTagSides,
+  ridingScale,
   runLanes,
 } from "./layout.js";
 import type {
+  Box,
   ButtonRide,
   ButtonSpot,
   ButtonSpots,
   Geo,
   Pt,
+  Table,
   TagSide,
+  TagSides,
 } from "./layout.js";
 import { paintAvatar } from "./markup.js";
 import { TableSound } from "./sound.js";
@@ -390,26 +393,30 @@ const POSTED_NAMES: Record<Posted, string> = {
   ToComeIn: "Posted to come in",
 };
 
-interface TagSides {
-  readonly narrow: readonly TagSide[];
-  readonly wide: readonly TagSide[];
+const STRADDLE_SHORT = "Str";
+
+interface PileTag {
+  readonly narrow: TagSide;
+  readonly wide: TagSide;
+  readonly wideFits: boolean;
 }
+
+const wideTag = (post: SeatPost | undefined, sides: PileTag) =>
+  post?.posted === "Straddle" && sides.wideFits;
 
 const TAG_SIDES: readonly TagSide[] = ["Before", "After", "Below", "Above"];
 
-const tagPile = (
-  pile: Pile,
-  post: SeatPost | undefined,
-  sides: { readonly narrow: TagSide; readonly wide: TagSide }
-) => {
-  const text = post === undefined ? "" : POSTED_TAGS[post.posted];
+const tagPile = (pile: Pile, post: SeatPost | undefined, sides: PileTag) => {
+  const wide = wideTag(post, sides);
+  const word = post === undefined ? "" : POSTED_TAGS[post.posted];
+  const text = post?.posted === "Straddle" && !wide ? STRADDLE_SHORT : word;
 
   if (pile.tag.textContent !== text) {
     pile.tag.textContent = text;
     pile.tag.title = post === undefined ? "" : POSTED_NAMES[post.posted];
   }
 
-  const side = post?.posted === "Straddle" ? sides.wide : sides.narrow;
+  const side = wide ? sides.wide : sides.narrow;
 
   for (const each of TAG_SIDES) {
     toggle(pile.tag, each.toLowerCase(), each === side);
@@ -418,6 +425,12 @@ const tagPile = (
   toggle(pile.root, "posted", post !== undefined);
   toggle(pile.tag, "settled", post?.settled === true);
 };
+
+const mostOnTable = (snapshot: TableSnapshot | null) =>
+  snapshot === null
+    ? 0
+    : snapshot.seats.reduce((total, seat) => total + seat.stack + seat.bet, 0) +
+      snapshot.pots.reduce((total, pot) => total + pot, 0);
 
 const BUTTON_TRAVEL_MS = 720;
 
@@ -706,7 +719,7 @@ export class NostakesTable extends HTMLElement {
   readonly #root: ShadowRoot;
   readonly #room: HTMLDivElement;
   readonly #sound = new TableSound();
-  #geo: Geo | null = null;
+  #geo: Table | null = null;
   #theme: Theme = "Light";
   #tiles = new Map<number, Tile>();
   #order = "";
@@ -741,7 +754,7 @@ export class NostakesTable extends HTMLElement {
   readonly #selfScale = new Spring(1, 160, 0.6);
   #dealer!: HTMLDivElement;
   #spots: ButtonSpots | null = null;
-  #tagSides: TagSides = { narrow: [], wide: [] };
+  #tagSides: TagSides = { narrow: [], wide: [], wideFits: [] };
   #dealerSeat: number | null = null;
   #dealerAt: ButtonSpot | null = null;
   #dealerDrawn: Pt | null = null;
@@ -865,6 +878,7 @@ export class NostakesTable extends HTMLElement {
 
     this.#snap = next;
     this.#ensureTiles(next);
+    this.#layout(false);
 
     if (next.handId !== this.#handId) {
       const first = this.#handId === -1;
@@ -1373,25 +1387,25 @@ export class NostakesTable extends HTMLElement {
     }
 
     const count = Math.max(1, this.#tiles.size);
+    const most = mostOnTable(this.#snap);
 
     const same =
       this.#geo !== null &&
       this.#geo.w === w &&
       this.#geo.h === h &&
-      this.#geo.seats.length === count;
+      this.#geo.seats.length === count &&
+      this.#geo.pileW === pileWidthFor(most, this.#geo.compactPiles);
 
     if (same && !force) {
       return;
     }
 
-    const geo = computeGeo(w, h, count);
+    const geo = computeGeo(w, h, count, most);
 
     this.#geo = geo;
-    this.#spots = buttonSpots(geo);
-    this.#tagSides = {
-      narrow: postTagSides(geo, POST_TAG_WIDTHS.narrow),
-      wide: postTagSides(geo, POST_TAG_WIDTHS.wide),
-    };
+    this.#spots = geo.buttons;
+    this.#tagSides = geo.tagSides;
+    toggle(this.#room, "compact-piles", geo.compactPiles);
     this.#theme = pageTheme();
     this.#room.style.setProperty("--t", `${geo.tile}px`);
     this.#room.style.setProperty("--cw", `${geo.cardW}px`);
@@ -1468,7 +1482,7 @@ export class NostakesTable extends HTMLElement {
     }
   }
 
-  #layoutHero(geo: Geo) {
+  #layoutHero(geo: Table) {
     const { size } = geo.self;
 
     Object.assign(this.#picker.style, {
@@ -1938,8 +1952,8 @@ export class NostakesTable extends HTMLElement {
     toggle(this.#self, "folded", me.status === "Folded" || me.status === "Out");
   }
 
-  #placeHint(geo: Geo) {
-    const place = handHint(geo);
+  #placeHint(geo: Table) {
+    const place = geo.hint;
 
     for (const [node, box] of [
       [this.#hintSay, place.say],
@@ -2165,7 +2179,7 @@ export class NostakesTable extends HTMLElement {
     }
   }
 
-  #tagSidesOf(seat: number, geo: Geo) {
+  #tagSidesOf(seat: number, geo: Geo): PileTag {
     const tile = this.#tiles.get(seat);
 
     const index =
@@ -2176,6 +2190,9 @@ export class NostakesTable extends HTMLElement {
     return {
       narrow: this.#tagSides.narrow[index] ?? "Before",
       wide: this.#tagSides.wide[index] ?? "Before",
+      wideFits:
+        (this.#tagSides.wideFits[index] ?? false) &&
+        this.#geo?.compactPiles !== true,
     };
   }
 
@@ -2283,8 +2300,8 @@ export class NostakesTable extends HTMLElement {
     }
 
     return {
-      x: tile.x.x + (spot.x - home.x) * tile.scale.x,
-      y: tile.y.x + (spot.y - home.y) * tile.scale.x,
+      x: tile.x.x + (spot.x - home.x) * ridingScale(tile.scale.x),
+      y: tile.y.x + (spot.y - home.y) * ridingScale(tile.scale.x),
     };
   }
 
@@ -4225,6 +4242,21 @@ export class NostakesTable extends HTMLElement {
       heroBet: betting.some(({ seat }) => seat === snapshot.heroSeat),
       seats,
       someoneElse,
+      tags: this.#postedTags(snapshot, geo),
+    });
+  }
+
+  #postedTags(snapshot: TableSnapshot, geo: Geo): readonly Box[] {
+    return snapshot.posts.map((post) => {
+      const sides = this.#tagSidesOf(post.seat, geo);
+      const wide = wideTag(post, sides);
+
+      return postTagBox(
+        this.#pilePoint(post.seat),
+        wide ? sides.wide : sides.narrow,
+        wide ? POST_TAG_WIDTHS.wide : POST_TAG_WIDTHS.narrow,
+        geo.pileW
+      );
     });
   }
 
