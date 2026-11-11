@@ -55,7 +55,7 @@ const sharesFiles = (file: File) =>
   "canShare" in globalThis.navigator &&
   globalThis.navigator.canShare({ files: [file] });
 
-const offer = (file: File): Effect.Effect<Kept> => {
+export const offer = (file: File): Effect.Effect<Kept> => {
   if (!sharesFiles(file)) {
     return download(file);
   }

@@ -1,3 +1,5 @@
+import { Effect } from "effect";
+
 import type { SoundStep } from "../../features/moments/score.js";
 
 const FLOOR = 0.0001;
@@ -80,3 +82,48 @@ export const perform = (
     playStep(synth, start, step, random() * 0.3);
   }
 };
+
+export const seededNoise = (seed: number) => {
+  let state = seed;
+
+  return () => {
+    state = (state * 16_807) % 2_147_483_647;
+
+    return state / 2_147_483_647;
+  };
+};
+
+const OFFLINE_SEED = 7;
+
+const STEPS_PER_SLICE = 24;
+
+export const renderScore = (
+  steps: readonly SoundStep[],
+  output: {
+    readonly channels: number;
+    readonly sampleRate: number;
+    readonly seconds: number;
+  },
+  pause: Effect.Effect<void> = Effect.void
+) =>
+  Effect.gen(function* render() {
+    const ctx = new OfflineAudioContext(
+      output.channels,
+      Math.ceil(output.seconds * output.sampleRate),
+      output.sampleRate
+    );
+
+    const out = ctx.createGain();
+    const random = seededNoise(OFFLINE_SEED);
+    const synth = { ctx, noise: noiseFor(ctx, random), out };
+
+    out.gain.value = 0.9;
+    out.connect(ctx.createDynamicsCompressor()).connect(ctx.destination);
+
+    for (let from = 0; from < steps.length; from += STEPS_PER_SLICE) {
+      yield* pause;
+      perform(synth, steps.slice(from, from + STEPS_PER_SLICE), 0, random);
+    }
+
+    return yield* Effect.tryPromise(() => ctx.startRendering());
+  });

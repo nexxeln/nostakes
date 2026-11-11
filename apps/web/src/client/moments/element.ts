@@ -1,4 +1,4 @@
-import { Option } from "effect";
+import { Effect, Option } from "effect";
 
 import type { Deck, Theme } from "../../features/model.js";
 import { MOMENT_TAG } from "../../features/moments/element.js";
@@ -18,7 +18,10 @@ import type { Plan, Pose } from "../../features/moments/timeline.js";
 import { KEPT_FRAMES } from "../../features/pictures/paper.js";
 import type { KeptFrame } from "../../features/pictures/paper.js";
 import { Keeper } from "../pictures/keeper.js";
-import { noiseFor, perform } from "./synth.js";
+import { measureParts } from "./clip-measure.js";
+import type { PartBox } from "./clip-measure.js";
+import type { Clipper, ClipState } from "./clipper.js";
+import { noiseFor, perform, seededNoise } from "./synth.js";
 import type { Synth } from "./synth.js";
 
 const STYLE = `
@@ -32,8 +35,8 @@ const STYLE = `
 .keeping button { pointer-events: auto; font: 700 var(--text-2, 15px)/1 var(--font-body, sans-serif); color: var(--color-raised-ink, #1f1c31); background: var(--color-raised, #fffdf8); border: 0; border-radius: var(--radius-3, 10px); padding: 8px 12px; box-shadow: var(--shadow-sheet-1); display: flex; gap: 6px; align-items: center; min-height: 36px; }
 .keeping button:active { transform: translate(var(--press-1, 1px 1.8px)); }
 .keeping b { color: var(--color-accent-ink, #d63a00); }
-.keeping .story { color: var(--color-ink-muted, #716a79); font-weight: 600; padding: 8px 10px; }
-.gone { display: none; }
+.keeping .story, .keeping .clip { color: var(--color-ink-muted, #716a79); font-weight: 600; padding: 8px 10px; }
+.gone, .keeping .gone { display: none; }
 `;
 
 const KEEP_MS = 25_000;
@@ -55,14 +58,16 @@ const keyframesOf = (length: number, pose: (ms: number) => Pose): Keyframe[] =>
     };
   });
 
-const seededNoise = () => {
-  let state = 7;
+const NOISE_SEED = 7;
 
-  return () => {
-    state = (state * 16_807) % 2_147_483_647;
-
-    return state / 2_147_483_647;
-  };
+const CLIP_LABELS: Readonly<Record<ClipState, string>> = {
+  Asked: "Clip…",
+  Checking: "Clip",
+  Making: "Clip",
+  Ready: "Clip",
+  Share: "Share clip",
+  Unavailable: "Clip",
+  Waiting: "Clip",
 };
 
 export interface MomentScene {
@@ -95,7 +100,11 @@ class NostakesMoment extends HTMLElement {
   readonly #keeping: HTMLDivElement;
   readonly #keep: HTMLButtonElement;
   readonly #story: HTMLButtonElement;
+  readonly #clip: HTMLButtonElement;
   #keeper: Keeper | null = null;
+  #clipper: Clipper | null = null;
+  #clipLive = false;
+  #sceneHand = -1;
   readonly #motion = globalThis.matchMedia("(prefers-reduced-motion: reduce)");
   #scene: MomentScene | null = null;
   #hand: MomentHand | null = null;
@@ -104,7 +113,7 @@ class NostakesMoment extends HTMLElement {
   #sound = false;
   #dealing = false;
   #synth: Synth | null = null;
-  readonly #random = seededNoise();
+  readonly #random = seededNoise(NOISE_SEED);
   #holding: Animation | null = null;
   #offered: Animation | null = null;
 
@@ -125,7 +134,15 @@ class NostakesMoment extends HTMLElement {
     this.#story = this.#keepButton("story", "Story");
     this.#story.textContent = "Story";
     this.#story.title = "A tall picture for a story";
-    this.#keeping.append(this.#keep, this.#story);
+    this.#clip = document.createElement("button");
+    this.#clip.className = "clip gone";
+    this.#clip.type = "button";
+    this.#clip.textContent = CLIP_LABELS.Waiting;
+    this.#clip.title = "A short clip of the moment with its sound";
+    this.#clip.addEventListener("click", () => {
+      this.#clipper?.keep();
+    });
+    this.#keeping.append(this.#keep, this.#story, this.#clip);
     this.#root.append(style, this.#card, this.#keeping);
   }
 
@@ -138,6 +155,7 @@ class NostakesMoment extends HTMLElement {
     this.#holding?.cancel();
     this.#offered?.cancel();
     this.#keeper?.drop();
+    this.#dropClip();
   }
 
   #keepButton(name: string, frame: KeptFrame) {
@@ -168,6 +186,11 @@ class NostakesMoment extends HTMLElement {
   set hand(next: MomentHand | null) {
     this.#hand = next;
 
+    if (next === null || next.lastHand.handNumber !== this.#sceneHand) {
+      this.#clipLive = false;
+      this.#clipper?.abandon();
+    }
+
     if (next === null || handKey(next) === this.#handKey) {
       return;
     }
@@ -186,6 +209,7 @@ class NostakesMoment extends HTMLElement {
     const found = shownMomentOf(hand);
 
     if (Option.isSome(found)) {
+      this.#sceneHand = hand.lastHand.handNumber;
       this.present({
         deck: hand.deck,
         id: found.value.id,
@@ -221,6 +245,8 @@ class NostakesMoment extends HTMLElement {
       }
     );
     this.#keeper.prepare(KEPT_FRAMES);
+    this.#dropClip();
+    this.#clipLive = true;
     this.#show(scene);
   }
 
@@ -239,9 +265,66 @@ class NostakesMoment extends HTMLElement {
   set dealing(next: boolean) {
     if (next && !this.#dealing) {
       this.#leave();
+      this.#clipper?.abandon();
+    }
+
+    if (!next && this.#dealing && this.#clipLive) {
+      this.#clipper?.prepare();
     }
 
     this.#dealing = next;
+  }
+
+  #dropClip() {
+    this.#clipper?.drop();
+    this.#clipper = null;
+    this.#clip.className = "clip gone";
+    delete this.dataset.clip;
+  }
+
+  #offerClip(scene: MomentScene, boxes: readonly PartBox[]) {
+    idle(() => {
+      Effect.runFork(
+        Effect.promise(() => import("./clipper.js")).pipe(
+          Effect.flatMap(({ Clipper: Made }) =>
+            Effect.sync(() => {
+              this.#adoptClipper(
+                scene,
+                () =>
+                  new Made(
+                    scene.picture,
+                    { deck: scene.deck, theme: scene.theme },
+                    boxes,
+                    (state) => {
+                      this.#showClip(state);
+                    }
+                  )
+              );
+            })
+          )
+        )
+      );
+    });
+  }
+
+  #adoptClipper(scene: MomentScene, made: () => Clipper) {
+    if (this.#shownId !== scene.id || this.#clipper !== null) {
+      return;
+    }
+
+    const clipper = made();
+
+    this.#clipper = clipper;
+    clipper.start(this.#clipLive && !this.#dealing);
+  }
+
+  #showClip(state: ClipState) {
+    this.dataset.clip = state;
+    this.#clip.className =
+      state === "Unavailable" || state === "Checking" ? "clip gone" : "clip";
+    this.#clip.textContent = CLIP_LABELS[state];
+    this.#clip.disabled = state === "Asked";
+    this.#clip.setAttribute("aria-busy", String(state === "Asked"));
   }
 
   readonly #unlock = () => {
@@ -377,10 +460,19 @@ class NostakesMoment extends HTMLElement {
   }
 
   #settle(scene: MomentScene) {
+    const drawn = this.#card.querySelector("svg");
+
+    const boxes =
+      drawn === null || this.#shownId !== scene.id ? [] : measureParts(drawn);
+
     this.#card.className = "card gone";
 
     if (this.#shownId !== scene.id) {
       return;
+    }
+
+    if (boxes.length > 0 && this.#clipper === null) {
+      this.#offerClip(scene, boxes);
     }
 
     this.#keeping.className = "keeping";
@@ -388,6 +480,8 @@ class NostakesMoment extends HTMLElement {
     this.#offered = this.#keeping.animate(STILL, { duration: KEEP_MS });
     this.#offered.onfinish = () => {
       this.#keeping.className = "keeping gone";
+      this.#clipLive = false;
+      this.#clipper?.abandon();
     };
   }
 

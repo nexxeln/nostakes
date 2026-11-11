@@ -123,7 +123,7 @@ const fall = (ms: number, index: number): Pose => {
     ...REST,
     dy: between(-520, 0, amount),
     opacity: progress(ms, from, from + 60),
-    turn: between(0, ((index * 53) % 90) - 45, amount),
+    turn: between(45 - ((index * 53) % 90), 0, amount),
   };
 };
 

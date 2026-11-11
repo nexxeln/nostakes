@@ -2,20 +2,10 @@ import { MOMENT_KINDS, TIERS } from "@nostakes/room";
 import type { MomentKind, Tier } from "@nostakes/room";
 import { Effect } from "effect";
 
-import { perform, noiseFor } from "../../src/client/moments/synth.js";
+import { renderScore } from "../../src/client/moments/synth.js";
 import { momentScore, scoreLength } from "../../src/features/moments/score.js";
 
 const RATE = 44_100;
-
-const seeded = (seed: number) => {
-  let state = seed;
-
-  return () => {
-    state = (state * 16_807) % 2_147_483_647;
-
-    return state / 2_147_483_647;
-  };
-};
 
 const wavOf = (buffer: AudioBuffer) => {
   const channels = buffer.numberOfChannels;
@@ -70,18 +60,8 @@ const wavOf = (buffer: AudioBuffer) => {
 const render = (kind: MomentKind, tier: Tier) => {
   const steps = momentScore(kind, tier);
   const seconds = scoreLength(steps) + 0.25;
-  const ctx = new OfflineAudioContext(2, Math.ceil(seconds * RATE), RATE);
-  const out = ctx.createGain();
 
-  out.gain.value = 0.9;
-  out.connect(ctx.createDynamicsCompressor()).connect(ctx.destination);
-
-  const next = seeded(7);
-  const noise = noiseFor(ctx, next);
-
-  perform({ ctx, noise, out }, steps, 0, next);
-
-  return Effect.tryPromise(() => ctx.startRendering()).pipe(
+  return renderScore(steps, { channels: 2, sampleRate: RATE, seconds }).pipe(
     Effect.map((rendered) => ({ seconds, wav: wavOf(rendered) }))
   );
 };
