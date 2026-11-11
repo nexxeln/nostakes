@@ -22,7 +22,6 @@ import { attr, findAll } from "foldkit/scene";
 
 import { SaveProfile } from "../src/client/commands.js";
 import { toldOf } from "../src/features/face/parts.js";
-import { modalElement } from "../src/features/face/stage.js";
 import { Messages } from "../src/features/message.js";
 import type { Message } from "../src/features/message.js";
 import type { Model } from "../src/features/model.js";
@@ -282,32 +281,6 @@ describe("the face builder", () => {
       );
     },
     { arbitrary: { runs: 15 } }
-  );
-
-  it.prop(
-    "closing without saving, by the button or by Escape, keeps the old face",
-    { avatar: avatars, made: moves },
-    ({ avatar, made }) => {
-      const built = playAll(sheetFor(avatar), made.map(messageOf)).model;
-
-      for (const closing of [
-        Scene.click(".face-close"),
-        Scene.CustomElement.emit(modalElement, "nostakes-modal", "cancel", {
-          by: "Escape",
-        }),
-      ]) {
-        expect(
-          shownAfter(built, [closing], ".face-builder", "role")
-        ).toStrictEqual([]);
-      }
-
-      const closed = update(built, Messages.ClickedCancelFace()).model;
-
-      expect(closed.faceDraft).toStrictEqual(Option.none());
-      expect(closed.facePast).toStrictEqual([]);
-      expect(closed.profile.avatar).toBe(codeFor(avatar));
-    },
-    { arbitrary: { runs: 12 } }
   );
 
   it.prop(

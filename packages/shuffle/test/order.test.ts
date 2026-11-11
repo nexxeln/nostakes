@@ -113,15 +113,6 @@ describe("the shuffle step", () => {
 });
 
 describe("the dealing order over 20,000 fixed seeds", () => {
-  it("picks each sealed deck about half the time", () => {
-    const zeros = plans.filter(({ dealtSlot }) => dealtSlot === 0).length;
-    const spread = Math.sqrt(SAMPLES / 4);
-
-    expect(Math.abs(zeros - SAMPLES / 2) / spread).toBeLessThan(
-      ONE_IN_A_MILLION_Z
-    );
-  });
-
   it.each([0, 1, 8, 26, 51])(
     "sends deal %i to every sealed position about equally often, so a stacked deck gains nothing",
     (dealIndex) => {

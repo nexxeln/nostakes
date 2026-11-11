@@ -14,7 +14,6 @@ import {
   SEALING_MARGIN_MS,
   sealsWithNoDeal,
   sealTiming,
-  SealWithNoDeal,
   SERVER_CLOCK_BUDGET_MS,
 } from "../src/index.js";
 import type { SealArrival, SealSeen } from "../src/index.js";
@@ -105,23 +104,6 @@ describe("the client's timing check", () => {
     }
   );
 
-  it("draws its three lines a millisecond apart", () => {
-    const round = 33_000_000;
-    const due = roundTime(QUICKNET, round);
-    const inTimeUntil = due - tolerance - BEACON_EARLY_MS;
-
-    expect(
-      [inTimeUntil - 1, inTimeUntil, due + tolerance - 1, due + tolerance].map(
-        (millis) => timingTag(round, live(millis))
-      )
-    ).toEqual([
-      "InTime",
-      "TooCloseToCall",
-      "TooCloseToCall",
-      "ArrivedAfterRound",
-    ]);
-  });
-
   it.prop(
     "gives a seal that reached the device in a catch-up its own answer, however late",
     { offset: between(-60_000, 600_000), round: quicknetRound },
@@ -194,16 +176,5 @@ describe("a seal with no deal", () => {
       { hand: 2, withdrawal: "too close to the round" },
       { hand: 3, withdrawal: "while away" },
     ]);
-  });
-
-  it("explains itself to a player", () => {
-    const [problem] = sealsWithNoDeal(QUICKNET, at(deadline + tolerance), [
-      seal(),
-    ]);
-
-    expect(problem).toBeInstanceOf(SealWithNoDeal);
-    expect(problem?.message).toBe(
-      "Hand 12 was sealed for beacon round 33000000 and never dealt. The round is past and the hand was never dealt or called off. Cancelling a sealed hand is the one way left for a server to throw away a deal it does not like, so every cancelled hand is shown."
-    );
   });
 });

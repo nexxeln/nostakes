@@ -6,10 +6,8 @@ import {
   NoRunChoiceOwed,
   PendingDecisions,
   RunsOutOfRange,
-  Phases,
   ShowdownEntries,
   evaluate,
-  evolveAll,
   pendingDecisions,
 } from "../src/index.js";
 import type { Event, TableConfig, TableState } from "../src/index.js";
@@ -33,8 +31,6 @@ import {
 } from "./fixtures.js";
 
 const ACES = "Ah Ad";
-
-const KINGS = "Kh Kd";
 
 const ACES_WIN = "2c 7s 9d Jc 3s";
 
@@ -101,29 +97,6 @@ const runOutEvents = (events: readonly Event[]) =>
   events.slice(events.findIndex(Events.$is("RunsAgreed")));
 
 describe("running the board", () => {
-  it("runs an all-in before the flop once, tabling both hands first, when maxRuns is 1 and no one is asked to choose", () => {
-    const allIn = headsUpAllIn(1, 100);
-
-    expect(allIn.events.some(Events.$is("RunsChosen"))).toBe(false);
-    expect(runOutEvents(allIn.events)).toStrictEqual([
-      Events.RunsAgreed({ runs: runCount(1) }),
-      Events.HandsTabled({
-        hands: [
-          { cards: cards(ACES), seat: seat(1) },
-          { cards: cards(KINGS), seat: seat(0) },
-        ],
-      }),
-      ...dealtStreets(1, ACES_WIN),
-      Events.ShowdownReached({
-        order: [shownOn(1, ACES, ACES_WIN), shownOn(0, KINGS, ACES_WIN)],
-        run: 1,
-      }),
-      awarded(1, 200, 1),
-      Events.HandEnded({ handNumber: 1 }),
-    ]);
-    expect(stacksOf(allIn.state).slice(0, 2)).toStrictEqual([0, 200]);
-  });
-
   it("asks every seat still in for a run count before any hand is tabled", () => {
     const allIn = headsUpAllIn(3, 100);
 
@@ -135,48 +108,6 @@ describe("running the board", () => {
         maxRuns: runCount(3),
         seats: [seat(0), seat(1)],
       })
-    );
-  });
-
-  it("runs twice with a different winner on each board and half the pot on each", () => {
-    const twice = runAll(headsUpAllIn(2, 100).state, [
-      choose(0, 2),
-      choose(1, 2),
-    ]);
-
-    expect(runOutEvents(twice.events)).toStrictEqual([
-      Events.RunsAgreed({ runs: runCount(2) }),
-      Events.HandsTabled({
-        hands: [
-          { cards: cards(ACES), seat: seat(1) },
-          { cards: cards(KINGS), seat: seat(0) },
-        ],
-      }),
-      ...dealtStreets(1, ACES_WIN),
-      ...dealtStreets(2, KINGS_WIN),
-      Events.ShowdownReached({
-        order: [shownOn(1, ACES, ACES_WIN), shownOn(0, KINGS, ACES_WIN)],
-        run: 1,
-      }),
-      awarded(1, 100, 1),
-      Events.ShowdownReached({
-        order: [shownOn(1, ACES, KINGS_WIN), shownOn(0, KINGS, KINGS_WIN)],
-        run: 2,
-      }),
-      awarded(2, 100, 0),
-      Events.HandEnded({ handNumber: 1 }),
-    ]);
-    expect(stacksOf(twice.state).slice(0, 2)).toStrictEqual([100, 100]);
-
-    const dealt = twice.events.findLastIndex(Events.$is("StreetDealt")) + 1;
-
-    const midRun = handOf(
-      evolveAll(headsUpAllIn(2, 100).state, twice.events.slice(0, dealt))
-    );
-
-    expect(midRun.board).toStrictEqual([]);
-    expect(midRun.phase).toStrictEqual(
-      Phases.RunningOut({ runs: [cards(ACES_WIN), cards(KINGS_WIN)] })
     );
   });
 

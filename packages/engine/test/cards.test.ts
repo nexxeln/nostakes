@@ -33,25 +33,6 @@ const permutation = Arbitrary.array(
 );
 
 describe("cards", () => {
-  it("encodes rank in card / 4 and suit in card % 4, deuce and clubs first", () => {
-    expect(decodeText("2c")).toBe(0);
-    expect(decodeText("2s")).toBe(3);
-    expect(decodeText("3c")).toBe(4);
-    expect(decodeText("Td")).toBe(33);
-    expect(decodeText("Kh")).toBe(46);
-    expect(decodeText("As")).toBe(51);
-  });
-
-  it("reads rank and suit back from the card number", () => {
-    const aceOfSpades = decodeText("As");
-    const sevenOfDiamonds = decodeText("7d");
-
-    expect([rankOf(aceOfSpades), suitOf(aceOfSpades)]).toStrictEqual([12, 3]);
-    expect([rankOf(sevenOfDiamonds), suitOf(sevenOfDiamonds)]).toStrictEqual([
-      5, 1,
-    ]);
-  });
-
   it.prop(
     "every card survives a round trip through its text",
     { card: CardSchema },

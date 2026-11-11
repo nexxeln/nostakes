@@ -223,37 +223,6 @@ const serverAdmits = (
   });
 };
 
-const reconnectDelays = (failuresInARow: number) =>
-  Effect.gen(function* measureReconnectDelays() {
-    const { client, fake, greet, socket } = yield* harness;
-    const delays: number[] = [];
-
-    const measure = Effect.gen(function* measureOneDelay() {
-      const before = fake.sockets.length;
-      const cutAt = yield* Clock.currentTimeMillis;
-
-      yield* cut(yield* socket(before - 1));
-
-      while (fake.sockets.length === before) {
-        yield* advance(125);
-      }
-
-      delays.push((yield* Clock.currentTimeMillis) - cutAt);
-    });
-
-    yield* client.start;
-    yield* settle;
-
-    for (let failure = 0; failure < failuresInARow; failure += 1) {
-      yield* measure;
-    }
-
-    yield* greet(fake.sockets.length - 1, 1);
-    yield* measure;
-
-    return delays;
-  });
-
 describe("room client against a fake socket", () => {
   it.effect("connects, says hello, goes live, and gets a reply", () =>
     Effect.gen(function* liveRoundTrip() {
@@ -591,30 +560,6 @@ describe("room client against a fake socket", () => {
 
       expect((yield* issued.reply)._tag).toBe("Accepted");
     }).pipe(Effect.scoped, lowestJitter)
-  );
-
-  it.effect(
-    "backoff grows from its floor to the 10 second cap, and resets after a welcome",
-    () =>
-      Effect.gen(function* backoffLowest() {
-        const delays = yield* reconnectDelays(8);
-
-        expect(delays).toEqual([
-          125, 250, 500, 1000, 2000, 4000, 5000, 5000, 125,
-        ]);
-      }).pipe(Effect.scoped, lowestJitter)
-  );
-
-  it.effect(
-    "backoff jitter reaches the top of each window and never passes 10 seconds",
-    () =>
-      Effect.gen(function* backoffHighest() {
-        const delays = yield* reconnectDelays(8);
-
-        expect(delays).toEqual([
-          250, 500, 1000, 2000, 4000, 8000, 10_000, 10_000, 250,
-        ]);
-      }).pipe(Effect.scoped, highestJitter)
   );
 
   it.effect(

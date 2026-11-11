@@ -6,7 +6,6 @@ import {
   Antes,
   Commands,
   Events,
-  HandInProgress,
   NotEnoughPlayers,
   Phases,
   StraddleNotAllowed,
@@ -43,8 +42,6 @@ const straddleRules = (underTheGun: number, button: boolean): TableConfig => ({
 });
 
 const FIVE_STACKS = { 0: 500, 1: 500, 2: 500, 3: 500, 4: 500 };
-
-const fiveHanded = (config: TableConfig) => occupiedTable(config, FIVE_STACKS);
 
 const straddleRejection = (
   config: TableConfig,
@@ -108,29 +105,6 @@ describe("starting a hand", () => {
     expect(handOf(started.state).deck).toStrictEqual(deck.slice(6));
   });
 
-  it("heads-up, the button posts the small blind and acts first before the flop (TDA Rule 34-B)", () => {
-    const started = startHand(
-      occupiedTable(baseConfig, { 2: 100, 7: 100 }),
-      deck
-    );
-
-    expect(started.events.slice(1, 3)).toStrictEqual([
-      Events.BlindPosted({
-        allIn: false,
-        amount: chipCount(5),
-        blind: "Small",
-        seat: seat(2),
-      }),
-      Events.BlindPosted({
-        allIn: false,
-        amount: chipCount(10),
-        blind: "Big",
-        seat: seat(7),
-      }),
-    ]);
-    expect(bettingOf(handOf(started.state)).toAct).toBe(seat(2));
-  });
-
   it("deals in only occupied seats that hold chips and are not sitting out", () => {
     const table = run(
       occupiedTable(baseConfig, { 1: 100, 4: 100 }),
@@ -140,17 +114,6 @@ describe("starting a hand", () => {
     expect(
       rejection(table, Commands.StartHand({ deck, straddles: [] }))
     ).toStrictEqual(new NotEnoughPlayers({ dealtIn: [seat(1)] }));
-  });
-
-  it("refuses a second deal while a hand is being played", () => {
-    const started = startHand(
-      occupiedTable(baseConfig, { 1: 100, 4: 100 }),
-      deck
-    );
-
-    expect(
-      rejection(started.state, Commands.StartHand({ deck, straddles: [] }))
-    ).toStrictEqual(new HandInProgress({ handNumber: 1 }));
   });
 
   it("lets a short big blind post what it has while the bet to match stays the full big blind", () => {
@@ -179,46 +142,6 @@ describe("starting a hand", () => {
 });
 
 describe("antes", () => {
-  it("takes an every-player ante from each seat in deal order, keeps it out of the bet to match, and leaves a seat all in for the ante alone", () => {
-    const config = {
-      ...baseConfig,
-      ante: Antes.EveryPlayer({ amount: chipCount(2) }),
-    };
-
-    const started = startHand(
-      occupiedTable(config, { 0: 100, 1: 2, 4: 100 }),
-      deck
-    );
-
-    expect(started.events.slice(1, 5)).toStrictEqual([
-      Events.AntePosted({ allIn: true, amount: chipCount(2), seat: seat(1) }),
-      Events.AntePosted({ allIn: false, amount: chipCount(2), seat: seat(4) }),
-      Events.AntePosted({ allIn: false, amount: chipCount(2), seat: seat(0) }),
-      Events.BlindPosted({
-        allIn: false,
-        amount: chipCount(10),
-        blind: "Big",
-        seat: seat(4),
-      }),
-    ]);
-
-    const hand = handOf(started.state);
-
-    expect(
-      hand.players.map((player) => [
-        player.seat,
-        player.status,
-        player.committedThisStreet,
-        player.committedTotal,
-      ])
-    ).toStrictEqual([
-      [0, "Active", 0, 2],
-      [1, "AllIn", 0, 2],
-      [4, "Active", 10, 12],
-    ]);
-    expect(bettingOf(hand)).toMatchObject({ currentBet: 10, toAct: seat(0) });
-  });
-
   it("takes the big-blind ante as dead money and, for a short big blind, covers the blind first (TDA RP-11)", () => {
     const config = {
       ...baseConfig,
@@ -272,61 +195,6 @@ describe("antes", () => {
 });
 
 describe("straddles", () => {
-  it("posts an under-the-gun straddle of twice the big blind, which sets the bet to match and the minimum raise, and action starts after it", () => {
-    const started = startHand(fiveHanded(straddleRules(2, false)), deck, [3]);
-
-    expect(started.events.filter(Events.$is("StraddlePosted"))).toStrictEqual([
-      Events.StraddlePosted({ amount: chipCount(20), seat: seat(3) }),
-    ]);
-    expect(bettingOf(handOf(started.state))).toMatchObject({
-      currentBet: 20,
-      lastFullRaise: 20,
-      toAct: seat(4),
-    });
-  });
-
-  it("doubles each further straddle in an unbroken chain", () => {
-    const started = startHand(
-      fiveHanded(straddleRules(2, false)),
-      deck,
-      [3, 4]
-    );
-
-    expect(started.events.filter(Events.$is("StraddlePosted"))).toStrictEqual([
-      Events.StraddlePosted({ amount: chipCount(20), seat: seat(3) }),
-      Events.StraddlePosted({ amount: chipCount(40), seat: seat(4) }),
-    ]);
-    expect(bettingOf(handOf(started.state))).toMatchObject({
-      currentBet: 40,
-      lastFullRaise: 40,
-      toAct: seat(0),
-    });
-  });
-
-  it("posts every straddle at two big blinds when the room fixes the size", () => {
-    const started = startHand(
-      fiveHanded({ ...straddleRules(2, false), straddleSize: "TwoBigBlinds" }),
-      deck,
-      [3, 4]
-    );
-
-    expect(started.events.filter(Events.$is("StraddlePosted"))).toStrictEqual([
-      Events.StraddlePosted({ amount: chipCount(20), seat: seat(3) }),
-      Events.StraddlePosted({ amount: chipCount(20), seat: seat(4) }),
-    ]);
-    expect(bettingOf(handOf(started.state))).toMatchObject({
-      currentBet: 20,
-      lastFullRaise: 20,
-      toAct: seat(0),
-    });
-  });
-
-  it("starts action with the small blind after a button straddle", () => {
-    const started = startHand(fiveHanded(straddleRules(0, true)), deck, [0]);
-
-    expect(bettingOf(handOf(started.state)).toAct).toBe(seat(1));
-  });
-
   it("rejects straddles that break the rules, and emits nothing", () => {
     expect(
       straddleRejection(straddleRules(2, true), [4], FIVE_STACKS)

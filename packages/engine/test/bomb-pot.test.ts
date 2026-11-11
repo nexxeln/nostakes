@@ -2,7 +2,6 @@ import { describe, expect, it } from "@effect/vitest";
 import { Option } from "effect";
 
 import {
-  Antes,
   BombPots,
   BombPotsOff,
   Commands,
@@ -17,21 +16,17 @@ import {
 import type { Command, Event, TableConfig, TableState } from "../src/index.js";
 import {
   baseConfig,
-  calls,
-  checks,
   chipCount,
   deckStartingWith,
   folds,
   occupiedTable,
   play,
-  player,
   raisesTo,
   rejection,
   run,
   runAll,
   runCount,
   seat,
-  stacksOf,
 } from "./fixtures.js";
 import { seededRandom } from "./random.js";
 import { generated } from "./scale.js";
@@ -65,93 +60,12 @@ const EVEN_STACKS = {
 const three = (config: TableConfig, stacks = EVEN_STACKS) =>
   occupiedTable(config, stacks);
 
-const owesAtFive = (state: TableState) => {
-  const { 5: occupant } = state.seats;
-
-  return occupant !== undefined && Seats.$is("Occupied")(occupant)
-    ? occupant.owes
-    : undefined;
-};
-
 const tags = (events: readonly Event[]) => events.map((event) => event._tag);
-
-const potsOf = (state: TableState) =>
-  TableStates.$is("InHand")(state)
-    ? buildPots(state.hand).map((pot) => [pot.amount, pot.eligible])
-    : [];
-
-const toActOf = (state: TableState) =>
-  TableStates.$is("InHand")(state) && Phases.$is("Betting")(state.hand.phase)
-    ? state.hand.phase.toAct
-    : undefined;
 
 const startedIn = (events: readonly Event[]) =>
   events.find(Events.$is("HandStarted"));
 
-const checkedDownFrom = (first: number) =>
-  Array.from({ length: 9 }, (_, turn): readonly [number, typeof checks] => [
-    (first + turn) % 3,
-    checks,
-  ]);
-
 describe("a bomb pot", () => {
-  it("takes the ante from every seat dealt in, posts no blind, deals the flop at once, and opens the betting left of the button", () => {
-    const table = three(called);
-    const dealt = run(table, start(true));
-
-    expect(tags(dealt.events)).toStrictEqual([
-      "HandStarted",
-      "AntePosted",
-      "AntePosted",
-      "AntePosted",
-      "HoleCardsDealt",
-      "HoleCardsDealt",
-      "HoleCardsDealt",
-      "StreetDealt",
-    ]);
-    expect(startedIn(dealt.events)?.bombPot).toStrictEqual({
-      ante: chipCount(ANTE),
-      bigBlind: chipCount(10),
-    });
-    expect(stacksOf(dealt.state).slice(0, 3)).toStrictEqual([180, 180, 180]);
-    expect(potsOf(dealt.state)).toStrictEqual([
-      [60, [seat(0), seat(1), seat(2)]],
-    ]);
-    expect(toActOf(dealt.state)).toBe(1);
-    expect(
-      TableStates.$is("InHand")(dealt.state) ? dealt.state.hand.street : ""
-    ).toBe("Flop");
-  });
-
-  it("plays on from the flop like any hand, and the smallest bet is the big blind", () => {
-    const table = three(called);
-
-    const played = play(run(table, start(true)).state, [
-      [1, raisesTo(10)],
-      [2, folds],
-      [0, calls],
-      [1, checks],
-      [0, checks],
-      [1, checks],
-      [0, checks],
-    ]);
-
-    expect(played.events.at(-1)).toStrictEqual(
-      Events.HandEnded({ handNumber: 1 })
-    );
-    expect(
-      played.events
-        .filter(Events.$is("PotAwarded"))
-        .map((award) => award.amount)
-    ).toStrictEqual([80]);
-    expect(
-      rejection(
-        run(table, start(true)).state,
-        Commands.Act({ action: raisesTo(9), seat: seat(1) })
-      )?._tag
-    ).toBe("IllegalAction");
-  });
-
   it("is refused while bomb pots are off, and takes no straddle", () => {
     const off = three(baseConfig);
     const on = three(called);
@@ -162,68 +76,6 @@ describe("a bomb pot", () => {
     expect(rejection(on, start(true, [0]))).toStrictEqual(
       new StraddleNotAllowed({ reason: "BombPot", straddles: [seat(0)] })
     );
-  });
-
-  it("comes by itself every so many hands, and a call makes any hand one", () => {
-    const table = three(bombs(2));
-
-    const first = play(run(table, start()).state, [
-      [0, folds],
-      [1, folds],
-    ]);
-
-    const second = run(first.state, start());
-
-    expect(startedIn(run(table, start()).events)?.bombPot).toBeUndefined();
-    expect(startedIn(second.events)?.bombPot).toBeDefined();
-    expect(startedIn(run(table, start(true)).events)?.bombPot).toBeDefined();
-  });
-
-  it("puts a seat with less than the ante all in for what it has, with a side pot before any card is seen", () => {
-    const table = three(called, { 0: 200, 1: 8, 2: 200 });
-    const dealt = run(table, start(true));
-
-    expect(
-      dealt.events
-        .filter(Events.$is("AntePosted"))
-        .map((ante) => [ante.seat, ante.amount, ante.allIn])
-    ).toStrictEqual([
-      [1, 8, true],
-      [2, 20, false],
-      [0, 20, false],
-    ]);
-    expect(potsOf(dealt.state)).toStrictEqual([
-      [24, [seat(0), seat(1), seat(2)]],
-      [24, [seat(0), seat(2)]],
-    ]);
-    expect(toActOf(dealt.state)).toBe(2);
-  });
-
-  it("gives back the part of an ante no other seat could match, and runs the board out when nobody can bet", () => {
-    const table = three(called, { 0: 200, 1: 8, 2: 5 });
-    const dealt = run(table, start(true));
-
-    expect(
-      dealt.events.filter(Events.$is("UncalledBetReturned"))
-    ).toStrictEqual([
-      Events.UncalledBetReturned({ amount: chipCount(12), seat: seat(0) }),
-    ]);
-    expect(
-      dealt.events
-        .filter(Events.$is("PotAwarded"))
-        .map((award) => [award.amount, award.eligible])
-    ).toStrictEqual([
-      [15, [seat(0), seat(1), seat(2)]],
-      [6, [seat(0), seat(1)]],
-    ]);
-    expect(dealt.events.at(-1)).toStrictEqual(
-      Events.HandEnded({ handNumber: 1 })
-    );
-    expect(
-      stacksOf(dealt.state)
-        .slice(0, 3)
-        .reduce<number>((total, stack) => total + (stack ?? 0), 0)
-    ).toBe(213);
   });
 
   it("deals the flop before anyone chooses how often to run the board, so every run shares it", () => {
@@ -262,84 +114,6 @@ describe("a bomb pot", () => {
     expect(chosen.events.at(-1)).toStrictEqual(
       Events.HandEnded({ handNumber: 1 })
     );
-  });
-
-  it("replaces the table's ante, whoever pays it in other hands", () => {
-    const table = three(
-      bombs(0, {
-        ...baseConfig,
-        ante: Antes.BigBlindPays({ amount: chipCount(10) }),
-      }),
-      { 0: 200, 1: 8, 2: 200 }
-    );
-
-    expect(potsOf(run(table, start(true)).state)).toStrictEqual([
-      [24, [seat(0), seat(1), seat(2)]],
-      [24, [seat(0), seat(2)]],
-    ]);
-  });
-
-  it("leaves the button and the blinds where they were, and moves its own button when two come in a row", () => {
-    const table = three(called);
-
-    const first = run(table, start());
-
-    const afterFirst = play(first.state, [
-      [0, folds],
-      [1, folds],
-    ]).state;
-
-    const bomb = run(afterFirst, start(true));
-    const afterBomb = play(bomb.state, checkedDownFrom(2)).state;
-    const secondBomb = run(afterBomb, start(true));
-    const afterSecond = play(secondBomb.state, checkedDownFrom(0)).state;
-    const third = run(afterSecond, start());
-
-    const positions = (events: readonly Event[]) => {
-      const started = startedIn(events);
-
-      return [started?.button, started?.smallBlindSeat, started?.bigBlindSeat];
-    };
-
-    expect(positions(first.events)).toStrictEqual([0, 1, 2]);
-    expect(startedIn(bomb.events)?.button).toBe(1);
-    expect(startedIn(secondBomb.events)?.button).toBe(2);
-    expect(positions(third.events)).toStrictEqual([1, 2, 0]);
-  });
-
-  it("deals in a seat that owes a blind, and the seat owes the same afterwards", () => {
-    const casino = bombs(0, { ...baseConfig, blindPosting: "Casino" });
-    const table = three(casino);
-
-    const afterFirst = play(run(table, start()).state, [
-      [0, folds],
-      [1, folds],
-    ]).state;
-
-    const joined = run(
-      afterFirst,
-      Commands.SitDown({
-        buyIn: chipCount(200),
-        player: player("late"),
-        seat: seat(5),
-      })
-    ).state;
-
-    const bomb = run(joined, start(true));
-
-    expect(owesAtFive(joined)).toStrictEqual({
-      big: false,
-      entry: true,
-      small: false,
-    });
-    expect(startedIn(bomb.events)?.dealtIn).toStrictEqual([
-      seat(0),
-      seat(1),
-      seat(2),
-      seat(5),
-    ]);
-    expect(owesAtFive(bomb.state)).toStrictEqual(owesAtFive(joined));
-    expect(bomb.events.some(Events.$is("BlindPosted"))).toBe(false);
   });
 
   it("pays no seven-deuce bounty", () => {

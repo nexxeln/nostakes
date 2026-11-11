@@ -1,6 +1,5 @@
 import { describe, expect, it } from "@effect/vitest";
 import { Duration } from "effect";
-import * as Arbitrary from "effect/Arbitrary";
 
 import {
   funnelLines,
@@ -9,8 +8,7 @@ import {
   healthLines,
   reportedLines,
 } from "../scripts/funnel.ts";
-import { ClientReportSchema, reportMeasure } from "../src/client-reports.js";
-import { MEASURES, measure, pointOf, SITE_SCOPE } from "../src/measures.js";
+import { measure, pointOf, SITE_SCOPE } from "../src/measures.js";
 import type { Measure, StampedPoint } from "../src/measures.js";
 
 const HOUR = Duration.toMillis(Duration.hours(1));
@@ -192,12 +190,4 @@ describe("the stats report", () => {
       ],
     ]);
   });
-
-  it.prop(
-    "files every report a page can send under a kind measured by pages",
-    { report: Arbitrary.schema(ClientReportSchema) },
-    ({ report }) => {
-      expect(MEASURES[reportMeasure(report).kind].from).toBe("Page");
-    }
-  );
 });

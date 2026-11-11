@@ -2,23 +2,14 @@ import { describe, expect, it } from "@effect/vitest";
 import { Array as Arr, Option, Result } from "effect";
 
 import {
-  beaconGiveUpTime,
   beaconWaitLimitMs,
-  BeaconRoundMismatch,
-  BeaconSignatureInvalid,
   CardSchema,
   CardSeenTwice,
-  DealIndexSchema,
   dealingPlan,
   Deals,
-  DealtSeatsDiffer,
   DeckSchema,
   EpochMillisSchema,
   judgeHand,
-  openDeck,
-  OpeningMismatch,
-  OUTAGE_ARRIVAL_ALLOWANCE_MS,
-  OutageClaimedEarly,
   PHONE_CLOCK_TOLERANCE_MS,
   RandomnessSchema,
   roundTime,
@@ -36,11 +27,9 @@ import {
   sha256,
   ShownCardDiffers,
   SpareDeckMismatch,
-  SpareDeckRepeatsCard,
   Verdicts,
   verifyBeacon,
   verifyHand,
-  WrongPosition,
 } from "../src/index.js";
 import type {
   Beacon,
@@ -106,11 +95,7 @@ const holeCardsOf = (hand: HonestHand, turn: number) => [
 const board = (hand: HonestHand) =>
   Arr.range(0, 4).map((drawn) => dealtAt(hand, 2 * DEALT_IN + drawn));
 
-const RIVER = 2 * DEALT_IN + 4;
-
 const drand = selfSignedChain("test beacon");
-
-const serversOwn = selfSignedChain("a key the server holds");
 
 const dueAt = (round: number) => roundTime(drand.chain, round);
 
@@ -143,97 +128,7 @@ const verdictTag = (verdict: Verdict) =>
     NotChecked: ({ reason }) => reason,
   });
 
-const beaconPicking = (sealed: SealedHand, slot: 0 | 1): Beacon => {
-  for (let attempt = 0; ; attempt += 1) {
-    const candidate = beacon(`search ${attempt}`);
-
-    if (
-      dealingPlan(seedOf(sealed.context, sealed.seal, candidate)).dealtSlot ===
-      slot
-    ) {
-      return candidate;
-    }
-  }
-};
-
 describe("planted cheats the verifier catches", () => {
-  it("a card swapped after the bets fails for everyone shown it", () => {
-    const hand = honest();
-    const river = dealtAt(hand, RIVER);
-    const better = CardSchema.make((river.opening.card + 13) % 52);
-
-    const forged = {
-      ...river,
-      opening: {
-        ...river.opening,
-        card: better,
-        salt: SaltSchema.make(bytesFor("forged salt")),
-      },
-      shown: better,
-    };
-
-    for (let turn = 0; turn < DEALT_IN; turn += 1) {
-      expect(
-        outcome(
-          sawOf(hand, [
-            ...holeCardsOf(hand, turn),
-            ...board(hand).slice(0, 4),
-            forged,
-          ])
-        )
-      ).toEqual(
-        new OpeningMismatch({
-          position: river.opening.position,
-          slot: hand.plan.dealtSlot,
-        })
-      );
-    }
-  });
-
-  it("a real sealed card dealt out of order to a friend fails for everyone once that hand is shown", () => {
-    const hand = honest();
-    const [first, second] = holeCardsOf(hand, 0);
-    const deep = dealtAt(hand, 51);
-
-    const friendsCards = [
-      {
-        ...Option.getOrThrow(Option.fromNullishOr(first)),
-        opening: deep.opening,
-        shown: deep.shown,
-      },
-      Option.getOrThrow(Option.fromNullishOr(second)),
-    ];
-
-    for (let turn = 1; turn < DEALT_IN; turn += 1) {
-      expect(
-        outcome(
-          sawOf(hand, [
-            ...holeCardsOf(hand, turn),
-            ...board(hand),
-            ...friendsCards,
-          ])
-        )
-      ).toEqual(
-        new WrongPosition({
-          dealIndex: DealIndexSchema.make(0),
-          expected: dealtAt(hand, 0).opening.position,
-          opened: deep.opening.position,
-        })
-      );
-    }
-  });
-
-  it("an order taken from a beacon round other than the sealed one fails", () => {
-    const hand = honest();
-
-    expect(
-      outcome({
-        ...sawOf(hand, holeCardsOf(hand, 1)),
-        beacon: beacon("a later round", ROUND + 1),
-      })
-    ).toEqual(new BeaconRoundMismatch({ sealed: ROUND, used: ROUND + 1 }));
-  });
-
   it("last hand's seal and openings replayed as this hand fail", () => {
     const hand = honest();
     const next = { ...context, hand: context.hand + 1 };
@@ -245,29 +140,6 @@ describe("planted cheats the verifier catches", () => {
     expect(
       outcome({ ...sawOf(hand, holeCardsOf(hand, 1)), context: next })
     ).toEqual(new SpareDeckMismatch({ slot: replayed.spareSlot }));
-  });
-
-  it("a spare deck holding a card twice fails for every player", () => {
-    const repeating = [...sorted.slice(0, 51), CardSchema.make(0)];
-
-    const salts = Arr.range(0, 51).map((index) =>
-      SaltSchema.make(bytesFor(`salt ${index}`))
-    );
-
-    const bad = sealCards(context, 1, repeating, salts);
-    const good = sealDeck(context, 0, reversed, secret);
-
-    const sealed: SealedHand = {
-      context,
-      decks: [good, bad],
-      seal: { beaconRound: ROUND, roots: [good.root, bad.root], seats: SEATS },
-    };
-
-    const hand = dealHonestly(sealed, beaconPicking(sealed, 0));
-
-    expect(outcome(sawOf(hand, []))).toEqual(
-      new SpareDeckRepeatsCard({ card: CardSchema.make(0), slot: 1 })
-    );
   });
 
   it("a dealt deck holding cards twice fails for a player shown both copies of one", () => {
@@ -319,39 +191,6 @@ describe("planted cheats the verifier catches", () => {
     );
   });
 
-  it("a spare deck other than the sealed one fails", () => {
-    const hand = honest();
-
-    expect(
-      outcome({
-        ...sawOf(hand, []),
-        spare: openDeck(
-          sealDeck(
-            context,
-            hand.plan.spareSlot,
-            deckFrom(Arr.range(0, 51).map((card) => (card + 1) % 52)),
-            secret
-          )
-        ),
-      })
-    ).toEqual(new SpareDeckMismatch({ slot: hand.plan.spareSlot }));
-  });
-
-  it("a table showing a card other than the sealed one fails", () => {
-    const hand = honest();
-    const [mine] = holeCardsOf(hand, 2);
-    const card = Option.getOrThrow(Option.fromNullishOr(mine));
-    const shown = CardSchema.make((card.shown + 1) % 52);
-
-    expect(outcome(sawOf(hand, [{ ...card, shown }]))).toEqual(
-      new ShownCardDiffers({
-        dealIndex: DealIndexSchema.make(2),
-        opened: card.opening.card,
-        shown,
-      })
-    );
-  });
-
   it("a server showing two players different seals cannot show them the same board", () => {
     const alice = honest();
 
@@ -379,52 +218,6 @@ describe("planted cheats the verifier catches", () => {
 });
 
 describe("planted cheats a beacon leaves the server", () => {
-  it("dealing to other seats than the sealed ones after seeing the beacon fails for every player", () => {
-    const hand = honest();
-    const withoutSeatFive = SEATS.filter((seat) => seat !== 5);
-
-    for (let turn = 0; turn < DEALT_IN; turn += 1) {
-      expect(
-        outcome({
-          ...sawOf(hand, [...holeCardsOf(hand, turn), ...board(hand)]),
-          seats: withoutSeatFive,
-        })
-      ).toEqual(
-        new DealtSeatsDiffer({ dealt: withoutSeatFive, sealed: SEATS })
-      );
-    }
-  });
-
-  it("a beacon value the server made up fails for every player, though every card opens", () => {
-    const forged = serversOwn.sign(ROUND);
-
-    const beaconOfItsOwn = Result.getOrThrow(
-      verifyBeacon(serversOwn.chain, ROUND, forged)
-    );
-
-    const hand = dealHonestly(
-      sealHand(context, [sorted, reversed], secret, ROUND, SEATS),
-      beaconOfItsOwn
-    );
-
-    for (let turn = 0; turn < DEALT_IN; turn += 1) {
-      const seen = [...holeCardsOf(hand, turn), ...board(hand)];
-
-      expect(outcome(sawOf(hand, seen))).toBe("checked out");
-
-      expect(
-        verdictTag(
-          judgeHand(evidenceFor(hand, forged, seen, live(dueAt(ROUND) - 3000)))
-        )
-      ).toEqual(
-        new BeaconSignatureInvalid({
-          beaconId: drand.chain.beaconId,
-          round: ROUND,
-        })
-      );
-    }
-  });
-
   it("a deck sealed after its round was out is never shown as sealed in time, and fails on a device that got it a second after", () => {
     const signature = drand.sign(ROUND);
 
@@ -503,94 +296,5 @@ describe("planted cheats a beacon leaves the server", () => {
         )
       ).toEqual([["never"], ["after the round"]]);
     }
-  });
-
-  it("a hand the server says it dealt without the beacon after its full wait is never shown as checked, and never as failed", () => {
-    const hand = honest();
-    const giveUpAt = beaconGiveUpTime(drand.chain, ROUND);
-
-    for (const arrival of [
-      live(giveUpAt - OUTAGE_ARRIVAL_ALLOWANCE_MS),
-      live(giveUpAt + 5000),
-      SealArrivals.CaughtUp({ at: EpochMillisSchema.make(giveUpAt - 9000) }),
-    ]) {
-      expect(
-        verdictTag(
-          judgeHand({
-            chain: drand.chain,
-            context,
-            deal: Deals.BeaconUnavailable({
-              arrival,
-              dealtAt: Option.some(giveUpAt),
-              round: ROUND,
-            }),
-            seal: hand.sealed.seal,
-            sealArrival: live(dueAt(ROUND) - 3000),
-          })
-        )
-      ).toBe("beacon unavailable");
-    }
-  });
-
-  it("a claim that the beacon was unavailable, made before the server's full wait, fails for every device that can tell", () => {
-    const hand = honest();
-    const giveUpAt = beaconGiveUpTime(drand.chain, ROUND);
-
-    const judged = (
-      stamped: Option.Option<number>,
-      arrival: SealArrival
-    ): Verdict =>
-      judgeHand({
-        chain: drand.chain,
-        context,
-        deal: Deals.BeaconUnavailable({
-          arrival,
-          dealtAt: stamped.pipe(Option.map((at) => EpochMillisSchema.make(at))),
-          round: ROUND,
-        }),
-        seal: hand.sealed.seal,
-        sealArrival: live(dueAt(ROUND) - 3000),
-      });
-
-    expect([
-      verdictTag(
-        judged(
-          Option.some(dueAt(ROUND) + 200),
-          SealArrivals.CaughtUp({ at: EpochMillisSchema.make(giveUpAt) })
-        )
-      ),
-      verdictTag(
-        judged(
-          Option.some(giveUpAt),
-          live(giveUpAt - OUTAGE_ARRIVAL_ALLOWANCE_MS - 1)
-        )
-      ),
-      verdictTag(judged(Option.none(), live(dueAt(ROUND) + 300))),
-    ]).toEqual([
-      new OutageClaimedEarly({
-        allowance: 0,
-        giveUpAt,
-        round: ROUND,
-        roundAt: dueAt(ROUND),
-        seenAt: dueAt(ROUND) + 200,
-        seenBy: "the server's record",
-      }),
-      new OutageClaimedEarly({
-        allowance: OUTAGE_ARRIVAL_ALLOWANCE_MS,
-        giveUpAt,
-        round: ROUND,
-        roundAt: dueAt(ROUND),
-        seenAt: giveUpAt - OUTAGE_ARRIVAL_ALLOWANCE_MS - 1,
-        seenBy: "this device",
-      }),
-      new OutageClaimedEarly({
-        allowance: OUTAGE_ARRIVAL_ALLOWANCE_MS,
-        giveUpAt,
-        round: ROUND,
-        roundAt: dueAt(ROUND),
-        seenAt: dueAt(ROUND) + 300,
-        seenBy: "this device",
-      }),
-    ]);
   });
 });

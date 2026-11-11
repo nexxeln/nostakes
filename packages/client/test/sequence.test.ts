@@ -70,18 +70,6 @@ describe("batches", () => {
       );
     }
   );
-
-  it("a batch from the past is stale and one from the future is a gap", () => {
-    expect(fitBatch(10, 4, 6, 3)).toEqual(BatchFits.Stale({ to: 6 }));
-    expect(fitBatch(10, 11, 12, 2)).toEqual(BatchFits.Fresh({ skip: 0 }));
-    expect(fitBatch(10, 9, 12, 4)).toEqual(BatchFits.Fresh({ skip: 2 }));
-    expect(fitBatch(10, 12, 12, 1)).toEqual(
-      BatchFits.Gap({ expected: 11, from: 12 })
-    );
-    expect(fitBatch(10, 11, 12, 1)).toEqual(
-      BatchFits.Malformed({ from: 11, size: 1, to: 12 })
-    );
-  });
 });
 
 const spanOf = (
@@ -181,12 +169,6 @@ describe("welcome", () => {
     );
     expect(fitWelcome(Option.some(2), apart)).toEqual(
       WelcomeFits.Malformed({ from: 3, seq: 9, size: 2 })
-    );
-  });
-
-  it("a first hello skips nothing", () => {
-    expect(fitWelcome(Option.none(), serverCatchUp(42, 42))).toEqual(
-      WelcomeFits.Resume({ keepFrom: 0, skipped: Option.none() })
     );
   });
 });

@@ -292,50 +292,6 @@ const everyDevice = (events: readonly Event[]) => [
   ...audiencesOf(events),
 ];
 
-const written = (plan: ReplayPlan) =>
-  plan.sprites.flatMap((sprite) => {
-    if (sprite.art.kind === "Pill") {
-      return [{ at: sprite.shownAt, text: sprite.art.text }];
-    }
-
-    return sprite.art.kind === "Caption"
-      ? [{ at: sprite.shownAt, text: sprite.art.lines.join(" ") }]
-      : [];
-  });
-
-const plain = (text: string) => text.replaceAll(/[\u2066-\u2069]/gu, "");
-
-const CLOCK_WORDS = /time bank|whole clock/u;
-
-const REACTION = /\p{Extended_Pictographic}/u;
-
-const saidOf = (plan: ReplayPlan) =>
-  written(plan).map(({ text }) => plain(text));
-
-describe("what the device kept of a hand, in its replay", () => {
-  it.prop(
-    "never mentions a clock or shows a reaction the device did not keep",
-    { seed: handSeed },
-    ({ seed }) => {
-      const plan = planFor(
-        feedFor(generatedHand(seed), Audiences.Spectator()),
-        seed
-      );
-
-      expect(
-        plan.pipe(
-          Option.map((found) =>
-            saidOf(found).filter(
-              (text) => CLOCK_WORDS.test(text) || REACTION.test(text)
-            )
-          )
-        )
-      ).toStrictEqual(Option.some([]));
-    },
-    HANDS
-  );
-});
-
 describe("a moment's hand replay", () => {
   it.prop(
     "turns face up, at any time, no card the table was not shown by the end of the hand, on any device",

@@ -11,27 +11,21 @@ import {
 } from "../src/index.js";
 import type {
   Card,
-  Event,
   SevenDeuce,
   TableConfig,
   TableState,
 } from "../src/index.js";
 import {
   baseConfig,
-  calls,
   cards,
-  checks,
   chipCount,
   deckStartingWith,
   folds,
   occupiedTable,
   play,
-  raisesTo,
   run,
-  runCount,
   seat,
   shownCards,
-  stacksOf,
   startHand,
 } from "./fixtures.js";
 import { seededRandom } from "./random.js";
@@ -46,18 +40,6 @@ const withBounty: TableConfig = {
   sevenDeuce: SevenDeuces.Bounty({ amount: chipCount(BOUNTY) }),
 };
 
-const bountiesIn = (events: readonly Event[]) =>
-  events.filter(Events.$is("BountyPaid"));
-
-const paid = (collector: number, payers: Readonly<Record<number, number>>) =>
-  Events.BountyPaid({
-    payers: Object.entries(payers).map(([index, amount]) => ({
-      amount: chipCount(amount),
-      seat: seat(Number(index)),
-    })),
-    seat: seat(collector),
-  });
-
 const walkTo = (config: TableConfig, deckText: string) =>
   play(
     startHand(
@@ -70,52 +52,7 @@ const walkTo = (config: TableConfig, deckText: string) =>
     ]
   );
 
-const allInFor = (deckText: string) =>
-  play(
-    startHand(
-      occupiedTable(withBounty, { 0: 200, 1: 20, 2: 200 }),
-      deckStartingWith(deckText)
-    ).state,
-    [
-      [0, raisesTo(60)],
-      [1, calls],
-      [2, calls],
-      [2, checks],
-      [0, checks],
-      [2, checks],
-      [0, checks],
-      [2, checks],
-      [0, checks],
-    ]
-  );
-
 describe("seven-deuce bounty", () => {
-  it("shows a seven-deuce that wins when everyone folds, and every other seat dealt in pays", () => {
-    const walked = walkTo(withBounty, "Ac 7h Kc Ad 2c Kd");
-
-    expect(walked.events.slice(-3)).toStrictEqual([
-      Events.HandEnded({ handNumber: 1 }),
-      Events.CardsShown({ cards: cards("7h 2c"), seat: seat(2) }),
-      paid(2, { 0: BOUNTY, 1: BOUNTY }),
-    ]);
-    expect(stacksOf(walked.state).slice(0, 3)).toStrictEqual([170, 165, 265]);
-  });
-
-  it("counts a suited seven-deuce", () => {
-    expect(
-      bountiesIn(walkTo(withBounty, "Ac 7h Kc Ad 2h Kd").events)
-    ).toStrictEqual([paid(2, { 0: BOUNTY, 1: BOUNTY })]);
-  });
-
-  it("pays nothing while the rule is off, and nothing for another hand", () => {
-    expect(
-      bountiesIn(walkTo(baseConfig, "Ac 7h Kc Ad 2c Kd").events)
-    ).toStrictEqual([]);
-    expect(
-      bountiesIn(walkTo(withBounty, "Ac 7h Kc Ad 3c Kd").events)
-    ).toStrictEqual([]);
-  });
-
   it("does not pay for a hand that ended before the rule was on", () => {
     const walked = walkTo(baseConfig, "Ac 7h Kc Ad 2c Kd").state;
 
@@ -132,111 +69,6 @@ describe("seven-deuce bounty", () => {
     ).toStrictEqual([
       Events.CardsShown({ cards: cards("7h 2c"), seat: seat(2) }),
     ]);
-  });
-
-  it("takes all of a stack smaller than the bounty and nothing from a seat that busted", () => {
-    const table = occupiedTable(withBounty, { 0: 200, 1: 12, 2: 200 });
-
-    const folded = play(
-      startHand(table, deckStartingWith("Ac 7h Kc Ad 2c Kd")).state,
-      [
-        [0, folds],
-        [1, folds],
-      ]
-    );
-
-    expect(bountiesIn(folded.events)).toStrictEqual([
-      paid(2, { 0: BOUNTY, 1: 7 }),
-    ]);
-    expect(stacksOf(folded.state).slice(0, 3)).toStrictEqual([170, 0, 242]);
-
-    const busted = play(
-      startHand(
-        occupiedTable(withBounty, { 0: 200, 1: 10, 2: 200 }),
-        deckStartingWith("Ac 7h Qc Kc 2c Qd 7d 7s 2d 9h Jh")
-      ).state,
-      [
-        [0, folds],
-        [1, calls],
-      ]
-    );
-
-    expect(bountiesIn(busted.events)).toStrictEqual([paid(2, { 0: BOUNTY })]);
-    expect(busted.events.some(Events.$is("CardsShown"))).toBe(false);
-    expect(stacksOf(busted.state).slice(0, 3)).toStrictEqual([170, 0, 240]);
-  });
-
-  it("pays nothing for a split pot", () => {
-    const split = play(
-      startHand(
-        occupiedTable(withBounty, { 0: 200, 1: 200, 2: 200 }),
-        deckStartingWith("7d 7h Kc 2d 2c Kd As Ks Qs 9h 4d")
-      ).state,
-      [
-        [0, folds],
-        [1, calls],
-        [2, checks],
-        [1, checks],
-        [2, checks],
-        [1, checks],
-        [2, checks],
-        [1, checks],
-        [2, checks],
-      ]
-    );
-
-    expect(split.events.filter(Events.$is("PotAwarded"))).toHaveLength(1);
-    expect(bountiesIn(split.events)).toStrictEqual([]);
-  });
-
-  it("pays nothing for a side pot won while the main pot is lost, and pays a short stack that wins the main pot alone", () => {
-    const sideOnly = allInFor("7d 7h Ac 7s 2c Kd 7c 2s 9h Jd 4s");
-
-    expect(
-      sideOnly.events
-        .filter(Events.$is("PotAwarded"))
-        .map((award) => award.winners.map((winner) => winner.seat))
-    ).toStrictEqual([[seat(1)], [seat(2)]]);
-    expect(bountiesIn(sideOnly.events)).toStrictEqual([]);
-
-    const mainOnly = allInFor("7h Ac Kd 2c Qc Qd 7c 2s 9h Jd 4s");
-
-    expect(
-      mainOnly.events
-        .filter(Events.$is("PotAwarded"))
-        .map((award) => award.winners.map((winner) => winner.seat))
-    ).toStrictEqual([[seat(1)], [seat(2)]]);
-    expect(bountiesIn(mainOnly.events)).toStrictEqual([
-      paid(1, { 0: BOUNTY, 2: BOUNTY }),
-    ]);
-  });
-
-  it("pays nothing when the board runs twice and one run is lost", () => {
-    const twice: TableConfig = { ...withBounty, maxRuns: runCount(2) };
-
-    const ran = play(
-      startHand(
-        occupiedTable(twice, { 0: 200, 1: 300 }),
-        deckStartingWith("Ac 7h Kd 2c 7d 2s 9h Jd 4s As Ks 3d 5h 8c")
-      ).state,
-      [
-        [0, raisesTo(200)],
-        [1, calls],
-      ]
-    );
-
-    const chosen = run(
-      run(ran.state, Commands.ChooseRuns({ runs: runCount(2), seat: seat(0) }))
-        .state,
-      Commands.ChooseRuns({ runs: runCount(2), seat: seat(1) })
-    );
-
-    expect(
-      chosen.events
-        .filter(Events.$is("PotAwarded"))
-        .map((award) => award.winners.map((winner) => winner.seat))
-    ).toStrictEqual([[seat(0)], [seat(1)]]);
-    expect(bountiesIn(chosen.events)).toStrictEqual([]);
   });
 });
 

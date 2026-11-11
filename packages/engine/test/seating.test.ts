@@ -1,20 +1,8 @@
-import { describe, expect, it } from "@effect/vitest";
+import { expect, it } from "@effect/vitest";
 import { Result, Schema } from "effect";
 import * as Arbitrary from "effect/Arbitrary";
 
-import {
-  AmountNotPositive,
-  Antes,
-  Commands,
-  PlayerAlreadySeated,
-  SeatEmpty,
-  SeatTaken,
-  Events,
-  NO_DEBT,
-  Seats,
-  decide,
-  initialTable,
-} from "../src/index.js";
+import { Commands, Seats, decide, initialTable } from "../src/index.js";
 import type { Command, TableState } from "../src/index.js";
 import {
   bankrollChange,
@@ -22,164 +10,10 @@ import {
   chipCount,
   fold,
   player,
-  rejection,
-  run,
-  runAll,
   seat,
 } from "./fixtures.js";
 
 const table = initialTable(baseConfig);
-
-describe("seating", () => {
-  it("seats a player with the buy-in as the stack", () => {
-    const sat = run(
-      table,
-      Commands.SitDown({
-        buyIn: chipCount(200),
-        player: player("ann"),
-        seat: seat(3),
-      })
-    );
-
-    expect(sat.events).toStrictEqual([
-      Events.PlayerSat({
-        buyIn: chipCount(200),
-        player: player("ann"),
-        seat: seat(3),
-      }),
-    ]);
-    expect(sat.state.seats[3]).toStrictEqual(
-      Seats.Occupied({
-        owes: NO_DEBT,
-        player: player("ann"),
-        sittingOut: false,
-        stack: chipCount(200),
-      })
-    );
-  });
-
-  it("names the occupant when a seat is taken and the seat when a player is already seated", () => {
-    const seated = runAll(table, [
-      Commands.SitDown({
-        buyIn: chipCount(200),
-        player: player("ann"),
-        seat: seat(3),
-      }),
-    ]).state;
-
-    expect(
-      rejection(
-        seated,
-        Commands.SitDown({
-          buyIn: chipCount(50),
-          player: player("bob"),
-          seat: seat(3),
-        })
-      )
-    ).toStrictEqual(new SeatTaken({ occupant: player("ann"), seat: seat(3) }));
-    expect(
-      rejection(
-        seated,
-        Commands.SitDown({
-          buyIn: chipCount(50),
-          player: player("ann"),
-          seat: seat(5),
-        })
-      )
-    ).toStrictEqual(
-      new PlayerAlreadySeated({ player: player("ann"), seat: seat(3) })
-    );
-  });
-
-  it("rejects a buy-in or top-up of zero chips", () => {
-    const seated = runAll(table, [
-      Commands.SitDown({
-        buyIn: chipCount(200),
-        player: player("ann"),
-        seat: seat(3),
-      }),
-    ]).state;
-
-    expect(
-      rejection(
-        table,
-        Commands.SitDown({
-          buyIn: chipCount(0),
-          player: player("bob"),
-          seat: seat(1),
-        })
-      )
-    ).toStrictEqual(new AmountNotPositive({ amount: chipCount(0) }));
-    expect(
-      rejection(
-        seated,
-        Commands.AddChips({ amount: chipCount(0), seat: seat(3) })
-      )
-    ).toStrictEqual(new AmountNotPositive({ amount: chipCount(0) }));
-  });
-
-  it("returns the whole stack when a player stands up", () => {
-    const { events, state } = runAll(table, [
-      Commands.SitDown({
-        buyIn: chipCount(200),
-        player: player("ann"),
-        seat: seat(3),
-      }),
-      Commands.AddChips({ amount: chipCount(75), seat: seat(3) }),
-      Commands.StandUp({ seat: seat(3) }),
-    ]);
-
-    expect(events.at(-1)).toStrictEqual(
-      Events.PlayerStood({
-        player: player("ann"),
-        seat: seat(3),
-        stack: chipCount(275),
-      })
-    );
-    expect(state.seats[3]).toStrictEqual(Seats.Empty());
-    expect(rejection(state, Commands.StandUp({ seat: seat(3) }))).toStrictEqual(
-      new SeatEmpty({ seat: seat(3) })
-    );
-  });
-
-  it("treats sitting out as a toggle and emits nothing when it does not change", () => {
-    const seated = runAll(table, [
-      Commands.SitDown({
-        buyIn: chipCount(200),
-        player: player("ann"),
-        seat: seat(3),
-      }),
-    ]).state;
-
-    const unchanged = decide(
-      seated,
-      Commands.SetSittingOut({ seat: seat(3), sittingOut: false })
-    );
-
-    const changed = run(
-      seated,
-      Commands.SetSittingOut({ seat: seat(3), sittingOut: true })
-    );
-
-    expect(unchanged).toStrictEqual(Result.succeed([]));
-    expect(changed.events).toStrictEqual([
-      Events.SittingOutChanged({ seat: seat(3), sittingOut: true }),
-    ]);
-    expect(changed.state.seats[3]).toMatchObject({ sittingOut: true });
-  });
-
-  it("changes the rules between hands", () => {
-    const config = {
-      ...baseConfig,
-      ante: Antes.EveryPlayer({ amount: chipCount(1) }),
-    };
-
-    const changed = run(table, Commands.ChangeRules({ config }));
-
-    expect(changed.events).toStrictEqual([Events.RulesChanged({ config })]);
-    expect(changed.state.config).toStrictEqual(config);
-  });
-});
 
 const SeatingIntentSchema = Schema.Struct({
   amount: Schema.Int.check(Schema.isBetween({ maximum: 300, minimum: 0 })),

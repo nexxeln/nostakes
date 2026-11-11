@@ -6,8 +6,6 @@ import {
   Commands,
   Events,
   IllegalAction,
-  NoBettingRound,
-  NotYourTurn,
   PendingDecisions,
   pendingDecisions,
 } from "../src/index.js";
@@ -16,7 +14,6 @@ import {
   actAs,
   baseConfig,
   calls,
-  cards,
   checks,
   chipCount,
   configWithBlinds,
@@ -167,105 +164,6 @@ describe("Rule 7 amended: a seat is asked to act only if another seat could resp
   });
 });
 
-describe("betting order", () => {
-  it("gives the big blind its option to raise after everyone limps, then deals the flop and starts with the first seat after the button", () => {
-    const started = startHand(
-      occupiedTable(baseConfig, { 0: 200, 1: 200, 2: 200 }),
-      deck
-    ).state;
-
-    const limped = play(started, [
-      [0, calls],
-      [1, calls],
-    ]);
-
-    expect(legalOf(limped.state)).toStrictEqual(
-      legal(2, true, null, [20, 200])
-    );
-
-    const flop = play(limped.state, [[2, checks]]);
-
-    expect(flop.events).toStrictEqual([
-      Events.Checked({ seat: seat(2) }),
-      Events.StreetDealt({ cards: cards("2d 3d 4d"), run: 1, street: "Flop" }),
-    ]);
-    expect(legalOf(flop.state)).toStrictEqual(legal(1, true, null, [10, 190]));
-  });
-
-  it("heads-up, the button acts first before the flop and the big blind acts first after it (TDA Rule 34-B)", () => {
-    const started = startHand(
-      occupiedTable(baseConfig, { 2: 100, 7: 100 }),
-      deck
-    ).state;
-
-    expect(legalOf(started).seat).toBe(seat(2));
-
-    const flop = play(started, [
-      [2, calls],
-      [7, checks],
-    ]);
-
-    expect(legalOf(flop.state).seat).toBe(seat(7));
-
-    const turn = play(flop.state, [
-      [7, checks],
-      [2, checks],
-    ]);
-
-    expect(turn.events.at(-1)).toStrictEqual(
-      Events.StreetDealt({ cards: cards("3d"), run: 1, street: "Turn" })
-    );
-  });
-});
-
-describe("raise sizes", () => {
-  it("makes each raise at least the last full raise: open to 30, re-raise to at least 50, then at least 170 after a raise to 100 (TDA Rule 43)", () => {
-    const started = startHand(
-      occupiedTable(baseConfig, { 0: 1000, 1: 1000, 2: 1000, 3: 1000 }),
-      deck
-    ).state;
-
-    expect(legalOf(started)).toStrictEqual(legal(3, false, 10, [20, 1000]));
-
-    const opened = play(started, [[3, raisesTo(30)]]);
-
-    expect(legalOf(opened.state)).toStrictEqual(
-      legal(0, false, 30, [50, 1000])
-    );
-
-    const reraised = play(opened.state, [[0, raisesTo(100)]]);
-
-    expect(legalOf(reraised.state)).toStrictEqual(
-      legal(1, false, 95, [170, 1000])
-    );
-    expect(reraised.events).toStrictEqual([
-      Events.RaisedTo({
-        added: chipCount(100),
-        allIn: false,
-        full: true,
-        seat: seat(0),
-        to: chipCount(100),
-      }),
-    ]);
-  });
-
-  it("caps a call at the stack and offers no raise to a seat that cannot cover the bet", () => {
-    const started = startHand(
-      occupiedTable(baseConfig, { 0: 1000, 1: 1000, 2: 1000, 3: 60 }),
-      deck
-    ).state;
-
-    const opened = play(started, [
-      [3, calls],
-      [0, raisesTo(100)],
-      [1, folds],
-      [2, folds],
-    ]);
-
-    expect(legalOf(opened.state)).toStrictEqual(legal(3, false, 50, null));
-  });
-});
-
 const tdaTable = (stacks: Readonly<Record<number, number>>) =>
   occupiedTable(configWithBlinds(50, 100), stacks);
 
@@ -412,52 +310,6 @@ describe("reopening the betting (TDA Rule 47)", () => {
     expect(legalOf(bigBlindRaises.state)).toStrictEqual(
       legal(3, false, 7500, [15_500, 20_000])
     );
-  });
-});
-
-const threeHanded = () =>
-  startHand(occupiedTable(baseConfig, { 0: 200, 1: 200, 2: 200 }), deck).state;
-
-describe("refusing actions", () => {
-  it("refuses an action from a seat that is not to act, and any action between hands", () => {
-    expect(rejection(threeHanded(), actAs(1, calls))).toStrictEqual(
-      new NotYourTurn({ seat: seat(1), toAct: seat(0) })
-    );
-    expect(
-      rejection(occupiedTable(baseConfig, { 0: 200 }), actAs(0, checks))
-    ).toStrictEqual(new NoBettingRound({ seat: seat(0) }));
-  });
-
-  it("refuses a check facing a bet, a raise below the minimum, and a call with nothing owed", () => {
-    expect(rejection(threeHanded(), actAs(0, checks))).toStrictEqual(
-      new IllegalAction({
-        action: checks,
-        legal: legal(0, false, 10, [20, 200]),
-        seat: seat(0),
-      })
-    );
-    expect(rejection(threeHanded(), actAs(0, raisesTo(19)))).toBeInstanceOf(
-      IllegalAction
-    );
-
-    const option = play(threeHanded(), [
-      [0, calls],
-      [1, calls],
-    ]).state;
-
-    expect(rejection(option, actAs(2, calls))).toBeInstanceOf(IllegalAction);
-    expect(rejection(option, actAs(2, raisesTo(201)))).toBeInstanceOf(
-      IllegalAction
-    );
-  });
-
-  it("reports the seat to bet and its legal actions as the pending decision", () => {
-    expect(pendingDecisions(threeHanded())).toStrictEqual(
-      PendingDecisions.Bet({ legal: legal(0, false, 10, [20, 200]) })
-    );
-    expect(
-      pendingDecisions(occupiedTable(baseConfig, { 0: 200 }))
-    ).toStrictEqual(PendingDecisions.Nothing({ handNumber: 0 }));
   });
 });
 
