@@ -13,7 +13,9 @@ const REPO = new URL("../../..", import.meta.url).pathname;
 
 const STACK = "scripts/production.run.ts";
 
-const WEB_BUILD_FILE = `${REPO}apps/web/dist/build.json`;
+const WEB_DIST = `${REPO}apps/web/dist`;
+
+const WEB_BUILD_FILE = `${WEB_DIST}/build.json`;
 
 const WebBuildSchema = Schema.fromJsonString(
   Schema.Struct({ build: Schema.NonEmptyString })
@@ -73,6 +75,18 @@ const webBuild = Effect.gen(function* readWebBuild() {
   Effect.mapError(() =>
     refuse(
       `${WEB_BUILD_FILE} is missing or unreadable. The web build writes it, and the Worker tells open pages which build it serves from it. Run pnpm build, then try again.`
+    )
+  )
+);
+
+const emptiedWebDist = Effect.gen(function* emptyWebDist() {
+  const fs = yield* FileSystem.FileSystem;
+
+  yield* fs.remove(WEB_DIST, { force: true, recursive: true });
+}).pipe(
+  Effect.mapError(() =>
+    refuse(
+      `Could not empty ${WEB_DIST} before the build. A cached build is restored over whatever is there, so a file from an older build, such as a page that was since removed, would be deployed with it. Remove the directory by hand, then try again.`
     )
   )
 );
@@ -146,6 +160,7 @@ const alchemy = (
 
 const plan = (stage: SiteStage, first: boolean, passed: readonly string[]) =>
   Effect.gen(function* planStage() {
+    yield* emptiedWebDist;
     yield* run("build every package and the web app", "pnpm", ["build"], REPO);
     yield* alchemy("plan", stage, first, passed);
     yield* Console.log(
@@ -159,6 +174,7 @@ const deploy = (stage: SiteStage, passed: readonly string[]) =>
   Effect.gen(function* deployStage() {
     const origin = siteOrigin(stage);
 
+    yield* emptiedWebDist;
     yield* run(
       "check, test, and build",
       "pnpm",
