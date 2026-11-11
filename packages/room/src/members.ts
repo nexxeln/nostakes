@@ -1,10 +1,14 @@
 import type { PlayerId } from "@nostakes/engine";
 import { Option, Result } from "effect";
 
+import { inSequence } from "./batch.js";
+import type { Step } from "./batch.js";
+import { RoomCommands } from "./commands.js";
 import type { RoomCommandOf } from "./commands.js";
 import type { Decision } from "./decision.js";
 import { RoomEvents } from "./events.js";
 import type { RoomEvent } from "./events.js";
+import { Actors } from "./identity.js";
 import { leaveSeat } from "./money.js";
 import { sameName } from "./names.js";
 import {
@@ -13,6 +17,7 @@ import {
   AlreadyTheHost,
   HostStillHere,
   NameTaken,
+  NobodyToClear,
   NotAMember,
   RemovedFromRoom,
   RemovingYourself,
@@ -209,5 +214,57 @@ export const removeMember = (
   return Result.map(standIfSeated(state, player, at), (stood) => [
     ...stood,
     RoomEvents.MemberRemoved({ at, player }),
+  ]);
+};
+
+export const clearable = (state: Open, host: PlayerId): readonly PlayerId[] => [
+  ...state.members
+    .filter(
+      ({ player }) => player !== host && Option.isNone(seatOf(state, player))
+    )
+    .map(({ player }) => player),
+  ...state.departed
+    .filter(({ player }) => !state.entries.has(player))
+    .map(({ player }) => player),
+];
+
+const lockedNow = (state: Open, at: Millis): Decision =>
+  Result.succeed(
+    state.settings.locked
+      ? []
+      : [
+          RoomEvents.SettingsChanged({
+            at,
+            settings: { ...state.settings, locked: true },
+          }),
+        ]
+  );
+
+export const clearRoom = (
+  state: Open,
+  host: PlayerId,
+  at: Millis
+): Decision => {
+  const targets = clearable(state, host);
+
+  if (targets.length === 0) {
+    return Result.fail(new NobodyToClear({ members: state.members.length }));
+  }
+
+  return inSequence(state, [
+    ...targets.map(
+      (player): Step =>
+        (current) =>
+          removeMember(
+            current,
+            host,
+            RoomCommands.RemoveMember({
+              at,
+              by: Actors.Member({ player: host }),
+              player,
+            })
+          )
+    ),
+    (current) => lockedNow(current, at),
   ]);
 };

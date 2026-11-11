@@ -24,6 +24,7 @@ import {
   ChipAmountSchema,
   RoomSettingsSchema,
   RoomViews,
+  clearableOf,
   SeenEvents,
   TableRejected,
 } from "@nostakes/room";
@@ -502,6 +503,34 @@ export const plannerFor = (setup: PlannerSetup) => {
       : Option.none();
   };
 
+  const strangerIntent = (open: OpenView): Option.Option<Intent> => {
+    const intruder = [...control.intruders].find(([stranger, atHand]) => {
+      const inRoom = [...open.members, ...open.departed].some(
+        ({ player }) => player === stranger
+      );
+
+      const dealtIn = open.hand.pipe(
+        Option.exists(({ players }) =>
+          players.some(({ player }) => player === stranger)
+        )
+      );
+
+      return inRoom && (dealtIn || handNumberOf(open) >= atHand);
+    });
+
+    if (intruder === undefined) {
+      return Option.none();
+    }
+
+    const onlyThem = clearableOf(open);
+
+    return intent(
+      onlyThem.length === 1 && onlyThem[0] === intruder[0]
+        ? Commands.ClearRoom.make({})
+        : Commands.RemoveMember.make({ player: intruder[0] })
+    );
+  };
+
   const hostIntent = (open: OpenView): Option.Option<Intent> => {
     const [seatRequest] = open.requests.seats;
     const [chipRequest] = open.requests.chips;
@@ -550,22 +579,10 @@ export const plannerFor = (setup: PlannerSetup) => {
       );
     }
 
-    const intruder = [...control.intruders].find(([stranger, atHand]) => {
-      const inRoom = [...open.members, ...open.departed].some(
-        ({ player }) => player === stranger
-      );
+    const removal = strangerIntent(open);
 
-      const dealtIn = open.hand.pipe(
-        Option.exists(({ players }) =>
-          players.some(({ player }) => player === stranger)
-        )
-      );
-
-      return inRoom && (dealtIn || handNumberOf(open) >= atHand);
-    });
-
-    if (intruder !== undefined) {
-      return intent(Commands.RemoveMember.make({ player: intruder[0] }));
+    if (Option.isSome(removal)) {
+      return removal;
     }
 
     const change = control.ruleChanges[control.rulesApplied];

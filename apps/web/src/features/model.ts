@@ -117,6 +117,7 @@ export const RulesSheetSchema = Schema.Struct({
 export type RulesSheet = typeof RulesSheetSchema.Type;
 
 export const ConfirmSchema = Schema.Union([
+  MemberCommandSchema.cases.ClearRoom,
   MemberCommandSchema.cases.CloseRoom,
   MemberCommandSchema.cases.LeaveRoom,
   MemberCommandSchema.cases.RemoveFromSeat,

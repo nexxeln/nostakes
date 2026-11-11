@@ -5,6 +5,7 @@ import { Option } from "effect";
 import {
   AlreadyRemoved,
   Audiences,
+  NobodyToClear,
   NameTaken,
   NotAMember,
   NotTheHost,
@@ -12,6 +13,8 @@ import {
   RemovingYourself,
   RoomCommands,
   RoomEvents,
+  RoomViews,
+  clearableOf,
   removedView,
   viewFor,
 } from "../src/index.js";
@@ -22,6 +25,7 @@ import {
   bob,
   cat,
   chipCount,
+  dan,
   join,
   ms,
   openOf,
@@ -31,10 +35,9 @@ import {
   run,
   runAll,
   seat,
+  settings,
   sit,
 } from "./fixtures.js";
-
-const dan = player("dan");
 
 const remove = (by: typeof ann, who: typeof ann, at = 20) =>
   RoomCommands.RemoveMember({ at: ms(at), by: as(by), player: who });
@@ -161,5 +164,64 @@ describe("what a removed person can read", () => {
       ]
     );
     expect(listedRemoved(closed)).toStrictEqual([bob]);
+  });
+});
+
+const clear = (by: typeof ann) =>
+  RoomCommands.ClearRoom({ at: ms(20), by: as(by) });
+
+describe("clearing the room", () => {
+  const eve = player("eve");
+  const fay = player("fay");
+
+  const crowded = runAll(withSeats, [
+    join(dan),
+    join(eve),
+    join(fay),
+    sit(fay, 5, 150),
+    RoomCommands.LeaveRoom({ at: ms(12), by: as(eve) }),
+    RoomCommands.LeaveRoom({ at: ms(13), by: as(fay) }),
+  ]);
+
+  it("removes everyone in the room without a seat, and everyone who left without buying in, one removal each, and locks the door in the same batch", () => {
+    const cleared = run(crowded, clear(ann));
+
+    expect(cleared.events).toStrictEqual([
+      RoomEvents.MemberRemoved({ at: ms(20), player: cat }),
+      RoomEvents.MemberRemoved({ at: ms(20), player: dan }),
+      RoomEvents.MemberRemoved({ at: ms(20), player: eve }),
+      RoomEvents.SettingsChanged({
+        at: ms(20),
+        settings: { ...settings, locked: true },
+      }),
+    ]);
+    expect(
+      openOf(cleared.state).members.map(({ player: who }) => who)
+    ).toStrictEqual([ann, bob]);
+    expect(
+      openOf(cleared.state).departed.map(({ player: who }) => who)
+    ).toStrictEqual([fay]);
+  });
+
+  it("names on the host's view exactly the people it removes", () => {
+    const view = viewFor(crowded, Audiences.Unseated({ player: ann }), ms(19));
+
+    expect(RoomViews.$is("Open")(view) ? clearableOf(view) : []).toStrictEqual([
+      cat,
+      dan,
+      eve,
+    ]);
+  });
+
+  it("is the host's alone, and refuses when nobody would go", () => {
+    const seatedOnly = runAll(openedBy(ann), [join(bob), sit(bob, 3, 150)]);
+
+    expect([
+      rejection(crowded, clear(bob)),
+      rejection(seatedOnly, clear(ann)),
+    ]).toStrictEqual([
+      new NotTheHost({ host: ann, player: bob }),
+      new NobodyToClear({ members: 2 }),
+    ]);
   });
 });

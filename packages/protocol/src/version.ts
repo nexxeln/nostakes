@@ -1,6 +1,6 @@
 import { Effect, Option, Schema } from "effect";
 
-export const PROTOCOL_VERSION = 18;
+export const PROTOCOL_VERSION = 19;
 
 export const BEFORE_VERSIONS = 0;
 

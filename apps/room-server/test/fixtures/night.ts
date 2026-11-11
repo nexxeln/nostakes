@@ -86,6 +86,7 @@ export interface NightPlan {
   readonly limitMs: number;
   readonly devices: readonly string[];
   readonly intruderAtHand: Option.Option<number>;
+  readonly intruderSits: boolean;
 }
 
 export interface PlayedNight {
@@ -233,6 +234,8 @@ export const RULES: readonly RuleChange[] = [
   },
 ];
 
+export type StrangerPlan = "None" | "Sits" | "Watches";
+
 export interface NightRecipe {
   readonly ending: NightEnding;
   readonly shuffle: Shuffle;
@@ -246,7 +249,7 @@ export interface NightRecipe {
   readonly silences: number;
   readonly clientPercent: number;
   readonly tableRules: TableRules;
-  readonly stranger?: boolean;
+  readonly stranger?: StrangerPlan;
 }
 
 const clientIndices = (random: Random, bots: number, percent: number) => {
@@ -307,6 +310,21 @@ export const slowRulesAllowanceMs = (settings: RoomSettings) => {
       : 0)
   );
 };
+
+const strangerOf = (recipe: NightRecipe, seed: number) => ({
+  intruderAtHand:
+    recipe.ending !== "Halted" &&
+    recipe.hands >= 6 &&
+    (recipe.stranger === undefined
+      ? randomSource(seed * 13 + 5).chance(50)
+      : recipe.stranger !== "None")
+      ? Option.some(Math.max(2, Math.floor(recipe.hands / 3)))
+      : Option.none(),
+  intruderSits:
+    recipe.stranger === undefined
+      ? randomSource(seed * 13 + 7).chance(70)
+      : recipe.stranger === "Sits",
+});
 
 export const planNight = (
   seed: number,
@@ -394,7 +412,7 @@ export const planNight = (
             (_, index) => 2 + index * 3 + random.below(2)
           )
         : [],
-    spectators: random.chance(50) ? 1 : 0,
+    spectators: random.chance(50) && recipe.stranger !== "Watches" ? 1 : 0,
     temper,
     voteRestarts: 1,
   };
@@ -419,12 +437,8 @@ export const planNight = (
       (_, index) => deviceFor(seed, index)
     ),
     ending: recipe.ending,
-    intruderAtHand:
-      recipe.ending !== "Halted" &&
-      recipe.hands >= 6 &&
-      (recipe.stranger ?? randomSource(seed * 13 + 5).chance(50))
-        ? Option.some(Math.max(2, Math.floor(recipe.hands / 3)))
-        : Option.none(),
+
+    ...strangerOf(recipe, seed),
     limitMs: plan.limitMs + recipe.hands * slowRulesAllowanceMs(played),
     settings: played,
   };
@@ -971,7 +985,8 @@ export const playNight = (base: string, opened: OpenedNight) =>
             pass,
             control,
             () => handsNow() + 1,
-            note
+            note,
+            plan.intruderSits
           );
 
           intruder = Option.some({ ...record, knocked });

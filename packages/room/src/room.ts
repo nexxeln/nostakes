@@ -24,6 +24,7 @@ import type { RoomLog } from "./evolve.js";
 import { AvatarSchema, NameSchema, RoomCodeSchema } from "./identity.js";
 import {
   claimHost,
+  clearRoom,
   joinRoom,
   leaveRoom,
   removeMember,
@@ -109,6 +110,8 @@ const decideOpen = (state: Open, command: RoomCommand): Decision =>
       byMember(state, choose, (player) => play(state, player, choose)),
     ClaimHost: (claim) =>
       byMember(state, claim, (player) => claimHost(state, player, claim.at)),
+    ClearRoom: (clear) =>
+      byHost(state, clear, (host) => clearRoom(state, host, clear.at)),
     CloseRoom: (close) =>
       byMember(state, close, (player) =>
         player === state.host || isStalled(state)

@@ -144,7 +144,8 @@ export const intrude = (
   pass: RoomPass,
   control: NightControl,
   removeAtHand: () => number,
-  note: (line: string) => void
+  note: (line: string) => void,
+  sits: boolean
 ) =>
   Effect.gen(function* intruderNight() {
     const sockets: PokerSocket[] = [];
@@ -161,7 +162,9 @@ export const intrude = (
 
     const first = yield* greet();
 
-    for (const seat of Option.toArray(freeSeat(first.socket))) {
+    for (const seat of Option.toArray(
+      freeSeat(first.socket).pipe(Option.filter(() => sits))
+    )) {
       yield* first.socket.send(
         pokerCodec.client.cases.Command.make({
           command: Commands.RequestSeat.make(seat),

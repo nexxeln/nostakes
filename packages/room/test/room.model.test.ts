@@ -7,7 +7,9 @@ import {
   RoomCommands,
   RoomEvents,
   RoomStates,
+  RoomViews,
   audienceOf,
+  clearableOf,
   decide,
   evolveWithoutRecap,
   invariants,
@@ -90,6 +92,71 @@ const removalProblems = (step: Step): readonly string[] => {
     : [
         `removing ${player} caused ${step.events.map(({ _tag }) => _tag).join(",")}, not ${expected.map(({ _tag }) => _tag).join(",")}`,
       ];
+};
+
+const clearProblems = (step: Step): readonly string[] => {
+  const { after, before, command } = step;
+
+  if (
+    !RoomCommands.$is("ClearRoom")(command) ||
+    Result.isFailure(step.decision) ||
+    !isOpen(before)
+  ) {
+    return [];
+  }
+
+  const seatedNow = (player: PlayerId) =>
+    before.table.seats.some(
+      (seat) => "player" in seat && seat.player === player
+    );
+
+  const expected = [
+    ...before.members
+      .filter(({ player }) => player !== before.host && !seatedNow(player))
+      .map(({ player }) => player),
+    ...before.departed
+      .filter(({ player }) => !before.entries.has(player))
+      .map(({ player }) => player),
+  ];
+
+  const removed = step.events.flatMap((event) =>
+    RoomEvents.$is("MemberRemoved")(event) ? [event.player] : []
+  );
+
+  const aboutThem = step.events.filter(
+    (event) =>
+      "player" in event &&
+      expected.includes(event.player) &&
+      !RoomEvents.$is("MemberRemoved")(event)
+  );
+
+  const view = viewFor(before, audienceOf(before, before.host), command.at);
+
+  const shown = RoomViews.$is("Open")(view) ? clearableOf(view) : [];
+
+  const linesMoved = expected.filter(
+    (player) =>
+      JSON.stringify(before.entries.get(player) ?? null) !==
+      JSON.stringify(after.entries.get(player) ?? null)
+  );
+
+  return [
+    ...(JSON.stringify(removed) === JSON.stringify(expected)
+      ? []
+      : [`clearing removed ${removed.join(",")}, not ${expected.join(",")}`]),
+    ...(JSON.stringify(shown) === JSON.stringify(expected)
+      ? []
+      : [
+          `the host's view named ${shown.join(",")} to clear, not ${expected.join(",")}`,
+        ]),
+    ...aboutThem.map(
+      (event) => `clearing caused ${event._tag} for someone it removed`
+    ),
+    ...linesMoved.map((player) => `clearing moved ${player}'s ledger line`),
+    ...(isOpen(after) && !after.settings.locked
+      ? ["clearing left the room unlocked"]
+      : []),
+  ];
 };
 
 const lineProblems = (
@@ -417,7 +484,11 @@ describe("generated rooms", () => {
       const broken: string[] = [];
 
       for (const step of playSession(source).steps) {
-        broken.push(...removalProblems(step), ...lineProblems(step, lines));
+        broken.push(
+          ...removalProblems(step),
+          ...clearProblems(step),
+          ...lineProblems(step, lines)
+        );
       }
 
       expect(broken).toStrictEqual([]);

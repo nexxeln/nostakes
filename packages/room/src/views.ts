@@ -727,3 +727,24 @@ export const removedView = (
     transfers: done.transfers,
   };
 };
+
+export const clearableOf = (
+  view: Extract<RoomView, { readonly _tag: "Open" }>
+): readonly PlayerId[] => {
+  const seated = new Set(
+    view.seats.flatMap(({ occupant }) =>
+      Option.toArray(occupant).map(({ player }) => player)
+    )
+  );
+
+  const counted = new Set(view.balances.map(({ player }) => player));
+
+  return [
+    ...view.members
+      .filter(({ player }) => player !== view.host && !seated.has(player))
+      .map(({ player }) => player),
+    ...view.departed
+      .filter(({ player }) => !counted.has(player))
+      .map(({ player }) => player),
+  ];
+};

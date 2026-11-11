@@ -1,6 +1,6 @@
 import { avatarFor } from "@nostakes/avatar";
 import type { PlayerId } from "@nostakes/protocol";
-import { MemberCommandSchema } from "@nostakes/room";
+import { MemberCommandSchema, clearableOf } from "@nostakes/room";
 import { Match, Option } from "effect";
 import type { Html, HtmlBuilder } from "foldkit/html";
 
@@ -11,6 +11,7 @@ import { Messages } from "./message.js";
 import type { Message } from "./message.js";
 import { pageTheme } from "./model.js";
 import type { Confirm, InRoom, Model, Theme } from "./model.js";
+import { isolated } from "./names.js";
 import { entryOf, entryWords } from "./posting.js";
 import { isLive, isYou, nameOf } from "./room.js";
 import type { OpenView } from "./room.js";
@@ -436,6 +437,55 @@ const doorSwitch = (room: InRoom, view: OpenView, h: H): Html =>
       )
     : h.empty;
 
+export const CLEAR_FROM = 3;
+
+const NAMED_IN_CLEARING = 3;
+
+const clearButton = (view: OpenView, h: H): Html =>
+  isYou(view, view.host) && clearableOf(view).length >= CLEAR_FROM
+    ? h.div(
+        [h.Class("menu-line clear-line")],
+        [
+          h.button(
+            [
+              h.Type("button"),
+              h.Class("text-button"),
+              h.OnClick(
+                Messages.ClickedConfirm({
+                  confirm: Commands.ClearRoom.make({}),
+                })
+              ),
+            ],
+            ["Remove everyone who isn't seated"]
+          ),
+        ]
+      )
+    : h.empty;
+
+export const clearingText = (view: OpenView) => {
+  const going = clearableOf(view);
+
+  const named = going
+    .slice(0, NAMED_IN_CLEARING)
+    .map((player) => isolated(nameOf(view, player)));
+
+  const more = going.length - named.length;
+
+  const who =
+    more > 0
+      ? `${named.join(", ")} and ${more} more`
+      : `${named.slice(0, -1).join(", ")}${named.length > 1 ? " and " : ""}${named.at(-1) ?? ""}`;
+
+  const door = view.settings.locked
+    ? "The room stays locked."
+    : "The room locks too, so unlock it to let a friend back in.";
+
+  return {
+    action: `Remove ${going.length}`,
+    body: `${who} go, and their passes stop working. Seated players stay. ${door}`,
+  };
+};
+
 const confirmLink = (label: string, confirm: Confirm, h: H): Html =>
   h.button(
     [
@@ -554,6 +604,7 @@ export const menuSheet = (
           [h.Class("menu-column")],
           [
             peopleList(view, presence, pageTheme(model), h),
+            clearButton(view, h),
             doorSwitch(room, view, h),
             menuFoot(model, view, h),
           ]
@@ -673,6 +724,11 @@ const ENDINGS: Readonly<Record<OpenView["closing"], string>> = {
 const confirmText = (view: OpenView, confirm: Confirm) =>
   Match.value(confirm).pipe(
     Match.tagsExhaustive({
+      ClearRoom: () => ({
+        ...clearingText(view),
+        pending: "Clearing the room",
+        title: "Clear the room?",
+      }),
       CloseRoom: () => ({
         action: "End the night",
         body: ENDINGS[view.closing],

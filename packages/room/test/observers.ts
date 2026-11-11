@@ -209,6 +209,7 @@ const HOSTING = new Set<RoomCommand["_tag"]>([
   "ApproveChips",
   "ApproveSeat",
   "ChangeSettings",
+  "ClearRoom",
   "CloseRoom",
   "DealNextHand",
   "DenyChips",

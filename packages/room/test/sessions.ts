@@ -584,6 +584,13 @@ const membership = (
     });
   }
 
+  if (roll === 9 && random.chance(1, 3)) {
+    return RoomCommands.ClearRoom({
+      at: millis(at),
+      by: hostOrNot(state, random),
+    });
+  }
+
   if (roll === 9 && random.chance(1, 2)) {
     const people = [...state.members, ...state.departed].map(
       ({ player }) => player
@@ -704,7 +711,9 @@ const hosting = (
   const roll = random.below(10);
 
   if (roll < 2) {
-    return RoomCommands.StartGame({ at: when, by });
+    return random.chance(1, 6)
+      ? RoomCommands.ClearRoom({ at: when, by })
+      : RoomCommands.StartGame({ at: when, by });
   }
 
   if (roll < 3) {

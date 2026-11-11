@@ -36,7 +36,7 @@ import type {
 } from "../src/index.js";
 import { serverAnswer } from "./beacon.js";
 import { isOpen } from "./observers.js";
-import { POOL, playSession, session } from "./sessions.js";
+import { playSession, session } from "./sessions.js";
 import type { Played } from "./sessions.js";
 
 const ENDING_LIMIT = 400;
@@ -49,7 +49,7 @@ const server = Actors.Server();
 
 const member = (player: PlayerId) => Actors.Member({ player });
 
-const closer = POOL.at(-1) ?? PlayerIdSchema.make("closer");
+const closer = PlayerIdSchema.make("closer");
 
 type Decide = (state: RoomState, command: RoomCommand) => Decision;
 
@@ -100,15 +100,22 @@ const answer = (deadline: Deadline, now: number, seed: number): RoomCommand => {
   });
 };
 
+const returning = (state: Open, without?: PlayerId) =>
+  state.settings.locked
+    ? state.departed.find(({ player }) => player !== without)
+    : undefined;
+
 const nextStep = (state: Open, now: number, seed: number): RoomCommand => {
   const at = millis(now);
 
   if (state.members.length === 0) {
+    const back = returning(state);
+
     return RoomCommands.Join({
       at,
       avatar: "",
-      by: member(closer),
-      name: "late",
+      by: member(back?.player ?? closer),
+      name: back?.name ?? "late",
     });
   }
 
@@ -196,7 +203,12 @@ const hostVanishes = (night: Night): Option.Option<TakenOver> => {
 
   const at = state.now;
   const others = state.members.filter(({ player }) => player !== state.host);
-  const standIn = others[0]?.player ?? closer;
+  const back = returning(state, state.host);
+  const standIn = others[0]?.player ?? back?.player ?? closer;
+
+  if (others.length === 0 && state.settings.locked && back === undefined) {
+    return Option.none();
+  }
 
   const joined =
     others.length === 0
@@ -206,7 +218,7 @@ const hostVanishes = (night: Night): Option.Option<TakenOver> => {
             at,
             avatar: "",
             by: member(standIn),
-            name: "stand-in",
+            name: back?.name ?? "stand-in",
           })
         )
       : night;

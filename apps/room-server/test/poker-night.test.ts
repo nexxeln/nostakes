@@ -35,6 +35,7 @@ import {
   planNight,
   playNight,
 } from "./fixtures/night.js";
+import type { StrangerPlan } from "./fixtures/night.js";
 import {
   createPokerRoom,
   joinPokerRoom,
@@ -74,7 +75,7 @@ const CHECKED_HANDS_PER_ROOM = 2;
 const CHECKED_HANDS = 2 * CHECKED_HANDS_PER_ROOM;
 
 interface SmallRoom {
-  readonly stranger?: boolean;
+  readonly stranger?: StrangerPlan;
   readonly ending: NightEnding;
   readonly players: number;
   readonly shuffle: Shuffle;
@@ -103,7 +104,7 @@ const ROOMS: readonly SmallRoom[] = [
     players: 5,
     restarts: 1,
     shuffle: "Plain",
-    stranger: true,
+    stranger: "Sits",
   },
   { ending: "AsItComes", hands: 9, players: 2, restarts: 1, shuffle: "Plain" },
   {
@@ -112,7 +113,7 @@ const ROOMS: readonly SmallRoom[] = [
     players: 4,
     restarts: 1,
     shuffle: "Plain",
-    stranger: true,
+    stranger: "Watches",
   },
   { ending: "Halted", hands: 3, players: 3, restarts: 0, shuffle: "Plain" },
 ];
@@ -164,7 +165,7 @@ test(
             rotation: index * 2,
             shuffle,
             silences: 1,
-            stranger: stranger ?? false,
+            stranger: stranger ?? "None",
             tableRules: {},
             turnSeconds: 1,
           },
@@ -212,6 +213,25 @@ test(
     );
     yield* Effect.logInfo(
       `small night fair shuffle: ${FAIRNESS_COUNT_NAMES.map((name) => `${name} ${fairness[name]}`).join(", ")}`
+    );
+    yield* Effect.logInfo(
+      `small night strangers: removed ${
+        played.filter((night) =>
+          Option.exists(night.intruder, ({ removedVia }) =>
+            Option.isSome(removedVia)
+          )
+        ).length
+      }, by clearing the room ${
+        played.filter((night) =>
+          night.events.some(
+            (event, index) =>
+              event.includes('"_tag":"MemberRemoved"') &&
+              (night.events[index + 1] ?? "").includes(
+                '"_tag":"SettingsChanged"'
+              )
+          )
+        ).length
+      }`
     );
 
     const total = (

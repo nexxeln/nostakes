@@ -57,7 +57,7 @@ const FOLDING_AUDIENCES = 4;
 
 const ROOM_NIGHTS = { arbitrary: { runs: 24 }, timeout: 120_000 };
 
-const PAINFUL_NIGHT_SEED = 100;
+const PAINFUL_NIGHT_SEED = 142;
 
 const PAINFUL_NIGHT_INTENTS = 400;
 

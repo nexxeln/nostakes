@@ -23,6 +23,7 @@ import { NameTaken } from "./rejections/name-taken.js";
 import { NoChipRequest } from "./rejections/no-chip-request.js";
 import { NoSeatRequest } from "./rejections/no-seat-request.js";
 import { NoSuchDeadline } from "./rejections/no-such-deadline.js";
+import { NobodyToClear } from "./rejections/nobody-to-clear.js";
 import { NotAMember } from "./rejections/not-a-member.js";
 import { NotSeated } from "./rejections/not-seated.js";
 import { NotTheHost } from "./rejections/not-the-host.js";
@@ -96,6 +97,7 @@ export const RoomRejectionSchema = Schema.Union([
   RemovingYourself,
   RoomLocked,
   TooManyPeople,
+  NobodyToClear,
 ]);
 
 export type RoomRejection = typeof RoomRejectionSchema.Type;
@@ -181,6 +183,8 @@ export { SealedSeatsMoved } from "./rejections/sealed-seats-moved.js";
 export { QueueNotDue } from "./rejections/queue-not-due.js";
 
 export { QuietNotDue } from "./rejections/quiet-not-due.js";
+
+export { NobodyToClear } from "./rejections/nobody-to-clear.js";
 
 export { TooManyPeople } from "./rejections/too-many-people.js";
 
