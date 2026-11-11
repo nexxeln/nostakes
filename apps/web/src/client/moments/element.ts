@@ -3,6 +3,7 @@ import { Effect, Option } from "effect";
 import type { Deck, Theme } from "../../features/model.js";
 import { MOMENT_TAG } from "../../features/moments/element.js";
 import type { MomentHand } from "../../features/moments/element.js";
+import { NewestHand } from "../../features/moments/newest-hand.js";
 import type { MomentPicture } from "../../features/moments/picture.js";
 import { pictureSvg } from "../../features/moments/picture.js";
 import { shownMomentOf } from "../../features/moments/scene.js";
@@ -107,8 +108,9 @@ class NostakesMoment extends HTMLElement {
   #sceneHand = -1;
   readonly #motion = globalThis.matchMedia("(prefers-reduced-motion: reduce)");
   #scene: MomentScene | null = null;
-  #hand: MomentHand | null = null;
-  #handKey = "";
+  readonly #newest = new NewestHand<MomentHand>(handKey, idle, (hand) => {
+    this.#consider(hand);
+  });
   #shownId = "";
   #sound = false;
   #dealing = false;
@@ -180,32 +182,19 @@ class NostakesMoment extends HTMLElement {
   }
 
   get hand(): MomentHand | null {
-    return this.#hand;
+    return this.#newest.hand;
   }
 
   set hand(next: MomentHand | null) {
-    this.#hand = next;
-
     if (next === null || next.lastHand.handNumber !== this.#sceneHand) {
       this.#clipLive = false;
       this.#clipper?.abandon();
     }
 
-    if (next === null || handKey(next) === this.#handKey) {
-      return;
-    }
-
-    this.#handKey = handKey(next);
-    idle(() => {
-      this.#consider(next);
-    });
+    this.#newest.set(next);
   }
 
   #consider(hand: MomentHand) {
-    if (this.#hand !== hand) {
-      return;
-    }
-
     const found = shownMomentOf(hand);
 
     if (Option.isSome(found)) {
