@@ -51,9 +51,36 @@ jobs:
         uses: astral-sh/setup-uv@v10.3.3
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+      - name: Read the playwright-core version
+        if: matrix.target == 'web'
+        id: playwright
+        run: echo "version=$(node -p "require('./apps/web/package.json').devDependencies['playwright-core']")" >> "$GITHUB_OUTPUT"
+      - name: Restore the downloaded browser
+        if: matrix.target == 'web'
+        id: browser-cache
+        uses: actions/cache/restore@v6.1.0
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ runner.arch }}-${{ steps.playwright.outputs.version }}-chromium-headless-shell
       - name: Install a headless Chromium
         if: matrix.target == 'web'
-        run: pnpm --filter @nostakes/web exec playwright-core install --with-deps --only-shell chromium
+        timeout-minutes: 25
+        run: |
+          printf 'Acquire::Retries "3";\nAcquire::http::Timeout "30";\nAcquire::https::Timeout "30";\n' | sudo tee /etc/apt/apt.conf.d/80-retries > /dev/null
+          for attempt in 1 2 3; do
+            if pnpm --filter @nostakes/web exec playwright-core install --with-deps --only-shell chromium; then
+              exit 0
+            fi
+            echo "::warning::Installing the headless Chromium failed (attempt $attempt of 3)"
+            sleep $((attempt * 30))
+          done
+          exit 1
+      - name: Keep the downloaded browser
+        if: matrix.target == 'web' && steps.browser-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6.1.0
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ steps.browser-cache.outputs.cache-primary-key }}
       - name: Verify ${{ matrix.target }}
         run: ${{ matrix.run }}
       - name: Upload saved logs from a failed soak
