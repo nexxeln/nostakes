@@ -551,6 +551,19 @@ const recapSection = (model: Model, view: ClosedView, h: H): Html => {
   );
 };
 
+const transferItems = (view: ClosedView, h: H): readonly Html[] => {
+  const name = (player: PlayerId) => h.bdi([], [nameOf(view, player)]);
+
+  return view.settlement.transfers.length === 0
+    ? [h.li([], ["Everyone is square."])]
+    : view.settlement.transfers.map(({ amount, from, to }) =>
+        h.li(
+          [h.Key(`pay-${from}-${to}`)],
+          [name(from), ` pays ${amount} to `, name(to)]
+        )
+      );
+};
+
 const closedRoomView = (
   model: Model,
   room: InRoom,
@@ -582,17 +595,7 @@ const closedRoomView = (
           )
       ),
       h.h3([h.Class("sheet-heading")], ["Settle up"]),
-      h.ul(
-        [h.Class("transfers")],
-        view.settlement.transfers.length === 0
-          ? [h.li([], ["Everyone is square."])]
-          : view.settlement.transfers.map(({ amount, from, to }) =>
-              h.li(
-                [h.Key(`pay-${from}-${to}`)],
-                [`${name(from)} pays ${name(to)} ${amount}`]
-              )
-            )
-      ),
+      h.ul([h.Class("transfers")], transferItems(view, h)),
       settleUpKeep(model, view, h),
       h.button(
         [
@@ -674,10 +677,8 @@ const refusedView = (room: InRoom, h: H): Html =>
         ]
       );
 
-const haltedStandingsView = (room: InRoom, view: ClosedView, h: H): Html => {
-  const name = (player: PlayerId) => nameOf(view, player);
-
-  return h.section(
+const haltedStandingsView = (room: InRoom, view: ClosedView, h: H): Html =>
+  h.section(
     [h.Class("card-panel settlement")],
     [
       h.h2([h.Class("sheet-title")], ["The table stopped"]),
@@ -699,17 +700,7 @@ const haltedStandingsView = (room: InRoom, view: ClosedView, h: H): Html => {
         )
       ),
       h.h3([h.Class("sheet-heading")], ["Settle up"]),
-      h.ul(
-        [h.Class("transfers")],
-        view.settlement.transfers.length === 0
-          ? [h.li([], ["Everyone is square."])]
-          : view.settlement.transfers.map(({ amount, from, to }) =>
-              h.li(
-                [h.Key(`pay-${from}-${to}`)],
-                [`${name(from)} pays ${name(to)} ${amount}`]
-              )
-            )
-      ),
+      h.ul([h.Class("transfers")], transferItems(view, h)),
       h.button(
         [
           h.Type("button"),
@@ -721,7 +712,6 @@ const haltedStandingsView = (room: InRoom, view: ClosedView, h: H): Html => {
       homeButton("Back home", h),
     ]
   );
-};
 
 const haltedView = (room: InRoom, standing: HaltedStanding, h: H): Html =>
   HaltedStandings.match(standing, {

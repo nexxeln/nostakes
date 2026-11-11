@@ -27,5 +27,9 @@ const FIRST_STRONG_ISOLATE = "\u2068";
 
 const POP_DIRECTIONAL_ISOLATE = "\u2069";
 
+const OUTSIDE_A_NAME = /[^\p{L}\p{M}\p{N}\p{P}\p{S}\p{Zs}\p{Join_Control}]/gu;
+
+const IN_ITS_PLACE = "\uFFFD";
+
 export const isolated = (name: string) =>
-  `${FIRST_STRONG_ISOLATE}${name}${POP_DIRECTIONAL_ISOLATE}`;
+  `${FIRST_STRONG_ISOLATE}${name.replaceAll(OUTSIDE_A_NAME, IN_ITS_PLACE)}${POP_DIRECTIONAL_ISOLATE}`;
