@@ -44,6 +44,7 @@ textarea {
 .text-input,
 .room-row,
 .request,
+.door-line,
 .sheet,
 .status-line > * {
   --sheet: var(--shadow-sheet-1);
@@ -1037,12 +1038,51 @@ html:has(.room) {
   flex: 1;
 }
 
-.knock {
-  padding-left: var(--space-2);
+.door-line {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  height: var(--size-door-line);
+  margin-top: var(--space-2);
+  padding: 0 var(--space-2);
+  border-radius: var(--radius-3);
+  background: var(--color-raised);
+  color: var(--color-raised-ink);
 }
 
-.request-face {
+.door-line-face {
   flex: none;
+}
+
+.door-line-text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  line-height: 1.2;
+}
+
+.door-line-name,
+.door-line-note {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.door-line-name {
+  font-weight: var(--weight-strong);
+}
+
+.door-line-note {
+  color: var(--color-ink-muted);
+  font-size: var(--text-1);
+}
+
+.room-body:has(> .door-line) .table-host {
+  height: calc(
+    100dvh - var(--size-bar) - var(--inset-top) - var(--inset-bottom) -
+      var(--size-door-line) - var(--space-2) - var(--space-4)
+  );
 }
 
 .door {

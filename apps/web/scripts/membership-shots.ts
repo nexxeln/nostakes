@@ -174,8 +174,74 @@ const program = Effect.gen(function* takeMembershipShots() {
   yield* seen(guest, "nothing is owed");
   yield* shoot(guest, dir, "removed");
 
+  yield* press(host, "Menu");
+  yield* attempt("unlock the room", () =>
+    host.getByRole("switch", { name: "Lock the room" }).click()
+  );
+  yield* attempt("see the room unlocked", () =>
+    host
+      .locator(
+        '[role="switch"][aria-label="Lock the room"][aria-checked="false"]'
+      )
+      .waitFor({ timeout: 15_000 })
+  );
+  yield* attempt("open the house rules", () =>
+    host.locator(".rules-card").first().click()
+  );
+  yield* attempt("open the table rules", () =>
+    host.locator(".rule-group-row", { hasText: "Table" }).first().click()
+  );
+  yield* attempt("approve joins", () =>
+    host.getByRole("switch", { name: "Approve joins" }).click()
+  );
+  yield* seen(host, "Knocks wait");
+  yield* shoot(host, dir, "rules-approve-joins");
+  yield* press(host, "Save");
+
+  const knockAs = (name: string) =>
+    Effect.gen(function* knock() {
+      const page = yield* phone(opened);
+
+      yield* attempt(`${name} opens the room link`, () =>
+        page.goto(`${host.url()}?mute=1`, { waitUntil: "networkidle" })
+      );
+      yield* named(page, name);
+      yield* press(page, "Join the room");
+      yield* seen(page, "Waiting for the host to let you in");
+
+      return page;
+    });
+
+  const flo = yield* knockAs("Flo");
+  const gus = yield* knockAs("Gus");
+
+  yield* shoot(flo, dir, "door-waiting");
+  yield* seen(host, "at the door · +1");
+  yield* shoot(host, dir, "host-knock-line");
+  yield* attempt("let Flo in", () =>
+    host.locator(".door-line").getByRole("button", { name: "Let in" }).click()
+  );
+  yield* attempt("Flo is in the room", () =>
+    flo.getByRole("button", { exact: true, name: "Menu" }).waitFor()
+  );
+  yield* shoot(flo, dir, "let-in");
+  yield* attempt("Gus is next at the door", () =>
+    host.locator(".door-line", { hasText: "Gus" }).waitFor({ timeout: 15_000 })
+  );
+  yield* attempt("turn Gus away", () =>
+    host
+      .locator(".door-line")
+      .getByRole("button", { name: "Turn away" })
+      .click()
+  );
+  yield* seen(gus, "The host didn't let you in.");
+  yield* shoot(gus, dir, "door-turned-away");
+  yield* press(gus, "Back home");
+  yield* seen(gus, "Not let in");
+  yield* shoot(gus, dir, "home-not-let-in");
+
   yield* Effect.forEach(
-    [host, guest, knocker, ...watchers],
+    [host, guest, knocker, ...watchers, flo, gus],
     (page) => attempt("close a phone", () => page.context().close()),
     { discard: true }
   );

@@ -372,32 +372,43 @@ const requestPill = (
     [h.span([h.Class("request-text")], [text]), ...buttons]
   );
 
-const KNOCK_FACE_PX = 36;
+const KNOCK_FACE_PX = 32;
 
-const knockLine = (
-  model: Model,
-  room: InRoom,
-  knock: OpenView["knocking"][number],
-  h: H
-): Html =>
-  h.div(
-    [h.Key(`knock-${knock.player}`), h.Class("request knock")],
+const doorLine = (model: Model, room: InRoom, view: OpenView, h: H): Html => {
+  const [first, ...rest] = view.knocking;
+
+  if (first === undefined || !isYou(view, view.host)) {
+    return h.empty;
+  }
+
+  return h.div(
+    [h.Class("door-line")],
     [
       face(
-        avatarFor(knock.avatar),
+        avatarFor(first.avatar),
         "Resting",
         { size: KNOCK_FACE_PX, theme: pageTheme(model) },
-        "face-frame request-face",
+        "face-frame door-line-face",
         h
       ),
       h.span(
-        [h.Class("request-text")],
-        [h.bdi([], [knock.name]), " is at the door"]
+        [h.Class("door-line-text")],
+        [
+          h.bdi([h.Class("door-line-name")], [first.name]),
+          h.span(
+            [h.Class("door-line-note")],
+            [
+              rest.length === 0
+                ? "at the door"
+                : `at the door · +${rest.length}`,
+            ]
+          ),
+        ]
       ),
       commandButton(
         h,
         room,
-        Commands.LetIn.make({ player: knock.player }),
+        Commands.LetIn.make({ player: first.player }),
         "Let in",
         "Letting them in",
         "button primary small"
@@ -405,25 +416,19 @@ const knockLine = (
       commandButton(
         h,
         room,
-        Commands.TurnAway.make({ player: knock.player }),
+        Commands.TurnAway.make({ player: first.player }),
         "Turn away",
         "Turning them away",
         "button quiet small"
       ),
     ]
   );
+};
 
-const hostRequests = (
-  model: Model,
-  room: InRoom,
-  view: OpenView,
-  h: H
-): Html => {
+const hostRequests = (room: InRoom, view: OpenView, h: H): Html => {
   if (!isYou(view, view.host)) {
     return h.empty;
   }
-
-  const knocks = view.knocking.map((knock) => knockLine(model, room, knock, h));
 
   const seats = view.requests.seats.map((request) =>
     requestPill(
@@ -477,9 +482,9 @@ const hostRequests = (
     )
   );
 
-  return knocks.length + seats.length + chips.length === 0
+  return seats.length + chips.length === 0
     ? h.empty
-    : h.div([h.Class("requests")], [...knocks, ...seats, ...chips]);
+    : h.div([h.Class("requests")], [...seats, ...chips]);
 };
 
 const waitingCall = (room: InRoom, view: OpenView, h: H): Html => {
@@ -567,8 +572,9 @@ const openRoomView = (
   h.div(
     [h.Class("room-body")],
     [
+      doorLine(model, room, view, h),
       tableView(model, room, view, presence, h),
-      hostRequests(model, room, view, h),
+      hostRequests(room, view, h),
       activeSheet(model, room, view, presence, h),
     ]
   );
