@@ -24,26 +24,39 @@ const CLIP = Uint8Array.from({ length: 1000 }, (_, index) => index % 251);
 const pageText = (title: string) =>
   `<title>${title}</title><meta property="og:url" content="https://nostakes.club/" /><meta property="og:image" content="https://nostakes.club/preview/card.png" />`;
 
+const POLICY_HEADERS = {
+  "content-security-policy": "default-src 'self'; frame-ancestors 'none'",
+  "permissions-policy": "camera=()",
+  "referrer-policy": "same-origin",
+  "x-content-type-options": "nosniff",
+};
+
 const ASSET_FILES = new Map<string, Response>([
   [
     "/index.html",
     new Response(pageText("home"), {
       headers: {
+        ...POLICY_HEADERS,
         "cache-control": "public, max-age=0, must-revalidate",
         "content-type": "text/html",
+        etag: '"home"',
       },
     }),
   ],
   [
     "/invite.html",
     new Response(pageText("invite"), {
-      headers: { "content-type": "text/html" },
+      headers: { ...POLICY_HEADERS, "content-type": "text/html" },
     }),
   ],
   [
     "/preview/clip.mp4",
     new Response(CLIP, {
-      headers: { "content-type": "video/mp4", etag: '"clip"' },
+      headers: {
+        ...POLICY_HEADERS,
+        "content-type": "video/mp4",
+        etag: '"clip"',
+      },
     }),
   ],
 ]);
@@ -154,6 +167,30 @@ describe("the site's pages", () => {
       })
   );
 
+  it.effect(
+    "keep every header the asset layer set, the security policy among them, and drop the rewritten page's old validator",
+    () =>
+      Effect.gen(function* keepHeaders() {
+        const home = yield* answer("/");
+        const invite = yield* answer("/r/QT8VND");
+
+        const policyOf = (headers: Readonly<Record<string, string>>) =>
+          Object.fromEntries(
+            Object.keys(POLICY_HEADERS).map((name) => [name, headers[name]])
+          );
+
+        expect({
+          home: policyOf(home.headers),
+          homeValidator: home.headers.etag,
+          invite: policyOf(invite.headers),
+        }).toStrictEqual({
+          home: POLICY_HEADERS,
+          homeValidator: undefined,
+          invite: POLICY_HEADERS,
+        });
+      })
+  );
+
   it.effect("answer a crawler's HEAD with the page's type and length", () =>
     Effect.gen(function* headPage() {
       const head = yield* answer("/r/QT8VND", { method: "HEAD" });
@@ -184,6 +221,7 @@ describe("the preview clip", () => {
       }).toEqual({
         bytes: CLIP.length,
         headers: {
+          ...POLICY_HEADERS,
           "accept-ranges": "bytes",
           "cache-control": "public, max-age=86400",
           "content-length": String(CLIP.length),

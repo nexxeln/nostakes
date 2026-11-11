@@ -273,6 +273,54 @@ const ask = (client: SmokeClient, step: string, command: MemberCommand) =>
     )
   );
 
+const SECURITY_HEADERS = [
+  "content-security-policy",
+  "permissions-policy",
+  "referrer-policy",
+  "x-content-type-options",
+];
+
+const POLICED_PATHS = ["/", "/r/QT8VND", "/preview/card.png"];
+
+const headersOf = (step: string, url: URL) =>
+  HttpClient.get(url).pipe(
+    Effect.map((response) => response.headers),
+    Effect.mapError((cause) => failed(step, String(cause)))
+  );
+
+const samePolicy = (base: URL) =>
+  Effect.gen(function* compareHeaders() {
+    const reading = yield* headersOf(
+      "load the privacy page",
+      new URL("/privacy", base)
+    );
+
+    const missing = SECURITY_HEADERS.filter(
+      (name) => reading[name] === undefined
+    );
+
+    const differing: string[] = [];
+
+    for (const path of POLICED_PATHS) {
+      const headers = yield* headersOf(`load ${path}`, new URL(path, base));
+
+      for (const name of SECURITY_HEADERS) {
+        if (headers[name] !== reading[name]) {
+          differing.push(`${path} sends ${name} ${headers[name] ?? "none"}`);
+        }
+      }
+    }
+
+    yield* check(
+      "send the page's security headers on every page",
+      missing.length === 0 && differing.length === 0,
+      [
+        ...missing.map((name) => `the asset layer sends no ${name}`),
+        ...differing,
+      ].join("; ")
+    );
+  });
+
 const smoke = Effect.gen(function* smoke() {
   const { base, origin } = yield* settings;
   const started = performance.now();
@@ -286,6 +334,10 @@ const smoke = Effect.gen(function* smoke() {
 
   yield* fetchPage("load the home page", base);
   yield* note("the home page loads");
+  yield* samePolicy(base);
+  yield* note(
+    "the home page, a room link, and the preview clip send the same security headers as the asset layer"
+  );
 
   const anaPass = yield* answerFrom(
     "open a room",

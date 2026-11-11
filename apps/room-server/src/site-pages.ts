@@ -101,14 +101,19 @@ const fromAssets = (assets: AssetFetcher, pathOf: (url: URL) => string) =>
     return { request, response, url };
   });
 
-const keptHeaders = (from: Headers, names: readonly string[]) =>
+const BODY_HEADERS = [
+  "content-encoding",
+  "content-length",
+  "content-range",
+  "content-type",
+  "transfer-encoding",
+];
+
+const REWRITTEN_PAGE_HEADERS = [...BODY_HEADERS, "etag", "last-modified"];
+
+const passedHeaders = (from: Headers, rewritten: readonly string[]) =>
   Object.fromEntries(
-    names.flatMap((name) =>
-      Option.match(Option.fromNullishOr(from.get(name)), {
-        onNone: () => [],
-        onSome: (value) => [[name, value] as const],
-      })
-    )
+    [...from.entries()].filter(([name]) => !rewritten.includes(name))
   );
 
 export type SitePage = "Home" | "Invite";
@@ -146,7 +151,7 @@ const page = <R>(
     return HttpServerResponse.uint8Array(html, {
       contentType: "text/html; charset=utf-8",
       headers: {
-        ...keptHeaders(response.headers, ["cache-control"]),
+        ...passedHeaders(response.headers, REWRITTEN_PAGE_HEADERS),
         "content-length": String(html.length),
       },
       status: response.status,
@@ -179,7 +184,7 @@ const media = (assets: AssetFetcher) =>
       HttpServerResponse.uint8Array(bytes, {
         contentType,
         headers: {
-          ...keptHeaders(response.headers, ["etag", "last-modified"]),
+          ...passedHeaders(response.headers, BODY_HEADERS),
           ...range,
           "accept-ranges": "bytes",
           "cache-control": MEDIA_CACHE,

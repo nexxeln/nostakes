@@ -7,7 +7,7 @@ import type { Browser, Page } from "playwright-core";
 
 import { localRoomServer, localWebApp, mutedBrowser } from "./local-site.ts";
 import { watchPages } from "./page-evidence.ts";
-import { SHARE_STUB } from "./share-stub.ts";
+import { SHARE_STUB, sharedAtLeast } from "./share-stub.ts";
 
 const WEB_PORT = 5199;
 
@@ -92,11 +92,7 @@ const player = (opened: Browser, name: string) =>
     Effect.flatMap((context) =>
       attempt("open a page", () => context.newPage())
     ),
-    Effect.tap((page) =>
-      Effect.sync(() => {
-        watched.watch(page, name);
-      })
-    )
+    Effect.tap((page) => watched.watch(page, name))
   );
 
 const click = (page: Page, step: string, name: string | RegExp) =>
@@ -731,9 +727,7 @@ const sharesTheSettleUp = (page: Page) =>
       page.locator('nostakes-keep[data-tone="Primary"] .keep').click()
     );
     yield* attempt("hand the picture to the share sheet", () =>
-      page.waitForFunction("window.__shared.length >= 1", undefined, {
-        timeout: 10_000,
-      })
+      sharedAtLeast(page, 1, 10_000)
     );
 
     const shared = yield* attempt("read what was shared", () =>
@@ -946,6 +940,16 @@ const night = Effect.gen(function* playOneHand() {
   yield* Console.log(
     "Ben's settle-up picture was drawn before his tap and shared inside it"
   );
+  yield* watched.policyHeld.pipe(
+    Effect.mapError(
+      (failure) =>
+        new NightFailed({
+          detail: failure.message,
+          step: "keep to the page's Content Security Policy",
+        })
+    )
+  );
+  yield* Console.log("neither page broke its Content Security Policy");
 });
 
 const explained = night.pipe(

@@ -7,7 +7,9 @@ import { createServer } from "vite";
 import type { ViteDevServer } from "vite";
 
 import { mutedBrowser } from "./local-site.ts";
-import { SHARE_STUB } from "./share-stub.ts";
+import { policyBreaks, watchPolicy } from "./page-evidence.ts";
+import { SHARE_STUB, sharedAtLeast } from "./share-stub.ts";
+import { pagePolicy } from "./stage-policy.ts";
 
 const WEB = new URL("..", import.meta.url).pathname;
 
@@ -41,6 +43,7 @@ const stageServer = Effect.acquireRelease(
     createServer({
       configFile: false,
       logLevel: "warn",
+      plugins: [pagePolicy()],
       root: WEB,
       server: { port: STAGE_PORT, strictPort: true },
     })
@@ -104,8 +107,10 @@ const savedPictures = (page: Page, dir: string, engine: string) =>
 const keptAs = (found: Shared, name: string) =>
   Option.fromUndefinedOr(found.find((entry) => entry.name === name));
 
-const checkEngine = (engine: BrowserType, dir: Option.Option<string>) =>
-  Effect.gen(function* checkKeep() {
+const checkEngine = (engine: BrowserType, dir: Option.Option<string>) => {
+  const policy = policyBreaks();
+
+  return Effect.gen(function* checkKeep() {
     const opened = yield* mutedBrowser(engine);
 
     const context = yield* attempt("open a phone-sized context", () =>
@@ -118,8 +123,11 @@ const checkEngine = (engine: BrowserType, dir: Option.Option<string>) =>
     yield* attempt("stub the share sheet", () =>
       context.addInitScript(SHARE_STUB)
     );
+    yield* watchPolicy(context);
 
     const page = yield* attempt("open a page", () => context.newPage());
+
+    policy.listen(page, `${engine.name()} moment`);
 
     yield* attempt("open the stage", () =>
       page.goto(`${STAGE}?view=live&sample=BadBeat-1&theme=Dark`)
@@ -139,9 +147,7 @@ const checkEngine = (engine: BrowserType, dir: Option.Option<string>) =>
       page.locator("nostakes-moment .story").click()
     );
     yield* attempt("wait for both taps to reach the share sheet", () =>
-      page.waitForFunction(`window.__shared.length >= ${SHARES}`, undefined, {
-        timeout: 15_000,
-      })
+      sharedAtLeast(page, SHARES, 15_000)
     );
 
     const found = yield* shared(page);
@@ -205,6 +211,8 @@ const checkEngine = (engine: BrowserType, dir: Option.Option<string>) =>
       context.newPage()
     );
 
+    policy.listen(settled, `${engine.name()} settle-up`);
+
     yield* attempt("open the night stage", () =>
       settled.goto(
         `${NIGHT_STAGE}?view=keep&card=settle&sample=nine&theme=Light`
@@ -223,14 +231,7 @@ const checkEngine = (engine: BrowserType, dir: Option.Option<string>) =>
     );
     yield* attempt(
       "wait for both settle-up taps to reach the share sheet",
-      () =>
-        settled.waitForFunction(
-          `window.__shared.length >= ${SHARES}`,
-          undefined,
-          {
-            timeout: 15_000,
-          }
-        )
+      () => sharedAtLeast(settled, SHARES, 15_000)
     );
 
     const settledFound = yield* shared(settled);
@@ -279,8 +280,27 @@ const checkEngine = (engine: BrowserType, dir: Option.Option<string>) =>
         .join("; ")}; download ${download}`
     );
 
+    yield* policy.held.pipe(
+      Effect.catchTag("PolicyViolated", (failure) =>
+        Effect.sync(() => {
+          problems.push(failure.message);
+        })
+      )
+    );
+
     return problems.map((problem) => `${engine.name()}: ${problem}`);
-  }).pipe(Effect.scoped);
+  }).pipe(
+    Effect.catchTag("KeepCheckFailed", (failure) =>
+      Effect.fail(
+        new KeepCheckFailed({
+          detail: policy.told(failure.detail),
+          step: failure.step,
+        })
+      )
+    ),
+    Effect.scoped
+  );
+};
 
 const program = Effect.gen(function* checkKeeping() {
   const engines = yield* Config.String("KEEP_ENGINES").pipe(

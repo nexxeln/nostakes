@@ -1,6 +1,6 @@
 import { Console, DateTime, Effect, Option, pipe, Schema } from "effect";
 import * as FileSystem from "effect/FileSystem";
-import type { Page, WebSocket } from "playwright-core";
+import type { BrowserContext, Page, WebSocket } from "playwright-core";
 
 const EVIDENCE_ROOT = "/tmp/nostakes-soak-web-";
 
@@ -40,22 +40,49 @@ const PassGlimpseJson = Schema.fromJsonString(
 
 const QUIET_FRAMES = new Set(["Ping", "Pong"]);
 
-const shown = (label: string, value: Schema.Json | undefined) =>
-  value === undefined ? [] : [`${label} ${JSON.stringify(value)}`];
+const VIOLATION_MARK = "nostakes-policy-violation";
 
-const glimpse = (payload: string | Buffer) =>
-  Schema.decodeUnknownOption(FrameGlimpseJson)(payload).pipe(
-    Option.map(({ _tag, build, catchUp, reason, result, seq }) =>
+export const POLICY_LISTENER = `addEventListener("securitypolicyviolation", (event) => {
+  console.error("${VIOLATION_MARK} " + JSON.stringify({
+    blocked: event.blockedURI,
+    directive: event.effectiveDirective,
+    source: event.sourceFile ? event.sourceFile + ":" + event.lineNumber : "",
+    sample: event.sample,
+  }));
+}, true);`;
+
+const POLICY_TEXT = /Content[ -]Security[ -]Policy/iu;
+
+const CONSOLE_SHOWN = 240;
+
+const ViolationJson = Schema.fromJsonString(
+  Schema.Struct({
+    blocked: Schema.String,
+    directive: Schema.String,
+    sample: Schema.String,
+    source: Schema.String,
+  })
+);
+
+const violationOf = (text: string) =>
+  Option.match(Schema.decodeUnknownOption(ViolationJson)(text.trim()), {
+    onNone: () => text.trim(),
+    onSome: ({ blocked, directive, sample, source }) =>
       [
-        _tag,
-        ...shown("reason", reason),
-        ...shown("build", build),
-        ...shown("seq", seq),
-        ...shown("catch-up", catchUp?._tag),
-        ...shown("result", result?._tag),
-      ].join(" ")
-    )
-  );
+        `blocked ${blocked.slice(0, CONSOLE_SHOWN) || "inline"} by ${directive}`,
+        ...(source.length > 0 ? [`at ${source}`] : []),
+        ...(sample.length > 0 ? [`sample ${sample}`] : []),
+      ].join(" "),
+  });
+
+export class PolicyViolated extends Schema.TaggedError<
+  PolicyViolated,
+  { readonly brand: unique symbol }
+>()("PolicyViolated", { violations: Schema.Array(Schema.String) }) {
+  override get message() {
+    return `The page broke its Content Security Policy: ${this.violations.join("; ")}. Allow what the page needs in src/features/page-policy.ts with a reason, or stop the page from needing it.`;
+  }
+}
 
 interface TableProbe extends HTMLElement {
   readonly snapshot: {
@@ -77,6 +104,55 @@ const squeezed = (text: string) => {
 
   return flat.length > TEXT_LIMIT ? `${flat.slice(0, TEXT_LIMIT)}…` : flat;
 };
+
+export const watchPolicy = (target: BrowserContext | Page) =>
+  Effect.promise(() => target.addInitScript(POLICY_LISTENER));
+
+export const policyBreaks = () => {
+  const found = new Set<string>();
+
+  const listen = (page: Page, name: string) => {
+    page.on("console", (message) => {
+      const text = message.text();
+
+      if (text.startsWith(VIOLATION_MARK)) {
+        found.add(`${name}: ${violationOf(text.slice(VIOLATION_MARK.length))}`);
+      } else if (message.type() === "error" && POLICY_TEXT.test(text)) {
+        found.add(`${name}: ${squeezed(text).slice(0, CONSOLE_SHOWN)}`);
+      }
+    });
+  };
+
+  const held = Effect.suspend(() =>
+    found.size === 0
+      ? Effect.void
+      : Effect.fail(new PolicyViolated({ violations: [...found] }))
+  );
+
+  const told = (detail: string) =>
+    found.size === 0
+      ? detail
+      : `${detail}. Before that, ${new PolicyViolated({ violations: [...found] }).message}`;
+
+  return { held, listen, told };
+};
+
+const shown = (label: string, value: Schema.Json | undefined) =>
+  value === undefined ? [] : [`${label} ${JSON.stringify(value)}`];
+
+const glimpse = (payload: string | Buffer) =>
+  Schema.decodeUnknownOption(FrameGlimpseJson)(payload).pipe(
+    Option.map(({ _tag, build, catchUp, reason, result, seq }) =>
+      [
+        _tag,
+        ...shown("reason", reason),
+        ...shown("build", build),
+        ...shown("seq", seq),
+        ...shown("catch-up", catchUp?._tag),
+        ...shown("result", result?._tag),
+      ].join(" ")
+    )
+  );
 
 const read = <A>(
   page: Page,
@@ -194,6 +270,7 @@ const readingOf = (page: Page) =>
 export const watchPages = () => {
   const started = performance.now();
   const watched: Watched[] = [];
+  const policy = policyBreaks();
 
   const note = (moments: string[], what: string) => {
     moments.push(
@@ -245,10 +322,11 @@ export const watchPages = () => {
     });
   };
 
-  const watch = (page: Page, name: string) => {
+  const follow = (page: Page, name: string) => {
     const entry: Watched = { moments: [], name, page, quiet: { frames: 0 } };
 
     watched.push(entry);
+    policy.listen(page, name);
     page.on("load", () => {
       note(entry.moments, `loaded ${page.url()}`);
     });
@@ -286,6 +364,15 @@ export const watchPages = () => {
       }
     });
   };
+
+  const watch = (page: Page, name: string) =>
+    watchPolicy(page).pipe(
+      Effect.andThen(
+        Effect.sync(() => {
+          follow(page, name);
+        })
+      )
+    );
 
   const explain = (step: string) =>
     Effect.gen(function* explainFailure() {
@@ -331,7 +418,7 @@ export const watchPages = () => {
       );
 
       const text = [
-        `What each page showed when "${step}" failed:`,
+        policy.told(`What each page showed when "${step}" failed`),
         ...pages,
         saved ? `Evidence saved in ${dir}` : `Could not create ${dir}`,
       ].join("\n");
@@ -346,7 +433,7 @@ export const watchPages = () => {
         : "What each page showed is printed above";
     });
 
-  return { explain, watch };
+  return { explain, policyHeld: policy.held, policyTold: policy.told, watch };
 };
 
 export type PageWatch = ReturnType<typeof watchPages>;

@@ -45,14 +45,10 @@ import { Messages } from "../features/message.js";
 import type { Message } from "../features/message.js";
 import { FairMarks } from "../features/model.js";
 import type { FairHand } from "../features/model.js";
+import { DRAND_RELAYS } from "../features/outside-hosts.js";
 import type { PokerClientTypes } from "../features/wire.js";
 
-const RELAYS = [
-  "https://api.drand.sh",
-  "https://api2.drand.sh",
-  "https://drand.cloudflare.com",
-  "https://api3.drand.sh",
-];
+const RELAYS = DRAND_RELAYS;
 
 const SETTLE_BEFORE_JUDGING = "1500 millis";
 

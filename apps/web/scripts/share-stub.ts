@@ -1,3 +1,5 @@
+import type { Page } from "playwright-core";
+
 export const SHARE_STUB = `
 (() => {
   let clicking = false;
@@ -35,3 +37,35 @@ export const SHARE_STUB = `
   }))));
 })();
 `;
+
+export const sharedAtLeast = (page: Page, count: number, timeout: number) =>
+  page.waitForFunction(
+    (least) => {
+      const offered: unknown = Object.getOwnPropertyDescriptor(
+        globalThis,
+        "__shared"
+      )?.value;
+
+      return Array.isArray(offered) && offered.length >= least;
+    },
+    count,
+    { timeout }
+  );
+
+export const sharedOrAsked = (page: Page, timeout: number) =>
+  page.waitForFunction(
+    () => {
+      const offered: unknown = Object.getOwnPropertyDescriptor(
+        globalThis,
+        "__shared"
+      )?.value;
+
+      return (
+        (Array.isArray(offered) && offered.length > 0) ||
+        globalThis.document.querySelector<HTMLElement>("nostakes-moment")
+          ?.dataset.clip === "Share"
+      );
+    },
+    undefined,
+    { timeout }
+  );

@@ -8,6 +8,7 @@ import {
   INVITE_PREVIEW,
   previewHead,
 } from "./src/features/link-preview.js";
+import { HEADERS_FILE, PAGE_HEADERS } from "./src/features/page-policy.js";
 
 const roomServer = process.env.ROOM_SERVER_URL ?? "http://localhost:1337";
 
@@ -106,6 +107,20 @@ const buildStamp = (): Plugin => ({
   name: "nostakes-build-stamp",
 });
 
+const HEADERS_FILE_NAME = "_headers";
+
+const securityHeaders = (): Plugin => ({
+  apply: "build",
+  generateBundle() {
+    this.emitFile({
+      fileName: HEADERS_FILE_NAME,
+      source: HEADERS_FILE,
+      type: "asset",
+    });
+  },
+  name: "nostakes-security-headers",
+});
+
 const PURE_MODULES = [
   { sideEffects: false, test: /[\\/]packages[\\/][a-z-]+[\\/]dist[\\/]/u },
   { sideEffects: false, test: /[\\/]node_modules[\\/].*@noble[\\/]/u },
@@ -120,8 +135,15 @@ export default defineConfig({
       treeshake: { moduleSideEffects: PURE_MODULES },
     },
   },
-  plugins: [foldkit({ devToolsMcpPort: false }), buildStamp(), linkPreviews()],
+  plugins: [
+    foldkit({ devToolsMcpPort: false }),
+    buildStamp(),
+    linkPreviews(),
+    securityHeaders(),
+  ],
+  preview: { headers: PAGE_HEADERS },
   server: {
+    headers: PAGE_HEADERS,
     port: 5173,
     proxy: {
       "/rooms": { target: roomServer, ws: true },

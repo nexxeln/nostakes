@@ -18,7 +18,9 @@ import {
   swatchText,
 } from "./moments/clip-colour.ts";
 import type { Picture, Swatches } from "./moments/clip-colour.ts";
-import { SHARE_STUB } from "./share-stub.ts";
+import { policyBreaks, watchPolicy } from "./page-evidence.ts";
+import { SHARE_STUB, sharedAtLeast, sharedOrAsked } from "./share-stub.ts";
+import { pagePolicy } from "./stage-policy.ts";
 
 const WEB = new URL("..", import.meta.url).pathname;
 
@@ -69,11 +71,23 @@ const decoded =
       )
     );
 
+const clipPolicy = policyBreaks();
+
+const policed = (page: Page, name: string) =>
+  watchPolicy(page).pipe(
+    Effect.andThen(
+      Effect.sync(() => {
+        clipPolicy.listen(page, name);
+      })
+    )
+  );
+
 const stageServer = Effect.acquireRelease(
   attempt("start the stage server", () =>
     createServer({
       configFile: false,
       logLevel: "warn",
+      plugins: [pagePolicy()],
       root: WEB,
       server: { port: STAGE_PORT, strictPort: true },
     })
@@ -659,6 +673,8 @@ const liveClip = (
 
     const page = yield* attempt("open a page", () => context.newPage());
 
+    yield* policed(page, engine.name());
+
     yield* throttled(page, engine, settings.throttle);
     yield* attempt("open the stage", () =>
       page.goto(
@@ -759,9 +775,7 @@ const liveClip = (
       page.locator("nostakes-moment .clip").click()
     );
     yield* attempt("wait for both taps to reach the share sheet", () =>
-      page.waitForFunction("window.__shared.length >= 2", undefined, {
-        timeout: 15_000,
-      })
+      sharedAtLeast(page, 2, 15_000)
     );
 
     const shared = yield* read(
@@ -831,6 +845,8 @@ const askedClip = (engine: BrowserType, settings: Settings) =>
     );
 
     const page = yield* attempt("open a page", () => context.newPage());
+
+    yield* policed(page, engine.name());
     const label = `${engine.name()}-asked`;
 
     yield* throttled(page, engine, settings.throttle);
@@ -870,11 +886,7 @@ const askedClip = (engine: BrowserType, settings: Settings) =>
       page.locator("nostakes-moment .clip").click()
     );
     yield* attempt("wait for the clip to be shared or to ask for a tap", () =>
-      page.waitForFunction(
-        `window.__shared.length > 0 || document.querySelector("nostakes-moment").dataset.clip === "Share"`,
-        undefined,
-        { timeout: 120_000 }
-      )
+      sharedOrAsked(page, 120_000)
     );
 
     const before = yield* read(
@@ -891,9 +903,7 @@ const askedClip = (engine: BrowserType, settings: Settings) =>
         page.locator("nostakes-moment .clip").click()
       );
       yield* attempt("wait for the share sheet", () =>
-        page.waitForFunction("window.__shared.length > 0", undefined, {
-          timeout: 15_000,
-        })
+        sharedAtLeast(page, 1, 15_000)
       );
     }
 
@@ -936,6 +946,8 @@ const refusedClip = (engine: BrowserType) =>
     );
 
     const page = yield* attempt("open a page", () => context.newPage());
+
+    yield* policed(page, engine.name());
     const label = `${engine.name()}-no-encoder`;
 
     yield* attempt("open the stage", () =>
@@ -998,6 +1010,8 @@ const abandonedClip = (engine: BrowserType) =>
     const page = yield* attempt("open a page", () =>
       opened.newPage({ viewport: { height: 844, width: 390 } })
     );
+
+    yield* policed(page, engine.name());
 
     const label = `${engine.name()}-your-turn`;
 
@@ -1092,6 +1106,8 @@ const stagedClip = (
     yield* attempt("add the judge", () => context.addInitScript(CLIP_TOOLS));
 
     const page = yield* attempt("open a page", () => context.newPage());
+
+    yield* policed(page, engine.name());
 
     yield* throttled(page, engine, settings.throttle);
     yield* attempt("open the clip stage", () =>
@@ -1217,6 +1233,14 @@ const program = Effect.gen(function* checkClips() {
       }
     }
   }
+
+  yield* clipPolicy.held.pipe(
+    Effect.catchTag("PolicyViolated", (failure) =>
+      Effect.sync(() => {
+        problems.push(failure.message);
+      })
+    )
+  );
 
   return problems.length === 0
     ? yield* Effect.void

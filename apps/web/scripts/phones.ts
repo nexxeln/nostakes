@@ -601,8 +601,8 @@ const phoneChecks = (engine: BrowserType, app: string, watched: PageWatch) =>
       guestContext.newPage()
     );
 
-    watched.watch(host, `${name} host`);
-    watched.watch(guest, `${name} guest`);
+    yield* watched.watch(host, `${name} host`);
+    yield* watched.watch(guest, `${name} guest`);
 
     const pings = { sent: 0 };
 
@@ -953,6 +953,19 @@ const phoneChecks = (engine: BrowserType, app: string, watched: PageWatch) =>
       "a moment whose hand is set before its definition arrives still calls the hand out",
       (lateMoment ?? "").includes(":Bluff:"),
       lateMoment ?? "no moment"
+    );
+
+    const broken = yield* watched.policyHeld.pipe(
+      Effect.match({
+        onFailure: (failure) => Option.some(failure.message),
+        onSuccess: () => Option.none<string>(),
+      })
+    );
+
+    yield* note(
+      "keeps to the page's Content Security Policy",
+      Option.isNone(broken),
+      Option.getOrElse(broken, () => "no violation on either page")
     );
 
     return findings;

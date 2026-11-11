@@ -1,14 +1,10 @@
 import { Effect, Option } from "effect";
 
+import {
+  BEACON_SOURCE,
+  PAGE_COUNTER_TOKENS,
+} from "../features/outside-hosts.js";
 import { countingOn } from "./counting.js";
-
-export const BEACON_SOURCE =
-  "https://static.cloudflareinsights.com/beacon.min.js";
-
-export const PAGE_COUNTER_TOKENS = {
-  "nostakes.club": "",
-  "preview.nostakes.club": "",
-} as const satisfies Readonly<Record<string, string>>;
 
 const tokenFor = (host: string) =>
   Option.fromUndefinedOr(
