@@ -9,6 +9,10 @@ export const MAX_MEMBERS = 64;
 
 export const PENDING_SOCKETS = 16;
 
+export const PENDING_GRACE_MS = 2000;
+
+export const PENDING_CEILING = 256;
+
 export const OpenOutcomeSchema = Schema.TaggedUnion({
   AlreadyOpen: { code: RoomCodeSchema },
   Invalid: {},

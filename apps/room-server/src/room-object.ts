@@ -80,6 +80,8 @@ import {
   JoinOutcomeSchema,
   MAX_MEMBERS,
   OpenOutcomeSchema,
+  PENDING_CEILING,
+  PENDING_GRACE_MS,
   PENDING_SOCKETS,
   StandingsOutcomeSchema,
 } from "./room-rpc.js";
@@ -93,7 +95,7 @@ import {
   REJECTION_BYTES_PER_SOCKET,
   REJECTIONS_KEPT_PER_SOCKET,
 } from "./socket-attachment.js";
-import type { KeptRejection } from "./socket-attachment.js";
+import type { Attachment, KeptRejection } from "./socket-attachment.js";
 import { acknowledgeClose, closeWith } from "./socket-close.js";
 import { sqliteStorage } from "./sqlite-storage.js";
 import { workerdGlobals } from "./workerd.js";
@@ -191,20 +193,6 @@ const keptWith = (
       return bytes <= REJECTION_BYTES_PER_SOCKET;
     })
     .toReversed();
-};
-
-const keepOnSocket = (socket: cf.WebSocket, added: KeptRejection) => {
-  for (const live of Option.toArray(
-    attachmentOf(socket).pipe(Option.filter(AttachmentSchema.guards.Live))
-  )) {
-    attach(
-      socket,
-      AttachmentSchema.cases.Live.make({
-        ...live,
-        rejected: keptWith(live.rejected, added),
-      })
-    );
-  }
 };
 
 const oldestFirst = <A extends { readonly opened: number }>(
@@ -366,6 +354,40 @@ export const roomObject = <T extends RoomTypes, Tally>(
 
         const codecOf = (room: RoomHost<T>) => room.codec;
 
+        const knownAttachments = new WeakMap<cf.WebSocket, Attachment>();
+
+        const attachmentOfSocket = (socket: cf.WebSocket) =>
+          Option.orElse(
+            Option.fromUndefinedOr(knownAttachments.get(socket)),
+            () =>
+              attachmentOf(socket).pipe(
+                Option.tap((stored) =>
+                  Option.some(knownAttachments.set(socket, stored))
+                )
+              )
+          );
+
+        const attachTo = (socket: cf.WebSocket, attachment: Attachment) => {
+          knownAttachments.set(socket, attachment);
+          attach(socket, attachment);
+        };
+
+        const keepOnSocket = (socket: cf.WebSocket, added: KeptRejection) => {
+          for (const live of Option.toArray(
+            attachmentOfSocket(socket).pipe(
+              Option.filter(AttachmentSchema.guards.Live)
+            )
+          )) {
+            attachTo(
+              socket,
+              AttachmentSchema.cases.Live.make({
+                ...live,
+                rejected: keptWith(live.rejected, added),
+              })
+            );
+          }
+        };
+
         const sockets = () => raw.getWebSockets();
 
         const answeredPingAt = (socket: cf.WebSocket) =>
@@ -380,7 +402,7 @@ export const roomObject = <T extends RoomTypes, Tally>(
           sockets().flatMap((socket) =>
             Option.exists(except, (excluded) => excluded === socket)
               ? []
-              : attachmentOf(socket).pipe(
+              : attachmentOfSocket(socket).pipe(
                   Option.filter(AttachmentSchema.guards.Live),
                   Option.map(({ heardAt, opened, player }) => ({
                     heardAt: Math.max(heardAt, answeredPingAt(socket)),
@@ -396,7 +418,7 @@ export const roomObject = <T extends RoomTypes, Tally>(
           sockets().flatMap((socket) =>
             Option.exists(except, (excluded) => excluded === socket)
               ? []
-              : attachmentOf(socket).pipe(
+              : attachmentOfSocket(socket).pipe(
                   Option.filter(AttachmentSchema.guards.Pending),
                   Option.map(({ acceptedAt, opened }) => ({
                     acceptedAt,
@@ -485,7 +507,7 @@ export const roomObject = <T extends RoomTypes, Tally>(
 
         const keepRejections = (socket: cf.WebSocket) => {
           for (const { player, rejected } of Option.toArray(
-            attachmentOf(socket).pipe(
+            attachmentOfSocket(socket).pipe(
               Option.filter(AttachmentSchema.guards.Live)
             )
           )) {
@@ -498,12 +520,12 @@ export const roomObject = <T extends RoomTypes, Tally>(
         };
 
         const closeSocket = (socket: cf.WebSocket, reason: CloseReason) => {
-          const wasLive = attachmentOf(socket).pipe(
+          const wasLive = attachmentOfSocket(socket).pipe(
             Option.filter(AttachmentSchema.guards.Live)
           );
 
           keepRejections(socket);
-          attach(socket, AttachmentSchema.cases.Closed.make({ reason }));
+          attachTo(socket, AttachmentSchema.cases.Closed.make({ reason }));
           closeWith(socket, reason);
           note(measure("SocketClosed", { reason }));
 
@@ -526,7 +548,7 @@ export const roomObject = <T extends RoomTypes, Tally>(
         ): Connections => ({
           closeAll: (reason) => {
             for (const socket of sockets()) {
-              attach(socket, AttachmentSchema.cases.Closed.make({ reason }));
+              attachTo(socket, AttachmentSchema.cases.Closed.make({ reason }));
               closeWith(socket, reason);
               note(measure("SocketClosed", { reason }));
             }
@@ -593,18 +615,28 @@ export const roomObject = <T extends RoomTypes, Tally>(
             0,
             ...sockets().flatMap((socket) =>
               Option.toArray(
-                attachmentOf(socket).pipe(Option.flatMap(openedOf))
+                attachmentOfSocket(socket).pipe(Option.flatMap(openedOf))
               )
             )
           );
 
-        const makeRoomForPending = () => {
-          const waiting = pendingSince(Option.none());
+        const makeRoomForPending = (at: number) => {
+          const waiting = oldestFirst(pendingSince(Option.none()));
 
-          for (const { socket } of oldestFirst(waiting).slice(
-            0,
-            Math.max(0, waiting.length + 1 - PENDING_SOCKETS)
-          )) {
+          const overdue = waiting.filter(
+            ({ acceptedAt }) => acceptedAt + PENDING_GRACE_MS <= at
+          );
+
+          const pushedOut = new Set([
+            ...overdue
+              .slice(0, Math.max(0, overdue.length + 1 - PENDING_SOCKETS))
+              .map(({ socket }) => socket),
+            ...waiting
+              .slice(0, Math.max(0, waiting.length + 1 - PENDING_CEILING))
+              .map(({ socket }) => socket),
+          ]);
+
+          for (const socket of pushedOut) {
             closeSocket(socket, "TooManySockets");
           }
         };
@@ -651,7 +683,7 @@ export const roomObject = <T extends RoomTypes, Tally>(
             (live) => live.player === player.value
           );
 
-          attach(
+          attachTo(
             socket,
             AttachmentSchema.cases.Live.make({
               heardAt: at,
@@ -735,7 +767,7 @@ export const roomObject = <T extends RoomTypes, Tally>(
         const rejectedBefore = (player: PlayerId, id: CommandId) =>
           Arr.findFirst(
             sockets().flatMap((socket) =>
-              attachmentOf(socket).pipe(
+              attachmentOfSocket(socket).pipe(
                 Option.filter(AttachmentSchema.guards.Live),
                 Option.filter((live) => live.player === player),
                 Option.match({
@@ -776,7 +808,7 @@ export const roomObject = <T extends RoomTypes, Tally>(
         const receive = (socket: cf.WebSocket, frame: string | ArrayBuffer) =>
           Effect.gen(function* receiveFrame() {
             const at = yield* Clock.currentTimeMillis;
-            const attachment = attachmentOf(socket);
+            const attachment = attachmentOfSocket(socket);
 
             if (
               attachment.pipe(Option.exists(AttachmentSchema.guards.Closed))
@@ -820,7 +852,7 @@ export const roomObject = <T extends RoomTypes, Tally>(
             for (const live of Option.toArray(
               attachment.pipe(Option.filter(AttachmentSchema.guards.Live))
             )) {
-              attach(
+              attachTo(
                 socket,
                 AttachmentSchema.cases.Live.make({ ...live, heardAt: at })
               );
@@ -963,12 +995,12 @@ export const roomObject = <T extends RoomTypes, Tally>(
           ending: "ClosedByClient" | "SocketError"
         ) =>
           Effect.sync(() => {
-            const wasLive = attachmentOf(socket).pipe(
+            const wasLive = attachmentOfSocket(socket).pipe(
               Option.filter(AttachmentSchema.guards.Live)
             );
 
             if (
-              !attachmentOf(socket).pipe(
+              !attachmentOfSocket(socket).pipe(
                 Option.exists(AttachmentSchema.guards.Closed)
               )
             ) {
@@ -1355,13 +1387,14 @@ export const roomObject = <T extends RoomTypes, Tally>(
             return yield* refuseSocket("RoomHalted");
           }
 
-          makeRoomForPending();
-
           const at = yield* Clock.currentTimeMillis;
+
+          makeRoomForPending(at);
+
           const opened = nextOpened();
           const [response, socket] = yield* Cloudflare.upgrade();
 
-          attach(
+          attachTo(
             socket.ws,
             AttachmentSchema.cases.Pending.make({ acceptedAt: at, opened })
           );

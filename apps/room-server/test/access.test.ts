@@ -19,6 +19,7 @@ import {
 } from "@nostakes/protocol";
 import type { CloseReason, RoomCode, RoomPass } from "@nostakes/protocol";
 import {
+  Duration,
   Effect,
   Option,
   Redacted,
@@ -35,7 +36,12 @@ import * as HttpClientRequest from "effect/http/HttpClientRequest";
 import type * as HttpClientResponse from "effect/http/HttpClientResponse";
 
 import { retryDelay } from "../src/refused-deadline.js";
-import { MAX_MEMBERS, PENDING_SOCKETS } from "../src/room-rpc.js";
+import {
+  MAX_MEMBERS,
+  PENDING_CEILING,
+  PENDING_GRACE_MS,
+  PENDING_SOCKETS,
+} from "../src/room-rpc.js";
 import { REJECTIONS_KEPT_PER_SOCKET } from "../src/socket-attachment.js";
 import { roomAnalytics } from "./fixtures/analytics-checks.js";
 import {
@@ -47,6 +53,7 @@ import {
   isClosing,
   isEvents,
   isPresence,
+  isWelcome,
   joinAs,
   joinRoom,
   openRoomWith,
@@ -665,7 +672,7 @@ const openedElsewhere = {
 };
 
 test(
-  "14. socket slots: a member keeps only their newest sockets and the older ones hear they were opened elsewhere, sockets that never say hello only push out each other, and a member with a valid token always gets in",
+  "14. socket slots: a member keeps only their newest sockets and the older ones hear they were opened elsewhere, a socket that says hello within the grace gets in however many silent sockets arrive meanwhile, and silent sockets past the grace only push out each other",
   Effect.gen(function* socketSlots() {
     const base = yield* baseUrl;
     const [anaPass, trollPass] = yield* openRoomWith(base, ["Ana", "Troll"]);
@@ -708,32 +715,46 @@ test(
       pending: 0,
     });
 
+    const prompt = yield* connect(base, code, "ana opening one more socket");
+
     const silent = yield* pipe(
       Array.from({ length: SLOT_FLOOD }, (_, index) => index),
       Effect.forEach((index) => connect(base, code, `silent ${index}`))
     );
 
-    const anaAgain = yield* joinAs(base, anaPass, "ana through the silence");
+    yield* prompt.send(hello(anaPass));
+
+    const promptWelcome = yield* prompt.next(
+      "a welcome through the silent sockets",
+      isWelcome
+    );
+
+    yield* Effect.sleep(Duration.millis(PENDING_GRACE_MS + 300));
+
+    const late = yield* connect(base, code, "one more after the grace");
     const crowded = silent.slice(0, SLOT_FLOOD - PENDING_SOCKETS + 1);
     const waiting = silent.slice(SLOT_FLOOD - PENDING_SOCKETS + 1);
-    const during = yield* inspect(base, code);
 
     const crowdedClosings = yield* pipe(
       crowded,
       Effect.forEach((client) => client.next("its closing frame", isClosing))
     );
 
-    expect(anaAgain.welcome.you).toBe(anaPass.player);
+    const during = yield* inspect(base, code);
+
+    expect(promptWelcome.you).toBe(anaPass.player);
     expect(during.sockets).toStrictEqual({
       live: SOCKETS_PER_PLAYER + 2,
-      pending: PENDING_SOCKETS - 1,
+      pending: PENDING_SOCKETS,
     });
     expect(crowdedClosings).toStrictEqual(
       crowded.map(() =>
         codec.server.cases.Closing.make({ reason: "TooManySockets" })
       )
     );
-    expect(waiting.flatMap((client) => client.frames)).toStrictEqual([]);
+    expect([...waiting, late].flatMap((client) => client.frames)).toStrictEqual(
+      []
+    );
 
     const checkOf = (checked: RoomCode) =>
       HttpClientRequest.post(new URL(`/rooms/${checked}/check`, base)).pipe(
@@ -760,11 +781,11 @@ test(
     );
 
     yield* pipe(
-      [...kept.map(({ client }) => client), ana.client, anaAgain.client],
+      [...kept.map(({ client }) => client), ana.client, prompt],
       Effect.forEach((client) => client.disconnect)
     );
     yield* pipe(
-      waiting,
+      [...waiting, late],
       Effect.forEach((client) => client.disconnect)
     );
   }).pipe(Effect.provide(FetchHttpClient.layer))
@@ -977,5 +998,42 @@ test(
     expect(
       after.logged.every((line) => line.includes(`"room":"${keys[0]}"`))
     ).toBe(true);
+  }).pipe(Effect.provide(FetchHttpClient.layer))
+);
+
+test(
+  "17. the waiting pool has a ceiling: past it a new socket pushes out the oldest that has not said hello, however young, so silent sockets cannot pile up in a room",
+  Effect.gen(function* waitingCeiling() {
+    const base = yield* baseUrl;
+    const [anaPass] = yield* openRoomWith(base, ["Ana"]);
+
+    if (anaPass === undefined) {
+      return;
+    }
+
+    const { code } = anaPass;
+
+    const silent = yield* Effect.all(
+      Array.from({ length: PENDING_CEILING + 2 }, (_, index) =>
+        connect(base, code, `silent ${index}`)
+      ),
+      { concurrency: 16 }
+    );
+
+    const during = yield* inspect(base, code);
+
+    const pushedOut = yield* Effect.raceAll(
+      silent.map((client) =>
+        client.next("a push out", isClosingWith("TooManySockets"))
+      )
+    );
+
+    expect(during.sockets.pending).toBeLessThanOrEqual(PENDING_CEILING);
+    expect(pushedOut.reason).toBe("TooManySockets");
+
+    yield* pipe(
+      silent,
+      Effect.forEach((client) => client.disconnect)
+    );
   }).pipe(Effect.provide(FetchHttpClient.layer))
 );
