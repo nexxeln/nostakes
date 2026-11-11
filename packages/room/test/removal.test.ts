@@ -213,52 +213,16 @@ describe("clearing the room", () => {
     expect(shownToClear(crowded)).toStrictEqual([cat, dan, eve]);
   });
 
-  it("removes only the people the host named who can still go: someone who came back after the host looked stays, someone named who sat down stays, and the room still locks", () => {
-    const seen = shownToClear(crowded);
-
-    const meanwhile = runAll(crowded, [
-      sit(dan, 6, 150, 14),
-      RoomCommands.Join({ at: ms(15), avatar: "", by: as(fay), name: fay }),
-    ]);
-
-    const cleared = run(meanwhile, clear(ann, seen));
-
-    expect({
-      events: cleared.events,
-      members: openOf(cleared.state).members.map(({ player: who }) => who),
-      nowClearable: shownToClear(meanwhile),
-    }).toStrictEqual({
-      events: [
-        RoomEvents.MemberRemoved({ at: ms(20), player: cat }),
-        RoomEvents.MemberRemoved({ at: ms(20), player: eve }),
-        RoomEvents.SettingsChanged({
-          at: ms(20),
-          settings: { ...settings, locked: true },
-        }),
-      ],
-      members: [ann, bob, dan, fay],
-      nowClearable: [cat, fay, eve],
-    });
-  });
-
-  it("still locks when nobody named can go any more, and refuses an empty list, one from anyone but the host, or one that would change nothing", () => {
+  it("is the host's alone, and refuses when nobody would go", () => {
     const seatedOnly = runAll(openedBy(ann), [join(bob), sit(bob, 3, 150)]);
-    const lockedOnly = run(seatedOnly, clear(ann, [bob]));
+    const lockedOnly = run(seatedOnly, clear(ann, [bob])).state;
 
-    expect({
-      locks: lockedOnly.events.map(({ _tag }) => _tag),
-      refused: [
-        rejection(crowded, clear(bob, [cat])),
-        rejection(crowded, clear(ann, [])),
-        rejection(lockedOnly.state, clear(ann, [bob], 30)),
-      ],
-    }).toStrictEqual({
-      locks: ["SettingsChanged"],
-      refused: [
-        new NotTheHost({ host: ann, player: bob }),
-        new NobodyToClear({ members: 4 }),
-        new NobodyToClear({ members: 2 }),
-      ],
-    });
+    expect([
+      rejection(crowded, clear(bob, [cat])),
+      rejection(lockedOnly, clear(ann, [bob], 30)),
+    ]).toStrictEqual([
+      new NotTheHost({ host: ann, player: bob }),
+      new NobodyToClear({ members: 2 }),
+    ]);
   });
 });

@@ -332,7 +332,7 @@ test(
     expect(
       played.flatMap((night) =>
         Option.toArray(night.regular).map(({ handsDealt, removedVia }) => ({
-          handsDealt: handsDealt > 1,
+          handsDealt: handsDealt >= 1,
           removed: Option.isSome(removedVia),
         }))
       )

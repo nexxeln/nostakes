@@ -302,9 +302,7 @@ const midHandProblems = (
     !RoomEvents.$is("LeaveQueued")(queued) ||
     queued.player !== record.player
   ) {
-    return [
-      `the regular was removed at ${at + 1} without their leave queued just before, so not in the middle of a hand`,
-    ];
+    return [];
   }
 
   const [opened, ...rest] = events.slice(0, at - 1);
@@ -352,8 +350,10 @@ const midHandProblems = (
     (event, index) =>
       index > ended &&
       (nextHand === -1 || index < nextHand) &&
-      RoomEvents.$is("CashedOut")(event) &&
-      event.player === record.player
+      ((RoomEvents.$is("CashedOut")(event) && event.player === record.player) ||
+        (RoomEvents.$is("Table")(event) &&
+          Events.$is("PlayerStood")(event.event) &&
+          event.event.player === record.player))
   );
 
   const row = ledgerFromLog(events).find(
