@@ -7,7 +7,11 @@ import {
   buttonGround,
   buttonSpots,
   computeGeo,
+  handHint,
+  handHintGround,
+  HINT_LINES,
   POST_TAG_WIDTHS,
+  potTabOf,
   postTagBox,
   postTagGround,
   postTagSides,
@@ -257,6 +261,86 @@ describe("the tag on a posted blind", () => {
   it("covers no other seat's face or name, no other bet, the board, your cards, or the chip at six and nine seats", () => {
     expect(CROWDED_SCREENS.map(tagsCoveringAnotherSeat)).toStrictEqual(
       CROWDED_SCREENS.map(() => 0)
+    );
+  });
+});
+
+const SEATS_AROUND_YOU = [1, 5, 8] as const;
+
+const screens = Arbitrary.schema(
+  Schema.Union([
+    Schema.Struct({
+      height: between(520, 1000),
+      width: between(360, 559),
+    }),
+    Schema.Struct({
+      height: between(300, 1000),
+      width: between(560, 1440),
+    }),
+  ])
+);
+
+const hintPlaced = (width: number, height: number, others: number) => {
+  const geo = computeGeo(width, height, others);
+  const hint = handHint(geo);
+  const tab = potTabOf(geo);
+
+  const blocked = [
+    ...handHintGround(geo),
+    { h: tab.h, w: tab.w, x: tab.x - tab.w / 2, y: tab.y - tab.h / 2 },
+  ];
+
+  const clear = (box: Box) =>
+    blocked.every((other) => !covers(box, other)) &&
+    box.x > -VISIBLE_PX &&
+    box.y > geo.top - VISIBLE_PX &&
+    box.x + box.w < width + VISIBLE_PX &&
+    box.y + box.h < height + VISIBLE_PX;
+
+  return {
+    firstLine: clear(hint.say),
+    secondLine: clear(hint.foot),
+    slipHoldsTheLongestLineInTwo:
+      !hint.onCards || hint.say.w * 2 >= HINT_LINES.sayW,
+  };
+};
+
+const HINT_PLACED_WELL = {
+  firstLine: true,
+  secondLine: true,
+  slipHoldsTheLongestLineInTwo: true,
+};
+
+describe("the hint by your cards", () => {
+  it.prop(
+    "never covers the board, the pot, a face or a name, a bet, or the chip, in one line or two, with two, six, or nine seats",
+    { screen: screens },
+    ({ screen }) => {
+      expect(
+        SEATS_AROUND_YOU.map((others) =>
+          hintPlaced(screen.width, screen.height, others)
+        )
+      ).toStrictEqual(SEATS_AROUND_YOU.map(() => HINT_PLACED_WELL));
+    },
+    { arbitrary: { runs: 300 } }
+  );
+
+  it("finds room on the screens we photograph and the smallest landscape phones", () => {
+    const sizes = [
+      { height: 592, width: 360 },
+      { height: 796, width: 390 },
+      { height: 852, width: 1440 },
+      { height: 342, width: 844 },
+      { height: 300, width: 560 },
+      { height: 300, width: 667 },
+    ];
+
+    expect(
+      sizes.flatMap(({ height, width }) =>
+        SEATS_AROUND_YOU.map((others) => hintPlaced(width, height, others))
+      )
+    ).toStrictEqual(
+      sizes.flatMap(() => SEATS_AROUND_YOU.map(() => HINT_PLACED_WELL))
     );
   });
 });

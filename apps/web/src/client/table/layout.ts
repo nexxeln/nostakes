@@ -35,6 +35,7 @@ export interface Geo {
   };
   readonly strip: Box;
   readonly boardInStrip: boolean;
+  readonly potStacked: boolean;
   readonly pot: Pt;
   readonly banner: Pt;
   readonly board: readonly Pt[];
@@ -504,12 +505,44 @@ const tallSeat = (
   return { bet, nx: p.nx, ny: p.ny, side, x: p.x, y: p.y };
 };
 
+export const HAND_HINT = { gap: 4, h: 34, w: 240 };
+
+const RING_REACH = 10;
+
+const FACE_RISE = 0.15;
+
+const HERO_ROW_ROOM = 44;
+
+const POT_STACKED_MIN = 50;
+
+const POT_STACKED_MAX = 66;
+
+const POT_FLAT_H = 24;
+
+const POT_ABOVE_BOARD = 10;
+
+const POT_FLAT_ABOVE_BOARD = 3;
+
+const POT_MARGIN = 4;
+
+const SELF_ABOVE_EDGE = 2;
+
+const CAPTION_DEPTH = CAPTION + 6;
+
+const GROUP_MARGIN = 12;
+
+const potHeight = (stacked: boolean, cardW: number) =>
+  stacked ? Math.min(POT_STACKED_MAX, cardW * 1.2) : POT_FLAT_H;
+
+const potGap = (stacked: boolean) =>
+  stacked ? POT_ABOVE_BOARD : POT_FLAT_ABOVE_BOARD;
+
 const tallGeo = (w: number, h: number, count: number): Geo => {
   const sizes = tallSizes(w);
   const cx = w / 2;
   const handH = sizes.handCardW * 1.4;
   const hand = { x: cx, y: h - sizes.bottomInset - handH / 2 - 18 };
-  const heroTop = hand.y - handH / 2 - 44;
+  const heroTop = hand.y - handH / 2 - HERO_ROW_ROOM;
 
   const row = heroRow(w, sizes.pad, {
     chip: sizes.chip,
@@ -567,6 +600,7 @@ const tallGeo = (w: number, h: number, count: number): Geo => {
     interior: middle.interior,
     keys: { x: chip.x, y: chip.y + sizes.chip / 2 + 16 },
     pot: middle.pot,
+    potStacked: true,
     railTop,
     readout: boardInStrip
       ? {
@@ -670,7 +704,7 @@ const solveOval = (
   return { cy, pts, rx, ry, tile };
 };
 
-const wideGeo = (w: number, h: number, count: number): Geo => {
+const wideGeo = (w: number, h: number, count: number, lift: number): Geo => {
   const sizes = wideSizes(w, h);
   const cx = w / 2;
   const handH = sizes.handCardW * 1.4;
@@ -698,7 +732,9 @@ const wideGeo = (w: number, h: number, count: number): Geo => {
   const self = {
     size: sizes.self,
     x: row.selfX,
-    y: hand.y + handH / 2 - CAPTION - sizes.self / 2 - 4,
+    y: sizes.compact
+      ? h - SELF_ABOVE_EDGE - CAPTION_DEPTH - sizes.self / 2
+      : hand.y + handH / 2 - CAPTION - sizes.self / 2 - 4,
   };
 
   const clusterHalf =
@@ -723,9 +759,14 @@ const wideGeo = (w: number, h: number, count: number): Geo => {
 
   const gap = Math.max(5, cardW * 0.12);
   const boardW = cardW * BOARD_CARDS + gap * (BOARD_CARDS - 1);
-  const boardY = oval.cy + (sizes.compact ? 6 : tile * 0.08);
-  const pot = { x: cx, y: boardY - cardW * 0.7 - (sizes.compact ? 22 : 40) };
-  const groupTop = pot.y - (sizes.compact ? 18 : 30);
+  const potStacked = !sizes.compact && cardW * 1.2 >= POT_STACKED_MIN;
+  const tabH = potHeight(potStacked, cardW);
+  const boardY = oval.cy + (sizes.compact ? 6 : tile * 0.08) - lift;
+
+  const boardTop = boardY - cardW * 0.7;
+  const tabTop = boardTop - potGap(potStacked) - tabH;
+  const pot = { x: cx, y: tabTop + tabH / 2 };
+  const groupTop = tabTop - POT_MARGIN;
   const railLength = sizes.compact ? h - TOP - 120 : clamp(h * 0.4, 200, 360);
   const railTop = Math.max(TOP + 20, chip.y - 46 - railLength);
 
@@ -748,6 +789,7 @@ const wideGeo = (w: number, h: number, count: number): Geo => {
     interior: { x: cx, y: boardY },
     keys: { x: chip.x, y: chip.y + sizes.chip / 2 + 16 },
     pot,
+    potStacked,
     railTop,
     readout: {
       align: "right",
@@ -774,7 +816,7 @@ const wideGeo = (w: number, h: number, count: number): Geo => {
     }),
     self,
     strip: {
-      h: boardY + cardW * 0.7 + 12 - groupTop,
+      h: boardY + cardW * 0.7 + GROUP_MARGIN - groupTop,
       w: boardW + 32,
       x: cx - boardW / 2 - 16,
       y: groupTop,
@@ -788,11 +830,6 @@ const wideGeo = (w: number, h: number, count: number): Geo => {
 };
 
 const WIDE_RATIO = 1.08;
-
-export const computeGeo = (w: number, h: number, count: number): Geo =>
-  w > h * WIDE_RATIO
-    ? wideGeo(w, h, Math.max(1, count))
-    : tallGeo(w, h, Math.max(1, count));
 
 export interface RunLane {
   readonly x: number;
@@ -989,12 +1026,6 @@ const leastBy = <T>(items: readonly T[], cost: (item: T) => number) => {
 
   return best?.item;
 };
-
-const RING_REACH = 10;
-
-const FACE_RISE = 0.15;
-
-const CAPTION_DEPTH = CAPTION + 6;
 
 const PILE_BOX = { h: 22, w: 44 };
 
@@ -1198,16 +1229,159 @@ export const postTagSides = (geo: Geo, width: number): readonly TagSide[] => {
   });
 };
 
-const HAND_HINT = { h: 56, w: 300 };
+const HINT_STEP = 2;
 
-const handHintBox = (geo: Geo): Box => {
+const HINT_RISE = 48;
+
+export const HINT_LINES = { foot: 14, footW: 176, say: 18, sayW: 212 };
+
+export interface HandHint {
+  readonly say: Box;
+  readonly foot: Box;
+  readonly stacked: boolean;
+  readonly onCards: boolean;
+}
+
+const faceAndName = (footprint: Footprint): readonly Box[] => {
+  const [face, name] = footprint.seat;
+
+  return face === undefined || name === undefined
+    ? footprint.boxes
+    : [
+        {
+          ...face,
+          h: face.h + face.w * FACE_RISE,
+          y: face.y - face.w * FACE_RISE,
+        },
+        name,
+      ];
+};
+
+export const handHintGround = (geo: Geo): readonly Box[] => [
+  geo.strip,
+  ...ownersOf(geo).flatMap(({ footprint }, index, all) =>
+    index === all.length - 1 ? faceAndName(footprint) : footprint.boxes
+  ),
+  ...geo.seats.map(({ bet }) => pileBox(bet)),
+  {
+    h: geo.chip.size,
+    w: geo.chip.size,
+    x: geo.chip.x - geo.chip.size / 2,
+    y: geo.chip.y - geo.chip.size / 2,
+  },
+];
+
+const handTopOf = (geo: Geo) => geo.hand.y - (geo.handCardW * 1.4) / 2;
+
+const handBottomOf = (geo: Geo) => geo.hand.y + (geo.handCardW * 1.4) / 2;
+
+const crowdingIn = (geo: Geo, blocked: readonly Box[], box: Box) =>
+  coveredBy(box, blocked) + (onTable(geo, box) ? 0 : box.w * box.h);
+
+const nearestClear = (
+  geo: Geo,
+  blocked: readonly Box[],
+  start: Box,
+  rises: number
+): Box | undefined => {
+  let best: { readonly box: Box; readonly cost: number } | undefined;
+
+  for (let rise = 0; rise <= rises; rise += HINT_STEP) {
+    for (let shift = 0; shift <= geo.w / 2; shift += HINT_STEP) {
+      for (const side of shift === 0 ? [0] : [-1, 1]) {
+        const box = { ...start, x: start.x + side * shift, y: start.y - rise };
+        const cost = shift + rise * 2;
+
+        if (
+          (best === undefined || cost < best.cost) &&
+          crowdingIn(geo, blocked, box) === 0
+        ) {
+          best = { box, cost };
+        }
+      }
+    }
+  }
+
+  return best?.box;
+};
+
+export const handHint = (geo: Geo): HandHint => {
   const w = Math.min(HAND_HINT.w, geo.w - 16);
+  const blocked = handHintGround(geo);
+  const x = geo.hand.x - w / 2;
+  const top = handTopOf(geo) - HAND_HINT.gap;
+
+  const together = nearestClear(
+    geo,
+    blocked,
+    { h: HAND_HINT.h, w, x, y: top - HAND_HINT.h },
+    HINT_RISE
+  );
+
+  if (together !== undefined) {
+    return {
+      foot: {
+        h: HINT_LINES.foot,
+        w,
+        x: together.x,
+        y: together.y + HAND_HINT.h - HINT_LINES.foot,
+      },
+      onCards: false,
+      say: { h: HINT_LINES.say, w, x: together.x, y: together.y },
+      stacked: true,
+    };
+  }
+
+  const sayW = Math.min(HINT_LINES.sayW, w);
+  const footW = Math.min(HINT_LINES.footW, w);
+
+  const sayAt = {
+    h: HINT_LINES.say,
+    w: sayW,
+    x: geo.hand.x - sayW / 2,
+    y: top - HINT_LINES.say,
+  };
+
+  const footAt = {
+    h: HINT_LINES.foot,
+    w: footW,
+    x: geo.hand.x - footW / 2,
+    y: handBottomOf(geo) + HAND_HINT.gap / 2,
+  };
+
+  const foot = nearestClear(geo, blocked, footAt, 0) ?? footAt;
+  const above = nearestClear(geo, blocked, sayAt, HINT_RISE);
+
+  if (above !== undefined) {
+    return { foot, onCards: false, say: above, stacked: false };
+  }
+
+  const selfRight = geo.self.x + geo.self.size * 0.65 + HAND_HINT.gap;
+  const chipLeft = geo.chip.x - geo.chip.size / 2 - HAND_HINT.gap;
 
   return {
-    h: HAND_HINT.h,
-    w,
-    x: geo.hand.x - w / 2,
-    y: geo.hand.y - (geo.handCardW * 1.4) / 2 - HAND_HINT.h,
+    foot,
+    onCards: true,
+    say: {
+      h: HINT_LINES.say * 2,
+      w: chipLeft - selfRight,
+      x: selfRight,
+      y: handTopOf(geo) + HAND_HINT.gap / 2,
+    },
+    stacked: false,
+  };
+};
+
+export const handHintBox = (geo: Geo): Box => {
+  const { foot, say } = handHint(geo);
+  const top = Math.min(say.y, foot.y);
+  const left = Math.min(say.x, foot.x);
+
+  return {
+    h: Math.max(say.y + say.h, foot.y + foot.h) - top,
+    w: Math.max(say.x + say.w, foot.x + foot.w) - left,
+    x: left,
+    y: top,
   };
 };
 
@@ -1471,3 +1645,90 @@ export const deadButtonSpot = (
 
   return { ...middle, r };
 };
+
+export interface PotTab {
+  readonly h: number;
+  readonly stacked: boolean;
+  readonly w: number;
+  readonly x: number;
+  readonly y: number;
+}
+
+export const potTabOf = (geo: Geo): PotTab => {
+  if (geo.boardInStrip) {
+    return {
+      h: geo.strip.h - 20,
+      stacked: true,
+      w: 2 * (geo.pot.x - geo.strip.x) - 18,
+      x: geo.pot.x,
+      y: geo.pot.y,
+    };
+  }
+
+  const h = potHeight(geo.potStacked, geo.cardW);
+  const boardTop = (geo.board[0]?.y ?? geo.pot.y) - geo.cardW * 0.7;
+
+  return {
+    h,
+    stacked: geo.potStacked,
+    w: Math.min(88, geo.cardW * 1.6),
+    x: geo.pot.x,
+    y: boardTop - potGap(geo.potStacked) - h / 2,
+  };
+};
+
+const BOARD_LIFT_STEP = 4;
+
+const BOARD_LIFT_MOST = 64;
+
+const hintCrowding = (geo: Geo) => {
+  const { foot, onCards, say, stacked } = handHint(geo);
+  const blocked = handHintGround(geo);
+  const apart = stacked ? 0 : 1;
+
+  return (
+    crowdingIn(geo, blocked, say) +
+    crowdingIn(geo, blocked, foot) +
+    apart +
+    (onCards ? 1 : 0)
+  );
+};
+
+const boardCrowding = (geo: Geo) =>
+  coveredBy(geo.strip, [
+    ...ownersOf(geo).flatMap(({ footprint }) => footprint.seat),
+    ...geo.seats.map(({ bet }) => pileBox(bet)),
+  ]);
+
+const liftedForHint = (w: number, h: number, count: number): Geo => {
+  const level = wideGeo(w, h, count, 0);
+
+  if (hintCrowding(level) === 0) {
+    return level;
+  }
+
+  const crowded = boardCrowding(level);
+
+  for (
+    let lift = BOARD_LIFT_STEP;
+    lift <= BOARD_LIFT_MOST;
+    lift += BOARD_LIFT_STEP
+  ) {
+    const lifted = wideGeo(w, h, count, lift);
+
+    if (boardCrowding(lifted) > crowded) {
+      break;
+    }
+
+    if (hintCrowding(lifted) === 0) {
+      return lifted;
+    }
+  }
+
+  return level;
+};
+
+export const computeGeo = (w: number, h: number, count: number): Geo =>
+  w > h * WIDE_RATIO
+    ? liftedForHint(w, h, Math.max(1, count))
+    : tallGeo(w, h, Math.max(1, count));

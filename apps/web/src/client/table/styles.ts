@@ -194,8 +194,8 @@ export const tableCss = `
 .hand.peek .hc .card .back, .hand.open .hc .card .back { transform: rotateY(180deg); }
 .hand .hc:nth-child(1) { transform: translate(0px, 0px) rotate(-5deg); }
 .hand .hc:nth-child(2) { transform: translate(var(--spread), 3px) rotate(4deg); }
-.hand.peek .hc:nth-child(1), .hand.open .hc:nth-child(1) { transform: translate(-12px, -28px) rotate(-8deg); }
-.hand.peek .hc:nth-child(2), .hand.open .hc:nth-child(2) { transform: translate(calc(var(--spread) + 12px), -25px) rotate(7deg); }
+.hand.peek .hc:nth-child(1) { transform: translate(-12px, -28px) rotate(-8deg); }
+.hand.peek .hc:nth-child(2) { transform: translate(calc(var(--spread) + 12px), -25px) rotate(7deg); }
 .hand.armed .hc .card { opacity: 0.45; }
 .hand .hc.up .card .face { transform: none; }
 .hand .hc.up .card .back { transform: rotateY(180deg); }
@@ -204,7 +204,6 @@ export const tableCss = `
   display: grid; place-items: center; border-radius: 6px; background: var(--color-toast); color: var(--color-on-toast);
   font-size: var(--text-1); font-weight: var(--weight-strong); letter-spacing: 0.02em; box-shadow: var(--shadow-sheet-1); white-space: nowrap;
 }
-.hand.open .hc.up::before { display: none; }
 .hand.offering { cursor: pointer; }
 .hand.beckon { animation: beckon 1.4s ease-in-out infinite; }
 @keyframes beckon { 0%, 100% { translate: 0 0; } 50% { translate: 0 -6px; } }
@@ -212,15 +211,16 @@ export const tableCss = `
   position: absolute; left: 50%; bottom: calc(100% + var(--space-3)); transform: translateX(-50%); white-space: nowrap; z-index: 2;
   font-size: var(--text-2); font-weight: var(--weight-strong); color: var(--color-ink); opacity: 0; transition: opacity var(--duration-2) var(--ease); text-align: center;
 }
-.open .hand-label { bottom: calc(100% + 40px); }
 .hand-label.on { opacity: 1; }
-.hand-label .say, .hand-label .sub { display: block; }
-.hand-label:has(.sub:not(.gone)) { bottom: calc(100% + 4px); }
-.hand-label:has(.sub:not(.gone)) .until { display: none; }
-.hand-label .sub { font-size: var(--text-1); color: var(--color-ink-muted); font-weight: var(--weight-body); margin-top: 2px; }
-.hand-label .gone { display: none !important; }
-.hand-label .until { display: block; width: 72px; height: 3px; margin: 5px auto 0; border-radius: 2px; background: var(--color-ring-track); overflow: hidden; }
-.hand-label .until::after { content: ""; display: block; height: 100%; width: calc(var(--left, 1) * 100%); background: var(--color-ink-muted); border-radius: 2px; }
+.hand-hint { position: absolute; inset: 0; z-index: 6; pointer-events: none; opacity: 0; transition: opacity var(--duration-2) var(--ease); }
+.hand-hint.on { opacity: 1; }
+.hand-hint .say, .hand-hint .foot { position: absolute; display: flex; align-items: center; justify-content: center; text-align: center; white-space: nowrap; }
+.hand-hint .say { font-size: var(--text-2); font-weight: var(--weight-strong); line-height: 18px; color: var(--color-ink); }
+.hand-hint .foot { flex-direction: column; font-size: var(--text-1); font-weight: var(--weight-body); line-height: 14px; color: var(--color-ink-muted); }
+.hand-hint .gone { display: none; }
+.hand-hint .until { display: block; width: 72px; height: 3px; border-radius: 2px; background: var(--color-ring-track); overflow: hidden; }
+.hand-hint .until::after { content: ""; display: block; height: 100%; width: calc(var(--left, 1) * 100%); background: var(--color-ink-muted); border-radius: 2px; }
+.hand-hint.on-cards .say { white-space: normal; text-wrap: balance; padding: 0 var(--space-2); border-radius: var(--radius-2); background: var(--color-toast); color: var(--color-on-toast); box-shadow: var(--shadow-sheet-2); }
 .armed .hand-label { padding: var(--space-1) var(--space-3); border-radius: var(--radius-3); background: var(--color-toast); color: var(--color-on-toast); box-shadow: var(--shadow-sheet-2); }
 
 .entry {

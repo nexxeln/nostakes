@@ -216,7 +216,7 @@ describe("a showdown where you must table or muck", () => {
       { hint: "Tap your cards to show them", sub: "or flick them up to muck" },
       {
         hint: "Tap your cards to show them",
-        sub: "Your hand wins a pot, so it has to be shown.",
+        sub: "A winning hand must be shown.",
       },
       null,
     ]);

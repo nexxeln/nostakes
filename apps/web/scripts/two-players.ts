@@ -336,7 +336,7 @@ const showsOneCardThenTheOther = (page: Page, other: Page) =>
     yield* shoot(page, "show-after-first.png");
     yield* attempt("see the hint offer the other card", () =>
       page
-        .locator(`${HAND} .hand-label`)
+        .locator(`${TABLE} .hand-hint`)
         .filter({ hasText: "Tap your other card to show it" })
         .waitFor({ state: "attached", timeout: SHOW_WAIT_MS })
     );

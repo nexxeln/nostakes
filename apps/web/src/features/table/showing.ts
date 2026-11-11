@@ -86,6 +86,6 @@ export const showdownWords = (choice: ShowdownChoice): ShowdownWords | null => {
     ? { hint: "Tap your cards to show them", sub: "or flick them up to muck" }
     : {
         hint: "Tap your cards to show them",
-        sub: "Your hand wins a pot, so it has to be shown.",
+        sub: "A winning hand must be shown.",
       };
 };

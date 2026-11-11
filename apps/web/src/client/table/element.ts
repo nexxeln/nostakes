@@ -33,7 +33,9 @@ import {
   clamp,
   computeGeo,
   deadButtonSpot,
+  handHint,
   POST_TAG_WIDTHS,
+  potTabOf,
   postTagSides,
   runLanes,
 } from "./layout.js";
@@ -245,40 +247,9 @@ const ringRadius = (frame: Element, size: number) => {
 
 const RING_GAP = 6;
 
-const POT_STACKED_MIN = 50;
-
 const DETENT_FROM_RAIL = 8;
 
 const WIN_TAB_MS = 3600;
-
-const POT_FLAT_H = 24;
-
-const POT_ABOVE_BOARD = 10;
-
-const POT_FLAT_ABOVE_BOARD = 3;
-
-const potTab = (geo: Geo) => {
-  if (geo.boardInStrip) {
-    return {
-      h: geo.strip.h - 20,
-      stacked: true,
-      w: 2 * (geo.pot.x - geo.strip.x) - 18,
-      y: geo.pot.y,
-    };
-  }
-
-  const stacked = geo.cardW * 1.2 >= POT_STACKED_MIN;
-  const h = stacked ? Math.min(66, geo.cardW * 1.2) : POT_FLAT_H;
-  const boardTop = (geo.board[0]?.y ?? geo.pot.y) - geo.cardW * 0.7;
-  const gap = stacked ? POT_ABOVE_BOARD : POT_FLAT_ABOVE_BOARD;
-
-  return {
-    h,
-    stacked,
-    w: Math.min(88, geo.cardW * 1.6),
-    y: boardTop - gap - h / 2,
-  };
-};
 
 const placeRing = (svg: SVGSVGElement, size: number, radius: number) => {
   const gap = RING_GAP;
@@ -869,8 +840,10 @@ export class NostakesTable extends HTMLElement {
   #entryNote!: HTMLDivElement;
   #handCards: HTMLDivElement[] = [];
   #handLabel!: HTMLDivElement;
-  #labelSay!: HTMLSpanElement;
-  #labelSub!: HTMLSpanElement;
+  #hint!: HTMLDivElement;
+  #hintSay!: HTMLDivElement;
+  #hintFoot!: HTMLDivElement;
+  #hintSub!: HTMLSpanElement;
   #showUntil!: HTMLSpanElement;
   readonly #sentShows = new Set<string>();
   #paperKey = "";
@@ -1295,9 +1268,12 @@ export class NostakesTable extends HTMLElement {
       el("div", "hc", this.#hand),
     ];
     this.#handLabel = el("div", "hand-label", this.#hand);
-    this.#labelSay = el("span", "say", this.#handLabel);
-    this.#labelSub = el("span", "sub gone", this.#handLabel);
-    this.#showUntil = el("span", "until gone", this.#handLabel);
+    this.#hint = el("div", "hand-hint", this.#room);
+    this.#hint.setAttribute("role", "status");
+    this.#hintSay = el("div", "say", this.#hint);
+    this.#hintFoot = el("div", "foot", this.#hint);
+    this.#hintSub = el("span", "sub gone", this.#hintFoot);
+    this.#showUntil = el("span", "until gone", this.#hintFoot);
     this.#showUntil.setAttribute("aria-hidden", "true");
     this.#hand.addEventListener("pointerdown", this.#onHandDown);
     this.#hand.addEventListener("pointerenter", this.#onHandEnter);
@@ -1573,7 +1549,7 @@ export class NostakesTable extends HTMLElement {
       top: `${geo.strip.y}px`,
       width: `${geo.strip.w}px`,
     });
-    const tab = potTab(geo);
+    const tab = potTabOf(geo);
 
     this.#potRoot.style.left = `${geo.pot.x}px`;
     this.#potRoot.style.top = `${tab.y}px`;
@@ -1645,6 +1621,7 @@ export class NostakesTable extends HTMLElement {
       width: `${Math.max(140, chipEdge - selfEdge - 16)}px`,
     });
 
+    this.#placeHint(geo);
     this.#chip.style.setProperty("--c", `${chipSize}px`);
     Object.assign(this.#chip.style, {
       left: `${geo.chip.x - chipSize / 2}px`,
@@ -1766,6 +1743,8 @@ export class NostakesTable extends HTMLElement {
     this.#winner = -1;
     this.#heroWinUntil = 0;
     this.#hand.classList.remove("open", "armed", "peek");
+    this.#hint.classList.remove("on");
+    this.#say("");
     this.#sentShows.clear();
     this.#hand.style.transform = "";
     this.#handLabel.classList.remove("on");
@@ -2068,10 +2047,28 @@ export class NostakesTable extends HTMLElement {
     toggle(this.#self, "folded", me.status === "Folded" || me.status === "Out");
   }
 
+  #placeHint(geo: Geo) {
+    const place = handHint(geo);
+
+    for (const [node, box] of [
+      [this.#hintSay, place.say],
+      [this.#hintFoot, place.foot],
+    ] as const) {
+      Object.assign(node.style, {
+        height: `${box.h}px`,
+        left: `${box.x}px`,
+        top: `${box.y}px`,
+        width: `${box.w}px`,
+      });
+    }
+
+    toggle(this.#hint, "on-cards", place.onCards);
+  }
+
   #say(main: string, sub = "") {
     for (const [node, text] of [
-      [this.#labelSay, main],
-      [this.#labelSub, sub],
+      [this.#hintSay, main],
+      [this.#hintSub, sub],
     ] as const) {
       if (node.textContent !== text) {
         node.textContent = text;
@@ -2103,7 +2100,11 @@ export class NostakesTable extends HTMLElement {
     const { closes } = snapshot.afterHand;
 
     toggle(this.#hand, "offering", offering);
-    toggle(this.#showUntil, "gone", !offering || closes === null);
+    toggle(
+      this.#showUntil,
+      "gone",
+      !offering || closes === null || offer.sub !== ""
+    );
 
     if (closes !== null && closes.key !== this.#closesKey) {
       this.#closesKey = closes.key;
@@ -2113,10 +2114,10 @@ export class NostakesTable extends HTMLElement {
 
     if (offering) {
       this.#say(offer.hint, offer.sub);
-      this.#handLabel.classList.add("on");
+      this.#hint.classList.add("on");
     } else if (this.#hand.classList.contains("was-offering")) {
       this.#say("");
-      this.#handLabel.classList.remove("on");
+      this.#hint.classList.remove("on");
     }
 
     toggle(this.#hand, "was-offering", offering);
@@ -2264,13 +2265,12 @@ export class NostakesTable extends HTMLElement {
 
     if (words !== null) {
       this.#say(words.hint, words.sub);
-      this.#handLabel.classList.add("on");
+      this.#hint.classList.add("on");
     } else if (
       !this.#hand.classList.contains("open") &&
-      !this.#hand.classList.contains("armed") &&
       !this.#hand.classList.contains("offering")
     ) {
-      this.#handLabel.classList.remove("on");
+      this.#hint.classList.remove("on");
     }
   }
 
@@ -2724,7 +2724,7 @@ export class NostakesTable extends HTMLElement {
 
       if (label !== "" && label !== SHOWS) {
         this.#say(label);
-        this.#handLabel.classList.add("on");
+        this.#hint.classList.add("on");
       }
     } else if (label !== "") {
       this.#tag(seat, label, "", Infinity);
@@ -3114,7 +3114,7 @@ export class NostakesTable extends HTMLElement {
 
     this.#selfTab.textContent = `+${formatChips(amount)}`;
     this.#self.dataset.awarded = this.#selfTab.textContent;
-    this.#handLabel.classList.remove("on");
+    this.#hint.classList.remove("on");
     this.#heroWinUntil = now + 4200;
     this.#sound.win();
     this.#sound.buzz([30, 40, 30, 40, 70]);
@@ -3301,7 +3301,7 @@ export class NostakesTable extends HTMLElement {
     if (away) {
       const resting = word === "fold" ? "Fold" : "Muck";
 
-      this.#say(armed ? `Release to ${word}` : resting);
+      this.#handLabel.textContent = armed ? `Release to ${word}` : resting;
       toggle(this.#handLabel, "on", gesture.dy < -30);
     }
   }
