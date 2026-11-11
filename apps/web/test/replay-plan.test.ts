@@ -33,10 +33,13 @@ import type { Audience, SeenTableEvent } from "@nostakes/room";
 import { Match, Option, Result, Schema } from "effect";
 import * as Arbitrary from "effect/Arbitrary";
 
+import { replayHand } from "../scripts/moments/replay-hands.js";
 import {
   BEAT_GRID_MS,
   poseAtKeys,
   replayPlan,
+  replaySeatsOf,
+  tellsTheHand,
 } from "../src/features/moments/replay-plan.js";
 import type { ReplayPlan } from "../src/features/moments/replay-plan.js";
 import { startingStacks } from "../src/features/moments/watch.js";
@@ -300,6 +303,108 @@ const everyDevice = (events: readonly Event[]) => [
   Audiences.Spectator(),
   ...audiencesOf(events),
 ];
+
+const stagedPlan = (name: string, kind: "BigHand" | "SevenDeuce") => {
+  const hand = replayHand(name, { deck: "TwoColour", theme: "Light" });
+
+  return replayOf(hand.record, evenChances).pipe(
+    Option.map((replay) =>
+      replayPlan(replay, {
+        frame: "Story",
+        kind,
+        principals: [],
+        seats: replaySeatsOf(hand),
+        tier: 2,
+      })
+    )
+  );
+};
+
+const written = (plan: ReplayPlan) =>
+  plan.sprites.flatMap((sprite) => {
+    if (sprite.art.kind === "Pill") {
+      return [{ at: sprite.shownAt, text: sprite.art.text }];
+    }
+
+    return sprite.art.kind === "Caption"
+      ? [{ at: sprite.shownAt, text: sprite.art.lines.join(" ") }]
+      : [];
+  });
+
+describe("a replay of a hand with a house rule", () => {
+  it("shows a seven-deuce bounty: what every other seat dealt in paid and what the winner collected, after the result and before the card", () => {
+    expect(
+      stagedPlan("SevenDeuce", "SevenDeuce").pipe(
+        Option.map((plan) =>
+          written(plan)
+            .filter(({ text }) => text.includes("ounty"))
+            .map(({ at, text }) => ({
+              inTime: at >= plan.sheet.resultMs && at < plan.cardAt,
+              text: text.replaceAll(/[\u2066-\u2069]/gu, ""),
+            }))
+            .toSorted((one, other) => one.text.localeCompare(other.text))
+        )
+      )
+    ).toStrictEqual(
+      Option.some([
+        { inTime: true, text: "Bounty +40" },
+        { inTime: true, text: "Bounty \u221220" },
+        { inTime: true, text: "Bounty \u221220" },
+        {
+          inTime: true,
+          text: "Seven-deuce bounty. The table pays Lou 40.",
+        },
+      ])
+    );
+  });
+
+  it("names a bomb pot, with every ante in the pot from the first frame and the caption before the flop", () => {
+    expect(
+      stagedPlan("BombPot", "BigHand").pipe(
+        Option.map((plan) => {
+          const texts = written(plan);
+          const named = texts.find(({ text }) => text.startsWith("Bomb pot."));
+
+          const flop = Math.min(
+            ...plan.sprites.flatMap((sprite) =>
+              sprite.art.kind === "Card" && sprite.art.card === "9c"
+                ? [sprite.shownAt]
+                : []
+            )
+          );
+
+          return {
+            beforeTheFlop: (named?.at ?? flop) < flop,
+            named: named?.text,
+            pot: texts.find(
+              ({ at, text }) => at === 0 && text.startsWith("Pot")
+            )?.text,
+          };
+        })
+      )
+    ).toStrictEqual(
+      Option.some({
+        beforeTheFlop: true,
+        named: "Bomb pot. Everyone antes 50.",
+        pot: "Pot 200",
+      })
+    );
+  });
+
+  it("tells the whole hand for a tier 2 or 3 moment, and for the kinds that only have one tier", () => {
+    expect({
+      badBeat: [tellsTheHand("BadBeat", 1), tellsTheHand("BadBeat", 2)],
+      onlyOneTier: [
+        tellsTheHand("SevenDeuce", 1),
+        tellsTheHand("SameHand", 1),
+        tellsTheHand("SplitRuns", 1),
+      ],
+    }).toStrictEqual({
+      badBeat: [false, true],
+      onlyOneTier: [true, true, true],
+    });
+  });
+});
 
 describe("a moment's hand replay", () => {
   it("scores a bluff's result after its pause, not at the river card before it", () => {

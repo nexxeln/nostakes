@@ -72,12 +72,19 @@ export const REPLAY_WORDS = {
       : `${who(name)} is all in.\n${chipsText(amount)}.`,
   bet: (name: string, amount: number) =>
     `${who(name)} bets ${chipsText(amount)}.`,
+  bluffs: (name: string, amount: number, allIn: boolean, hand: string) =>
+    `${who(name)} ${allIn ? "shoves" : "bets"} ${chipsText(amount)}.\nWith ${hand}.`,
   board: (run: number) => `${ORDINALS[run - 1] ?? "Next"} board.`,
   boardSplit: (run: number) => `${ORDINALS[run - 1] ?? "This"} board: split.`,
   boardTo: (run: number, name: string) =>
     `${ORDINALS[run - 1] ?? "This"} board: ${who(name)}.`,
+  bombPot: (ante: number) => `Bomb pot.\nEveryone antes ${chipsText(ante)}.`,
   bounty: (name: string, amount: number) =>
-    `The table pays ${who(name)} ${chipsText(amount)}.`,
+    `Seven-deuce bounty.\nThe table pays ${who(name)} ${chipsText(amount)}.`,
+  bountyFrom: (payer: string, name: string, amount: number) =>
+    `Seven-deuce bounty.\n${who(payer)} pays ${who(name)} ${chipsText(amount)}.`,
+  bountyNote: (amount: number) =>
+    `Bounty ${amount < 0 ? "\u2212" : "+"}${chipsText(Math.abs(amount))}`,
   call: (name: string) => `${who(name)} calls.`,
   callAhead: (name: string) => `${who(name)} calls.\nOf course.`,
   callAllIn: (name: string) => `${who(name)} calls.\nAll in.`,
@@ -102,11 +109,9 @@ export const REPLAY_WORDS = {
     cards: readonly Card[],
     unseenOfRank: (rank: number) => number
   ) =>
-    `${who(name)} needs ${neededCards(cards, unseenOfRank)}.\n${
-      cards.length > 12
-        ? `${cards.length} outs.`
-        : `${countWord(cards.length)} left.`
-    }`,
+    cards.length > 12
+      ? `${who(name)} has ${cards.length} outs.`
+      : `${who(name)} needs ${neededCards(cards, unseenOfRank)}.\n${countWord(cards.length)} left.`,
   noIdea: (name: string, amount: number, allIn: boolean) =>
     `${who(name)} ${allIn ? "shoves" : "bets"} ${chipsText(amount)}.\nNo idea.`,
   nothing: (start: string, made: string) =>
@@ -132,6 +137,7 @@ export const REPLAY_WORDS = {
   takes: (name: string, amount: number) =>
     `${who(name)} takes ${chipsText(amount)}.`,
   tank: (name: string) => `${who(name)} goes into\nthe time bank.`,
+  tied: "Nothing left\nto separate them.",
   twoOfThem: (rank: number, count: number) =>
     count >= 3 ? `three ${ranksWord(rank)}` : `a pair of ${ranksWord(rank)}`,
 } as const;

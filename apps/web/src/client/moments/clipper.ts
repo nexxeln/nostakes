@@ -6,7 +6,10 @@ import {
   reachFor,
 } from "../../features/moments/clip-reach.js";
 import type { MomentPicture } from "../../features/moments/picture.js";
-import { replaySeatsOf } from "../../features/moments/replay-plan.js";
+import {
+  replaySeatsOf,
+  tellsTheHand,
+} from "../../features/moments/replay-plan.js";
 import { offer } from "../pictures/keeper.js";
 import type { PartBox } from "./clip-measure.js";
 import { clipFile, clipSupport, replayFile, slotFor } from "./clip.js";
@@ -37,8 +40,6 @@ const replayOrderOf = (story: SceneStory | null) =>
         record: story.hand.record,
         seats: replaySeatsOf(story.hand),
       };
-
-export const REPLAY_TIER = 2;
 
 const ReportedMemorySchema = Schema.Struct({ deviceMemory: Schema.Finite });
 
@@ -187,7 +188,7 @@ export class Clipper {
 
     Effect.runFork(
       (replay !== null &&
-      this.#picture.tier >= REPLAY_TIER &&
+      tellsTheHand(this.#picture.kind, this.#picture.tier) &&
       reachFor(deviceMemory()) === "Replay"
         ? replayFile(this.#picture, this.#art.look, {
             ...order,

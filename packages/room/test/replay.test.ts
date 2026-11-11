@@ -1,10 +1,14 @@
 import { describe, expect, it } from "@effect/vitest";
 import {
+  BombPots,
   CardFromText,
   CardSchema,
+  ChipsSchema,
   DECK_SIZE,
   Events,
+  SevenDeuces,
   ShowdownEntries,
+  TableConfigSchema,
   evaluate,
 } from "@nostakes/engine";
 import type { Card, Event } from "@nostakes/engine";
@@ -26,6 +30,7 @@ import {
   feedFor,
   folds,
   generatedHand,
+  homeConfig,
   played,
   seatedAudiences,
   shows,
@@ -73,6 +78,7 @@ const boardOf = (step: ReplayStep): readonly Card[] =>
   ReplaySteps.$match(step, {
     Acted: () => [],
     Awarded: () => [],
+    Bounty: () => [],
     Dealt: () => [],
     Gathered: () => [],
     Mucked: () => [],
@@ -364,6 +370,81 @@ describe("a hand's replay", () => {
     );
 
     expect(shown).toStrictEqual(Option.some([1]));
+  });
+
+  it("tells a seven-deuce bounty with what each seat paid, after the cards the rule showed", () => {
+    const events = played({
+      config: TableConfigSchema.make({
+        ...homeConfig,
+        sevenDeuce: SevenDeuces.Bounty({ amount: ChipsSchema.make(20) }),
+      }),
+      deck: headsUp("7c 2d", "Ah Kh", "9s 9h 4d Jc 3s"),
+      moves: [act(0, bets(300)), act(1, folds)],
+      stacks: { 0: 1000, 1: 1000 },
+    });
+
+    expect(
+      replayOf(spectatorFeed(events)).pipe(
+        Option.map((replay) => ({
+          bombAnte: replay.bombAnte,
+          bounty: replay.steps
+            .filter(ReplaySteps.$is("Bounty"))
+            .map(({ payers, seat }) => ({ payers, seat })),
+          last: replay.steps.at(-1)?._tag,
+          tabled: replay.tabled.map((tabled) => tabled.cards.length),
+        }))
+      )
+    ).toStrictEqual(
+      Option.some({
+        bombAnte: null,
+        bounty: [{ payers: [{ amount: 20, seat: 1 }], seat: 0 }],
+        last: "Bounty",
+        tabled: [2],
+      })
+    );
+  });
+
+  it("tells a bomb pot with its ante, every seat's post, and the flop before any action", () => {
+    const events = played({
+      config: TableConfigSchema.make({
+        ...homeConfig,
+        bombPot: BombPots.BombPots({
+          ante: ChipsSchema.make(50),
+          everyHands: 1,
+        }),
+      }),
+      deck: headsUp("As Ah", "Kd Kc", "2s 7h 9d 3c 4s"),
+      moves: [],
+      stacks: { 0: 1000, 1: 1000 },
+    });
+
+    const feed = [
+      ...spectatorFeed(events),
+      Events.HandEnded({ handNumber: 1 }),
+    ];
+
+    expect(
+      replayOf(feed, uncounted).pipe(
+        Option.map((replay) => ({
+          bombAnte: replay.bombAnte,
+          order: replay.steps
+            .map((step) => step._tag)
+            .filter((tag) => tag !== "Odds"),
+          posts: replay.steps
+            .filter(ReplaySteps.$is("Posted"))
+            .map(({ amount, post }) => ({ amount, post })),
+        }))
+      )
+    ).toStrictEqual(
+      Option.some({
+        bombAnte: 50,
+        order: ["Posted", "Posted", "Dealt", "StreetDealt"],
+        posts: [
+          { amount: 50, post: "Ante" },
+          { amount: 50, post: "Ante" },
+        ],
+      })
+    );
   });
 
   it("only reads the hand from its start", () => {

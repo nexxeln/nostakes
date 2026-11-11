@@ -76,6 +76,15 @@ export interface ReplayPlan {
 
 export const TAG_MS = 2400;
 
+const WHOLE_HAND_KINDS: ReadonlySet<MomentKind> = new Set([
+  "SameHand",
+  "SevenDeuce",
+  "SplitRuns",
+]);
+
+export const tellsTheHand = (kind: MomentKind, tier: Tier) =>
+  tier >= 2 || WHOLE_HAND_KINDS.has(kind);
+
 export const SHORTEST_MS = 12_000;
 
 export const LONGEST_MS = 25_000;
@@ -129,6 +138,7 @@ interface DraftSeat {
   expression: Expression;
   folded: boolean;
   loud: boolean;
+  note: string;
   stack: number | null;
 }
 
@@ -483,8 +493,16 @@ const outsLine = (told: Told, step: OddsStep) => {
   }
 
   if (outs.cards.length === 0) {
-    return step.board.length === FULL_BOARD - 1
-      ? REPLAY_WORDS.dead(nameOf(told, outs.seat))
+    if (step.board.length !== FULL_BOARD - 1) {
+      return null;
+    }
+
+    if (percentOf(step, outs.seat) === 0) {
+      return REPLAY_WORDS.dead(nameOf(told, outs.seat));
+    }
+
+    return step.outs.every((each) => each.cards.length === 0)
+      ? REPLAY_WORDS.tied
       : null;
   }
 
@@ -499,9 +517,20 @@ const actLine = (
   told: Told,
   step: ActedStep,
   odds: Chances | null,
-  stackBefore: number | null
+  seen: {
+    readonly board: readonly Card[];
+    readonly decisive: boolean;
+    readonly stackBefore: number | null;
+  }
 ) => {
   const name = nameOf(told, step.seat);
+  const { stackBefore } = seen;
+  const hole = fullHole(told, step.seat);
+
+  const holding =
+    hole !== null && seen.board.length === FULL_BOARD
+      ? handName(evaluate([...hole, ...seen.board]))
+      : "";
 
   const mine = (() => {
     if (odds === null) {
@@ -516,7 +545,7 @@ const actLine = (
   })();
 
   if (step.act === "Call") {
-    if (mine !== null && mine >= SURE_PERCENT) {
+    if (mine !== null && mine >= SURE_PERCENT && !seen.decisive) {
       return REPLAY_WORDS.callAhead(name);
     }
 
@@ -524,7 +553,9 @@ const actLine = (
   }
 
   if (mine !== null && mine <= NO_IDEA_PERCENT) {
-    return REPLAY_WORDS.noIdea(name, step.to, step.allIn);
+    return hole !== null && holding.endsWith(" high")
+      ? REPLAY_WORDS.bluffs(name, step.to, step.allIn, startingHandName(hole))
+      : REPLAY_WORDS.noIdea(name, step.to, step.allIn);
   }
 
   if (step.allIn) {
@@ -613,9 +644,15 @@ const wagered = (walk: Walk, told: Told, step: ActedStep) => {
 
   const stackBefore = walk.stacks.get(step.seat) ?? null;
   const facing = facingOf(walk, step.seat);
-  const line = actLine(told, step, chancesOf(walk.odds, told), stackBefore);
-  const hole = fullHole(told, step.seat);
   const [board = []] = walk.boards;
+
+  const line = actLine(told, step, chancesOf(walk.odds, told), {
+    board: [...board],
+    decisive,
+    stackBefore,
+  });
+
+  const hole = fullHole(told, step.seat);
   const holding = hole === null ? "" : heldBy(hole, [...board]);
 
   walk.bets.set(step.seat, step.to);
@@ -1085,6 +1122,57 @@ const paidOut = (
   });
 };
 
+type BountyStep = StepOf<"Bounty">;
+
+const BOUNTY_MS = 1900;
+
+const bountyPaid = (walk: Walk, told: Told, bounty: BountyStep) => {
+  const total = bounty.payers.reduce((sum, payer) => sum + payer.amount, 0);
+  const [only] = bounty.payers;
+
+  add(walk, { firm: true, hold: BOUNTY_MS, section: "Payoff" }, (show) => {
+    show.cut("TwoShot");
+
+    for (const payer of bounty.payers) {
+      const draft = show.seat(payer.seat);
+
+      draft.note = REPLAY_WORDS.bountyNote(-payer.amount);
+      draft.loud = false;
+      draft.stack =
+        draft.stack === null ? null : Math.max(0, draft.stack - payer.amount);
+    }
+
+    const winner = show.seat(bounty.seat);
+
+    winner.note = REPLAY_WORDS.bountyNote(total);
+    winner.loud = true;
+    winner.expression = "Happy";
+    winner.stack = winner.stack === null ? null : winner.stack + total;
+    show.draft.caption = captionLines(
+      bounty.payers.length === 1 && only !== undefined
+        ? REPLAY_WORDS.bountyFrom(
+            nameOf(told, only.seat),
+            nameOf(told, bounty.seat),
+            total
+          )
+        : REPLAY_WORDS.bounty(nameOf(told, bounty.seat), total)
+    );
+    show.apply();
+    show.cue("Chips", 0, bounty.seat);
+    show.cue("Stamp", 0, bounty.seat);
+  });
+};
+
+const BOMB_MS = 1200;
+
+const bombCalled = (walk: Walk, ante: number) => {
+  add(walk, { hold: BOMB_MS, section: "Build" }, (show) => {
+    show.draft.caption = captionLines(REPLAY_WORDS.bombPot(ante));
+    show.apply();
+    show.cue("AllIn", 0);
+  });
+};
+
 const openingOf = (replay: Replay, facts: ReplayFacts, told: Told): Walk => {
   const walk: Walk = {
     announced: new Set(),
@@ -1142,6 +1230,7 @@ const openingOf = (replay: Replay, facts: ReplayFacts, told: Told): Walk => {
         expression: "Resting",
         folded: false,
         loud: false,
+        note: "",
         stack: opening.stacks.get(seat) ?? null,
       });
     }
@@ -1153,6 +1242,10 @@ const openingOf = (replay: Replay, facts: ReplayFacts, told: Told): Walk => {
     show.apply();
     show.push(1.035);
   });
+
+  if (replay.bombAnte !== null) {
+    bombCalled(walk, replay.bombAnte);
+  }
 
   return walk;
 };
@@ -1211,6 +1304,7 @@ const ranTwice = (walk: Walk, told: Told, runs: number) => {
 const beatsOf = (replay: Replay, facts: ReplayFacts, told: Told) => {
   const walk = openingOf(replay, facts, told);
   const awards: AwardedStep[] = [];
+  const bounties: BountyStep[] = [];
   const counted = new Set<OddsStep>();
   const streets = replay.steps.filter(ReplaySteps.$is("StreetDealt"));
 
@@ -1221,6 +1315,9 @@ const beatsOf = (replay: Replay, facts: ReplayFacts, told: Told) => {
       },
       Awarded: (each) => {
         awards.push(each);
+      },
+      Bounty: (each) => {
+        bounties.push(each);
       },
       Dealt: () => 0,
       Gathered: ({ pot }) => {
@@ -1268,6 +1365,10 @@ const beatsOf = (replay: Replay, facts: ReplayFacts, told: Told) => {
 
   paidOut(walk, told, facts, awards);
 
+  for (const bounty of bounties) {
+    bountyPaid(walk, told, bounty);
+  }
+
   return walk.beats;
 };
 
@@ -1302,6 +1403,15 @@ const OUTCOMES: Readonly<Record<Family, Outcome>> = {
 };
 
 export const BEAT_GRID_MS = 100;
+
+const LAYERS: Readonly<Record<ReplaySprite["art"]["kind"], number>> = {
+  Bar: 0,
+  Caption: 5,
+  Card: 2,
+  Face: 1,
+  Label: 3,
+  Pill: 4,
+};
 
 const SHAKES = [16, -13, 9, -6, 3, 0];
 
@@ -1414,6 +1524,7 @@ export const replayPlan = (replay: Replay, facts: ReplayFacts): ReplayPlan => {
           expression: "Resting",
           folded: false,
           loud: false,
+          note: "",
           stack: null,
         };
 
@@ -1467,7 +1578,9 @@ export const replayPlan = (replay: Replay, facts: ReplayFacts): ReplayPlan => {
       seed: replay.handNumber,
       tagMs: cardAt,
     },
-    sprites: stager.sprites,
+    sprites: stager.sprites.toSorted(
+      (one, other) => LAYERS[one.art.kind] - LAYERS[other.art.kind]
+    ),
     timeline,
   };
 };

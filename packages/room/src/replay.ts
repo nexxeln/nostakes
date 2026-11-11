@@ -53,6 +53,11 @@ export type ReplayStep = Data.TaggedEnum<{
     readonly run: number;
     readonly shares: readonly Share[];
   };
+  Bounty: {
+    readonly at: number;
+    readonly payers: readonly Share[];
+    readonly seat: SeatIndex;
+  };
   Dealt: { readonly at: number; readonly seats: readonly SeatIndex[] };
   Gathered: { readonly at: number; readonly pot: number };
   Mucked: { readonly at: number; readonly seat: SeatIndex };
@@ -93,6 +98,7 @@ export const ReplaySteps = Data.taggedEnum<ReplayStep>();
 
 export interface Replay {
   readonly bigBlind: number;
+  readonly bombAnte: number | null;
   readonly bigBlindSeat: SeatIndex;
   readonly button: SeatIndex;
   readonly dealtIn: readonly SeatIndex[];
@@ -313,7 +319,16 @@ const tell = (telling: Telling, event: SeenTableEvent, at: number): Told =>
           post: blindPost(blind, dead),
           seat,
         }),
-      BountyPaid: () => NOTHING,
+      BountyPaid: ({ payers, seat }) => [
+        ReplaySteps.Bounty({
+          at,
+          payers: payers.map((payer) => ({
+            amount: payer.amount,
+            seat: payer.seat,
+          })),
+          seat,
+        }),
+      ],
       Called: ({ allIn, amount, seat }) => [
         ReplaySteps.Acted({
           act: "Call",
@@ -571,6 +586,7 @@ export const replayOf = (
       return {
         bigBlind: story.bigBlind,
         bigBlindSeat: first.bigBlindSeat,
+        bombAnte: first.bombPot?.ante ?? null,
         button: first.button,
         dealtIn: first.dealtIn,
         handNumber: first.handNumber,
@@ -591,6 +607,7 @@ export const cardsRevealedBy = (step: ReplayStep): readonly Card[] =>
   ReplaySteps.$match(step, {
     Acted: () => [],
     Awarded: () => [],
+    Bounty: () => [],
     Dealt: () => [],
     Gathered: () => [],
     Mucked: () => [],

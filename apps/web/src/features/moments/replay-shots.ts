@@ -15,6 +15,7 @@ export interface SeatScene {
   readonly expression: Expression;
   readonly folded: boolean;
   readonly loud: boolean;
+  readonly note: string;
   readonly stack: number | null;
 }
 
@@ -186,6 +187,21 @@ const stackText = (seat: SeatScene) => {
   return seat.stack === 0 ? ALL_IN : chipsText(seat.stack);
 };
 
+const pillText = (seat: SeatScene) => {
+  if (seat.note.length > 0) {
+    return seat.note;
+  }
+
+  if (seat.bet > 0) {
+    return chipsText(seat.bet);
+  }
+
+  return stackText(seat) === ALL_IN ? ALL_IN : "";
+};
+
+const pillTone = (seat: SeatScene) =>
+  seat.loud || (seat.bet === 0 && seat.note.length === 0) ? "Red" : "Paper";
+
 const BAR = { height: 52, width: 900, x: 90 };
 
 const barOf = (
@@ -250,6 +266,7 @@ const seatOf = (scene: Scene, person: Person): SeatScene =>
     expression: "Resting",
     folded: false,
     loud: false,
+    note: "",
     stack: null,
   };
 
@@ -274,7 +291,6 @@ const duoSide = (
   const x = side === "Left" ? DUO.left : DUO.right;
   const centre = x + DUO.face / 2;
   const tag = `seat:${person.seat}`;
-  const stack = stackText(seat);
 
   return [
     [
@@ -295,7 +311,7 @@ const duoSide = (
       `${tag}:name`,
       label(person.name, { size: 50, x: centre, y: top + DUO.name }),
     ],
-    ...(seat.bet > 0 || stack === ALL_IN
+    ...(pillText(seat).length > 0
       ? ([
           [
             `${tag}:bet`,
@@ -303,8 +319,8 @@ const duoSide = (
               art: {
                 kind: "Pill",
                 size: 38,
-                text: seat.bet > 0 ? chipsText(seat.bet) : stack,
-                tone: seat.loud || seat.bet === 0 ? "Red" : "Paper",
+                text: pillText(seat),
+                tone: pillTone(seat),
                 x: centre,
                 y: top + DUO.bet + 22,
               },
@@ -351,7 +367,7 @@ const restRow = (
           pose: dim,
         },
       ],
-      ...(seat.bet > 0
+      ...(seat.bet > 0 || seat.note.length > 0
         ? ([
             [
               `${tag}:bet`,
@@ -359,7 +375,7 @@ const restRow = (
                 art: {
                   kind: "Pill",
                   size: 24,
-                  text: chipsText(seat.bet),
+                  text: seat.note.length > 0 ? seat.note : chipsText(seat.bet),
                   tone: seat.loud ? "Red" : "Paper",
                   x: x + MINI.face / 2,
                   y: cast.top + MINI.y - 22,
