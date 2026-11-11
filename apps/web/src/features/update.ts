@@ -30,7 +30,6 @@ import type { ManagedResource, Update } from "foldkit";
 import {
   ApplyDeck,
   ApplyTheme,
-  LoadPageCounter,
   SaveCounting,
   SendReport,
   CheckRoom,
@@ -205,7 +204,6 @@ export const init = (flags: Flags): Return => {
     commands: [
       ApplyTheme({ theme: flags.theme }),
       ApplyDeck({ deck: flags.deck }),
-      ...(opened.model.counting ? [LoadPageCounter()] : []),
       ...Option.toArray(flags.reloadedFor).flatMap((target) =>
         reported(
           opened.model,

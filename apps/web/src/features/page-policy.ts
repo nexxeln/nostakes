@@ -1,37 +1,22 @@
-import {
-  BEACON_REPORTS,
-  BEACON_SOURCE,
-  DRAND_RELAYS,
-  SITE_HOSTS,
-  countsPages,
-} from "./outside-hosts.js";
+import { DRAND_RELAYS, SITE_HOSTS } from "./outside-hosts.js";
 
 const SELF = "'self'";
 
 const NONE = "'none'";
-
-const originOf = (address: string) => new URL(address).origin;
-
-const counter = (sources: readonly string[]) => (countsPages ? sources : []);
 
 export const POLICY_DIRECTIVES: readonly (readonly [
   string,
   readonly string[],
 ])[] = [
   ["default-src", [SELF]],
-  ["script-src", [SELF, ...counter([originOf(BEACON_SOURCE)])]],
+  ["script-src", [SELF]],
   ["style-src", [SELF, "'unsafe-inline'"]],
   ["img-src", [SELF, "data:", "blob:"]],
   ["media-src", [SELF, "blob:"]],
   ["font-src", [SELF]],
   [
     "connect-src",
-    [
-      SELF,
-      ...SITE_HOSTS.map((host) => `wss://${host}`),
-      ...DRAND_RELAYS,
-      ...counter([BEACON_REPORTS]),
-    ],
+    [SELF, ...SITE_HOSTS.map((host) => `wss://${host}`), ...DRAND_RELAYS],
   ],
   ["worker-src", [SELF]],
   ["manifest-src", [SELF]],

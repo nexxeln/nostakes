@@ -47,6 +47,23 @@ describe("the page's security policy", () => {
     ).toStrictEqual([]);
   });
 
+  it("names no other site than its own and the drand relays", () => {
+    const ours = new Set<string>([
+      ...SITE_HOSTS.map((host) => `wss://${host}`),
+      ...DRAND_RELAYS,
+    ]);
+
+    expect(
+      POLICY_DIRECTIVES.flatMap(([, sources]) => sources).filter(
+        (source) =>
+          !source.startsWith("'") &&
+          source !== "data:" &&
+          source !== "blob:" &&
+          !ours.has(source)
+      )
+    ).toStrictEqual([]);
+  });
+
   it("writes every header for every path of the built site", () => {
     expect(
       Object.entries(PAGE_HEADERS).filter(

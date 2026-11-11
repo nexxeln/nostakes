@@ -33,7 +33,6 @@ import {
   RoomRecordSchema,
   ThemeSchema,
 } from "../features/model.js";
-import { leavesByLoading } from "../features/page-counting.js";
 import { refusalText } from "../features/refusals.js";
 import { rejectionText } from "../features/rejections.js";
 import { ClientReportSchema, REPORTS_PATH } from "../features/reports.js";
@@ -41,7 +40,6 @@ import { HintSchema } from "../features/table/snapshot.js";
 import { roomPath } from "../features/wire.js";
 import { RoomConnection } from "./connection.js";
 import { countingOn, deviceHeaders, storeCounting } from "./counting.js";
-import { loadPageCounter, pageCounterLoaded } from "./page-counter.js";
 import { roomIsGone } from "./room-check.js";
 import {
   forgetPass,
@@ -304,12 +302,9 @@ export const CopyText = Command.define("CopyText", {
 export const ShowPath = Command.define("ShowPath", {
   args: { path: Schema.String },
   execute: ({ path }) =>
-    (leavesByLoading(path, pageCounterLoaded())
-      ? Effect.sync(() => {
-          globalThis.location.replace(path);
-        })
-      : Navigation.replaceUrl(path)
-    ).pipe(Effect.as(Messages.CompletedNavigation({ path }))),
+    Navigation.replaceUrl(path).pipe(
+      Effect.as(Messages.CompletedNavigation({ path }))
+    ),
   messages: [Messages.CompletedNavigation],
 });
 
@@ -393,15 +388,7 @@ export const ApplyDeck = Command.define("ApplyDeck", {
 export const SaveCounting = Command.define("SaveCounting", {
   args: { on: Schema.Boolean },
   execute: ({ on }) =>
-    storeCounting(on).pipe(
-      Effect.andThen(on ? loadPageCounter : Effect.void),
-      Effect.as(Messages.CompletedPreference())
-    ),
-  messages: [Messages.CompletedPreference],
-});
-
-export const LoadPageCounter = Command.define("LoadPageCounter", {
-  execute: loadPageCounter.pipe(Effect.as(Messages.CompletedPreference())),
+    storeCounting(on).pipe(Effect.as(Messages.CompletedPreference())),
   messages: [Messages.CompletedPreference],
 });
 
