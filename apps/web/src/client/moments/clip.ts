@@ -345,15 +345,21 @@ export interface ReplayOrder extends ClipOrder {
 const SPRITES_PER_SLOT = 6;
 
 const chancesOf = (worker: ClipWorker, record: readonly SeenTableEvent[]) =>
-  Option.match(oddsAskedBy(record), {
-    onNone: () => Effect.succeed<readonly number[]>([]),
-    onSome: (asked) =>
+  Effect.all(
+    oddsAskedBy(record).map((asked) =>
       worker
         .ask({ board: asked.board, holes: asked.holes, kind: "Chances" }, [])
         .pipe(
-          Effect.map((reply) => (reply.tag === "Chances" ? reply.percents : []))
-        ),
-  });
+          Effect.map(
+            (reply) =>
+              [
+                JSON.stringify(asked),
+                reply.tag === "Chances" ? reply.percents : [],
+              ] as const
+          )
+        )
+    )
+  ).pipe(Effect.map((answers) => new Map(answers)));
 
 const markupsOf = (
   plan: ReplayPlan,
@@ -392,7 +398,10 @@ export const replayFile = (
     yield* slot;
 
     const replay = yield* Effect.fromOption(
-      replayOf(order.record, () => percents)
+      replayOf(
+        order.record,
+        (asked) => percents.get(JSON.stringify(asked)) ?? []
+      )
     ).pipe(
       Effect.mapError(
         () =>

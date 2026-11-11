@@ -231,8 +231,15 @@ const revealedIn = (event: SeenTableEvent) =>
     Match.orElse(() => [])
   );
 
+const evenChances = ({
+  holes,
+}: {
+  readonly holes: readonly unknown[];
+}): readonly number[] =>
+  holes.map(() => Math.floor(100 / Math.max(1, holes.length)));
+
 const planFor = (feed: readonly SeenTableEvent[]) =>
-  replayOf(feed).pipe(
+  replayOf(feed, evenChances).pipe(
     Option.map((replay) =>
       replayPlan(replay, {
         lead: replay.dealtIn[0] ?? replay.button,

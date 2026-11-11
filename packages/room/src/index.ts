@@ -271,13 +271,25 @@ export type {
 
 export {
   ReplaySteps,
+  cardsHeldBy,
   cardsRevealedBy,
   oddsAskedBy,
   replayOf,
   tableChances,
 } from "./replay.js";
 
-export type { Act, Chance, Post, Replay, ReplayStep, Share } from "./replay.js";
+export type {
+  Act,
+  Chance,
+  Chances,
+  OddsAsked,
+  Outs,
+  Post,
+  Replay,
+  ReplayStep,
+  Share,
+  Tabled,
+} from "./replay.js";
 
 export type { Balance, Settlement, Transfer } from "./settlement.js";
 

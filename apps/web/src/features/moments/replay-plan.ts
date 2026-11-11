@@ -370,7 +370,7 @@ const holdOf = (beat: Beat): number =>
       Gather: () => 400,
       Intro: () => 500,
       Muck: () => 300,
-      Odds: () => 1200,
+      Odds: () => 500,
       Posts: () => 500,
       Return: () => 300,
       Runs: () => 600,

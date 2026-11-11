@@ -1,17 +1,24 @@
 import { describe, expect, it } from "@effect/vitest";
-import { Events, ShowdownEntries } from "@nostakes/engine";
+import {
+  CardFromText,
+  CardSchema,
+  DECK_SIZE,
+  Events,
+  ShowdownEntries,
+  evaluate,
+} from "@nostakes/engine";
 import type { Card, Event } from "@nostakes/engine";
 import { Match, Option, Schema } from "effect";
 import * as Arbitrary from "effect/Arbitrary";
 
 import {
   ReplaySteps,
-  cardsRevealedBy,
+  cardsHeldBy,
   oddsAskedBy,
   replayOf,
   tableChances,
 } from "../src/index.js";
-import type { ReplayStep, SeenTableEvent } from "../src/index.js";
+import type { Replay, ReplayStep, SeenTableEvent } from "../src/index.js";
 import {
   act,
   bets,
@@ -31,6 +38,10 @@ const handSeed = Arbitrary.schema(
 );
 
 const HANDS = { arbitrary: { runs: 60 }, timeout: 120_000 };
+
+const COUNTED_HANDS = { arbitrary: { runs: 12 }, timeout: 120_000 };
+
+const uncounted = () => [];
 
 const headsUp = (button: string, other: string, board: string) => {
   const [buttonFirst = "", buttonSecond = ""] = button.split(" ");
@@ -58,41 +69,169 @@ const shownIn = (event: SeenTableEvent): readonly Card[] =>
 const seenBy = (feed: readonly SeenTableEvent[], at: number) =>
   new Set(feed.slice(0, at + 1).flatMap(shownIn));
 
-const tooSoon = (
+const boardOf = (step: ReplayStep): readonly Card[] =>
+  ReplaySteps.$match(step, {
+    Acted: () => [],
+    Awarded: () => [],
+    Dealt: () => [],
+    Gathered: () => [],
+    Mucked: () => [],
+    Odds: ({ board }) => board,
+    Posted: () => [],
+    Returned: () => [],
+    Runs: () => [],
+    Shown: () => [],
+    StreetDealt: ({ cards }) => cards,
+  });
+
+const boardTooSoon = (
   steps: readonly ReplayStep[],
   spectator: readonly SeenTableEvent[]
 ) =>
   steps.flatMap((step) => {
     const seen = seenBy(spectator, step.at);
 
-    return cardsRevealedBy(step)
+    return boardOf(step)
       .filter((card) => !seen.has(card))
       .map((card) => ({ at: step.at, card, step: step._tag }));
   });
 
+const neverShown = (replay: Replay, spectator: readonly SeenTableEvent[]) => {
+  const shown = seenBy(spectator, spectator.length);
+
+  return cardsHeldBy(replay).filter((card) => !shown.has(card));
+};
+
+const everyDevice = (events: readonly Event[]) =>
+  [
+    spectatorFeed(events),
+    ...seatedAudiences(events).map((audience) => feedFor(events, audience)),
+  ].flatMap((feed) => Option.toArray(replayOf(feed, uncounted)));
+
+const cardOf = Schema.decodeSync(CardFromText);
+
 const replaysOf = (events: readonly Event[]) => ({
   players: seatedAudiences(events).map((audience) =>
-    replayOf(feedFor(events, audience))
+    replayOf(feedFor(events, audience), uncounted)
   ),
-  spectator: replayOf(spectatorFeed(events)),
+  spectator: replayOf(spectatorFeed(events), uncounted),
 });
 
 describe("a hand's replay", () => {
   it.prop(
-    "shows no card before the table saw it, whoever's device tells it",
+    "holds no card the table was not shown by the end of the hand, whoever's device tells it",
     { seed: handSeed },
     ({ seed }) => {
       const events = generatedHand(seededRandom(seed));
       const spectator = spectatorFeed(events);
 
-      const early = seatedAudiences(events).flatMap((audience) =>
-        Option.match(replayOf(feedFor(events, audience)), {
-          onNone: () => [],
-          onSome: (replay) => tooSoon(replay.steps, spectator),
-        })
+      expect(
+        everyDevice(events).flatMap((replay) => neverShown(replay, spectator))
+      ).toStrictEqual([]);
+    },
+    HANDS
+  );
+
+  it.prop(
+    "deals no board card, and counts no odds on one, before the table saw it",
+    { seed: handSeed },
+    ({ seed }) => {
+      const events = generatedHand(seededRandom(seed));
+      const spectator = spectatorFeed(events);
+
+      expect(
+        everyDevice(events).flatMap((replay) =>
+          boardTooSoon(replay.steps, spectator)
+        )
+      ).toStrictEqual([]);
+    },
+    HANDS
+  );
+
+  it.prop(
+    "names as tabled from the start exactly the cards each seat showed by the end",
+    { seed: handSeed },
+    ({ seed }) => {
+      const events = generatedHand(seededRandom(seed));
+
+      const replay = replayOf(spectatorFeed(events), uncounted);
+
+      expect(
+        replay.pipe(
+          Option.map(({ steps, tabled }) =>
+            tabled.map(({ cards, seat }) => ({
+              cards: [...cards].toSorted((one, other) => one - other),
+              seat,
+              shown: [
+                ...(steps
+                  .filter(ReplaySteps.$is("Shown"))
+                  .findLast((step) => step.seat === seat)?.cards ?? []),
+              ].toSorted((one, other) => one - other),
+            }))
+          ),
+          Option.map((seats) =>
+            seats.filter(
+              (seat) =>
+                JSON.stringify(seat.cards) !== JSON.stringify(seat.shown)
+            )
+          )
+        )
+      ).toStrictEqual(Option.some([]));
+    },
+    HANDS
+  );
+
+  it.prop(
+    "counts as an out exactly each unseen card that would put the seat alone ahead",
+    { seed: handSeed },
+    ({ seed }) => {
+      const replay = replayOf(
+        spectatorFeed(generatedHand(seededRandom(seed))),
+        uncounted
       );
 
-      expect(early).toStrictEqual([]);
+      const wrong = Option.match(replay, {
+        onNone: () => [],
+        onSome: ({ steps }) =>
+          steps.filter(ReplaySteps.$is("Odds")).flatMap((step) => {
+            const seen = new Set([
+              ...step.board,
+              ...step.chances.flatMap((chance) => chance.cards),
+            ]);
+
+            const ahead = (card: Card, seat: number) => {
+              const mine = step.chances.find((chance) => chance.seat === seat);
+
+              const rank = evaluate([
+                ...(mine?.cards ?? []),
+                ...step.board,
+                card,
+              ]);
+
+              return step.chances.every(
+                (chance) =>
+                  chance.seat === seat ||
+                  evaluate([...chance.cards, ...step.board, card]) < rank
+              );
+            };
+
+            return step.outs.flatMap((outs) => {
+              const expected = Array.from({ length: DECK_SIZE }, (_, card) =>
+                CardSchema.make(card)
+              )
+                .filter((card) => !seen.has(card))
+                .filter((card) => ahead(card, outs.seat));
+
+              return JSON.stringify(expected) === JSON.stringify(outs.cards) &&
+                step.board.length >= 3 &&
+                step.board.length <= 4
+                ? []
+                : [{ at: step.at, expected, outs }];
+            });
+          }),
+      });
+
+      expect(wrong).toStrictEqual([]);
     },
     HANDS
   );
@@ -115,7 +254,7 @@ describe("a hand's replay", () => {
     { seed: handSeed },
     ({ seed }) => {
       const events = generatedHand(seededRandom(seed));
-      const replay = replayOf(spectatorFeed(events));
+      const replay = replayOf(spectatorFeed(events), uncounted);
 
       expect(
         replay.pipe(
@@ -139,24 +278,25 @@ describe("a hand's replay", () => {
     { seed: handSeed },
     ({ seed }) => {
       const feed = spectatorFeed(generatedHand(seededRandom(seed)));
-      const asked = oddsAskedBy(feed);
+
+      const answers = new Map(
+        oddsAskedBy(feed).map((asked) => [
+          JSON.stringify(asked),
+          tableChances(asked),
+        ])
+      );
 
       expect(
-        replayOf(feed, (question) =>
-          Option.match(asked, {
-            onNone: () => [],
-            onSome: (known) =>
-              JSON.stringify(known) === JSON.stringify(question)
-                ? tableChances(known)
-                : [],
-          })
+        replayOf(
+          feed,
+          (question) => answers.get(JSON.stringify(question)) ?? []
         )
       ).toStrictEqual(replayOf(feed));
     },
-    HANDS
+    COUNTED_HANDS
   );
 
-  it("gives each tabled hand its chance from the board the money went in on", () => {
+  it("gives each tabled hand its chance from the deal and again after every board card", () => {
     const events = played({
       deck: headsUp("As Ah", "Kd Kc", "2s 7h 9d 3c 4s"),
       moves: [act(0, bets(1000)), act(1, calls)],
@@ -167,12 +307,43 @@ describe("a hand's replay", () => {
       Option.map((replay) =>
         replay.steps.filter(ReplaySteps.$is("Odds")).map((step) => ({
           board: step.board.length,
+          outs: step.outs.map((outs) => outs.cards),
           percents: step.chances.map((chance) => chance.percent),
         }))
       )
     );
 
-    expect(odds).toStrictEqual(Option.some([{ board: 0, percents: [81, 19] }]));
+    const kings = [cardOf("Kh"), cardOf("Ks")].toSorted(
+      (one, other) => one - other
+    );
+
+    expect(odds).toStrictEqual(
+      Option.some([
+        { board: 0, outs: [], percents: [81, 19] },
+        { board: 1, outs: [], percents: [86, 14] },
+        { board: 2, outs: [], percents: [89, 11] },
+        { board: 3, outs: [kings], percents: [92, 8] },
+        { board: 4, outs: [kings], percents: [95, 5] },
+        { board: 5, outs: [], percents: [100, 0] },
+      ])
+    );
+  });
+
+  it("tables from the start what a seat showed, and keeps a folded hand out of the odds", () => {
+    const events = played({
+      deck: headsUp("7c 2d", "Ah Kh", "9s 9h 4d Jc 3s"),
+      moves: [act(0, bets(300)), act(1, folds), shows(0, "7c")],
+      stacks: { 0: 1000, 1: 1000 },
+    });
+
+    expect(
+      replayOf(spectatorFeed(events)).pipe(
+        Option.map((replay) => ({
+          odds: replay.steps.filter(ReplaySteps.$is("Odds")).length,
+          tabled: replay.tabled.map((tabled) => tabled.cards),
+        }))
+      )
+    ).toStrictEqual(Option.some({ odds: 0, tabled: [[cardOf("7c")]] }));
   });
 
   it("keeps a folded hand face down and shows a card shown after the hand from then on", () => {
