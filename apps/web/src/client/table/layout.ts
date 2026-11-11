@@ -53,6 +53,7 @@ export interface Geo {
   readonly zone: { readonly top: number; readonly bottom: number };
   readonly pileW: number;
   readonly laneW: number;
+  readonly tabW: number;
 }
 
 interface TrackPoint extends Pt {
@@ -327,6 +328,7 @@ const ITERATIONS = 8;
 
 interface Room {
   readonly cap: number;
+  readonly tabW: number;
   readonly laneW: number;
   readonly pileW: number;
   readonly round: number;
@@ -634,6 +636,7 @@ const tallGeo = (w: number, h: number, count: number, room: Room): Geo => {
     seats: middle.pts.map((p) => tallSeat(p, cx, middle.tile, middle.strip)),
     self,
     strip: middle.strip,
+    tabW: room.tabW,
     table: {
       rx: w / 2 - sizes.pad - middle.tile * 0.5,
       ry: (heroTop - TOP) / 2,
@@ -852,6 +855,7 @@ const wideGeo = (
       x: cx - boardW / 2 - 16,
       y: groupTop,
     },
+    tabW: room.tabW,
     table,
     tile,
     top: TOP,
@@ -1324,7 +1328,7 @@ const hintFixedGround = (geo: Geo): readonly Box[] => [
 
 export const handHintGround = (geo: Geo): readonly Box[] => [
   ...hintFixedGround(geo),
-  ...geo.seats.map(({ bet }) => pileBox(bet, geo.pileW)),
+  ...pilesOf(geo).map((bet) => pileBox(bet, geo.pileW)),
 ];
 
 const handTopOf = (geo: Geo) => geo.hand.y - (geo.handCardW * 1.4) / 2;
@@ -1895,6 +1899,8 @@ export interface SeatsAtRest<Plan extends SeatPlan> {
   readonly heroBet: boolean;
   readonly button: ButtonRide | null;
   readonly tags: readonly Box[];
+  readonly tabsInside: readonly boolean[];
+  readonly tabShifts: readonly number[];
 }
 
 const ACTIVE_SCALE_MAX = 1.26;
@@ -2196,6 +2202,7 @@ const actorGround = (
     ...(rest.button === null || rest.button.owner === owner
       ? []
       : [ridingButton(geo, rest.button, placed, rest.seats)]),
+    ...middleGround(geo),
   ];
 };
 
@@ -2264,6 +2271,33 @@ const awayFromLane = (geo: Geo, home: SeatGeo, scale: number): Pt => {
   };
 };
 
+const AWARD_TAB = {
+  h: 22,
+  inset: 4,
+  least: 48,
+  padding: 16,
+  plus: 7.6,
+  rise: 13,
+};
+
+export const awardTabBox = (
+  face: Pt,
+  size: number,
+  scale: number,
+  width: number,
+  inside: boolean,
+  shift = 0
+): Box => ({
+  h: AWARD_TAB.h * scale,
+  w: width * scale,
+  x: face.x + (shift - width / 2) * scale,
+  y: inside
+    ? face.y - size / 2 + AWARD_TAB.inset * scale
+    : face.y - size / 2 - AWARD_TAB.rise * scale,
+});
+
+const GROWN_SLACK = 0.5;
+
 export const placeSeats = <Plan extends SeatPlan>(
   geo: Geo,
   rest: SeatsAtRest<Plan>
@@ -2303,6 +2337,7 @@ export const placeSeats = <Plan extends SeatPlan>(
   ];
 
   const middle = [...middleGround(geo), liftedHand(geo)];
+  const yourSeat = footprintOf(geo.self, geo.self.size).seat;
 
   const strays = (
     which: number,
@@ -2330,8 +2365,72 @@ export const placeSeats = <Plan extends SeatPlan>(
         )
     );
 
-  const settle = (lit: boolean) => {
-    const placed = homes.map(({ plan, spot }): Placement => {
+  const drawnWithTab = (placed: readonly Placement[], winner: number) =>
+    placed.map((place, which) => [
+      ...seatBoxes(geo, place),
+      ...(which === winner
+        ? [
+            awardTabBox(
+              place,
+              geo.tile * place.scale,
+              place.scale,
+              geo.tabW,
+              rest.tabsInside[seats[which]?.index ?? -1] === true,
+              rest.tabShifts[seats[which]?.index ?? -1] ?? 0
+            ),
+          ]
+        : []),
+    ]);
+
+  const contactsOf = (placed: readonly Placement[], winner: number) => {
+    const drawn = drawnWithTab(placed, winner);
+    const found = new Map<string, number>();
+
+    const nearby = [...middleGround(geo), ...yourSeat];
+
+    for (const [which, boxes] of drawn.entries()) {
+      for (const [part, box] of boxes.entries()) {
+        for (const [other, theirs] of drawn.entries()) {
+          for (const [slot, them] of theirs.entries()) {
+            if (other !== which && overlap(box, them) > 0) {
+              found.set(
+                `${which}.${part}:${other}.${slot}`,
+                overlap(box, them)
+              );
+            }
+          }
+        }
+
+        for (const [slot, them] of nearby.entries()) {
+          if (overlap(box, them) > 0) {
+            found.set(`${which}.${part}:middle.${slot}`, overlap(box, them));
+          }
+        }
+
+        if (!onTable(geo, box)) {
+          found.set(`${which}.${part}:edge`, 1);
+        }
+      }
+    }
+
+    return found;
+  };
+
+  const grows = (
+    grown: readonly Placement[],
+    still: readonly Placement[],
+    winner: number
+  ) => {
+    const before = contactsOf(still, winner);
+
+    return [...contactsOf(grown, winner)].every(
+      ([contact, area]) => area <= (before.get(contact) ?? 0) + GROWN_SLACK
+    );
+  };
+
+  const settle = (lit: boolean, winnerGrows = true) => {
+    const placed = homes.map(({ plan: planned, spot }): Placement => {
+      const plan = winnerGrows ? planned : { ...planned, winner: false };
       const active = lit && plan.active;
       const shrink = plan.folded ? FOLDED_SHIFT : 0;
       const lean = active ? 0.05 : 0;
@@ -2408,9 +2507,12 @@ export const placeSeats = <Plan extends SeatPlan>(
   }
 
   const placed = acting === undefined || fitted !== null ? lit : settle(false);
+  const winner = seats.findIndex((plan) => plan.winner);
+  const calm = winner === -1 ? placed : settle(false, false);
+  const shown = winner === -1 || grows(placed, calm, winner) ? placed : calm;
 
   return seats.flatMap((plan, which) => {
-    const place = placed[which];
+    const place = shown[which];
 
     return place === undefined
       ? []
@@ -2454,6 +2556,18 @@ const DIGIT_W = 9.6;
 
 const COMMA_W = 4.5;
 
+export const awardTabWidthFor = (most: number) => {
+  const digits = String(Math.trunc(Math.max(0, most))).length;
+  const commas = Math.floor((digits - 1) / 3);
+
+  return Math.max(
+    AWARD_TAB.least,
+    Math.ceil(
+      AWARD_TAB.padding + AWARD_TAB.plus + digits * DIGIT_W + commas * COMMA_W
+    )
+  );
+};
+
 export const pileWidthFor = (most: number, compact: boolean) => {
   const digits = String(Math.trunc(Math.max(0, most))).length;
   const commas = Math.floor((digits - 1) / 3);
@@ -2491,6 +2605,8 @@ export interface Table extends Geo {
   readonly fits: boolean;
   readonly hint: HandHint;
   readonly lanes: boolean;
+  readonly tabShifts: readonly number[];
+  readonly tabsInside: readonly boolean[];
   readonly tagSides: TagSides;
 }
 
@@ -2512,6 +2628,8 @@ const atRest = (geo: Geo): Geo => {
       winner: false,
     })),
     someoneElse: false,
+    tabShifts: [],
+    tabsInside: [],
     tags: [],
   });
 
@@ -2539,6 +2657,79 @@ const ownersAt = (geo: Geo, seats: readonly Pt[]) => [
   ...seats.map((centre) => footprintOf(centre, geo.tile)),
   footprintOf(geo.self, geo.self.size),
 ];
+
+const TAB_EDGE = 2;
+
+interface TabPlace {
+  readonly clear: boolean;
+  readonly inside: boolean;
+  readonly shift: number;
+}
+
+const TAB_SHIFTS = [0, -0.25, 0.25, -0.5, 0.5] as const;
+
+export const boardCardsBox = (geo: Geo): Box => {
+  const xs = geo.board.map(({ x }) => x);
+  const ys = geo.board.map(({ y }) => y);
+  const halfW = geo.cardW / 2;
+  const halfH = geo.cardW * 0.7;
+
+  return {
+    h: Math.max(...ys) - Math.min(...ys) + halfH * 2,
+    w: Math.max(...xs) - Math.min(...xs) + halfW * 2,
+    x: Math.min(...xs) - halfW,
+    y: Math.min(...ys) - halfH,
+  };
+};
+
+const tabsOf = (places: readonly TabPlace[]) => ({
+  tabShifts: places.map(({ shift }) => shift),
+  tabsInside: places.map(({ inside }) => inside),
+});
+
+const tabPlacesFor = (
+  geo: Geo,
+  seats: readonly Pt[],
+  hint: HandHint
+): readonly TabPlace[] => {
+  const owners = ownersAt(geo, seats);
+  const half = geo.tabW / 2 + TAB_EDGE;
+
+  const middle = [
+    boardCardsBox(geo),
+    ...middleGround(geo).slice(1),
+    hint.say,
+    hint.foot,
+  ];
+
+  return owners.map((own, index) => {
+    const { x } = own.centre;
+    const size = index < seats.length ? geo.tile : geo.self.size;
+    const edge = Math.max(0, half - x) - Math.max(0, x + half - geo.w);
+
+    const others = owners.flatMap((other, slot) =>
+      slot === index ? [] : other.seat
+    );
+
+    const places = [false, true].flatMap((inside) =>
+      TAB_SHIFTS.map((share) => ({
+        clear: true,
+        inside,
+        shift: edge + share * geo.tabW,
+      }))
+    );
+
+    return (
+      places.find(({ inside, shift }) =>
+        clearIn(
+          geo,
+          [...others, ...middle],
+          awardTabBox(own.centre, size, 1, geo.tabW, inside, shift)
+        )
+      ) ?? { clear: false, inside: true, shift: edge }
+    );
+  });
+};
 
 const shrunkSeats = (
   geo: Geo,
@@ -2637,12 +2828,13 @@ const clashList = (
   geo: Geo,
   seats: readonly Pt[],
   arrangement: Arrangement,
-  hint: Box,
+  hint: HandHint,
   judged: Judged = "Everything"
 ): readonly string[] => {
   const owners = ownersAt(geo, seats);
   const fixed = fixedGround(geo, seats);
-  const buttonsAvoid = [hint, liftedHand(geo)];
+  const buttonsAvoid = [hintBoxOf(hint), liftedHand(geo)];
+  const lines = [hint.say, hint.foot];
 
   const items = owners.map((__, index) => {
     const pile = arrangement.piles[index] ?? geo.interior;
@@ -2708,6 +2900,9 @@ const clashList = (
       ),
       ...parts.flatMap(([part, box, point]) => [
         ...(onTable(geo, box) ? [] : [`${index} ${part} off the table`]),
+        ...(part === "pile" && lines.some((line) => overlap(box, line) > 0)
+          ? [`${index} ${part} on the hint`]
+          : []),
         ...(part === "button" ? item.others : fixed).flatMap((other, slot) =>
           overlap(box, other) > 0 ? [`${index} ${part} on ground ${slot}`] : []
         ),
@@ -2735,7 +2930,7 @@ const clashesOf = (
   geo: Geo,
   seats: readonly Pt[],
   arrangement: Arrangement,
-  hint: Box
+  hint: HandHint
 ): number => clashList(geo, seats, arrangement, hint).length;
 
 interface Lane {
@@ -3302,15 +3497,21 @@ const yourButton = (
 const yourPile = (
   geo: Geo,
   owners: readonly Footprint[],
-  ground: readonly Box[]
+  ground: readonly Box[],
+  hint: readonly Box[]
 ) => {
   const half = geo.self.size / 2;
   const row = PILE_BOX.h;
+  const front = Math.min(...hint.map(({ y }) => y)) - LANE_GAP - row / 2;
 
   const piles = [
     ...Array.from({ length: 6 }, (__, step) => ({
       x: geo.heroBet.x + ((geo.self.x - geo.heroBet.x) * step) / 6,
       y: geo.heroBet.y,
+    })),
+    ...Array.from({ length: 4 }, (__, step) => ({
+      x: geo.heroBet.x + ((geo.self.x - geo.heroBet.x) * step) / 3,
+      y: front,
     })),
     ...[1, -1].flatMap((side) =>
       [0, half + CAPTION_DEPTH / 2].map((drop) => ({
@@ -3318,28 +3519,38 @@ const yourPile = (
         y: geo.self.y - half + row / 2 + drop,
       }))
     ),
-    { x: geo.self.x, y: geo.self.y - half - LANE_GAP - row / 2 },
+    ...[LANE_GAP, 1].flatMap((gap) =>
+      [0, -0.25, 0.25, -0.5, 0.5].map((shift) => ({
+        x: geo.self.x + shift * geo.laneW,
+        y: geo.self.y - half - gap - row / 2,
+      }))
+    ),
   ];
 
   const placings = piles
     .filter((pile) => pile.y < geo.self.y)
     .flatMap((pile) => HERO_TAGS.map((tag) => ({ pile, tag })));
 
-  return (
-    placings.find(({ pile, tag }) => {
-      const pileAt = pileBox(pile, geo.pileW);
-      const tagAt = postTagBox(pile, tag, POST_TAG_WIDTHS.narrow, geo.pileW);
+  const clear = placings.filter(({ pile, tag }) => {
+    const pileAt = pileBox(pile, geo.pileW);
+    const tagAt = postTagBox(pile, tag, POST_TAG_WIDTHS.narrow, geo.pileW);
 
-      return (
-        clearOn(geo, pileAt, ground) &&
-        clearOn(geo, tagAt, ground) &&
-        yoursNearest(owners, centreOf(pileAt)) &&
-        yoursNearest(owners, centreOf(tagAt))
-      );
-    }) ??
+    return (
+      clearOn(geo, pileAt, ground) &&
+      clearOn(geo, tagAt, ground) &&
+      yoursNearest(owners, centreOf(pileAt)) &&
+      yoursNearest(owners, centreOf(tagAt))
+    );
+  });
+
+  return (
+    leastBy(clear, ({ pile }) => coveredBy(pileBox(pile, geo.pileW), hint)) ??
     placings[0] ?? { pile: geo.heroBet, tag: "After" as const }
   );
 };
+
+const sameHint = (one: HandHint, other: HandHint) =>
+  JSON.stringify(one) === JSON.stringify(other);
 
 const hintWith = (geo: Geo, button: ButtonSpot, ground: readonly Box[]) =>
   hintAmong(geo, [...ground, buttonBox(button)]);
@@ -3348,65 +3559,13 @@ interface Laid extends Arrangement {
   readonly hint: HandHint;
 }
 
-const lanesOf = (
+const yourLaneBoxes = (
   geo: Geo,
-  candidates: readonly (readonly Lane[])[] = lanesOfEverySeat(geo)
-): Laid => {
-  const owners = ownersAt(geo, geo.seats);
-  const fixed = fixedGround(geo, geo.seats);
-  const free = hintAmong(geo, hintFixedGround(geo));
-
-  const button = yourButton(
-    geo,
-    owners,
-    [...fixed, liftedHand(geo)],
-    [hintBoxOf(free)]
-  );
-
-  const lines = hintWith(geo, button, hintFixedGround(geo));
-  const hint = hintBoxOf(lines);
-  const middle = [buttonBox(button), lines.say, lines.foot];
-
-  const options = geo.seats.map((__, index) =>
-    lanesClearFor(
-      geo,
-      index,
-      owners,
-      {
-        all: [...fixed, ...middle],
-        button: [
-          ...fixedGround(geo, geo.seats, index),
-          ...middle,
-          hint,
-          liftedHand(geo),
-        ],
-      },
-      candidates[index] ?? []
-    )
-  );
-
-  const lanes =
-    chooseLanes(geo, options) ??
-    geo.seats.map(
-      (seat, index) => options[index]?.[0] ?? fallbackLane(geo, seat)
-    );
-
-  const yours = yourPile(geo, owners, [
-    ...fixed,
-    buttonBox(button),
-    ...lanes.flatMap((lane) => [
-      pileBox(lane.pile, geo.pileW),
-      postTagBox(lane.pile, lane.tag, POST_TAG_WIDTHS.narrow, geo.pileW),
-    ]),
-  ]);
-
-  return {
-    buttons: [...lanes.map((lane) => lane.button), button],
-    hint: lines,
-    piles: [...lanes.map(({ pile }) => pile), yours.pile],
-    tags: [...lanes.map(({ tag }) => tag), yours.tag],
-  };
-};
+  yours: { readonly pile: Pt; readonly tag: TagSide }
+): readonly Box[] => [
+  pileBox(yours.pile, geo.pileW),
+  postTagBox(yours.pile, yours.tag, POST_TAG_WIDTHS.narrow, geo.pileW),
+];
 
 const withPiles = (geo: Geo, lanes: Arrangement): Geo => ({
   ...geo,
@@ -3479,6 +3638,64 @@ const wideTagFits = (
   });
 };
 
+const lanesOf = (
+  geo: Geo,
+  candidates: readonly (readonly Lane[])[] = lanesOfEverySeat(geo)
+): Laid => {
+  const owners = ownersAt(geo, geo.seats);
+  const fixed = fixedGround(geo, geo.seats);
+  const free = hintAmong(geo, hintFixedGround(geo));
+
+  const yours = yourPile(geo, owners, fixed, [free.say, free.foot]);
+  const yourBoxes = yourLaneBoxes(geo, yours);
+
+  const button = yourButton(
+    geo,
+    owners,
+    [...fixed, liftedHand(geo), ...yourBoxes],
+    [hintBoxOf(free)]
+  );
+
+  const lines = hintWith(geo, button, [
+    ...hintFixedGround(geo),
+    pileBox(yours.pile, geo.pileW),
+  ]);
+
+  const hint = hintBoxOf(lines);
+  const middle = [buttonBox(button), lines.say, lines.foot, ...yourBoxes];
+
+  const options = geo.seats.map((__, index) =>
+    lanesClearFor(
+      geo,
+      index,
+      owners,
+      {
+        all: [...fixed, ...middle],
+        button: [
+          ...fixedGround(geo, geo.seats, index),
+          ...middle,
+          hint,
+          liftedHand(geo),
+        ],
+      },
+      candidates[index] ?? []
+    )
+  );
+
+  const lanes =
+    chooseLanes(geo, options) ??
+    geo.seats.map(
+      (seat, index) => options[index]?.[0] ?? fallbackLane(geo, seat)
+    );
+
+  return {
+    buttons: [...lanes.map((lane) => lane.button), button],
+    hint: lines,
+    piles: [...lanes.map(({ pile }) => pile), yours.pile],
+    tags: [...lanes.map(({ tag }) => tag), yours.tag],
+  };
+};
+
 const todaysArrangement = (
   geo: Geo,
   resting: Geo,
@@ -3510,6 +3727,92 @@ const todaysArrangement = (
   };
 };
 
+const FLIGHT_BENDS = [40, 80, 120, 160, 220, 280, 360, 440] as const;
+
+const FLIGHT_TURNS = [
+  0, 30, -30, 60, -60, 90, -90, 120, -120, 150, -150, 180,
+].map((degrees) => (degrees * Math.PI) / 180);
+
+const FLIGHT_STEP_PX = 2;
+
+const FLIGHT_ENDS = 0.06;
+
+export const flightPoint = (from: Pt, control: Pt, to: Pt, u: number): Pt => ({
+  x: (1 - u) ** 2 * from.x + 2 * (1 - u) * u * control.x + u * u * to.x,
+  y: (1 - u) ** 2 * from.y + 2 * (1 - u) * u * control.y + u * u * to.y,
+});
+
+export const flightSamples = (from: Pt, control: Pt, to: Pt): readonly Pt[] => {
+  const travel =
+    Math.hypot(control.x - from.x, control.y - from.y) +
+    Math.hypot(to.x - control.x, to.y - control.y);
+
+  const steps = Math.max(1, Math.ceil(travel / FLIGHT_STEP_PX));
+
+  return Array.from({ length: steps + 1 }, (__, step) =>
+    flightPoint(
+      from,
+      control,
+      to,
+      FLIGHT_ENDS + ((1 - 2 * FLIGHT_ENDS) * step) / steps
+    )
+  );
+};
+
+export const flightClears = (
+  from: Pt,
+  control: Pt,
+  to: Pt,
+  avoid: readonly Box[],
+  reach: number
+) =>
+  flightSamples(from, control, to).every((point) =>
+    avoid.every(
+      (box) =>
+        overlap(
+          {
+            h: reach * 2,
+            w: reach * 2,
+            x: point.x - reach,
+            y: point.y - reach,
+          },
+          box
+        ) === 0
+    )
+  );
+
+export const flightControl = (
+  from: Pt,
+  to: Pt,
+  arc: number,
+  avoid: readonly Box[],
+  reach: number
+): Pt => {
+  const middle = { x: (from.x + to.x) / 2, y: (from.y + to.y) / 2 };
+  const straight = { x: middle.x, y: middle.y + arc };
+
+  if (avoid.length === 0 || flightClears(from, straight, to, avoid, reach)) {
+    return straight;
+  }
+
+  const length = Math.hypot(to.x - from.x, to.y - from.y) || 1;
+  const normal = { x: -(to.y - from.y) / length, y: (to.x - from.x) / length };
+
+  return (
+    FLIGHT_BENDS.flatMap((bend) =>
+      FLIGHT_TURNS.map((turn) => ({
+        x:
+          middle.x +
+          (normal.x * Math.cos(turn) - normal.y * Math.sin(turn)) * bend,
+        y:
+          middle.y +
+          (normal.x * Math.sin(turn) + normal.y * Math.cos(turn)) * bend,
+      }))
+    ).find((control) => flightClears(from, control, to, avoid, reach)) ??
+    straight
+  );
+};
+
 export const computeGeo = (
   w: number,
   h: number,
@@ -3527,7 +3830,13 @@ export const computeGeo = (
   const full = pileWidthFor(most, false);
 
   const today = laidOut(
-    { cap: Number.POSITIVE_INFINITY, laneW: full, pileW: full, round: 0 },
+    {
+      cap: Number.POSITIVE_INFINITY,
+      laneW: full,
+      pileW: full,
+      round: 0,
+      tabW: awardTabWidthFor(most),
+    },
     TODAYS_LIFT,
     (geo) => geo
   );
@@ -3537,12 +3846,21 @@ export const computeGeo = (
   const todaysHint = handHint(today);
   const todaysTags = postTagSides(today, POST_TAG_WIDTHS.narrow);
 
+  const hintKeepsItsPlace = sameHint(
+    todaysHint,
+    hintAmong(today, [
+      ...hintFixedGround(today),
+      ...today.seats.map(({ bet }) => pileBox(bet, today.pileW)),
+    ])
+  );
+
   const pilesFit =
+    hintKeepsItsPlace &&
     clashList(
       today,
       restingSeats,
       { buttons: [], piles: pilesOf(today), tags: todaysTags },
-      hintBoxOf(todaysHint),
+      todaysHint,
       "PilesAndTags"
     ).length === 0;
 
@@ -3550,8 +3868,7 @@ export const computeGeo = (
 
   if (
     kept !== null &&
-    clashesOf(today, restingSeats, kept.arrangement, hintBoxOf(todaysHint)) ===
-      0
+    clashesOf(today, restingSeats, kept.arrangement, todaysHint) === 0
   ) {
     const wideSides = postTagSides(today, POST_TAG_WIDTHS.wide);
 
@@ -3562,6 +3879,7 @@ export const computeGeo = (
       fits: true,
       hint: todaysHint,
       lanes: false,
+      ...tabsOf(tabPlacesFor(today, restingSeats, todaysHint)),
       tagSides: {
         narrow: kept.arrangement.tags,
         wide: wideSides,
@@ -3574,7 +3892,11 @@ export const computeGeo = (
     const pileW = pileWidthFor(most, compact);
     const laneW = Math.max(pileW, pileWidthFor(DEFAULT_MOST, compact));
 
-    return laidOut({ cap, laneW, pileW, round }, LANES_LIFT, settled);
+    return laidOut(
+      { cap, laneW, pileW, round, tabW: awardTabWidthFor(most) },
+      LANES_LIFT,
+      settled
+    );
   };
 
   const laned = (
@@ -3590,10 +3912,14 @@ export const computeGeo = (
       handHintGround(geo)
     );
 
-    const moved = JSON.stringify(hint) === JSON.stringify(lanes.hint) ? 0 : 1;
+    const moved = sameHint(hint, lanes.hint) ? 0 : 1;
+
+    const tabsWithout = tabPlacesFor(geo, geo.seats, hint).filter(
+      ({ clear }) => !clear
+    ).length;
 
     return {
-      clashes: clashesOf(geo, geo.seats, lanes, hintBoxOf(hint)) + moved,
+      clashes: clashesOf(geo, geo.seats, lanes, hint) + moved + tabsWithout,
       geo,
       hint,
       lanes,
@@ -3660,6 +3986,7 @@ export const computeGeo = (
     fits: fitted.result.clashes === 0,
     hint,
     lanes: true,
+    ...tabsOf(tabPlacesFor(geo, geo.seats, hint)),
     tagSides: {
       narrow: lanes.tags,
       wide: lanes.tags,

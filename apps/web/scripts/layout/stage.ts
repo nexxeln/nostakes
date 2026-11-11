@@ -394,10 +394,178 @@ const bountyTold: readonly Happening[] = [
   ),
 ];
 
-const TOLD = new Map<string, readonly Happening[]>([["bounty", bountyTold]]);
+const RIVER_BET = Number(params.get("bets") ?? "24");
+
+const RIVER_WINNER = Math.min(2, players - 1);
+
+const RIVER_POT = 26;
+
+const HAND_LABELS = ["Full house", "Two pair", "Straight", "Flush"];
+
+const deals: readonly Happening[] = [
+  Happenings.Start.make({ hand: 8 }),
+  ...Array.from({ length: players }, (__, seat) =>
+    Happenings.Deal.make({ cards: 2, seat })
+  ),
+];
+
+const withSeats = (
+  base: TableSnapshot,
+  seatOfHand: (seat: SeatSnapshot) => SeatSnapshot
+): TableSnapshot => ({ ...base, seats: base.seats.map(seatOfHand) });
+
+const preflop: TableSnapshot = withSeats(
+  {
+    ...start,
+    clock: { key: "preflop", remainingMs: 21_000, seat: 0, totalMs: 30_000 },
+  },
+  (seat) =>
+    seat.seat === firstToAct
+      ? { ...seat, bet: 12, stack: seat.stack - 12 + seat.bet }
+      : seat
+);
+
+const riverOut = (toAct: number | null): TableSnapshot =>
+  withSeats(
+    {
+      ...turn,
+      boards: [AFTER_BOARD],
+      clock:
+        toAct === null
+          ? null
+          : {
+              key: `river-${toAct}`,
+              remainingMs: 14_000,
+              seat: toAct,
+              totalMs: 30_000,
+            },
+      heroCards: HERO_CARDS,
+      legal: toAct === 0 ? turn.legal : null,
+      pots: [RIVER_POT],
+      toAct,
+    },
+    (seat) => ({
+      ...seat,
+      bet: RIVER_BET,
+      cardsHeld: 2,
+      stack: seat.stack - RIVER_BET,
+      status: "In",
+    })
+  );
+
+const allIn: TableSnapshot = withSeats(riverOut(0), (seat) =>
+  seat.seat === RIVER_WINNER
+    ? { ...seat, bet: seat.stack + seat.bet, stack: 0, status: "AllIn" }
+    : seat
+);
+
+const atShowdown: TableSnapshot = {
+  ...withSeats(riverOut(null), (seat) =>
+    seat.seat === 0 ? { ...seat, shown: HERO_CARDS } : seat
+  ),
+  afterHand: {
+    bothOnly: false,
+    closes: { key: "showdown-window", remainingMs: 9000 },
+    rabbit: false,
+    showable: [HERO_CARDS[1] ?? "Kh"],
+  },
+};
+
+const settledWith = (winner: number): TableSnapshot => {
+  const pot = RIVER_POT + RIVER_BET * players;
+
+  return {
+    ...withSeats(atShowdown, (seat) => ({
+      ...seat,
+      bet: 0,
+      stack: seat.stack + (seat.seat === winner ? pot : 0),
+    })),
+    clock: null,
+    pots: [],
+  };
+};
+
+const shows = (seats: readonly number[]): readonly Happening[] =>
+  seats.map((seat, index) =>
+    Happenings.Show.make({
+      cards: seat === 0 ? HERO_CARDS : ["Qd", "Qc"],
+      label: HAND_LABELS[index % HAND_LABELS.length] ?? "Pair",
+      seat,
+    })
+  );
+
+const awardTo = (winner: number): readonly Happening[] => [
+  ...shows([0, RIVER_WINNER]),
+  Happenings.Win.make({
+    amount: RIVER_POT + RIVER_BET * players,
+    seat: winner,
+  }),
+];
+
+const HAND_STEPS: readonly (readonly [TableSnapshot, readonly Happening[]])[] =
+  [
+    [start, deals],
+    [
+      preflop,
+      [
+        Happenings.Bet.make({
+          added: 12,
+          allIn: false,
+          raise: true,
+          seat: firstToAct,
+          to: 12,
+        }),
+      ],
+    ],
+    [mid, [Happenings.Collect.make({ street: "Flop" })]],
+    [turn, [Happenings.Collect.make({ street: "Turn" })]],
+    [
+      riverOut(1 % players),
+      Array.from({ length: players }, (__, seat) =>
+        seat === 0
+          ? Happenings.Bet.make({
+              added: RIVER_BET,
+              allIn: false,
+              raise: false,
+              seat,
+              to: RIVER_BET,
+            })
+          : Happenings.Call.make({ added: RIVER_BET, allIn: false, seat })
+      ),
+    ],
+    [
+      allIn,
+      [
+        Happenings.Bet.make({
+          added: RIVER_BET,
+          allIn: true,
+          raise: true,
+          seat: RIVER_WINNER,
+          to: RIVER_BET,
+        }),
+      ],
+    ],
+    [atShowdown, shows([0, RIVER_WINNER])],
+    [settledWith(0), awardTo(0)],
+    [settledWith(RIVER_WINNER), awardTo(RIVER_WINNER)],
+    [{ ...start, handId: 9 }, deals],
+  ];
+
+const handStep = Math.min(
+  HAND_STEPS.length - 1,
+  Math.max(0, Number(params.get("step") ?? "0"))
+);
+
+const [handSnapshot, handTold] = HAND_STEPS[handStep] ?? [start, deals];
+
+const TOLD = new Map<string, readonly Happening[]>([
+  ["bounty", bountyTold],
+  ["hand", handTold],
+]);
 
 const SCENES = new Map<string, TableSnapshot>([
   ["acting", acting],
+  ["hand", handSnapshot],
   ["bounty", bountyPaid],
   ["after", afterHand([], false)],
   ["after-one", afterHand(["Kh"], false)],

@@ -29,9 +29,11 @@ import { adoptEarlyProperties } from "../early-properties.js";
 import { Counter, formatChips } from "./counter.js";
 import { cardEl, el, svgEl, toggle } from "./dom.js";
 import {
+  awardTabBox,
   clamp,
   computeGeo,
   deadButtonSpot,
+  flightControl,
   pileWidthFor,
   placeSeats,
   POST_TAG_WIDTHS,
@@ -394,6 +396,8 @@ const POSTED_NAMES: Record<Posted, string> = {
 };
 
 const STRADDLE_SHORT = "Str";
+
+const CHIP_REACH = 10;
 
 interface PileTag {
   readonly narrow: TagSide;
@@ -1424,9 +1428,21 @@ export class NostakesTable extends HTMLElement {
     }
   }
 
-  #layoutTiles(geo: Geo) {
+  #layoutTiles(geo: Table) {
+    toggle(this.#self, "tab-inside", geo.tabsInside.at(-1) === true);
+    this.#self.style.setProperty(
+      "--tab-shift",
+      `${geo.tabShifts.at(-1) ?? 0}px`
+    );
+
     for (const tile of this.#tiles.values()) {
       const spot = geo.seats[tile.index];
+
+      toggle(tile.root, "tab-inside", geo.tabsInside[tile.index] === true);
+      tile.root.style.setProperty(
+        "--tab-shift",
+        `${geo.tabShifts[tile.index] ?? 0}px`
+      );
 
       if (spot !== undefined) {
         tile.x.settle(spot.x);
@@ -2729,6 +2745,14 @@ export class NostakesTable extends HTMLElement {
       );
   }
 
+  #beingRead(): readonly Box[] {
+    const geo = this.#geo;
+
+    return geo !== null && this.#hint.classList.contains("on")
+      ? [geo.hint.say, geo.hint.foot]
+      : [];
+  }
+
   #fly(
     node: HTMLElement,
     from: Pt,
@@ -2741,6 +2765,7 @@ export class NostakesTable extends HTMLElement {
       readonly fade?: boolean;
       readonly scaleTo?: number;
       readonly scaleFrom?: number;
+      readonly around?: readonly Box[];
     }
   ): Flight {
     this.#fx.append(node);
@@ -2773,8 +2798,16 @@ export class NostakesTable extends HTMLElement {
       });
     }
 
-    const midX = (from.x + to.x) / 2;
-    const midY = (from.y + to.y) / 2 + (options.arc ?? -40);
+    const control = flightControl(
+      from,
+      to,
+      options.arc ?? -40,
+      [...this.#beingRead(), ...(options.around ?? [])],
+      CHIP_REACH
+    );
+
+    const midX = control.x;
+    const midY = control.y;
     const steps = 8;
 
     const frames: Keyframe[] = Array.from({ length: steps + 1 }, (_, index) => {
@@ -2936,6 +2969,19 @@ export class NostakesTable extends HTMLElement {
     const to = { x: face.x, y: face.y + reach };
     const count = hero ? 16 : 9;
 
+    const owner = hero
+      ? geo.seats.length
+      : (this.#tiles.get(seat)?.index ?? geo.seats.length);
+
+    const tab = awardTabBox(
+      face,
+      hero ? geo.self.size : geo.tile,
+      1,
+      geo.tabW,
+      geo.tabsInside[owner] ?? false,
+      geo.tabShifts[owner] ?? 0
+    );
+
     const land = countdown(
       count,
       () => {
@@ -2959,6 +3005,7 @@ export class NostakesTable extends HTMLElement {
         { x: to.x + jitter(index + 5, 7), y: to.y + jitter(index + 9, 5) },
         {
           arc: hero ? 80 : -60,
+          around: [tab],
           delay: index * (hero ? 42 : 36),
           duration: hero ? 720 : 560,
           fade: true,
@@ -4234,6 +4281,8 @@ export class NostakesTable extends HTMLElement {
       heroBet: betting.some(({ seat }) => seat === snapshot.heroSeat),
       seats,
       someoneElse,
+      tabShifts: this.#geo?.tabShifts ?? [],
+      tabsInside: this.#geo?.tabsInside ?? [],
       tags: this.#postedTags(snapshot, geo),
     });
   }

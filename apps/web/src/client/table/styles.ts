@@ -90,12 +90,13 @@ export const tableCss = `
 .won .ring .run { stroke: var(--color-win); }
 
 .tab {
-  position: absolute; left: 50%; top: -13px; z-index: 4; min-width: 48px; height: 22px; padding: 0 8px; translate: -50% 0;
+  position: absolute; left: 50%; top: -13px; z-index: 4; min-width: 48px; height: 22px; padding: 0 8px; translate: calc(-50% + var(--tab-shift, 0px)) 0;
   display: grid; place-items: center; border-radius: var(--radius-tab); background: var(--color-win); color: var(--color-on-accent);
   font-size: 0.84375rem; font-weight: var(--weight-strong); white-space: nowrap; box-shadow: var(--shadow-sheet-2);
   opacity: 0; scale: 0.6; pointer-events: none; transition: opacity var(--duration-2) var(--ease), scale var(--duration-3) var(--ease-back);
 }
 .won .tab { opacity: 1; scale: 1; }
+.tab-inside .tab { top: 4px; }
 
 .shown { position: absolute; left: 50%; top: calc(var(--t) * 0.5); z-index: 3; display: flex; gap: 3px; transform: translateX(-50%); }
 

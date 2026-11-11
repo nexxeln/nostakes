@@ -1,6 +1,7 @@
 import {
   buttonBox,
   computeGeo,
+  flightControl,
   handHintBox,
   handHintGround,
   HINT_LINES,
@@ -26,11 +27,11 @@ export const PEEK_LIFT_PX = 30;
 
 export const SMALLEST_FACE_PX = 40;
 
-export const SMALLEST_TALL = { height: 600, width: 360 };
+export const SMALLEST_TALL = { height: 610, width: 360 };
 
-export const SMALLEST_WIDE = { height: 350, width: 660 };
+export const SMALLEST_WIDE = { height: 420, width: 660 };
 
-export const SHORTEST_WIDE = { height: 320, width: 740 };
+export const SHORTEST_WIDE = { height: 320, width: 790 };
 
 export const SMALLEST_TABLES = [
   SMALLEST_TALL,
@@ -58,6 +59,19 @@ const DRAWN_PILE_PX = new Map([
 ]);
 
 const DRAWN_TAG_PX = { narrow: 38, wide: 61.8 };
+
+const AWARD_TAB_PX = { h: 22, inset: 4, rise: 13 };
+
+const DRAWN_AWARD_PX = new Map([
+  [1, 48],
+  [2, 48],
+  [3, 50.1],
+  [4, 62.1],
+  [5, 70.7],
+]);
+
+const awardTabWidth = (most: number) =>
+  DRAWN_AWARD_PX.get(String(most).length) ?? 0;
 
 const DRAWN_PILE_HEIGHT = 22;
 
@@ -303,6 +317,8 @@ export const laneProblemsOn = (
       winner: false,
     })),
     someoneElse: active !== null,
+    tabShifts: geo.tabShifts,
+    tabsInside: geo.tabsInside,
     tags: tags.map(({ box }) => box),
   });
 
@@ -386,12 +402,123 @@ export const laneProblemsOn = (
     );
   });
 
+  const restingOthers = (winner: number): readonly Named[] =>
+    restingSeats.flatMap((boxes, seat) =>
+      seat === winner
+        ? []
+        : boxes.map(
+            (box, part) =>
+              [`seat ${seat} ${part === 0 ? "face" : "name"}`, box] as const
+          )
+    );
+
+  const halfCard = { h: geo.cardW * 0.7, w: geo.cardW / 2 };
+  const cardXs = geo.board.map(({ x }) => x);
+  const cardYs = geo.board.map(({ y }) => y);
+
+  const boardCards: Box = {
+    h: Math.max(...cardYs) - Math.min(...cardYs) + halfCard.h * 2,
+    w: Math.max(...cardXs) - Math.min(...cardXs) + halfCard.w * 2,
+    x: Math.min(...cardXs) - halfCard.w,
+    y: Math.min(...cardYs) - halfCard.h,
+  };
+
+  const hintLines: readonly Named[] = [
+    ["the hint's first line", geo.hint.say],
+    ["the hint's second line", geo.hint.foot],
+  ];
+
+  const onTheHint = bets.flatMap((item) => covering(item, hintLines));
+
+  const winners = [...new Set([owner ?? you, you])];
+
+  const awarded = winners.flatMap((winner) => {
+    const places = placeSeats(geo, {
+      ...plan(null, false),
+      bets: [],
+      heroBet: false,
+      seats: geo.seats.map((__, index) => ({
+        active: false,
+        folded: false,
+        index,
+        winner: index === winner,
+      })),
+      tags: [],
+    });
+
+    const seats = seatsDrawn(geo, places);
+    const place = places.find(({ index }) => index === winner);
+    const scale = place?.scale ?? 1;
+    const centre = place ?? geo.self;
+    const size = place === undefined ? geo.self.size : geo.tile * scale;
+    const inside = geo.tabsInside[winner] === true;
+    const shift = (geo.tabShifts[winner] ?? 0) * scale;
+    const width = awardTabWidth(table.most) * scale;
+
+    const tab: Laid = {
+      box: {
+        h: AWARD_TAB_PX.h * scale,
+        w: width,
+        x: centre.x - width / 2 + shift,
+        y:
+          centre.y -
+          size / 2 +
+          (inside ? AWARD_TAB_PX.inset : -AWARD_TAB_PX.rise) * scale,
+      },
+      owner: winner,
+      what: `seat ${winner} award tab`,
+    };
+
+    const others: readonly Named[] = seats.flatMap((boxes, seat) =>
+      seat === winner
+        ? []
+        : boxes.map(
+            (box, part) =>
+              [`seat ${seat} ${part === 0 ? "face" : "name"}`, box] as const
+          )
+    );
+
+    const grown: readonly Laid[] = (seats[winner] ?? []).map((box, part) => ({
+      box,
+      owner: winner,
+      what: `seat ${winner} winning ${part === 0 ? "face" : "name"}`,
+    }));
+
+    return [
+      ...(onScreen(tab.box, geo, table.screen)
+        ? []
+        : [`${tab.what} leaves the table`]),
+      ...covering(tab, [
+        ...others,
+        ["the board's cards", boardCards],
+        ...(winner === you ? middle.slice(1, 2) : middle.slice(1)),
+        ...hintLines,
+      ]),
+      ...(winner === you
+        ? []
+        : grown.flatMap((item, part) => {
+            const before = new Set(
+              covering(
+                { ...item, box: restingSeats[winner]?.[part] ?? item.box },
+                [...restingOthers(winner), ...middle]
+              ).map((problem) => problem.replace(/^.* covers /u, ""))
+            );
+
+            return covering(item, [...others, ...middle]).filter(
+              (problem) => !before.has(problem.replace(/^.* covers /u, ""))
+            );
+          })),
+    ];
+  });
+
   return [
     ...(geo.fits ? [] : ["the table says its lanes do not fit"]),
     ...behind,
     ...owned,
     ...laidOnce,
+    ...onTheHint,
     ...whileActing,
+    ...awarded,
   ];
 };
 
@@ -472,4 +599,113 @@ export const HINT_PLACED_WELL = {
   firstLine: true,
   secondLine: true,
   slipHoldsTheLongestLineInTwo: true,
+};
+
+const CHIP_HALF = 10;
+
+const chipAt = (point: Pt): Box => ({
+  h: CHIP_HALF * 2,
+  w: CHIP_HALF * 2,
+  x: point.x - CHIP_HALF,
+  y: point.y - CHIP_HALF,
+});
+
+const PATH_ENDS = 0.06;
+
+const crossesLines = (from: Pt, control: Pt, to: Pt, lines: readonly Box[]) => {
+  const steps = Math.ceil(
+    Math.hypot(control.x - from.x, control.y - from.y) +
+      Math.hypot(to.x - control.x, to.y - control.y)
+  );
+
+  return Array.from({ length: steps + 1 }, (__, step) => {
+    const u = PATH_ENDS + ((1 - 2 * PATH_ENDS) * step) / steps;
+
+    return {
+      x: (1 - u) ** 2 * from.x + 2 * (1 - u) * u * control.x + u * u * to.x,
+      y: (1 - u) ** 2 * from.y + 2 * (1 - u) * u * control.y + u * u * to.y,
+    };
+  }).some((point) => lines.some((line) => covers(chipAt(point), line)));
+};
+
+const COLLECT_ARC = -20;
+
+const AWARD_ARCS = { others: -60, you: 80 };
+
+const AWARD_SPREAD = { from: 8, toX: 3.5, toY: 2.5 };
+
+export const flightsOverTheHint = (geo: Table) => {
+  const lines = [geo.hint.say, geo.hint.foot];
+  const piles = [...geo.seats.map(({ bet }) => bet), geo.heroBet];
+  const you = geo.seats.length;
+
+  const stackOf = (face: Pt, size: number) => ({
+    x: face.x,
+    y: face.y + size / 2 + geo.caption * 0.62,
+  });
+
+  const stacks = [
+    ...geo.seats.map((seat) => stackOf(seat, geo.tile)),
+    stackOf(geo.self, geo.self.size),
+  ];
+
+  const spreads = [-1, 0, 1];
+
+  const tabOf = (seat: number): Box => {
+    const face = geo.seats[seat] ?? geo.self;
+    const size = seat === you ? geo.self.size : geo.tile;
+    const inside = geo.tabsInside[seat] === true;
+
+    return {
+      h: AWARD_TAB_PX.h,
+      w: geo.tabW,
+      x: face.x - geo.tabW / 2 + (geo.tabShifts[seat] ?? 0),
+      y: face.y - size / 2 + (inside ? AWARD_TAB_PX.inset : -AWARD_TAB_PX.rise),
+    };
+  };
+
+  const flights = [
+    ...piles.map((pile, seat) => ({
+      arc: COLLECT_ARC,
+      avoid: lines,
+      from: pile,
+      to: { x: geo.pot.x, y: geo.pot.y - 14 },
+      what: `seat ${seat}'s bet going into the pot`,
+    })),
+    ...stacks.flatMap((stack, seat) =>
+      spreads.flatMap((across) =>
+        spreads.map((along) => ({
+          arc: seat === you ? AWARD_ARCS.you : AWARD_ARCS.others,
+          avoid: [...lines, tabOf(seat)],
+          from: {
+            x: geo.pot.x + across * AWARD_SPREAD.from,
+            y: geo.pot.y - 10,
+          },
+          to: {
+            x: stack.x + along * AWARD_SPREAD.toX,
+            y: stack.y + across * AWARD_SPREAD.toY,
+          },
+          what: `the pot going to seat ${seat}, past the hint and its award tab,`,
+        }))
+      )
+    ),
+  ];
+
+  return [
+    ...new Set(
+      flights.flatMap(({ arc, avoid, from, to, what }) => {
+        const ends = [chipAt(from), chipAt(to)];
+
+        if (ends.some((end) => avoid.some((box) => covers(end, box)))) {
+          return [];
+        }
+
+        const control = flightControl(from, to, arc, avoid, CHIP_HALF);
+
+        return crossesLines(from, control, to, avoid)
+          ? [`${what} crosses what it should pass`]
+          : [];
+      })
+    ),
+  ];
 };

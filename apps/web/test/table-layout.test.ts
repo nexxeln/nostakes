@@ -6,6 +6,7 @@ import {
   covers,
   everyOwnerProblems,
   fallbackOf,
+  flightsOverTheHint,
   gapToBox,
   HINT_PLACED_WELL,
   hintPlaced,
@@ -39,8 +40,8 @@ import type {
   ButtonRide,
   ButtonSpot,
   ButtonSpots,
-  Geo,
   Pt,
+  Table as LaidTable,
 } from "../src/client/table/layout.js";
 
 interface Table {
@@ -354,7 +355,7 @@ type Acting = typeof ActingSchema.Type;
 const actings = Arbitrary.schema(ActingSchema);
 
 interface Drawn {
-  readonly geo: Geo;
+  readonly geo: LaidTable;
   readonly spots: ButtonSpots;
 }
 
@@ -391,6 +392,8 @@ const coveredBy = (
     heroBet: acting.heroBet,
     seats,
     someoneElse: true,
+    tabShifts: geo.tabShifts,
+    tabsInside: geo.tabsInside,
     tags: [],
   });
 
@@ -541,6 +544,21 @@ describe("each seat's lane", () => {
     const found = SMALLEST_TABLES.flatMap((screen) =>
       [1, 2, 3, 4, 5, 6, 7, 8].flatMap((others) =>
         everyOwnerProblems(screen, others)
+      )
+    );
+
+    expect(found).toStrictEqual([]);
+  });
+
+  it("routes chips going into the pot around both lines of the hint, and chips going out to a winner around the hint and the winner's award tab, on the smallest tables the app supports and on the boxes it gives the table", () => {
+    const found = SMALLEST_TABLES.flatMap((screen) =>
+      [1, 2, 3, 4, 5, 6, 7, 8].flatMap((others) =>
+        flightsOverTheHint(
+          computeGeo(screen.width, screen.height, others, 9999)
+        ).map(
+          (problem) =>
+            `${screen.width}x${screen.height}, ${others + 1} seats: ${problem}`
+        )
       )
     );
 
