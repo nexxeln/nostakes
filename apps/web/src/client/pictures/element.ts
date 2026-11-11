@@ -1,8 +1,14 @@
 import type { Deck, Theme } from "../../features/model.js";
-import { KEEP_TAG, keepSvg, keepTitle } from "../../features/pictures/keep.js";
+import {
+  KEEP_TAG,
+  keepElement,
+  keepSvg,
+  keepTitle,
+} from "../../features/pictures/keep.js";
 import type { KeepPicture, KeepTone } from "../../features/pictures/keep.js";
 import { KEPT_FRAMES } from "../../features/pictures/paper.js";
 import type { KeptFrame } from "../../features/pictures/paper.js";
+import { adoptEarlyProperties } from "../early-properties.js";
 import { Keeper } from "./keeper.js";
 
 const STYLE = `
@@ -40,6 +46,7 @@ class NostakesKeep extends HTMLElement {
     story.textContent = "Story";
     story.title = "A tall picture for a story";
     root.append(style, this.#keep, story);
+    adoptEarlyProperties(this, keepElement.properties);
   }
 
   disconnectedCallback() {

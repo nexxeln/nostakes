@@ -9,6 +9,7 @@ import { MOMENT_TAG } from "../../src/features/moments/element.js";
 import { pictureSvg } from "../../src/features/moments/picture.js";
 import { fileNameOf } from "../../src/features/pictures/paper.js";
 import type { KeptFrame } from "../../src/features/pictures/paper.js";
+import { BLUFF_HAND } from "./bluff-hand.js";
 import { SAMPLE_NAMES, samplePicture } from "./samples.js";
 
 const params = new URLSearchParams(globalThis.location.search);
@@ -61,6 +62,21 @@ const live = (into: Element) => {
   }
 };
 
+const definedLate = (into: Element) => {
+  const stage = document.createElement("div");
+  const host = document.createElement(MOMENT_TAG);
+
+  Object.assign(stage.style, {
+    background: "var(--color-page)",
+    height: "100vh",
+    position: "relative",
+  });
+  stage.append(host);
+  into.append(stage);
+  Object.assign(host, { hand: BLUFF_HAND, sound: false });
+  defineMoment();
+};
+
 const png = (into: Element) =>
   pngFile(
     pictureSvg(picture, { deck, fonts: EMBEDDED_FONTS, frame, theme }),
@@ -87,6 +103,8 @@ if (root !== null) {
     }
   } else if (view === "live") {
     live(root);
+  } else if (view === "late") {
+    definedLate(root);
   } else if (view === "png") {
     await Effect.runPromise(png(root));
   } else {

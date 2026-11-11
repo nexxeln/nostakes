@@ -2,7 +2,6 @@ import { avatarFor, render } from "@nostakes/avatar";
 import type { Expression, Theme } from "@nostakes/avatar";
 import { REACTIONS } from "@nostakes/room";
 import type { Reaction } from "@nostakes/room";
-import { Option, Schema } from "effect";
 
 import { PEEK_REFRESH_MS } from "../../features/signals.js";
 import { showdownWords, showOffer } from "../../features/table/showing.js";
@@ -13,7 +12,7 @@ import {
   HappeningSchema,
   TABLE_TAG,
   TableIntents,
-  TableSnapshotSchema,
+  tableElement,
 } from "../../features/table/snapshot.js";
 import type {
   Happening,
@@ -26,6 +25,7 @@ import type {
   TableIntent,
   TableSnapshot,
 } from "../../features/table/snapshot.js";
+import { adoptEarlyProperties } from "../early-properties.js";
 import { Counter, formatChips } from "./counter.js";
 import { cardEl, el, svgEl, toggle } from "./dom.js";
 import {
@@ -923,30 +923,7 @@ export class NostakesTable extends HTMLElement {
         this.#closePicker();
       }
     });
-    this.#adoptEarlyProperties();
-  }
-
-  #adoptEarlyProperties() {
-    const early = {
-      snapshot: Object.getOwnPropertyDescriptor(this, "snapshot"),
-      sound: Object.getOwnPropertyDescriptor(this, "sound"),
-    };
-
-    Reflect.deleteProperty(this, "snapshot");
-    Reflect.deleteProperty(this, "sound");
-
-    if (early.sound !== undefined) {
-      this.sound = Option.getOrElse(
-        Schema.decodeUnknownOption(Schema.Boolean)(early.sound.value),
-        () => this.sound
-      );
-    }
-
-    if (early.snapshot !== undefined) {
-      this.snapshot = Option.getOrNull(
-        Schema.decodeUnknownOption(TableSnapshotSchema)(early.snapshot.value)
-      );
-    }
+    adoptEarlyProperties(this, tableElement.properties);
   }
 
   get #reduced(): boolean {

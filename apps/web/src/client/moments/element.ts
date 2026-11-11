@@ -1,7 +1,7 @@
 import { Effect, Option } from "effect";
 
 import type { Deck, Theme } from "../../features/model.js";
-import { MOMENT_TAG } from "../../features/moments/element.js";
+import { MOMENT_TAG, momentElement } from "../../features/moments/element.js";
 import type { MomentHand } from "../../features/moments/element.js";
 import { NewestHand } from "../../features/moments/newest-hand.js";
 import type { MomentPicture } from "../../features/moments/picture.js";
@@ -18,6 +18,7 @@ import {
 import type { Plan, Pose } from "../../features/moments/timeline.js";
 import { KEPT_FRAMES } from "../../features/pictures/paper.js";
 import type { KeptFrame } from "../../features/pictures/paper.js";
+import { adoptEarlyProperties } from "../early-properties.js";
 import { Keeper } from "../pictures/keeper.js";
 import { measureParts } from "./clip-measure.js";
 import type { PartBox } from "./clip-measure.js";
@@ -146,6 +147,7 @@ class NostakesMoment extends HTMLElement {
     });
     this.#keeping.append(this.#keep, this.#story, this.#clip);
     this.#root.append(style, this.#card, this.#keeping);
+    adoptEarlyProperties(this, momentElement.properties);
   }
 
   connectedCallback() {

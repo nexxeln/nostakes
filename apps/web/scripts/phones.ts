@@ -851,6 +851,22 @@ const phoneChecks = (engine: BrowserType, app: string, watched: PageWatch) =>
       lateNames.join(",")
     );
 
+    yield* attempt("open a moment defined after its hand", () =>
+      guest.goto(`${app}/scripts/moments/stage.html?view=late`)
+    );
+
+    const lateMoment = yield* attempt("wait for the late moment", () =>
+      guest
+        .locator("nostakes-moment[data-moment]")
+        .getAttribute("data-moment", { timeout: 10_000 })
+    ).pipe(Effect.orElseSucceed(() => null));
+
+    yield* note(
+      "a moment whose hand is set before its definition arrives still calls the hand out",
+      (lateMoment ?? "").includes(":Bluff:"),
+      lateMoment ?? "no moment"
+    );
+
     return findings;
   });
 
