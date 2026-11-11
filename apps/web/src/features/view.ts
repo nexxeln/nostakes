@@ -189,53 +189,65 @@ const homeView = (
         ]
       ),
       h.div(
-        [h.Class("hero")],
+        [h.Class("home-intro")],
         [
-          h.h1([h.Class("brand")], ["nostakes"]),
-          h.p(
-            [h.Class("tagline")],
-            ["Poker night with friends. No money on the table, just the count."]
-          ),
-        ]
-      ),
-      yourRooms(model, h),
-      h.form(
-        [h.Class("card-panel"), h.OnSubmit(Messages.SubmittedCreate())],
-        [
-          ...profileFields(model, h),
-          h.button(
-            [h.Type("submit"), h.Class("button primary"), h.Disabled(busy)],
-            [busy ? "Opening…" : "Open a room"]
-          ),
-        ]
-      ),
-      h.form(
-        [h.Class("join-panel"), h.OnSubmit(Messages.SubmittedJoin())],
-        [
-          h.span([h.Class("field-label")], ["Have a code?"]),
           h.div(
-            [h.Class("join-row")],
+            [h.Class("hero")],
             [
-              h.input([
-                h.Type("text"),
-                h.Class("text-input code-input"),
-                h.Value(model.joinCode),
-                h.Maxlength(6),
-                h.Placeholder("ABC234"),
-                h.AriaLabel("Room code"),
-                h.Autocapitalize("characters"),
-                h.OnInput((value) => Messages.ChangedJoinCode({ value })),
-              ]),
-              h.button(
-                [h.Type("submit"), h.Class("button"), h.Disabled(busy)],
-                ["Join"]
+              h.h1([h.Class("brand")], ["nostakes"]),
+              h.p(
+                [h.Class("tagline")],
+                [
+                  "Poker night with friends. No money on the table, just the count.",
+                ]
               ),
             ]
           ),
+          yourRooms(model, h),
+          readingLinks(h),
         ]
       ),
-      problemLine(problem, h),
-      readingLinks(h),
+      h.div(
+        [h.Class("home-actions")],
+        [
+          h.form(
+            [h.Class("card-panel"), h.OnSubmit(Messages.SubmittedCreate())],
+            [
+              ...profileFields(model, h),
+              h.button(
+                [h.Type("submit"), h.Class("button primary"), h.Disabled(busy)],
+                [busy ? "Opening…" : "Open a room"]
+              ),
+            ]
+          ),
+          h.form(
+            [h.Class("join-panel"), h.OnSubmit(Messages.SubmittedJoin())],
+            [
+              h.span([h.Class("field-label")], ["Have a code?"]),
+              h.div(
+                [h.Class("join-row")],
+                [
+                  h.input([
+                    h.Type("text"),
+                    h.Class("text-input code-input"),
+                    h.Value(model.joinCode),
+                    h.Maxlength(6),
+                    h.Placeholder("ABC234"),
+                    h.AriaLabel("Room code"),
+                    h.Autocapitalize("characters"),
+                    h.OnInput((value) => Messages.ChangedJoinCode({ value })),
+                  ]),
+                  h.button(
+                    [h.Type("submit"), h.Class("button"), h.Disabled(busy)],
+                    ["Join"]
+                  ),
+                ]
+              ),
+            ]
+          ),
+          problemLine(problem, h),
+        ]
+      ),
     ]
   );
 
@@ -254,24 +266,34 @@ const invitedView = (
         [h.span([h.Class("bar-end")], [themeSwitch(h)])]
       ),
       h.div(
-        [h.Class("hero")],
+        [h.Class("home-intro")],
         [
-          h.h1([h.Class("brand")], ["nostakes"]),
-          h.p([h.Class("tagline")], [`You're invited to room ${code}.`]),
-        ]
-      ),
-      h.form(
-        [h.Class("card-panel"), h.OnSubmit(Messages.SubmittedInvite())],
-        [
-          ...profileFields(model, h),
-          h.button(
-            [h.Type("submit"), h.Class("button primary"), h.Disabled(busy)],
-            [busy ? "Joining…" : "Join the room"]
+          h.div(
+            [h.Class("hero")],
+            [
+              h.h1([h.Class("brand")], ["nostakes"]),
+              h.p([h.Class("tagline")], [`You're invited to room ${code}.`]),
+            ]
           ),
+          readingLinks(h),
         ]
       ),
-      problemLine(problem, h),
-      readingLinks(h),
+      h.div(
+        [h.Class("home-actions")],
+        [
+          h.form(
+            [h.Class("card-panel"), h.OnSubmit(Messages.SubmittedInvite())],
+            [
+              ...profileFields(model, h),
+              h.button(
+                [h.Type("submit"), h.Class("button primary"), h.Disabled(busy)],
+                [busy ? "Joining…" : "Join the room"]
+              ),
+            ]
+          ),
+          problemLine(problem, h),
+        ]
+      ),
     ]
   );
 

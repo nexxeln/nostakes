@@ -1,7 +1,7 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { Config, Console, Effect, Schema } from "effect";
 import { chromium, webkit } from "playwright-core";
-import type { BrowserType, Page } from "playwright-core";
+import type { BrowserType, Page, WebSocketRoute } from "playwright-core";
 import { preview } from "vite";
 
 import { mutedBrowser, servedVite } from "./local-site.ts";
@@ -402,6 +402,214 @@ const builtSite = Effect.acquireRelease(
   })
 );
 
+const FIRST_SCREEN_SIZES: readonly (readonly [number, number])[] = [
+  [360, 640],
+  [390, 844],
+  [640, 360],
+  [844, 390],
+  [960, 570],
+  [1024, 768],
+  [1280, 600],
+  [1440, 900],
+];
+
+const BLOCK_GAP_LIMIT_PX = 64;
+
+const BLOCKS =
+  ".home > .bar, .home .brand, .home .tagline, .home .your-rooms, .home .card-panel, .home .join-panel";
+
+const PLANTED_ROOMS = ["KQ7R2M", "H4XW9P", "B3NT8Z"];
+
+const PLANT_ROOMS = `
+if (localStorage.getItem("nostakes.rooms") === null) {
+  const codes = ${JSON.stringify(PLANTED_ROOMS)};
+  localStorage.setItem("nostakes.rooms", JSON.stringify(codes.map((code, index) => ({
+    closed: index === codes.length - 1, code, door: "Inside", left: false,
+    others: ["Maya", "Jonas", "Priya"].slice(index), removed: false, seenAt: 3000 - index,
+  }))));
+  codes.forEach((code, index) => localStorage.setItem("nostakes.pass." + code, JSON.stringify({
+    code, player: "player-000000" + index + "ab", token: "x".repeat(43),
+  })));
+}
+`;
+
+interface FirstScreen {
+  readonly name: string;
+  readonly path: string;
+  readonly returning: boolean;
+  readonly controls: readonly string[];
+}
+
+const FIRST_SCREENS: readonly FirstScreen[] = [
+  {
+    controls: [
+      ".card-panel .text-input",
+      ".face-row",
+      ".card-panel .button.primary",
+      ".code-input",
+      ".join-row .button",
+    ],
+    name: "the create form",
+    path: "/",
+    returning: false,
+  },
+  {
+    controls: [".room-row", ".card-panel .button.primary"],
+    name: "a returning player's home",
+    path: "/",
+    returning: true,
+  },
+  {
+    controls: [
+      ".card-panel .text-input",
+      ".face-row",
+      ".card-panel .button.primary",
+    ],
+    name: "the invitation",
+    path: "/r/ABC234",
+    returning: false,
+  },
+];
+
+const firstScreenProblems = ({
+  blocks,
+  controls,
+  limit,
+}: {
+  readonly blocks: string;
+  readonly controls: readonly string[];
+  readonly limit: number;
+}) => {
+  const outside = controls.flatMap((selector) => {
+    const found = [...document.querySelectorAll(selector)];
+
+    return found.length === 0
+      ? [`${selector} is missing`]
+      : found.flatMap((node) => {
+          const box = node.getBoundingClientRect();
+
+          return box.top >= 0 &&
+            box.left >= 0 &&
+            box.bottom <= innerHeight &&
+            box.right <= innerWidth
+            ? []
+            : [
+                `${node.tagName.toLowerCase()}.${[...node.classList].join(".")} at ${Math.round(box.top)}..${Math.round(box.bottom)} of ${innerHeight}`,
+              ];
+        });
+  });
+
+  const boxes = [...document.querySelectorAll(blocks)].flatMap((node) =>
+    node.getClientRects().length > 0
+      ? [
+          {
+            box: node.getBoundingClientRect(),
+            label: `${node.tagName.toLowerCase()}.${[...node.classList].join(".")}`,
+          },
+        ]
+      : []
+  );
+
+  const gaps = boxes.flatMap(({ box, label }) => {
+    const [next] = boxes
+      .filter(
+        (other) =>
+          other.label !== label &&
+          other.box.top >= box.bottom - 1 &&
+          Math.min(other.box.right, box.right) -
+            Math.max(other.box.left, box.left) >
+            0
+      )
+      .toSorted((above, below) => above.box.top - below.box.top);
+
+    return next === undefined || next.box.top - box.bottom <= limit
+      ? []
+      : [
+          `${Math.round(next.box.top - box.bottom)} px between ${label} and ${next.label}`,
+        ];
+  });
+
+  return [...outside, ...gaps];
+};
+
+const checkFirstScreens = (engine: BrowserType, origin: string) =>
+  Effect.gen(function* checkEveryFirstScreen() {
+    const opened = yield* mutedBrowser(engine);
+    const problems: string[] = [];
+    const heldOpen: WebSocketRoute[] = [];
+
+    for (const [width, height] of FIRST_SCREEN_SIZES) {
+      for (const screen of FIRST_SCREENS) {
+        const phone = width < 900;
+
+        const context = yield* attempt("open a context", () =>
+          opened.newContext({
+            hasTouch: phone,
+            viewport: { height, width },
+          })
+        );
+
+        yield* attempt("keep every planted room alive", () =>
+          context.routeWebSocket(/\/rooms\//u, (socket) => {
+            heldOpen.push(socket);
+          })
+        );
+
+        if (screen.returning) {
+          yield* attempt("plant three rooms", () =>
+            context.addInitScript(PLANT_ROOMS)
+          );
+        }
+
+        const page = yield* attempt("open a page", () => context.newPage());
+
+        yield* attempt(`open ${screen.name}`, () =>
+          page.goto(`${origin}${screen.path}`)
+        );
+        yield* attempt("wait for the fonts", () =>
+          page.evaluate(() => document.fonts.ready.then(() => true))
+        );
+
+        if (screen.path === "/" && !screen.returning) {
+          yield* attempt("tap Open a room on the landing", () =>
+            page.locator(".landing .hero-open").click()
+          );
+        }
+
+        yield* attempt(`wait for ${screen.name}`, () =>
+          page
+            .locator(screen.controls[0] ?? ".home")
+            .first()
+            .waitFor({ timeout: 10_000 })
+        );
+
+        const found = yield* attempt(`measure ${screen.name}`, () =>
+          page.evaluate(firstScreenProblems, {
+            blocks: BLOCKS,
+            controls: screen.controls,
+            limit: BLOCK_GAP_LIMIT_PX,
+          })
+        );
+
+        problems.push(
+          ...found.map(
+            (problem) =>
+              `${engine.name()} ${width}x${height} ${screen.name}: ${problem}`
+          )
+        );
+        yield* attempt("close the context", () => context.close());
+      }
+    }
+
+    yield* failWith(
+      `show every primary control in the first screen with no block more than ${BLOCK_GAP_LIMIT_PX} px from the next`,
+      problems
+    );
+    yield* Console.log(
+      `${engine.name()}: the create form, a returning home, and the invitation fit the first screen at ${FIRST_SCREEN_SIZES.map(([width, height]) => `${width}x${height}`).join(", ")}`
+    );
+  }).pipe(Effect.scoped);
+
 const LOOKS: readonly Look[] = [
   { height: 640, phone: true, still: false, theme: "light", width: 360 },
   { height: 640, phone: true, still: false, theme: "dark", width: 360 },
@@ -434,9 +642,10 @@ const program = Effect.gen(function* checkLanding() {
   );
 
   yield* Effect.all(
-    chosen.flatMap((engine) =>
-      LOOKS.map((look) => checkLook(engine, origin, look))
-    ),
+    chosen.flatMap((engine) => [
+      checkFirstScreens(engine, origin),
+      ...LOOKS.map((look) => checkLook(engine, origin, look)),
+    ]),
     { discard: true }
   );
 
