@@ -1,4 +1,4 @@
-import { AvatarSchema } from "@nostakes/avatar";
+import { AvatarSchema, ExpressionSchema, PartSchema } from "@nostakes/avatar";
 import { PlayerIdSchema, RoomCodeSchema } from "@nostakes/protocol";
 import {
   KnockViewSchema,
@@ -17,7 +17,6 @@ import {
   ConfirmSchema,
   CopiedSchema,
   DeckSchema,
-  FacePartSchema,
   FairMarks,
   LinkSchema,
   ThemeSchema,
@@ -47,7 +46,8 @@ export const Messages = defineMessageUnion({
   ChangedSystemTheme: { theme: ThemeSchema },
   CheckedRoom: { code: RoomCodeSchema, gone: Schema.Boolean },
   ChoseDeck: { deck: DeckSchema },
-  ChoseFacePart: { part: FacePartSchema },
+  ChoseFaceMood: { mood: ExpressionSchema },
+  ChoseFacePart: { part: PartSchema },
   ChosePreset: { preset: PresetSchema },
   ChoseTheme: { theme: ThemeSchema },
   ClickedAddChips: {},
@@ -76,6 +76,7 @@ export const Messages = defineMessageUnion({
   ClickedSeat: { seat: Schema.Int },
   ClickedShuffleFace: {},
   ClickedSit: { seat: Schema.Int },
+  ClickedUndoFace: {},
   ClickedUseHere: {},
   ClosedSheet: {},
   CompletedCopy: { copied: CopiedSchema },
@@ -86,6 +87,7 @@ export const Messages = defineMessageUnion({
   EnteredRoom: { code: RoomCodeSchema, player: PlayerIdSchema },
   FailedConnection: { problem: Schema.String },
   FailedEntry: { problem: Schema.String },
+  FlippedFacePart: { by: Schema.Int, part: PartSchema },
   GotKnock: { at: Schema.Int, knock: KnockViewSchema },
   GotLink: { link: LinkSchema },
   GotOwnResult: { result: RemovedViewSchema },

@@ -31,6 +31,10 @@ Runtime.run(application, { flags: readFlags });
 
 watchZoom();
 
+const { defineFaceBuilder } = await import("./face/define.js");
+
+defineFaceBuilder();
+
 const { defineTable } = await import("./table/element.js");
 
 defineTable();

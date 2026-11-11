@@ -1,4 +1,4 @@
-import { AvatarSchema } from "@nostakes/avatar";
+import { AvatarSchema, ExpressionSchema, PartSchema } from "@nostakes/avatar";
 import {
   BuildIdSchema,
   CloseReasonSchema,
@@ -19,22 +19,6 @@ import { defineTaggedUnion } from "foldkit/schema";
 import { MomentWatchSchema } from "./moments/watch.js";
 import { RuleGroupSchema } from "./rules-copy.js";
 import { HintSchema, TableEventSchema } from "./table/snapshot.js";
-
-export const FacePartSchema = Schema.Literals([
-  "Species",
-  "Colour",
-  "Suit",
-  "Card",
-  "Eyes",
-  "Mouth",
-  "Headwear",
-  "Eyewear",
-  "Neck",
-  "Mark",
-  "Extra",
-]);
-
-export type FacePart = typeof FacePartSchema.Type;
 
 export const ThemeSchema = Schema.Literals(["Light", "Dark"]);
 
@@ -291,8 +275,12 @@ export const ModelSchema = Schema.Struct({
   counting: Schema.Boolean,
   deck: DeckSchema,
   faceDraft: Schema.Option(AvatarSchema),
-  facePart: FacePartSchema,
-  faceShuffled: Schema.Boolean,
+  faceLearned: Schema.Boolean,
+  faceMood: ExpressionSchema,
+  facePart: PartSchema,
+  facePast: Schema.Array(AvatarSchema),
+  faceShuffles: Schema.Int,
+  faceTold: Schema.String,
   joinCode: Schema.String,
   learned: Schema.Array(HintSchema),
   nextKey: Schema.Int,

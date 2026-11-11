@@ -71,14 +71,18 @@
   --size-door-line: 3rem;
   --size-page: 26rem;
   --size-sheet: 34rem;
-  --size-face-preview: 10.5rem;
-  --size-face-option: 3.75rem;
-  --size-face-strip: 2.75rem;
   --size-face-bar: 2rem;
   --size-face-row: 3.5rem;
-  --lift-face: -4px;
-  --tilt-face: 1.5deg;
-  --zoom-face-part: 1.5;
+  --size-face-callout: 4.125rem;
+  --size-face-callout-wide: clamp(7.5rem, 12vw, 10.5rem);
+  --size-face-callout-art: 3rem;
+  --size-face-side: clamp(17rem, 26vw, 22rem);
+  --size-face-sheet: 72rem;
+  --size-face-mood: 2.75rem;
+  --size-face-undo: 2.25rem;
+  --size-face-token: 2rem;
+  --size-face-tray: 8.5rem;
+  --gap-face-callout: 0.25rem;
 
   --display-in-light: inline-flex;
   --display-in-dark: none;

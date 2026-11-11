@@ -2,10 +2,15 @@ import { describe, expect, it } from "@effect/vitest";
 import {
   AvatarSchema,
   avatarFor,
+  choicesOf,
   codeFor,
   DEFAULT_AVATAR,
+  parseAvatar,
+  PARTS,
+  PartSchema,
+  PLACED_PARTS,
 } from "@nostakes/avatar";
-import type { Avatar } from "@nostakes/avatar";
+import type { Avatar, Part } from "@nostakes/avatar";
 import { PlayerIdSchema, RoomCodeSchema } from "@nostakes/protocol";
 import {
   AvatarSchema as RoomAvatarSchema,
@@ -17,9 +22,18 @@ import * as Arbitrary from "effect/Arbitrary";
 import { Scene } from "foldkit";
 import { attr, findAll, getAllByRole } from "foldkit/scene";
 
+import { SaveProfile } from "../src/client/commands.js";
+import { choiceId, rovedTo } from "../src/features/face-builder.js";
+import {
+  choiceName,
+  sidesOf,
+  stepped,
+  toldOf,
+} from "../src/features/face/parts.js";
+import { faceElement, modalElement } from "../src/features/face/stage.js";
 import { Messages } from "../src/features/message.js";
 import type { Message } from "../src/features/message.js";
-import type { FacePart, Model } from "../src/features/model.js";
+import type { Model } from "../src/features/model.js";
 import { init, update } from "../src/features/update.js";
 import { view } from "../src/features/view.js";
 
@@ -122,6 +136,42 @@ const playAll = (model: Model, messages: readonly Message[]) => {
   return { commands, model: current };
 };
 
+type Step = ReturnType<typeof Scene.click>;
+
+const shownAfter = (
+  model: Model,
+  steps: readonly Step[],
+  selector: string,
+  name: string
+) => {
+  const found: string[] = [];
+
+  Scene.scene(
+    { update, view },
+    Scene.given(model),
+    ...steps,
+    Scene.tap((simulation) => {
+      for (const node of findAll(simulation.html, selector)) {
+        found.push(Option.getOrElse(attr(node, name), () => ""));
+      }
+    })
+  );
+
+  return found;
+};
+
+const shownOn = (model: Model, selector: string, name: string) =>
+  shownAfter(model, [], selector, name);
+
+const namedAfter = (model: Model, steps: readonly Step[]) =>
+  shownAfter(model, steps, ".face-callout", "aria-label").toSorted();
+
+const heldAfter = (model: Model, steps: readonly Step[]) =>
+  shownAfter(model, steps, ".face-callout.is-held", "aria-label");
+
+const namesOfFace = (avatar: Avatar) =>
+  PARTS.map((part) => toldOf(avatar, part)).toSorted();
+
 const checkedLabels = (model: Model) => {
   const labels: string[] = [];
 
@@ -140,26 +190,53 @@ const checkedLabels = (model: Model) => {
   return labels;
 };
 
-const previews = (model: Model) => {
-  const classes: string[] = [];
+const calloutOf = (part: Part) => `.face-callout[data-part="${part}"]`;
 
-  Scene.scene(
-    { update, view },
-    Scene.given(model),
-    Scene.tap((simulation) => {
-      for (const preview of findAll(simulation.html, ".face-preview")) {
-        classes.push(Option.getOrElse(attr(preview, "class"), () => ""));
-      }
-    })
+const STAGE = "nostakes-face";
+
+const draftOf = (model: Model) =>
+  Option.getOrElse(model.faceDraft, () => DEFAULT_AVATAR);
+
+const sheetFor = (worn: Avatar) =>
+  playAll(home, [
+    Messages.PickedAvatar({ avatar: worn }),
+    Messages.ClickedEditFace(),
+  ]).model;
+
+const stepsTo = (part: Part, from: string, to: string) => {
+  const choices = choicesOf(part);
+
+  return (
+    (choices.indexOf(to) - choices.indexOf(from) + choices.length) %
+    choices.length
   );
-
-  return classes;
 };
 
-const spaced = (name: string) => name.replaceAll(/(?<=[a-z])(?=[A-Z])/gu, " ");
+const moves = Arbitrary.schema(
+  Schema.Array(
+    Schema.Struct({
+      avatar: AvatarSchema,
+      by: Schema.Int.check(Schema.isBetween({ maximum: 9, minimum: -9 })),
+      kind: Schema.Literals(["Flip", "Hold", "Pick", "Shuffle"]),
+      part: PartSchema,
+    })
+  )
+);
 
-const onPart = (model: Model, part: FacePart) =>
-  update(model, Messages.ChoseFacePart({ part })).model;
+interface Move {
+  readonly avatar: Avatar;
+  readonly by: number;
+  readonly kind: "Flip" | "Hold" | "Pick" | "Shuffle";
+  readonly part: Part;
+}
+
+const messageOf = ({ avatar, by, kind, part }: Move): Message =>
+  ({
+    Flip: Messages.FlippedFacePart({ by, part }),
+    Hold: Messages.ChoseFacePart({ part }),
+    Pick: Messages.PickedAvatar({ avatar }),
+    Shuffle: Messages.ShuffledFace({ avatar }),
+  })[kind];
 
 describe("the face builder", () => {
   it.prop(
@@ -277,20 +354,20 @@ describe("the face builder", () => {
   });
 
   it.prop(
-    "pulls a shuffled face apart into its sheets for a moment, and not a picked part",
-    { picked: avatars, shuffled: avatars },
-    ({ picked, shuffled }) => {
-      const opened = update(home, Messages.ClickedEditFace()).model;
-
-      expect(previews(opened)).toStrictEqual(["face-preview"]);
+    "counts a shuffle so the face can pull its sheets apart, and never a picked part",
+    { picked: avatars, shuffled: avatars, worn: avatars },
+    ({ picked, shuffled, worn }) => {
+      const start = sheetFor(worn);
 
       const dealt = update(
-        opened,
+        start,
         Messages.ShuffledFace({ avatar: shuffled })
       ).model;
 
       expect(dealt.faceDraft).toStrictEqual(Option.some({ ...shuffled }));
-      expect(previews(dealt)).toStrictEqual(["face-preview is-shuffled"]);
+      expect(dealt.faceShuffles - start.faceShuffles).toBe(
+        codeFor(shuffled) === codeFor(worn) ? 0 : 1
+      );
 
       const chosen = update(
         dealt,
@@ -298,32 +375,273 @@ describe("the face builder", () => {
       ).model;
 
       expect(chosen.faceDraft).toStrictEqual(Option.some({ ...picked }));
-      expect(previews(chosen)).toStrictEqual(["face-preview"]);
+      expect(chosen.faceShuffles).toBe(dealt.faceShuffles);
     }
   );
 
   it.prop(
-    "marks exactly the parts the face wears as picked",
+    "shows the choices of the part picked up, with exactly the worn one checked",
     { avatar: avatars },
     ({ avatar }) => {
-      const wearing = playAll(home, [
-        Messages.PickedAvatar({ avatar }),
-        Messages.ClickedEditFace(),
-      ]).model;
+      for (const part of PARTS) {
+        const held = update(
+          sheetFor(avatar),
+          Messages.ChoseFacePart({ part })
+        ).model;
 
-      expect(checkedLabels(onPart(wearing, "Species"))).toStrictEqual([
-        spaced(avatar.species),
-      ]);
-      expect(checkedLabels(onPart(wearing, "Card"))).toStrictEqual([
-        avatar.rank,
-      ]);
-      expect(checkedLabels(onPart(wearing, "Extra"))).toStrictEqual([
-        spaced(avatar.extra),
-      ]);
-      expect(checkedLabels(onPart(wearing, "Mark"))).toStrictEqual([
-        spaced(avatar.mark),
-      ]);
-    }
+        expect(checkedLabels(held)).toStrictEqual([
+          choiceName(part, avatar[part]),
+        ]);
+        expect(shownOn(held, ".face-choice", "aria-label")).toStrictEqual(
+          choicesOf(part).map((choice) => choiceName(part, choice))
+        );
+        expect(
+          shownOn(held, ".face-callout.is-held", "aria-label")
+        ).toStrictEqual([toldOf(avatar, part)]);
+      }
+    },
+    { arbitrary: { runs: 5 } }
+  );
+
+  it.prop(
+    "names every part and what it wears on a control beside the face",
+    { avatar: avatars },
+    ({ avatar }) => {
+      expect(
+        shownOn(sheetFor(avatar), ".face-callout", "aria-label").toSorted()
+      ).toStrictEqual(PARTS.map((part) => toldOf(avatar, part)).toSorted());
+
+      const sides = sidesOf(avatar);
+
+      expect([...sides.left, ...sides.right].toSorted()).toStrictEqual(
+        [...PLACED_PARTS].toSorted()
+      );
+      expect(sides.left).toHaveLength(4);
+    },
+    { arbitrary: { runs: 20 } }
+  );
+
+  it.prop(
+    "reaches and changes every part with a mouse alone: click the part, click a choice",
+    { avatar: avatars, wanted: avatars },
+    ({ avatar, wanted }) => {
+      for (const part of PARTS) {
+        const steps = [
+          Scene.click(calloutOf(part)),
+          Scene.click(`#${choiceId(part, wanted[part])}`),
+        ];
+
+        const changed = { ...avatar, [part]: wanted[part] };
+
+        expect(heldAfter(sheetFor(avatar), steps)).toStrictEqual([
+          toldOf(changed, part),
+        ]);
+        expect(namedAfter(sheetFor(avatar), steps)).toStrictEqual(
+          namesOfFace(changed)
+        );
+      }
+    },
+    { arbitrary: { runs: 5 } }
+  );
+
+  it.prop(
+    "reaches and changes every part by touch alone: pick it up on the face, swipe to flip",
+    { avatar: avatars, wanted: avatars },
+    ({ avatar, wanted }) => {
+      for (const part of PARTS) {
+        const by = stepsTo(part, avatar[part], wanted[part]);
+
+        const steps = [
+          part === "colour" || part === "suit"
+            ? Scene.click(calloutOf(part))
+            : Scene.CustomElement.emit(faceElement, STAGE, "hold", { part }),
+          Scene.CustomElement.emit(faceElement, STAGE, "flip", { by, part }),
+        ];
+
+        const changed = { ...avatar, [part]: wanted[part] };
+
+        expect(heldAfter(sheetFor(avatar), steps)).toStrictEqual([
+          toldOf(changed, part),
+        ]);
+        expect(namedAfter(sheetFor(avatar), steps)).toStrictEqual(
+          namesOfFace(changed)
+        );
+      }
+    },
+    { arbitrary: { runs: 5 } }
+  );
+
+  it.prop(
+    "reaches and changes every part with a keyboard alone: arrows on the part, or arrows among its choices",
+    { avatar: avatars, wanted: avatars },
+    ({ avatar, wanted }) => {
+      for (const part of PARTS) {
+        const presses = stepsTo(part, avatar[part], wanted[part]);
+        const start = sheetFor(avatar);
+
+        const rights = Array.from({ length: presses }, () =>
+          Scene.keydown(calloutOf(part), "ArrowRight")
+        );
+
+        const changed = { ...avatar, [part]: wanted[part] };
+
+        expect(namedAfter(start, rights)).toStrictEqual(namesOfFace(changed));
+        expect(
+          namedAfter(start, [
+            ...rights,
+            Scene.keydown(calloutOf(part), "ArrowLeft"),
+          ])
+        ).toStrictEqual(namesOfFace(stepped(changed, part, -1)));
+        expect(heldAfter(start, rights.slice(0, 1))).toStrictEqual(
+          presses === 0
+            ? [toldOf(avatar, "species")]
+            : [toldOf(stepped(avatar, part, 1), part)]
+        );
+
+        const choices = choicesOf(part);
+        const at = choices.indexOf(avatar[part]);
+        const held = update(start, Messages.ChoseFacePart({ part })).model;
+
+        expect(rovedTo(part, avatar[part], "ArrowRight")).toStrictEqual(
+          Option.fromNullishOr(choices[(at + 1) % choices.length])
+        );
+        expect(rovedTo(part, avatar[part], "ArrowUp")).toStrictEqual(
+          Option.fromNullishOr(
+            choices[(at - 1 + choices.length) % choices.length]
+          )
+        );
+        expect(rovedTo(part, avatar[part], "Home")).toStrictEqual(
+          Option.fromNullishOr(choices[0])
+        );
+        expect(rovedTo(part, avatar[part], "End")).toStrictEqual(
+          Option.fromNullishOr(choices.at(-1))
+        );
+        expect(rovedTo(part, avatar[part], "a")).toStrictEqual(Option.none());
+        expect(
+          shownOn(held, ".face-choice", "tabIndex").toSorted()
+        ).toStrictEqual(
+          choices
+            .map((choice) => (choice === avatar[part] ? "0" : "-1"))
+            .toSorted()
+        );
+      }
+    },
+    { arbitrary: { runs: 3 } }
+  );
+
+  it.prop(
+    "undoes any change in one step, a shuffle included, and does nothing with no face before",
+    { avatar: avatars, made: moves },
+    ({ avatar, made }) => {
+      const start = sheetFor(avatar);
+
+      expect(update(start, Messages.ClickedUndoFace()).model).toStrictEqual(
+        start
+      );
+      expect(shownOn(start, ".face-undo", "disabled")).toHaveLength(1);
+
+      let current = start;
+
+      for (const move of made) {
+        const next = update(current, messageOf(move)).model;
+        const undone = update(next, Messages.ClickedUndoFace()).model;
+
+        if (codeFor(draftOf(next)) === codeFor(draftOf(current))) {
+          expect(next.facePast).toStrictEqual(current.facePast);
+        } else {
+          expect(draftOf(undone)).toStrictEqual(draftOf(current));
+          expect(undone.facePast).toStrictEqual(current.facePast);
+          expect(undone.faceTold).toBe("Back to the face before");
+        }
+
+        current = next;
+      }
+    },
+    { arbitrary: { runs: 40 } }
+  );
+
+  it.prop(
+    "says each change aloud, and drops the first-touch hint once the face is touched",
+    { avatar: avatars, by: Arbitrary.schema(Schema.Literals([-1, 1])) },
+    ({ avatar, by }) => {
+      const start = sheetFor(avatar);
+
+      expect(start.faceLearned).toBe(false);
+
+      for (const part of PARTS) {
+        const flipped = update(
+          start,
+          Messages.FlippedFacePart({ by, part })
+        ).model;
+
+        expect(flipped.faceTold).toBe(toldOf(draftOf(flipped), part));
+        expect(flipped.faceLearned).toBe(true);
+        expect(shownOn(flipped, ".face-told", "aria-live")).toStrictEqual([
+          "polite",
+        ]);
+      }
+    },
+    { arbitrary: { runs: 12 } }
+  );
+
+  it.prop(
+    "Done saves exactly the face on screen, and its code reads back as that face",
+    { avatar: avatars, made: moves },
+    ({ avatar, made }) => {
+      const built = playAll(sheetFor(avatar), made.map(messageOf)).model;
+      const onScreen = draftOf(built);
+
+      expect(namedAfter(built, [])).toStrictEqual(namesOfFace(onScreen));
+
+      expect(
+        shownAfter(
+          built,
+          [
+            Scene.click(".face-done"),
+            Scene.Command.resolve(SaveProfile, Messages.CompletedPreference()),
+          ],
+          ".face-builder",
+          "role"
+        )
+      ).toStrictEqual([]);
+
+      const saved = update(built, Messages.ClickedSaveFace()).model;
+
+      expect(saved.faceDraft).toStrictEqual(Option.none());
+      expect(saved.facePast).toStrictEqual([]);
+      expect(saved.profile.avatar).toBe(codeFor(onScreen));
+      expect(avatarFor(saved.profile.avatar)).toStrictEqual({ ...onScreen });
+      expect(parseAvatar(saved.profile.avatar)).toStrictEqual(
+        Option.some({ ...onScreen })
+      );
+    },
+    { arbitrary: { runs: 25 } }
+  );
+
+  it.prop(
+    "closing without saving, by the button or by Escape, keeps the old face",
+    { avatar: avatars, made: moves },
+    ({ avatar, made }) => {
+      const built = playAll(sheetFor(avatar), made.map(messageOf)).model;
+
+      for (const closing of [
+        Scene.click(".face-close"),
+        Scene.CustomElement.emit(modalElement, "nostakes-modal", "cancel", {
+          by: "Escape",
+        }),
+      ]) {
+        expect(
+          shownAfter(built, [closing], ".face-builder", "role")
+        ).toStrictEqual([]);
+      }
+
+      const closed = update(built, Messages.ClickedCancelFace()).model;
+
+      expect(closed.faceDraft).toStrictEqual(Option.none());
+      expect(closed.facePast).toStrictEqual([]);
+      expect(closed.profile.avatar).toBe(codeFor(avatar));
+    },
+    { arbitrary: { runs: 12 } }
   );
 
   it.prop(

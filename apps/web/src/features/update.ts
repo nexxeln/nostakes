@@ -1,5 +1,5 @@
-import { avatarFor, codeFor } from "@nostakes/avatar";
-import type { Avatar } from "@nostakes/avatar";
+import { avatarFor, codeFor, PARTS } from "@nostakes/avatar";
+import type { Avatar, Part } from "@nostakes/avatar";
 import {
   Actions,
   CardFromText,
@@ -62,6 +62,7 @@ import {
   pausedUntil,
   stillWaiting,
 } from "./door.js";
+import { stepped, toldOf } from "./face/parts.js";
 import { haltedText } from "./halted.js";
 import { Messages, ReplyOutcomes } from "./message.js";
 import type { Message, ReplyOutcome } from "./message.js";
@@ -198,8 +199,12 @@ export const init = (flags: Flags): Return => {
     counting: flags.counting ?? false,
     deck: flags.deck,
     faceDraft: Option.none(),
-    facePart: "Species" as const,
-    faceShuffled: false,
+    faceLearned: false,
+    faceMood: "Resting" as const,
+    facePart: "species" as const,
+    facePast: [],
+    faceShuffles: 0,
+    faceTold: "",
     joinCode: "",
     learned: flags.learned,
     nextKey: 1,
@@ -881,6 +886,21 @@ const ownMember = (room: InRoom) =>
     )
   );
 
+const closedFace = (model: Model): Model => ({
+  ...model,
+  faceDraft: Option.none(),
+  facePast: [],
+});
+
+const openedFace = (model: Model, worn: Avatar): Model => ({
+  ...model,
+  faceDraft: Option.some(worn),
+  faceMood: "Resting",
+  facePart: "species",
+  facePast: [],
+  faceTold: "",
+});
+
 const keepFace = (model: Model): Return =>
   Option.match(model.faceDraft, {
     onNone: () => ({ model }),
@@ -889,7 +909,7 @@ const keepFace = (model: Model): Return =>
 
       return {
         commands: [SaveProfile({ profile })],
-        model: { ...model, faceDraft: Option.none(), profile },
+        model: { ...closedFace(model), profile },
       };
     },
   });
@@ -897,12 +917,12 @@ const keepFace = (model: Model): Return =>
 const sendFace = (model: Model): Return =>
   inRoom(model, (room) =>
     Option.match(Option.all([model.faceDraft, ownMember(room)]), {
-      onNone: () => ({ model: { ...model, faceDraft: Option.none() } }),
+      onNone: () => ({ model: closedFace(model) }),
       onSome: ([draft, member]) => {
         const profile = { ...model.profile, avatar: codeFor(draft) };
 
         const sent = send(
-          { ...model, faceDraft: Option.none(), profile },
+          { ...closedFace(model), profile },
           room,
           Commands.SetProfile.make({
             avatar: profile.avatar,
@@ -919,24 +939,89 @@ const sendFace = (model: Model): Return =>
     })
   );
 
-const wearFace = (
-  model: Model,
-  avatar: Avatar,
-  faceShuffled: boolean
-): Return => {
-  if (Option.isSome(model.faceDraft)) {
-    return {
-      model: { ...model, faceDraft: Option.some(avatar), faceShuffled },
-    };
-  }
+const FACES_KEPT_FOR_UNDO = 40;
 
-  const profile = { ...model.profile, avatar: codeFor(avatar) };
+interface Worn {
+  readonly avatar: Avatar;
+  readonly told: string;
+  readonly shuffled: boolean;
+}
 
-  return {
-    commands: [SaveProfile({ profile })],
-    model: { ...model, faceShuffled, profile },
-  };
-};
+const wearFace = (model: Model, { avatar, shuffled, told }: Worn): Return =>
+  Option.match(model.faceDraft, {
+    onNone: () => {
+      const profile = { ...model.profile, avatar: codeFor(avatar) };
+
+      return {
+        commands: [SaveProfile({ profile })],
+        model: { ...model, profile },
+      };
+    },
+    onSome: (draft) =>
+      codeFor(draft) === codeFor(avatar)
+        ? { model }
+        : {
+            model: {
+              ...model,
+              faceDraft: Option.some(avatar),
+              facePast: [...model.facePast, draft].slice(-FACES_KEPT_FOR_UNDO),
+              faceShuffles: model.faceShuffles + (shuffled ? 1 : 0),
+              faceTold: told,
+            },
+          },
+  });
+
+const toldOfChange = (model: Model, avatar: Avatar) =>
+  model.faceDraft.pipe(
+    Option.flatMap((draft) =>
+      Option.fromNullishOr(PARTS.find((part) => draft[part] !== avatar[part]))
+    ),
+    Option.match({
+      onNone: () => "",
+      onSome: (part) => toldOf(avatar, part),
+    })
+  );
+
+const holdFacePart = (model: Model, part: Part): Model => ({
+  ...model,
+  faceLearned: true,
+  facePart: part,
+  faceTold: model.faceDraft.pipe(
+    Option.match({
+      onNone: () => "",
+      onSome: (draft) => toldOf(draft, part),
+    })
+  ),
+});
+
+const flipFacePart = (model: Model, part: Part, by: number): Return =>
+  Option.match(model.faceDraft, {
+    onNone: () => ({ model }),
+    onSome: (draft) => {
+      const avatar = stepped(draft, part, by);
+
+      return wearFace(
+        { ...model, faceLearned: true, facePart: part },
+        { avatar, shuffled: false, told: toldOf(avatar, part) }
+      );
+    },
+  });
+
+const undoFace = (model: Model): Return =>
+  Option.match(
+    Option.all([model.faceDraft, Option.fromNullishOr(model.facePast.at(-1))]),
+    {
+      onNone: () => ({ model }),
+      onSome: ([, before]) => ({
+        model: {
+          ...model,
+          faceDraft: Option.some(before),
+          facePast: model.facePast.slice(0, -1),
+          faceTold: "Back to the face before",
+        },
+      }),
+    }
+  );
 
 const saveFace = (model: Model): Return =>
   Option.match(roomOf(model), {
@@ -996,7 +1081,8 @@ export const update = (model: Model, message: Message): Return =>
       commands: [ApplyDeck({ deck })],
       model: { ...model, deck },
     }),
-    ChoseFacePart: ({ part }) => ({ model: { ...model, facePart: part } }),
+    ChoseFaceMood: ({ mood }) => ({ model: { ...model, faceMood: mood } }),
+    ChoseFacePart: ({ part }) => ({ model: holdFacePart(model, part) }),
     ChosePreset: ({ preset }) =>
       editRules(model, (sheet) => ({
         ...sheet,
@@ -1021,7 +1107,7 @@ export const update = (model: Model, message: Message): Return =>
           }
         : { model },
     ClickedCancelFace: () => ({
-      model: { ...model, faceDraft: Option.none() },
+      model: closedFace(model),
     }),
     ClickedCheckResult: () =>
       inRoom(model, (room) => ({
@@ -1072,18 +1158,16 @@ export const update = (model: Model, message: Message): Return =>
         )
       ),
     ClickedEditFace: () => ({
-      model: {
-        ...model,
-        faceDraft: Option.some(
-          avatarFor(
-            roomOf(model).pipe(
-              Option.flatMap(ownMember),
-              Option.map(({ avatar }) => avatar),
-              Option.getOrElse(() => model.profile.avatar)
-            )
+      model: openedFace(
+        model,
+        avatarFor(
+          roomOf(model).pipe(
+            Option.flatMap(ownMember),
+            Option.map(({ avatar }) => avatar),
+            Option.getOrElse(() => model.profile.avatar)
           )
-        ),
-      },
+        )
+      ),
     }),
     ClickedFairness: () =>
       editRoom(model, (room) => ({ ...room, fairnessOpen: true })),
@@ -1194,6 +1278,7 @@ export const update = (model: Model, message: Message): Return =>
     ClickedSeat: ({ seat }) => pickSeat(model, seat),
     ClickedShuffleFace: () => ({ commands: [ShuffleFace()], model }),
     ClickedSit: ({ seat }) => sit(model, seat),
+    ClickedUndoFace: () => undoFace(model),
     ClickedUseHere: () => ({ commands: [UseRoomHere()], model }),
     ClosedSheet: () =>
       editRoom(model, (room) => ({
@@ -1236,6 +1321,7 @@ export const update = (model: Model, message: Message): Return =>
         }),
       },
     }),
+    FlippedFacePart: ({ by, part }) => flipFacePart(model, part, by),
     GotKnock: (knocked) => gotKnock(model, knocked),
     GotLink: ({ link }) =>
       askForStandings(
@@ -1356,7 +1442,12 @@ export const update = (model: Model, message: Message): Return =>
         ...room,
         halted: Option.some(HaltedStandings.Missing({ reason })),
       })),
-    PickedAvatar: ({ avatar }) => wearFace(model, avatar, false),
+    PickedAvatar: ({ avatar }) =>
+      wearFace(model, {
+        avatar,
+        shuffled: false,
+        told: toldOfChange(model, avatar),
+      }),
     PolledDoor: () =>
       inRoom(model, (room) =>
         stillWaiting(room)
@@ -1384,7 +1475,8 @@ export const update = (model: Model, message: Message): Return =>
             },
           }))
         : { model },
-    ShuffledFace: ({ avatar }) => wearFace(model, avatar, true),
+    ShuffledFace: ({ avatar }) =>
+      wearFace(model, { avatar, shuffled: true, told: "A new face" }),
     StartedReload: () => ({ model }),
     SubmittedCreate: () => {
       const name = enteredName(model.profile.name);
