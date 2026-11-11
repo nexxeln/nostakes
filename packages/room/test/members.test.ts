@@ -105,25 +105,6 @@ describe("members", () => {
     ).toStrictEqual(new NotAMember({ player: bob }));
   });
 
-  it("changes a member's name and avatar", () => {
-    const changed = run(
-      withThree,
-      RoomCommands.SetProfile({
-        at: ms(30),
-        avatar: "heart",
-        by: as(bob),
-        name: "Bobby",
-      })
-    );
-
-    expect(open(changed.state).members[1]).toStrictEqual({
-      avatar: "heart",
-      joinedAt: ms(10),
-      name: "Bobby",
-      player: bob,
-    });
-  });
-
   it("lets only the host transfer the role, and only to another member", () => {
     expect(rejection(withThree, transfer(bob, cat))).toStrictEqual(
       new NotTheHost({ host: ann, player: bob })

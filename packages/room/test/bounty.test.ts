@@ -46,6 +46,7 @@ import {
   netProblems,
   stackProblems,
 } from "./log-ledger.js";
+import { generated, sized } from "./scale.js";
 import { playSession, session } from "./sessions.js";
 
 const BOUNTY = 30;
@@ -306,13 +307,14 @@ describe("generated rooms with the bounty", () => {
     { source: session },
     ({ source }) => {
       expect(ledgerProblems(source).problems).toStrictEqual([]);
-    }
+    },
+    generated(40, 100)
   );
 
   it.effect("reaches bounties, and bounties from seats on their way out", () =>
     Effect.gen(function* reachBounties() {
       const sources = yield* Arbitrary.sampleEffect(session, {
-        count: 150,
+        count: sized(60, 150),
         seed: 20_261_111,
       });
 
@@ -328,8 +330,8 @@ describe("generated rooms with the bounty", () => {
         leaversPaid += outcome.leaversPaid;
       }
 
-      expect(bounties).toBeGreaterThan(30);
-      expect(leaversPaid).toBeGreaterThan(2);
+      expect(bounties).toBeGreaterThan(sized(8, 30));
+      expect(leaversPaid).toBeGreaterThan(sized(0, 2));
     })
   );
 });

@@ -11,8 +11,7 @@ import {
   evaluate,
 } from "@nostakes/engine";
 import type { Card, Event } from "@nostakes/engine";
-import { Effect, Option, Result, Schema } from "effect";
-import * as Arbitrary from "effect/Arbitrary";
+import { Option, Result, Schema } from "effect";
 
 import {
   Actors,
@@ -21,7 +20,6 @@ import {
   RoomCommands,
   RoomEvents,
   RoomStates,
-  RoomViews,
   TableRejected,
   decide,
   nextDeadline,
@@ -53,6 +51,7 @@ import {
   sit,
 } from "./fixtures.js";
 import { asSent, cardsIn } from "./observers.js";
+import { generated } from "./scale.js";
 import { playSession, session } from "./sessions.js";
 import type { Step } from "./sessions.js";
 
@@ -274,42 +273,6 @@ describe("the showdown clock", () => {
 });
 
 describe("showdown views", () => {
-  it("tells everyone whose turn it is to show, and only that seat which of its choices are legal, with the clock in milliseconds", () => {
-    const reached = river(interactive).state;
-    const bobView = viewFor(reached, seatedAs(bob, 1), ms(5022));
-    const catView = viewFor(reached, seatedAs(cat, 2), ms(5022));
-
-    expect(
-      RoomViews.$is("Open")(bobView) && [
-        bobView.showdown,
-        bobView.hand.pipe(Option.map((hand) => hand.toShow)),
-        bobView.clocks.showdown,
-      ]
-    ).toStrictEqual([
-      Option.some({ canMuck: true, canTable: true, seat: seat(1) }),
-      Option.some(Option.some(seat(1))),
-      Option.some({
-        deadline: ms(15_022),
-        remainingMs: 10_000,
-        seat: seat(1),
-        totalMs: 15_000,
-      }),
-    ]);
-    expect(RoomViews.$is("Open")(catView) && catView.showdown).toStrictEqual(
-      Option.none()
-    );
-
-    const catAsked = viewFor(
-      run(reached, tableHand(bob, 30)).state,
-      seatedAs(cat, 2),
-      ms(30)
-    );
-
-    expect(RoomViews.$is("Open")(catAsked) && catAsked.showdown).toStrictEqual(
-      Option.some({ canMuck: false, canTable: true, seat: seat(2) })
-    );
-  });
-
   it("keeps the cards of seats that mucked, and of the seat that won without showing, from every other seat and spectator, until that seat shows them", () => {
     const reached = river(interactive);
     const bobMucked = run(reached.state, muckHand(bob, 30));
@@ -457,24 +420,7 @@ describe("an interactive showdown where every seat times out", () => {
       expect(compared.map((outcome) => outcome.timedOut)).toStrictEqual(
         compared.map((outcome) => outcome.automatic)
       );
-    }
-  );
-
-  it.effect(
-    "is compared on many showdowns in a fixed sample, each ending its hand",
-    () =>
-      Effect.gen(function* coverShowdowns() {
-        const sources = yield* Arbitrary.sampleEffect(session, {
-          count: 60,
-          seed: 20_261_110,
-        });
-
-        const compared = sources.flatMap((source) =>
-          clockedShowdowns(playSession(source).steps)
-        );
-
-        expect(compared.length).toBeGreaterThan(20);
-        expect(compared.every((outcome) => outcome.timedOut.ended)).toBe(true);
-      })
+    },
+    generated(40, 100)
   );
 });

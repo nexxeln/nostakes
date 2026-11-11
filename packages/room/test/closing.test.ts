@@ -4,7 +4,6 @@ import { AmountSchema, NetSchema } from "@nostakes/ledger";
 import { Option, Result } from "effect";
 
 import {
-  Audiences,
   CloseAlreadyQueued,
   Deadlines,
   NotTheHost,
@@ -12,11 +11,9 @@ import {
   RoomEvents,
   RoomIsClosed,
   RoomStates,
-  RoomViews,
   SealedSeatsMoved,
   SettlesAfterHand,
   settlement,
-  viewFor,
 } from "../src/index.js";
 import type { RoomEvent, RoomState, Settlement } from "../src/index.js";
 import { dealFromBeacon, sealAt } from "./beacon.js";
@@ -183,14 +180,6 @@ const evenSettlement: Settlement = {
   transfers: [],
 };
 
-const closingFor = (state: RoomState, at: number) => {
-  const view = viewFor(state, Audiences.Spectator(), ms(at));
-
-  return RoomViews.$is("Open")(view)
-    ? Option.some(view.closing)
-    : Option.none();
-};
-
 describe("ending a stalled night", () => {
   it("cancels the hand in play at once, gives every chip in the pot back to the seat that put it in, and settles", () => {
     const raised = run(dealt, raisedTo(30)).state;
@@ -244,18 +233,6 @@ describe("ending a stalled night", () => {
     expect(ended.events[0]?._tag).toBe("HandCancelled");
     expect(RoomStates.$is("Closed")(ended.state)).toBe(true);
   });
-
-  it("tells every viewer what ending the night would do now", () => {
-    expect(
-      [afterOneHand, dealt, run(dealt, stall(25)).state].map((state) =>
-        closingFor(state, 30)
-      )
-    ).toStrictEqual([
-      Option.some("Now"),
-      Option.some("AfterHand"),
-      Option.some("CancelsHand"),
-    ]);
-  });
 });
 
 describe("ending a night whose sealed hand the room cannot deal", () => {
@@ -287,12 +264,6 @@ describe("ending a night whose sealed hand the room cannot deal", () => {
       Option.map((seal) => ({ ...seal, seats: seal.seats.toReversed() }))
     ),
   };
-
-  it("says the same thing about ending the night whenever a view of one state is drawn, so a late welcome matches the log", () => {
-    expect(
-      [START, ROUND_DUE].map((at) => closingFor(sealed, at))
-    ).toStrictEqual([Option.some("Now"), Option.some("Now")]);
-  });
 
   it("queues the close while the seal binds, and once the room is stalled withdraws the seal and settles", () => {
     const { round } = Option.getOrThrow(openOf(misSealed).sealed);

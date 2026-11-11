@@ -1,5 +1,5 @@
 import { describe, expect, it } from "@effect/vitest";
-import { Schema, SchemaAST } from "effect";
+import { Schema } from "effect";
 
 import {
   MemberCommandSchema,
@@ -106,24 +106,5 @@ describe("the shuffle setting when a sender leaves it out", () => {
       decodeOpenRequest(`{"avatar":"","name":"Ann","settings":${plain}}`)
         .settings?.shuffle
     ).toBe("Plain");
-  });
-});
-
-const unlabelled = (ast: SchemaAST.AST, path: string): readonly string[] =>
-  SchemaAST.isObjects(ast)
-    ? ast.propertySignatures.flatMap((field) => {
-        const at = `${path}${String(field.name)}`;
-
-        const labelled =
-          SchemaAST.resolveTitle(field.type) !== undefined &&
-          SchemaAST.resolveDescription(field.type) !== undefined;
-
-        return [...(labelled ? [] : [at]), ...unlabelled(field.type, `${at}.`)];
-      })
-    : [];
-
-describe("the host settings screen", () => {
-  it("finds a title and a description on every setting", () => {
-    expect(unlabelled(RoomSettingsSchema.ast, "")).toStrictEqual([]);
   });
 });

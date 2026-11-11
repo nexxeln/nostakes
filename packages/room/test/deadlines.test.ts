@@ -2,9 +2,8 @@ import { describe, expect, it } from "@effect/vitest";
 
 import type { RoomSettings } from "../src/index.js";
 import { deadlineProblems } from "./observers.js";
+import { generated } from "./scale.js";
 import { playSession, session } from "./sessions.js";
-
-const CHECKED_ROOMS_TIMEOUT_MS = 120_000;
 
 const checkedCasino = (settings: RoomSettings): RoomSettings => ({
   ...settings,
@@ -21,6 +20,6 @@ describe("deadlines in generated checked rooms with casino blinds", () => {
 
       expect(played.steps.flatMap(deadlineProblems)).toStrictEqual([]);
     },
-    { timeout: CHECKED_ROOMS_TIMEOUT_MS }
+    generated(8, 100)
   );
 });

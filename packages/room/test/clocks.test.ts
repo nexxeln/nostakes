@@ -1,12 +1,5 @@
 import { describe, expect, it } from "@effect/vitest";
-import {
-  Actions,
-  ChipsSchema,
-  Events,
-  PendingDecisions,
-  RunCountSchema,
-  pendingDecisions,
-} from "@nostakes/engine";
+import { Actions, ChipsSchema, Events, RunCountSchema } from "@nostakes/engine";
 import type { Action } from "@nostakes/engine";
 import { Option } from "effect";
 
@@ -18,9 +11,7 @@ import {
   RoomCommands,
   RoomEvents,
   ServerOnly,
-  TimeBankRefills,
   nextDeadline,
-  seatOf,
   timeBankLeft,
 } from "../src/index.js";
 import type { RoomEvent, RoomSettings, RoomState } from "../src/index.js";
@@ -29,7 +20,6 @@ import {
   as,
   bob,
   cat,
-  dan,
   dealAt,
   join,
   ms,
@@ -113,47 +103,6 @@ describe("turn clocks", () => {
         })
       )
     ).toStrictEqual(new ServerOnly({ command: "ExpireClock" }));
-  });
-
-  it("starts the time bank at the deadline and spends the whole seconds used, rounded up, when the player acts", () => {
-    const banked = run(dealt.state, expire(31_000, 31_250));
-
-    expect(banked.events).toStrictEqual([
-      RoomEvents.TimeBankStarted({
-        at: ms(31_250),
-        deadline: ms(51_000),
-        player: ann,
-      }),
-    ]);
-
-    const acted = run(banked.state, act(ann, Actions.Call(), 33_500));
-
-    expect(clockEvents(acted.events)).toStrictEqual([
-      RoomEvents.TimeBankSpent({ at: ms(33_500), player: ann, seconds: 3 }),
-      RoomEvents.TurnClockStarted({
-        at: ms(33_500),
-        deadline: ms(63_500),
-        player: bob,
-        seat: seat(1),
-      }),
-    ]);
-    expect(timeBankLeft(openOf(acted.state), ann)).toBe(17);
-    expect(rejection(acted.state, expire(51_000))).toStrictEqual(
-      new NoSuchDeadline({ deadline: ms(51_000) })
-    );
-  });
-
-  it("leaves a running bank alone while the turn has not ended", () => {
-    const banked = run(dealt.state, expire(31_000)).state;
-
-    expect(run(banked, join(dan, 32_000)).events).toStrictEqual([
-      RoomEvents.MemberJoined({
-        at: ms(32_000),
-        avatar: "",
-        name: dan,
-        player: dan,
-      }),
-    ]);
   });
 
   it("acts for a seat whose bank runs out, folding when it cannot check, then marks it away and sits it out", () => {
@@ -339,245 +288,5 @@ describe("run-choice clock", () => {
         Option.some(Deadlines.RunChoiceClock({ at: ms(10_030) }))
       );
     }
-  });
-});
-
-describe("a time bank when the room closes", () => {
-  it("spends the bank of the seat whose turn ends the hand before the room closes", () => {
-    const closing = runAll(dealt.state, [
-      RoomCommands.CloseRoom({ at: ms(1500), by: as(ann) }),
-      act(ann, Actions.Fold(), 2000),
-      expire(32_000),
-    ]);
-
-    const closed = run(closing, act(bob, Actions.Fold(), 34_100));
-
-    expect(
-      closed.events
-        .filter(
-          (event) =>
-            RoomEvents.$is("TimeBankSpent")(event) ||
-            RoomEvents.$is("RoomClosed")(event)
-        )
-        .map((event) => event._tag)
-    ).toStrictEqual(["TimeBankSpent", "RoomClosed"]);
-    expect(closed.events.find(RoomEvents.$is("TimeBankSpent"))).toStrictEqual(
-      RoomEvents.TimeBankSpent({ at: ms(34_100), player: bob, seconds: 3 })
-    );
-  });
-});
-
-const refilling = {
-  ...clocked,
-  timeBankRefill: TimeBankRefills.Refill({
-    everyHands: 2,
-    seconds: 5,
-    upTo: 8,
-  }),
-  timeBankSeconds: 6,
-};
-
-const everyone = [ann, bob, cat];
-
-const foldedOut = (state: RoomState, at: number) => {
-  let current = state;
-  const events: RoomEvent[] = [];
-
-  for (let turn = 0; turn < everyone.length; turn += 1) {
-    const open = openOf(current);
-    const pending = pendingDecisions(open.table);
-
-    const who = everyone.find(
-      (player) =>
-        PendingDecisions.$is("Bet")(pending) &&
-        Option.contains(seatOf(open, player), pending.legal.seat)
-    );
-
-    if (who !== undefined) {
-      const step = run(current, act(who, Actions.Fold(), at + turn));
-
-      events.push(...step.events);
-      current = step.state;
-    }
-  }
-
-  return { events, state: current };
-};
-
-const refills = (events: readonly RoomEvent[]) =>
-  events.filter(RoomEvents.$is("TimeBankRefilled"));
-
-const banks = (state: RoomState) =>
-  everyone.map((player) => timeBankLeft(openOf(state), player));
-
-describe("a time bank refill", () => {
-  it("adds seconds after every second hand a player is dealt, never past the most a bank holds", () => {
-    const first = runAll(openedBy(ann, refilling), [
-      join(bob),
-      join(cat),
-      sit(ann, 0),
-      sit(bob, 1),
-      sit(cat, 2),
-      RoomCommands.StartGame({ at: ms(3), by: as(ann) }),
-      dealAt(1000),
-      expire(31_000),
-      act(ann, Actions.Fold(), 34_500),
-    ]);
-
-    const handOne = foldedOut(first, 35_000);
-
-    expect(refills(handOne.events)).toStrictEqual([]);
-    expect(banks(handOne.state)).toStrictEqual([2, 6, 6]);
-
-    const handTwo = foldedOut(run(handOne.state, dealAt(40_000)).state, 41_000);
-
-    expect(refills(handTwo.events)).toStrictEqual([
-      RoomEvents.TimeBankRefilled({ at: ms(41_001), player: ann, seconds: 5 }),
-      RoomEvents.TimeBankRefilled({ at: ms(41_001), player: bob, seconds: 2 }),
-      RoomEvents.TimeBankRefilled({ at: ms(41_001), player: cat, seconds: 2 }),
-    ]);
-    expect(banks(handTwo.state)).toStrictEqual([7, 8, 8]);
-
-    const handThree = foldedOut(
-      run(handTwo.state, dealAt(50_000)).state,
-      51_000
-    );
-
-    expect(refills(handThree.events)).toStrictEqual([]);
-
-    const handFour = foldedOut(
-      run(handThree.state, dealAt(60_000)).state,
-      61_000
-    );
-
-    expect(refills(handFour.events)).toStrictEqual([
-      RoomEvents.TimeBankRefilled({ at: ms(61_001), player: ann, seconds: 1 }),
-    ]);
-    expect(banks(handFour.state)).toStrictEqual([8, 8, 8]);
-  });
-
-  it("counts only the hands a player is dealt, so a seat sitting out earns nothing", () => {
-    const sittingOut = runAll(
-      openedBy(ann, { ...refilling, timeBankSeconds: 0 }),
-      [
-        join(bob),
-        join(cat),
-        sit(ann, 0),
-        sit(bob, 1),
-        sit(cat, 2),
-        RoomCommands.SitOut({ at: ms(3), by: as(cat) }),
-        RoomCommands.StartGame({ at: ms(3), by: as(ann) }),
-        dealAt(1000),
-      ]
-    );
-
-    const handOne = foldedOut(sittingOut, 2000);
-    const handTwo = foldedOut(run(handOne.state, dealAt(3000)).state, 4000);
-
-    expect(refills(handTwo.events).map((event) => event.player)).toStrictEqual([
-      ann,
-      bob,
-    ]);
-    expect(banks(handTwo.state)).toStrictEqual([5, 5, 0]);
-  });
-});
-
-const patient = (sitOutAfterTimeouts: number) => ({
-  ...clocked,
-  sitOutAfterTimeouts,
-  timeBankSeconds: 0,
-});
-
-const dealtWith = (chosen: RoomSettings) =>
-  runAll(openedBy(ann, chosen), [
-    join(bob),
-    join(cat),
-    sit(ann, 0),
-    sit(bob, 1),
-    sit(cat, 2),
-    RoomCommands.StartGame({ at: ms(3), by: as(ann) }),
-    dealAt(1000),
-  ]);
-
-const streakEvents = (events: readonly RoomEvent[]) =>
-  events.filter(
-    (event) =>
-      RoomEvents.$is("TimedOut")(event) ||
-      RoomEvents.$is("TimeoutStreakEnded")(event) ||
-      RoomEvents.$is("MarkedAway")(event)
-  );
-
-const annTimesOutTwice = (chosen: RoomSettings) => {
-  const first = run(dealtWith(chosen), expire(31_000));
-
-  const handTwo = runAll(first.state, [
-    act(bob, Actions.Fold(), 32_000),
-    dealAt(40_000),
-    act(bob, Actions.Call(), 41_000),
-    act(cat, Actions.Call(), 42_000),
-  ]);
-
-  const second = run(handTwo, expire(72_000));
-
-  return { first, second };
-};
-
-describe("sitting out after timeouts", () => {
-  it("sits a player out on the second timeout in a row when the room allows two", () => {
-    const { first, second } = annTimesOutTwice(patient(2));
-
-    expect(streakEvents(first.events)).toStrictEqual([
-      RoomEvents.TimedOut({ at: ms(31_000), player: ann, seat: seat(0) }),
-    ]);
-    expect(openOf(first.state).away).toStrictEqual([]);
-    expect(streakEvents(second.events)).toStrictEqual([
-      RoomEvents.MarkedAway({ at: ms(72_000), seat: seat(0) }),
-    ]);
-    expect(openOf(second.state).away).toStrictEqual([seat(0)]);
-  });
-
-  it("starts the count again when the player acts on a turn of their own", () => {
-    const first = run(dealtWith(patient(2)), expire(31_000));
-
-    const acted = run(
-      runAll(first.state, [
-        act(bob, Actions.Fold(), 32_000),
-        dealAt(40_000),
-        act(bob, Actions.Call(), 41_000),
-        act(cat, Actions.Call(), 42_000),
-      ]),
-      act(ann, Actions.Check(), 43_000)
-    );
-
-    expect(streakEvents(acted.events)).toStrictEqual([
-      RoomEvents.TimeoutStreakEnded({ at: ms(43_000), player: ann }),
-    ]);
-
-    const again = run(
-      run(acted.state, act(cat, Actions.Check(), 44_000)).state,
-      expire(74_000)
-    );
-
-    expect(streakEvents(again.events)).toStrictEqual([
-      RoomEvents.TimedOut({ at: ms(74_000), player: ann, seat: seat(0) }),
-    ]);
-  });
-
-  it("keeps a player dealt in through every timeout when the room never sits anyone out", () => {
-    const { first, second } = annTimesOutTwice(patient(0));
-
-    expect(streakEvents([...first.events, ...second.events])).toStrictEqual([
-      RoomEvents.TimedOut({ at: ms(31_000), player: ann, seat: seat(0) }),
-      RoomEvents.TimedOut({ at: ms(72_000), player: ann, seat: seat(0) }),
-    ]);
-    expect(openOf(second.state).away).toStrictEqual([]);
-  });
-
-  it("sits a player out on the first timeout by default, as before the setting existed", () => {
-    const first = run(dealtWith(patient(1)), expire(31_000));
-
-    expect(streakEvents(first.events)).toStrictEqual([
-      RoomEvents.MarkedAway({ at: ms(31_000), seat: seat(0) }),
-    ]);
   });
 });

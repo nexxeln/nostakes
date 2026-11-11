@@ -42,10 +42,9 @@ import {
   viewRoundTrips,
 } from "./observers.js";
 import type { Knowledge } from "./observers.js";
+import { generated } from "./scale.js";
 import { POOL, playSession, session } from "./sessions.js";
 import type { Step } from "./sessions.js";
-
-const CHECKED_ROOMS_TIMEOUT_MS = 120_000;
 
 const removalProblems = (step: Step): readonly string[] => {
   const { before, command } = step;
@@ -267,7 +266,8 @@ describe("generated rooms", () => {
       }
 
       expect(broken).toStrictEqual([]);
-    }
+    },
+    generated(35, 100)
   );
 
   it.prop(
@@ -322,7 +322,7 @@ describe("generated rooms", () => {
 
       expect(broken).toStrictEqual([]);
     },
-    { timeout: CHECKED_ROOMS_TIMEOUT_MS }
+    generated(10, 100)
   );
 
   it.prop(
@@ -350,7 +350,8 @@ describe("generated rooms", () => {
       }
 
       expect(broken).toStrictEqual([]);
-    }
+    },
+    generated(40, 100)
   );
 
   it.prop(
@@ -360,7 +361,8 @@ describe("generated rooms", () => {
       const played = playSession(source);
 
       expect(played.steps.flatMap(authorityProblems)).toStrictEqual([]);
-    }
+    },
+    generated(50, 100)
   );
 
   it.prop(
@@ -370,7 +372,8 @@ describe("generated rooms", () => {
       const played = playSession(source);
 
       expect(clockProblems(played.steps, played.state)).toStrictEqual([]);
-    }
+    },
+    generated(50, 100)
   );
 
   it.prop(
@@ -378,7 +381,8 @@ describe("generated rooms", () => {
     { source: session },
     ({ source }) => {
       expect(queueProblems(playSession(source).steps)).toStrictEqual([]);
-    }
+    },
+    generated(60, 100)
   );
 
   it.prop(
@@ -388,7 +392,8 @@ describe("generated rooms", () => {
       expect(playSession(source).steps.flatMap(topUpProblems)).toStrictEqual(
         []
       );
-    }
+    },
+    generated(60, 100)
   );
 
   it.prop(
@@ -412,7 +417,8 @@ describe("generated rooms", () => {
           ).toStrictEqual(step.after);
         }
       }
-    }
+    },
+    generated(60, 100)
   );
 
   it.prop(
@@ -472,7 +478,7 @@ describe("generated rooms", () => {
 
       expect(broken).toStrictEqual([]);
     },
-    { timeout: CHECKED_ROOMS_TIMEOUT_MS }
+    generated(12, 100)
   );
   it.prop(
     "removal moves no chip: removing a member causes exactly the batch their own LeaveRoom would have caused at that moment, with MemberRemoved for MemberLeft, removing someone who already left causes nothing about their seat or money, and once their seat is gone every later settlement keeps their line unchanged",
@@ -486,7 +492,8 @@ describe("generated rooms", () => {
       }
 
       expect(broken).toStrictEqual([]);
-    }
+    },
+    generated(30, 100)
   );
   it.prop(
     "clearing the room removes exactly the people the host named who can still go, never anyone the host did not name, whatever happened between the host's view and the command, moves no ledger line, and locks the room",
@@ -495,6 +502,7 @@ describe("generated rooms", () => {
       expect(playSession(source).steps.flatMap(clearProblems)).toStrictEqual(
         []
       );
-    }
+    },
+    generated(60, 100)
   );
 });

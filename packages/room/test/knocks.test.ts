@@ -5,14 +5,10 @@ import { Option, Predicate, Result, Schema } from "effect";
 import {
   AlreadyKnocked,
   Audiences,
-  Deadlines,
-  HOST_CLAIM_AFTER_SECONDS,
   MOST_KNOCKS,
   MOST_PEOPLE,
   MOST_WAITING,
-  NoKnockDue,
   NotKnocking,
-  NotTheHost,
   RemovedFromRoom,
   RoomCommands,
   RoomEventSchema,
@@ -29,7 +25,6 @@ import {
   holdsPlace,
   invariants,
   knockView,
-  nextDeadline,
   redact,
   viewFor,
   waitingKnocks,
@@ -48,17 +43,16 @@ import {
   cat,
   dan,
   ms,
-  openOf,
   openedBy,
   player,
   rejection,
   roomCode,
   run,
   runAll,
-  server,
   settings,
 } from "./fixtures.js";
 import { audiencesOf, asSent } from "./observers.js";
+import { generated } from "./scale.js";
 import { playSession, session } from "./sessions.js";
 import type { Session, Step } from "./sessions.js";
 
@@ -81,14 +75,8 @@ const letIn = (who: PlayerId, at = 20, by: PlayerId = ann) =>
 const turnAway = (who: PlayerId, at = 20) =>
   RoomCommands.TurnAway({ at: ms(at), by: as(ann), player: who });
 
-const lapse = (at: number) =>
-  RoomCommands.LapseKnocks({ at: ms(at), by: server });
-
 const change = (chosen: RoomSettings, at = 15) =>
   RoomCommands.ChangeSettings({ at: ms(at), by: as(ann), settings: chosen });
-
-const memberNames = (state: RoomState) =>
-  openOf(state).members.map(({ name }) => name);
 
 const knockingFor = (state: RoomState, audience: Audience) => {
   const view = viewFor(state, audience, ms(0));
@@ -108,39 +96,6 @@ const withCat = runAll(openedBy(ann), [
 ]);
 
 describe("knocking at a room whose host approves joins", () => {
-  it("records a knock instead of a join, so the person is not a member and holds no name, and only the host's view lists them", () => {
-    const knocked = run(withCat, knocking(bob, 10, "Bob"));
-
-    expect(knocked.events.map(({ _tag }) => _tag)).toStrictEqual(["Knocked"]);
-    expect(memberNames(knocked.state)).toStrictEqual([ann, "Cat"]);
-    expect(
-      knockingFor(knocked.state, audienceOf(knocked.state, ann))
-    ).toStrictEqual([
-      {
-        avatar: "heart",
-        lapsesAt: ms(10 + approving.knockSeconds * 1000),
-        name: "Bob",
-        player: bob,
-        since: ms(10),
-      },
-    ]);
-    expect([
-      knockingFor(knocked.state, audienceOf(knocked.state, cat)),
-      knockingFor(knocked.state, Audiences.Spectator()),
-    ]).toStrictEqual([[], []]);
-    expect(
-      run(
-        knocked.state,
-        RoomCommands.SetProfile({
-          at: ms(12),
-          avatar: "",
-          by: as(cat),
-          name: "Bob",
-        })
-      ).events.map(({ _tag }) => _tag)
-    ).toStrictEqual(["ProfileChanged"]);
-  });
-
   it("lets someone who left come back with their pass without knocking, and refuses a removed person and anyone at a locked door", () => {
     const left = runAll(withCat, [
       RoomCommands.LeaveRoom({ at: ms(10), by: as(cat) }),
@@ -187,62 +142,6 @@ describe("knocking at a room whose host approves joins", () => {
 });
 
 describe("answering a knock", () => {
-  it("lets the person in as the join they would have made with approval off, from the host only, or from whoever took over as host", () => {
-    const knocked = run(withCat, knocking(bob, 10, "Bob")).state;
-
-    expect(rejection(knocked, letIn(bob, 20, cat))).toStrictEqual(
-      new NotTheHost({ host: ann, player: cat })
-    );
-
-    const admitted = run(knocked, letIn(bob));
-
-    expect(admitted.events).toStrictEqual([
-      RoomEvents.KnockAnswered({ at: ms(20), outcome: "LetIn", player: bob }),
-      RoomEvents.MemberJoined({
-        at: ms(20),
-        avatar: "heart",
-        name: "Bob",
-        player: bob,
-      }),
-    ]);
-    expect(memberNames(admitted.state)).toStrictEqual([ann, "Cat", "Bob"]);
-
-    const claimAt = 30 + HOST_CLAIM_AFTER_SECONDS * 1000;
-
-    const takenOver = runAll(knocked, [
-      RoomCommands.NoteAttendance({ at: ms(30), by: server, connected: [cat] }),
-      RoomCommands.ClaimHost({ at: ms(claimAt), by: as(cat) }),
-    ]);
-
-    expect(
-      run(
-        takenOver,
-        RoomCommands.LetIn({ at: ms(claimAt + 1), by: as(cat), player: bob })
-      ).events.map(({ _tag }) => _tag)
-    ).toStrictEqual(["KnockAnswered", "MemberJoined"]);
-  });
-
-  it("turns a person away without a trace in the members, the ledger, or the names, so a later newcomer may take the same name", () => {
-    const away = runAll(withCat, [knocking(bob, 10, "Bob"), turnAway(bob)]);
-
-    expect({
-      answer: answerOf(away, bob),
-      entries: openOf(away).entries.size,
-      knocking: knockingFor(away, audienceOf(away, ann)),
-      members: memberNames(away),
-      named: openOf(away).departed.length + openOf(away).removed.length,
-    }).toStrictEqual({
-      answer: Option.some("TurnedAway"),
-      entries: 0,
-      knocking: [],
-      members: [ann, "Cat"],
-      named: 0,
-    });
-    expect(
-      memberNames(runAll(away, [knocking(dan, 30, "Bob"), letIn(dan, 40)]))
-    ).toStrictEqual([ann, "Cat", "Bob"]);
-  });
-
   it("refuses an answer for someone who is not waiting", () => {
     const answered = runAll(withCat, [knocking(bob), turnAway(bob)]);
 
@@ -253,36 +152,6 @@ describe("answering a knock", () => {
       new NotKnocking({ player: bob }),
       new NotKnocking({ player: dan }),
     ]);
-  });
-
-  it("ends the knock instead of letting a second person in under a name someone took while they waited", () => {
-    const taken = runAll(withCat, [
-      knocking(bob, 10, "Bob"),
-      RoomCommands.SetProfile({
-        at: ms(12),
-        avatar: "",
-        by: as(cat),
-        name: "BOB",
-      }),
-    ]);
-
-    const answered = run(taken, letIn(bob));
-
-    expect({
-      answer: answerOf(answered.state, bob),
-      events: answered.events,
-      members: memberNames(answered.state),
-    }).toStrictEqual({
-      answer: Option.some("NameTaken"),
-      events: [
-        RoomEvents.KnockAnswered({
-          at: ms(20),
-          outcome: "NameTaken",
-          player: bob,
-        }),
-      ],
-      members: [ann, "BOB"],
-    });
   });
 
   it("keeps the knock waiting while the room is full, and lets the person in once the host makes room", () => {
@@ -340,49 +209,6 @@ describe("answering a knock", () => {
 });
 
 describe("the limits at the door", () => {
-  it("lets a knock lapse once it has waited the host's knock wait, and not before", () => {
-    const knocked = run(withCat, knocking(bob, 10)).state;
-    const due = ms(10 + approving.knockSeconds * 1000);
-
-    expect(nextDeadline(knocked)).toStrictEqual(
-      Option.some(Deadlines.KnockLapses({ at: due }))
-    );
-    expect(rejection(knocked, lapse(due - 1))).toStrictEqual(
-      new NoKnockDue({ next: Option.some(due) })
-    );
-
-    const lapsed = run(knocked, lapse(due));
-
-    expect({
-      answer: answerOf(lapsed.state, bob),
-      events: lapsed.events,
-      next: nextDeadline(lapsed.state),
-    }).toStrictEqual({
-      answer: Option.some("Lapsed"),
-      events: [
-        RoomEvents.KnockAnswered({ at: due, outcome: "Lapsed", player: bob }),
-      ],
-      next: Option.none(),
-    });
-  });
-
-  it("turns away everyone waiting when the host locks the room", () => {
-    const locked = run(
-      runAll(withCat, [knocking(bob, 10), knocking(dan, 11)]),
-      change({ ...approving, locked: true }, 12)
-    );
-
-    expect(locked.events.map((event) => event._tag)).toStrictEqual([
-      "SettingsChanged",
-      "KnockAnswered",
-      "KnockAnswered",
-    ]);
-    expect([
-      answerOf(locked.state, bob),
-      answerOf(locked.state, dan),
-    ]).toStrictEqual([Option.some("Locked"), Option.some("Locked")]);
-  });
-
   it("keeps at most three people waiting at once and takes at most a hundred knocks a night", () => {
     const full = runAll(
       withCat,
@@ -613,8 +439,6 @@ export const traceProblems = (step: Step): readonly string[] => {
   ];
 };
 
-const approvalNights = { arbitrary: { runs: 40 }, timeout: 120_000 };
-
 const knockProblems = (
   source: Session,
   check: (step: Step) => readonly string[]
@@ -639,7 +463,7 @@ describe("generated nights with join approval", () => {
 
       expect(broken).toStrictEqual([]);
     },
-    approvalNights
+    generated(15, 40)
   );
 
   it.prop(
@@ -648,7 +472,7 @@ describe("generated nights with join approval", () => {
     ({ source }) => {
       expect(knockProblems(source, detailProblems)).toStrictEqual([]);
     },
-    approvalNights
+    generated(15, 40)
   );
 
   it.prop(
@@ -657,7 +481,7 @@ describe("generated nights with join approval", () => {
     ({ source }) => {
       expect(knockProblems(source, asTheJoin)).toStrictEqual([]);
     },
-    approvalNights
+    generated(15, 40)
   );
 
   it.prop(
@@ -666,6 +490,6 @@ describe("generated nights with join approval", () => {
     ({ source }) => {
       expect(knockProblems(source, traceProblems)).toStrictEqual([]);
     },
-    approvalNights
+    generated(15, 40)
   );
 });

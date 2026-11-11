@@ -6,6 +6,7 @@ import { Option, Predicate } from "effect";
 import { RoomStates, SEATS, millis, standingsOf } from "../src/index.js";
 import type { Open, RoomState } from "../src/index.js";
 import { isOpen } from "./observers.js";
+import { generated } from "./scale.js";
 import { playSession, session } from "./sessions.js";
 
 const SAMPLED_STATES = 16;
@@ -88,6 +89,7 @@ describe("the standings of a room stopped by a fault", () => {
       );
 
       expect(problems).toStrictEqual([]);
-    }
+    },
+    generated(40, 100)
   );
 });

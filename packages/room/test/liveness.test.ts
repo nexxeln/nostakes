@@ -39,6 +39,7 @@ import type {
 import { serverAnswer } from "./beacon.js";
 import { drand } from "./fixtures.js";
 import { seededRandom } from "./random.js";
+import { generated } from "./scale.js";
 import { POOL, settingsFrom } from "./sessions.js";
 
 const between = (minimum: number, maximum: number) =>
@@ -265,8 +266,6 @@ const silenced = (base: RoomSettings, below: (bound: number) => number) => ({
   turnSeconds: 1 + below(30),
 });
 
-const CHECKED_ROOMS_TIMEOUT_MS = 120_000;
-
 describe("liveness", () => {
   it.prop(
     "a server that only answers nextDeadline, with players who never act, finishes every hand and keeps dealing while two seats can be dealt in",
@@ -293,7 +292,7 @@ describe("liveness", () => {
       expect(ended).toBe(started);
       expect(dealable(state)).toBeLessThan(2);
     },
-    { timeout: CHECKED_ROOMS_TIMEOUT_MS }
+    generated(50, 100)
   );
 
   it.prop(
@@ -320,7 +319,7 @@ describe("liveness", () => {
       expect(started - ended).toBeLessThanOrEqual(1);
       expect(awayPlayers(state)).toStrictEqual([]);
     },
-    { arbitrary: { runs: KEPT_IN_NIGHTS }, timeout: CHECKED_ROOMS_TIMEOUT_MS }
+    generated(6, KEPT_IN_NIGHTS)
   );
 
   it.prop(
@@ -423,7 +422,8 @@ describe("liveness", () => {
       expect(ended).toBe(started);
       expect(votesExpired).toBeGreaterThan(0);
       expect(dealable(state)).toBeLessThan(2);
-    }
+    },
+    generated(50, 100)
   );
 });
 
@@ -526,6 +526,7 @@ describe("liveness at an interactive showdown", () => {
       expect(ended).toBeGreaterThan(0);
       expect(clockChoices).toBeGreaterThan(0);
       expect(awayPlayers(state)).toStrictEqual([]);
-    }
+    },
+    generated(25, 100)
   );
 });

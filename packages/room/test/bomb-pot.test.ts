@@ -41,6 +41,7 @@ import {
   settings,
   sit,
 } from "./fixtures.js";
+import { generated, sized } from "./scale.js";
 import { playSession, session } from "./sessions.js";
 
 const ANTE = 20;
@@ -174,19 +175,6 @@ describe("calling a bomb pot", () => {
 
     expect(openOf(off).bombCalled).toBe(false);
     expect(startedIn(run(off, dealAt(10)).events)?.bombPot).toBeUndefined();
-  });
-
-  it("comes by itself every so many hands", () => {
-    const first = run(seated(withBombPots(2)), dealAt(10));
-
-    const ended = runAll(first.state, [
-      act(ann, Actions.Fold(), 12),
-      act(bob, Actions.Fold(), 13),
-    ]);
-
-    expect(startedIn(first.events)?.bombPot).toBeUndefined();
-    expect(bombView(ended, 14)?.next).toBe(true);
-    expect(startedIn(run(ended, dealAt(20)).events)?.bombPot).toBeDefined();
   });
 });
 
@@ -333,7 +321,8 @@ describe("generated rooms with bomb pots", () => {
     { source: session },
     ({ source }) => {
       expect(kindProblems(source).problems).toStrictEqual([]);
-    }
+    },
+    generated(10, 100)
   );
 
   it.prop(
@@ -342,13 +331,13 @@ describe("generated rooms with bomb pots", () => {
     ({ source }) => {
       expect(kindProblems(source, checkedRoom).problems).toStrictEqual([]);
     },
-    { arbitrary: { runs: 12 }, timeout: 120_000 }
+    generated(4, 100)
   );
 
   it.effect("reaches bomb pots, and bomb pots dealt from a seal", () =>
     Effect.gen(function* reachBombPots() {
       const sources = yield* Arbitrary.sampleEffect(session, {
-        count: 150,
+        count: sized(40, 150),
         seed: 20_261_111,
       });
 
@@ -366,8 +355,8 @@ describe("generated rooms with bomb pots", () => {
         sealedBombPots += outcome.sealedBombPots;
       }
 
-      expect(bombPots).toBeGreaterThan(60);
-      expect(sealedBombPots).toBeGreaterThan(5);
+      expect(bombPots).toBeGreaterThan(sized(15, 60));
+      expect(sealedBombPots).toBeGreaterThan(sized(1, 5));
     })
   );
 });

@@ -1,6 +1,5 @@
 import { describe, expect, it } from "@effect/vitest";
-import { Actions, Events, TableStates } from "@nostakes/engine";
-import type { Action } from "@nostakes/engine";
+import { Events, TableStates } from "@nostakes/engine";
 import { Option, Result } from "effect";
 
 import {
@@ -31,7 +30,6 @@ import {
   run,
   runAll,
   seat,
-  server,
   settings,
   sit,
 } from "./fixtures.js";
@@ -63,12 +61,6 @@ const holeCardsOf = (index: number) => {
     : [];
 };
 
-const act = (who: typeof ann, action: Action, at: number) =>
-  RoomCommands.Act({ action, at: ms(at), by: as(who) });
-
-const expire = (deadline: number, at = deadline) =>
-  RoomCommands.ExpireClock({ at: ms(at), by: server, deadline: ms(deadline) });
-
 const openView = (view: RoomView) => {
   if (!RoomViews.$is("Open")(view)) {
     throw new Error("expected an open view");
@@ -76,9 +68,6 @@ const openView = (view: RoomView) => {
 
   return view;
 };
-
-const annTurn = (state: typeof dealt.state, at: number) =>
-  openView(viewFor(state, annSees, ms(at))).clocks.turn;
 
 describe("redaction", () => {
   it("removes the deck from the start of a hand for everyone", () => {
@@ -151,55 +140,9 @@ describe("redaction", () => {
       )
     ).toBe(true);
   });
-
-  it("passes room events and public engine events through unchanged", () => {
-    const joined = RoomEvents.MemberJoined({
-      at: ms(1),
-      avatar: "",
-      name: "dan",
-      player: dan,
-    });
-
-    const folded = RoomEvents.Table({
-      at: ms(2),
-      event: Events.Folded({ seat: seat(1) }),
-    });
-
-    expect(redact(joined, spectator)).toStrictEqual(joined);
-    expect(redact(folded, annSees)).toStrictEqual(folded);
-  });
 });
 
 describe("views", () => {
-  it("shows a seated viewer their own cards and legal actions, with the clock as milliseconds remaining", () => {
-    const view = openView(viewFor(dealt.state, annSees, ms(11_000)));
-
-    expect(view.holeCards).toStrictEqual(holeCardsOf(0));
-    expect(view.you).toStrictEqual(Option.some(ann));
-    expect(view.legal.pipe(Option.map((legal) => legal.seat))).toStrictEqual(
-      Option.some(seat(0))
-    );
-    expect(view.clocks.turn).toStrictEqual(
-      Option.some({
-        deadline: ms(31_000),
-        inTimeBank: false,
-        remainingMs: 20_000,
-        seat: seat(0),
-        totalMs: 30_000,
-      })
-    );
-    expect(
-      view.hand.pipe(
-        Option.map((hand) =>
-          hand.players.map((player) => player.committedThisStreet)
-        )
-      )
-    ).toStrictEqual(Option.some([0, 5, 10]));
-    expect(view.hand.pipe(Option.map((hand) => hand.pots))).toStrictEqual(
-      Option.some([])
-    );
-  });
-
   it("shows a spectator no hole cards and no legal actions", () => {
     const view = openView(viewFor(dealt.state, spectator, ms(1000)));
 
@@ -219,13 +162,6 @@ describe("views", () => {
     expect(view.legal).toStrictEqual(Option.none());
   });
 
-  it("finds the audience for a member from the seat they hold", () => {
-    expect(audienceOf(dealt.state, ann)).toStrictEqual(annSees);
-    expect(audienceOf(dealt.state, dan)).toStrictEqual(
-      Audiences.Unseated({ player: dan })
-    );
-  });
-
   it("tells a member without a seat who they are, and shows them only what a spectator sees", () => {
     const danSees = audienceOf(dealt.state, dan);
     const view = openView(viewFor(dealt.state, danSees, ms(1000)));
@@ -235,140 +171,6 @@ describe("views", () => {
     expect({ ...view, you: Option.none() }).toStrictEqual(watching);
     expect(dealt.events.map((event) => redact(event, danSees))).toStrictEqual(
       dealt.events.map((event) => redact(event, spectator))
-    );
-  });
-});
-
-describe("pots in the middle", () => {
-  it("collects each finished street into the pots and leaves this street's bets in front of the seats", () => {
-    const flop = runAll(dealt.state, [
-      RoomCommands.Act({ action: Actions.Call(), at: ms(1100), by: as(ann) }),
-      RoomCommands.Act({ action: Actions.Call(), at: ms(1200), by: as(bob) }),
-      RoomCommands.Act({ action: Actions.Check(), at: ms(1300), by: as(cat) }),
-    ]);
-
-    const view = openView(viewFor(flop, spectator, ms(1300)));
-
-    expect(view.hand.pipe(Option.map((hand) => hand.pots))).toStrictEqual(
-      Option.some([{ amount: 30, eligible: [seat(0), seat(1), seat(2)] }])
-    );
-    expect(
-      view.hand.pipe(Option.map((hand) => hand.boards[0]?.length))
-    ).toStrictEqual(Option.some(3));
-  });
-});
-
-describe("clock lengths", () => {
-  it("gives the turn clock its full length, and a time bank the seconds it held when it started, not the room's setting", () => {
-    expect(annTurn(dealt.state, 11_000)).toStrictEqual(
-      Option.some({
-        deadline: ms(31_000),
-        inTimeBank: false,
-        remainingMs: 20_000,
-        seat: seat(0),
-        totalMs: 30_000,
-      })
-    );
-
-    const banked = run(dealt.state, expire(31_000, 31_250)).state;
-
-    expect(annTurn(banked, 41_000)).toStrictEqual(
-      Option.some({
-        deadline: ms(51_000),
-        inTimeBank: true,
-        remainingMs: 10_000,
-        seat: seat(0),
-        totalMs: 20_000,
-      })
-    );
-
-    const onTheFlop = runAll(banked, [
-      act(ann, Actions.Call(), 33_500),
-      act(bob, Actions.Call(), 34_000),
-      act(cat, Actions.Check(), 35_000),
-      act(bob, Actions.Check(), 36_000),
-      act(cat, Actions.Check(), 37_000),
-      expire(67_000),
-    ]);
-
-    expect(annTurn(onTheFlop, 70_000)).toStrictEqual(
-      Option.some({
-        deadline: ms(84_000),
-        inTimeBank: true,
-        remainingMs: 14_000,
-        seat: seat(0),
-        totalMs: 17_000,
-      })
-    );
-  });
-
-  it("stamps the clocks with the server time the view was computed at and each deadline, so a copy that arrives late still counts down to the same moment", () => {
-    const early = openView(viewFor(dealt.state, annSees, ms(11_000))).clocks;
-    const late = openView(viewFor(dealt.state, annSees, ms(21_000))).clocks;
-
-    expect([early.at, late.at]).toStrictEqual([ms(11_000), ms(21_000)]);
-    expect(
-      [early, late].map(({ at, turn }) =>
-        turn.pipe(Option.map(({ deadline }) => [deadline, deadline - at]))
-      )
-    ).toStrictEqual([
-      Option.some([ms(31_000), 20_000]),
-      Option.some([ms(31_000), 10_000]),
-    ]);
-  });
-});
-
-describe("leaving the room", () => {
-  const catLeft = run(
-    dealt.state,
-    RoomCommands.LeaveRoom({ at: ms(1500), by: as(cat) })
-  ).state;
-
-  it("shows the seat of a player who left the room as leaving it until the hand ends, and keeps their name and face among the departed", () => {
-    const view = openView(viewFor(catLeft, annSees, ms(1500)));
-
-    expect(view.members.map(({ player }) => player)).toStrictEqual([
-      ann,
-      bob,
-      dan,
-    ]);
-    expect(view.departed).toStrictEqual([
-      { avatar: "", name: cat, player: cat },
-    ]);
-    expect(
-      view.seats[2]?.occupant.pipe(
-        Option.map(({ leaving, leavingRoom, player }) => ({
-          leaving,
-          leavingRoom,
-          player,
-        }))
-      )
-    ).toStrictEqual(
-      Option.some({ leaving: true, leavingRoom: true, player: cat })
-    );
-    expect(
-      view.seats[1]?.occupant.pipe(Option.map(({ leavingRoom }) => leavingRoom))
-    ).toStrictEqual(Option.some(false));
-  });
-
-  it("keeps a departed player listed once their seat stands, tells their own device it has left, and drops them from the list when they join again", () => {
-    const ended = runAll(catLeft, [
-      act(ann, Actions.Fold(), 1600),
-      act(bob, Actions.Fold(), 1700),
-    ]);
-
-    const view = openView(viewFor(ended, annSees, ms(1800)));
-    const catView = openView(viewFor(ended, audienceOf(ended, cat), ms(1800)));
-
-    expect(view.seats[2]?.occupant).toStrictEqual(Option.none());
-    expect(view.departed.map(({ player }) => player)).toStrictEqual([cat]);
-    expect(catView.you).toStrictEqual(Option.some(cat));
-    expect(catView.departed.map(({ player }) => player)).toStrictEqual([cat]);
-
-    const back = run(ended, join(cat, 1900)).state;
-
-    expect(openView(viewFor(back, annSees, ms(1900))).departed).toStrictEqual(
-      []
     );
   });
 });

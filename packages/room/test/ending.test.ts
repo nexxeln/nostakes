@@ -37,14 +37,13 @@ import type {
 } from "../src/index.js";
 import { serverAnswer } from "./beacon.js";
 import { isOpen } from "./observers.js";
+import { generated } from "./scale.js";
 import { playSession, session } from "./sessions.js";
 import type { Played } from "./sessions.js";
 
 const ENDING_LIMIT = 400;
 
 const SAMPLED_STATES = 14;
-
-const CHECKED_TIMEOUT_MS = 120_000;
 
 const server = Actors.Server();
 
@@ -460,7 +459,8 @@ describe("ending the night from any state a night reaches", () => {
       expect(
         endingProblems(sampledNights(playSession(source)), decide)
       ).toStrictEqual([]);
-    }
+    },
+    generated(25, 100)
   );
 
   it.prop(
@@ -484,7 +484,8 @@ describe("ending the night from any state a night reaches", () => {
           decide
         )
       ).toStrictEqual([]);
-    }
+    },
+    generated(40, 100)
   );
 
   it.prop(
@@ -497,7 +498,7 @@ describe("ending the night from any state a night reaches", () => {
 
       expect(endingProblems(nights, decide)).toStrictEqual([]);
     },
-    { timeout: CHECKED_TIMEOUT_MS }
+    generated(8, 100)
   );
 
   it.prop(
@@ -507,6 +508,7 @@ describe("ending the night from any state a night reaches", () => {
       expect(
         endingProblems(sampledNights(playSession(source)), refusingInHand)
       ).toStrictEqual([]);
-    }
+    },
+    generated(40, 100)
   );
 });

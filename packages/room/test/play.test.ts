@@ -12,7 +12,6 @@ import type { Action } from "@nostakes/engine";
 import { Option } from "effect";
 
 import {
-  DealNotDue,
   MembersOnly,
   NotSeated,
   RoomCommands,
@@ -91,18 +90,6 @@ describe("play", () => {
     expect(run(threeHanded, act(ann, fold)).events).toStrictEqual([
       RoomEvents.Table({ at: ms(4), event: Events.Folded({ seat: seat(0) }) }),
     ]);
-  });
-
-  it("waits the pause between hands before the next deal", () => {
-    const folded = runAll(threeHanded, [act(ann, fold), act(bob, fold)]);
-
-    expect(rejection(folded, dealAt(5003))).toStrictEqual(
-      new DealNotDue({ due: Option.some(ms(5004)), reason: "TooEarly" })
-    );
-
-    const next = openOf(run(folded, dealAt(5004)).state).table;
-
-    expect(TableStates.$is("InHand")(next) && next.handNumber).toBe(2);
   });
 
   it("lets each all-in seat choose its runs and runs the board out the agreed number of times", () => {

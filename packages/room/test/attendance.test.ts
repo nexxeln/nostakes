@@ -39,6 +39,7 @@ import type {
 import { serverAnswer } from "./beacon.js";
 import { drand } from "./fixtures.js";
 import { seededRandom } from "./random.js";
+import { generated } from "./scale.js";
 import { POOL, settingsFrom } from "./sessions.js";
 
 const between = (minimum: number, maximum: number) =>
@@ -277,7 +278,8 @@ describe("a table nobody is at", () => {
       });
       expect(attendanceOf(table.state())).toBe("Attended");
       expect(table.events.slice(resumedFrom).some(isHandStarted)).toBe(canDeal);
-    }
+    },
+    generated(25, 100)
   );
 
   it("a spectator's connection does not keep the game running, and a seated player's does", () => {

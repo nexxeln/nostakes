@@ -6,8 +6,8 @@ import {
   Verdicts,
   judgeHand,
 } from "@nostakes/shuffle";
-import type { Verdict } from "@nostakes/shuffle";
-import { Result } from "effect";
+import type { HandEvidence, Verdict } from "@nostakes/shuffle";
+import { MutableHashMap, Option, Result } from "effect";
 
 import {
   Audiences,
@@ -29,6 +29,7 @@ import type {
   Witness,
 } from "../src/index.js";
 import { drand } from "./fixtures.js";
+import { generated } from "./scale.js";
 import { POOL, playSession, session } from "./sessions.js";
 
 const ROOM = "GNRTD2";
@@ -41,6 +42,19 @@ const membersOf = (state: RoomState): readonly PlayerId[] =>
   RoomStates.$is("Open")(state)
     ? state.members.map((member) => member.player)
     : [];
+
+const judgeOnce = () => {
+  const judged = MutableHashMap.empty<HandEvidence, Verdict>();
+
+  return (evidence: HandEvidence) =>
+    Option.getOrElse(MutableHashMap.get(judged, evidence), () => {
+      const verdict = judgeHand(evidence);
+
+      MutableHashMap.set(judged, evidence, verdict);
+
+      return verdict;
+    });
+};
 
 const verdictKind = (verdict: Verdict) =>
   Verdicts.$match(verdict, {
@@ -96,6 +110,7 @@ describe("what a device sees of a checked hand", () => {
       }
 
       const problems: string[] = [];
+      const judge = judgeOnce();
       const kinds = new Set<string>();
 
       for (const [name, witness] of witnesses) {
@@ -107,7 +122,7 @@ describe("what a device sees of a checked hand", () => {
               }
             },
             onSuccess: (evidence) => {
-              const kind = verdictKind(judgeHand(evidence));
+              const kind = verdictKind(judge(evidence));
 
               kinds.add(kind);
 
@@ -121,7 +136,7 @@ describe("what a device sees of a checked hand", () => {
 
       expect(problems).toStrictEqual([]);
     },
-    { arbitrary: { runs: 6 }, timeout: 120_000 }
+    generated(2, 6)
   );
 
   it.prop(
@@ -184,6 +199,7 @@ describe("what a device sees of a checked hand", () => {
       }
 
       const problems: string[] = [];
+      const judge = judgeOnce();
 
       for (const [name, witness] of witnesses) {
         for (const hand of handsWitnessed(witness)) {
@@ -197,7 +213,7 @@ describe("what a device sees of a checked hand", () => {
               }
             },
             onSuccess: (evidence) => {
-              const kind = verdictKind(judgeHand(evidence));
+              const kind = verdictKind(judge(evidence));
 
               if (
                 kind !== "Checked InTime" &&
@@ -213,6 +229,6 @@ describe("what a device sees of a checked hand", () => {
 
       expect(problems).toStrictEqual([]);
     },
-    { arbitrary: { runs: 6 }, timeout: 120_000 }
+    generated(2, 6)
   );
 });
