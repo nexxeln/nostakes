@@ -35,18 +35,21 @@ const tables = Arbitrary.schema(RoomViewSchema.cases.Open);
 
 type OpenView = typeof RoomViewSchema.cases.Open.Type;
 
-const home = init({
-  deck: "TwoColour",
-  invite: Option.none(),
-  learned: [],
-  profile: { avatar: "🦊", name: "" },
-  reloadedFor: Option.none(),
-  rooms: [],
-  saved: Option.none(),
-  sound: false,
-  systemTheme: "Light",
-  theme: Option.none(),
-}).model;
+const home = update(
+  init({
+    deck: "TwoColour",
+    invite: Option.none(),
+    learned: [],
+    profile: { avatar: "🦊", name: "" },
+    reloadedFor: Option.none(),
+    rooms: [],
+    saved: Option.none(),
+    sound: false,
+    systemTheme: "Light",
+    theme: Option.none(),
+  }).model,
+  Messages.ClickedOpenRoom()
+).model;
 
 const inRoom = (worn: Avatar, table: OpenView): Model =>
   update(

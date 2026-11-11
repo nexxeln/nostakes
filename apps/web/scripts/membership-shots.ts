@@ -87,6 +87,7 @@ const program = Effect.gen(function* takeMembershipShots() {
   yield* attempt("open the home page", () =>
     host.goto(`${app}/?mute=1`, { waitUntil: "networkidle" })
   );
+  yield* press(host, "Open a room");
   yield* named(host, "Ana");
   yield* press(host, "Open a room");
   yield* attempt("land in the room", () =>

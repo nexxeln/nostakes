@@ -118,18 +118,21 @@ describe("the settle-up as text", () => {
   );
 });
 
-const home = init({
-  deck: "TwoColour",
-  invite: Option.none(),
-  learned: [],
-  profile: { avatar: "", name: "" },
-  reloadedFor: Option.none(),
-  rooms: [],
-  saved: Option.none(),
-  sound: false,
-  systemTheme: "Light",
-  theme: Option.none(),
-}).model;
+const home = update(
+  init({
+    deck: "TwoColour",
+    invite: Option.none(),
+    learned: [],
+    profile: { avatar: "", name: "" },
+    reloadedFor: Option.none(),
+    rooms: [],
+    saved: Option.none(),
+    sound: false,
+    systemTheme: "Light",
+    theme: Option.none(),
+  }).model,
+  Messages.ClickedOpenRoom()
+).model;
 
 const submitted = (typed: string) => {
   const step = update(

@@ -419,6 +419,13 @@ export const ShowPath = Command.define("ShowPath", {
   messages: [Messages.CompletedNavigation],
 });
 
+export const ScrollToTop = Command.define("ScrollToTop", {
+  execute: Effect.sync(() => {
+    globalThis.scrollTo({ behavior: "instant", left: 0, top: 0 });
+  }).pipe(Effect.as(Messages.ScrolledToTop())),
+  messages: [Messages.ScrolledToTop],
+});
+
 export const CheckRoom = Command.define("CheckRoom", {
   args: { code: RoomCodeSchema },
   execute: ({ code }) =>

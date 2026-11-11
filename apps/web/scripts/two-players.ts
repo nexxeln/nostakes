@@ -812,6 +812,10 @@ const night = Effect.gen(function* playOneHand() {
   yield* attempt("Ana opens the home page", () =>
     ana.goto(`${web.url}/${MUTED_PAGE}`)
   );
+  yield* attempt("Ana sees the landing", () =>
+    ana.locator(".landing .hero-open").waitFor({ timeout: 60_000 })
+  );
+  yield* click(ana, "Ana taps Open a room on the landing", "Open a room");
   yield* attempt("Ana types her name", () =>
     ana.getByPlaceholder("Name").fill("Ana", { timeout: 60_000 })
   );

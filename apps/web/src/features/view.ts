@@ -4,6 +4,7 @@ import type { Document, Html, HtmlBuilder } from "foldkit/html";
 
 import { themeSwitch } from "./chrome.js";
 import { face, faceSheet } from "./face-builder.js";
+import { landingView } from "./landing/view.js";
 import { Messages } from "./message.js";
 import type { Message } from "./message.js";
 import { pageTheme, Screens } from "./model.js";
@@ -173,7 +174,19 @@ const homeView = (
     [
       h.header(
         [h.Class("bar")],
-        [h.span([h.Class("bar-end")], [themeSwitch(h)])]
+        [
+          model.rooms.length === 0
+            ? h.button(
+                [
+                  h.Type("button"),
+                  h.Class("bar-button"),
+                  h.OnClick(Messages.ClickedBackToWelcome()),
+                ],
+                ["Back"]
+              )
+            : h.empty,
+          h.span([h.Class("bar-end")], [themeSwitch(h)]),
+        ]
       ),
       h.div(
         [h.Class("hero")],
@@ -279,10 +292,12 @@ export const view = (model: Model, h: H): Document => ({
         [h.Class("screen")],
         [roomView(model, room, h), faceSheetOf(model, h)]
       ),
+    Welcome: () => h.div([h.Class("screen")], [landingView(model, h)]),
   }),
   title: Screens.match(model.screen, {
     Home: () => "nostakes",
     Invited: ({ code }) => `Join ${code} · nostakes`,
     Room: ({ room }) => `${room.code} · nostakes`,
+    Welcome: () => "nostakes",
   }),
 });

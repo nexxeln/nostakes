@@ -634,6 +634,8 @@ const phoneChecks = (engine: BrowserType, app: string, watched: PageWatch) =>
       lightColours.join(",") === `${PAGE_COLOURS.light},${PAGE_COLOURS.dark}`,
       lightColours.join(",")
     );
+    yield* button(host, "Open a room");
+
     const homeFields = yield* fieldSizes(host, "home");
 
     yield* attempt("type the host's name", () =>

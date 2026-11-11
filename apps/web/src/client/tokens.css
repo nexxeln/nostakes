@@ -119,6 +119,7 @@
   --color-brand-shadow: var(--house-yellow);
   --color-scrim: rgb(246 241 232 / 0.9);
   --color-felt: #efe8dc;
+  --color-stage-felt: var(--color-felt);
   --color-strip: #fffdf8;
   --color-pot: var(--house-red);
   --color-on-pot: #fffaf3;
@@ -212,6 +213,7 @@
     --color-brand-shadow: var(--house-blue);
     --color-scrim: rgb(22 20 29 / 0.86);
     --color-felt: #201d29;
+    --color-stage-felt: #2c2838;
     --color-strip: #24212d;
     --color-ring-track: #2e2a38;
     --color-action-halo: rgb(239 83 38 / 0.18);
@@ -255,6 +257,7 @@
   --color-brand-shadow: var(--house-blue);
   --color-scrim: rgb(22 20 29 / 0.86);
   --color-felt: #201d29;
+  --color-stage-felt: #2c2838;
   --color-strip: #24212d;
   --color-ring-track: #2e2a38;
   --color-action-halo: rgb(239 83 38 / 0.18);

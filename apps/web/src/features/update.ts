@@ -46,6 +46,7 @@ import {
   ReadOwnResult,
   RememberRoom,
   SaveSound,
+  ScrollToTop,
   SendToRoom,
   ShowPath,
   ShuffleFace,
@@ -218,7 +219,10 @@ export const init = (flags: Flags): Return => {
         onNone: () => ({
           model: {
             ...base,
-            screen: Screens.Home({ busy: false, problem: Option.none() }),
+            screen:
+              flags.rooms.length === 0
+                ? Screens.Welcome()
+                : Screens.Home({ busy: false, problem: Option.none() }),
           },
         }),
         onSome: (code) => ({
@@ -1009,6 +1013,13 @@ export const update = (model: Model, message: Message): Return =>
         drafts: { ...room.drafts, chips: topUpRoom(room) },
         menu: false,
       })),
+    ClickedBackToWelcome: () =>
+      Screens.guards.Home(model.screen) && model.rooms.length === 0
+        ? {
+            commands: [ScrollToTop()],
+            model: { ...model, screen: Screens.Welcome() },
+          }
+        : { model },
     ClickedCancelFace: () => ({
       model: { ...model, faceDraft: Option.none() },
     }),
@@ -1128,6 +1139,16 @@ export const update = (model: Model, message: Message): Return =>
         menu: false,
       })),
     ClickedMenu: () => editRoom(model, (room) => ({ ...room, menu: true })),
+    ClickedOpenRoom: () =>
+      Screens.guards.Welcome(model.screen)
+        ? {
+            commands: [ScrollToTop()],
+            model: {
+              ...model,
+              screen: Screens.Home({ busy: false, problem: Option.none() }),
+            },
+          }
+        : { model },
     ClickedRequestChips: () => requestChips(model),
     ClickedRoomCommand: ({ command, label }) =>
       MemberCommandSchema.guards.Act(command)
@@ -1211,6 +1232,7 @@ export const update = (model: Model, message: Message): Return =>
               problem: Option.some(problem),
             }),
           Room: () => model.screen,
+          Welcome: () => model.screen,
         }),
       },
     }),
@@ -1343,6 +1365,7 @@ export const update = (model: Model, message: Message): Return =>
       ),
     ReleasedConnection: () =>
       editRoom(model, (room) => ({ ...room, connected: false })),
+    ScrolledToTop: () => ({ model }),
     SentSignal: ({ at, sent, signal }) =>
       sent && RoomSignalSchema.guards.Reaction(signal)
         ? inRoom(model, (room) => ({

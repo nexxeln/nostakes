@@ -104,6 +104,7 @@ export const reportScreen = (model: Model): ReportScreen =>
     Home: (): ReportScreen => "Home",
     Invited: (): ReportScreen => "Invitation",
     Room: (): ReportScreen => "Room",
+    Welcome: (): ReportScreen => "Home",
   });
 
 const namesInView = (model: Model): readonly string[] =>
@@ -115,6 +116,7 @@ const namesInView = (model: Model): readonly string[] =>
         Option.map(({ view }) => view.members.map(({ name }) => name)),
         Option.getOrElse((): readonly string[] => [])
       ),
+    Welcome: () => [],
   });
 
 export const namesKnown = (model: Model): readonly string[] => [

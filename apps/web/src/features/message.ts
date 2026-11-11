@@ -51,6 +51,7 @@ export const Messages = defineMessageUnion({
   ChosePreset: { preset: PresetSchema },
   ChoseTheme: { theme: ThemeSchema },
   ClickedAddChips: {},
+  ClickedBackToWelcome: {},
   ClickedCancelFace: {},
   ClickedCheckResult: {},
   ClickedConfirm: { confirm: ConfirmSchema },
@@ -65,6 +66,7 @@ export const Messages = defineMessageUnion({
   ClickedKnownRoom: { code: RoomCodeSchema },
   ClickedMember: { player: PlayerIdSchema },
   ClickedMenu: {},
+  ClickedOpenRoom: {},
   ClickedRequestChips: {},
   ClickedRoomCommand: { command: MemberCommandSchema, label: Schema.String },
   ClickedRuleGroup: { group: RuleGroupSchema },
@@ -117,6 +119,7 @@ export const Messages = defineMessageUnion({
   PickedAvatar: { avatar: AvatarSchema },
   PolledDoor: {},
   ReleasedConnection: {},
+  ScrolledToTop: {},
   SentSignal: {
     at: Schema.Int,
     sent: Schema.Boolean,

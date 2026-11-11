@@ -2,6 +2,9 @@ import { render } from "@nostakes/avatar";
 import type { Avatar, RenderOptions } from "@nostakes/avatar";
 import type { HtmlBuilder } from "foldkit/html";
 
+import { CARD_HEIGHT, cardFaceMarks } from "./card-art.js";
+import type { CardFace } from "./card-art.js";
+
 const ICONS = {
   Chevron: `<svg viewBox="0 0 20 20" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 4l6 6-6 6"/></svg>`,
   Close: `<svg viewBox="0 0 20 20" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 5l10 10M15 5L5 15"/></svg>`,
@@ -24,3 +27,8 @@ export const faceMarkup = <Message>(
   avatar: Avatar,
   options: RenderOptions
 ) => h.InnerHTML(render(avatar, options));
+
+export const cardMarkup = <Message>(h: HtmlBuilder<Message>, card: CardFace) =>
+  h.InnerHTML(
+    `<svg viewBox="0 0 100 ${CARD_HEIGHT}" aria-hidden="true">${cardFaceMarks(card)}</svg>`
+  );

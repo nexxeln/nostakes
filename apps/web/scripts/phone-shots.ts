@@ -124,6 +124,7 @@ const tableOf = (
       yield* shoot(host, dir, `${engine}-home`);
     }
 
+    yield* button(host, "Open a room");
     yield* attempt("type the host's name", () =>
       host.getByPlaceholder("Name").fill("Sam")
     );

@@ -242,6 +242,7 @@ export const Screens = defineTaggedUnion({
     problem: Schema.Option(Schema.String),
   },
   Room: { room: InRoomSchema },
+  Welcome: {},
 });
 
 export type Screen = typeof Screens.Type;
