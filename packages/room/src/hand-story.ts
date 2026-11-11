@@ -2,7 +2,7 @@ import { Events, SEAT_COUNT, ShowdownEntries } from "@nostakes/engine";
 import type { Card, SeatIndex } from "@nostakes/engine";
 import { Match, Option } from "effect";
 
-import type { SeenTableEvent } from "./views.js";
+import type { SeenTableEvent } from "./redaction.js";
 
 export interface Wager {
   readonly added: number;

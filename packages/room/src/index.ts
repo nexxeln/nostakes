@@ -185,10 +185,15 @@ export {
   MOMENT_KINDS,
   MOST_MOMENTS,
   MomentKindSchema,
+  MomentSchema,
   Moments,
+  OddsSchema,
+  QUICK_SWING_BOARDS,
+  QUICK_SWING_MARGIN,
   REAL_BET_BLINDS,
   REAL_POT_BLINDS,
   TIERS,
+  TierSchema,
   bigHandTier,
   boardCategory,
   favouriteTier,
@@ -196,12 +201,35 @@ export {
   isNutFlush,
   isPainful,
   longShotTier,
+  momentsCountingEveryBoard,
   momentsOf,
   nothingOfItsOwn,
   ranked,
 } from "./moments.js";
 
 export type { Headline, Moment, MomentKind, Odds, Tier } from "./moments.js";
+
+export {
+  BiggestPotSchema,
+  NO_RECAP,
+  NO_TALLY,
+  NightRecapSchema,
+  NightSpanSchema,
+  RECAP_MOMENTS,
+  RecapMomentSchema,
+  RecapPlayerSchema,
+  recapOf,
+  recapOrder,
+  tallied,
+} from "./recap.js";
+
+export type {
+  BiggestPot,
+  NightRecap,
+  NightSpan,
+  NightTally,
+  RecapMoment,
+} from "./recap.js";
 
 export type { Balance, Settlement, Transfer } from "./settlement.js";
 

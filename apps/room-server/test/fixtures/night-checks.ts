@@ -424,6 +424,10 @@ const CARD_KEYS = new Set([
 
 const SPARE_DECK_KEY = "spare";
 
+const NIGHT_RECAP_KEY = "recap";
+
+const UNSCANNED = new Set([SPARE_DECK_KEY, NIGHT_RECAP_KEY]);
+
 const isJsonArray = (value: Schema.Json): value is Schema.JsonArray =>
   Array.isArray(value);
 
@@ -447,7 +451,7 @@ const cardsIn = (value: Schema.Json, holding: boolean): readonly number[] => {
 
   return isJsonObject(value)
     ? Object.entries(value).flatMap(([key, item]) =>
-        key === SPARE_DECK_KEY ? [] : cardsIn(item, CARD_KEYS.has(key))
+        UNSCANNED.has(key) ? [] : cardsIn(item, CARD_KEYS.has(key))
       )
     : [];
 };

@@ -28,6 +28,7 @@ import { Data, Option, Result } from "effect";
 import type { Deadline } from "./deadline.js";
 import type { Holder, OpenedCard } from "./events.js";
 import type { RoomCode } from "./identity.js";
+import type { NightRecap, NightTally } from "./recap.js";
 import { NotSeated } from "./rejection.js";
 import type { RoomSettings } from "./settings.js";
 import type { Settlement } from "./settlement.js";
@@ -172,6 +173,7 @@ export type RoomState = Data.TaggedEnum<{
     readonly entries: Entries;
     readonly members: readonly Member[];
     readonly now: Millis;
+    readonly recap: NightRecap;
     readonly settlement: Settlement;
   };
   Open: {
@@ -200,6 +202,7 @@ export type RoomState = Data.TaggedEnum<{
     readonly stalled: Option.Option<Stall>;
     readonly straddlers: readonly PlayerId[];
     readonly table: TableState;
+    readonly tally: NightTally;
   };
 }>;
 

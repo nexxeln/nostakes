@@ -1,8 +1,6 @@
 import {
   CardSchema,
   ChipsSchema,
-  EventSchema,
-  Events,
   LegalActionsSchema,
   PendingDecisions,
   PlayerIdSchema,
@@ -15,24 +13,20 @@ import {
   buildPots,
   pendingDecisions,
 } from "@nostakes/engine";
-import type { Card, Event, Hand, PlayerId, SeatIndex } from "@nostakes/engine";
+import type { Card, Hand, PlayerId, SeatIndex } from "@nostakes/engine";
 import { balances } from "@nostakes/ledger";
 import { DeckOpeningSchema } from "@nostakes/shuffle";
 import { Data, Effect, Option, Schema } from "effect";
 
 import { nextDealAt, timeBankLeft } from "./clocks.js";
 import { ClosingSchema, closingOf } from "./closing.js";
-import {
-  HandNumberSchema,
-  OpenedCardSchema,
-  RoomEvents,
-  roomEventFields,
-  sealFields,
-} from "./events.js";
-import type { Holder, RoomEvent } from "./events.js";
+import { HandNumberSchema, OpenedCardSchema, sealFields } from "./events.js";
 import { AvatarSchema, NameSchema, RoomCodeSchema } from "./identity.js";
 import { hostClaimableAt } from "./members.js";
 import { allEntries } from "./money.js";
+import { recapField } from "./recap.js";
+import { Audiences } from "./redaction.js";
+import type { Audience } from "./redaction.js";
 import { ChipAmountSchema, RoomSettingsSchema } from "./settings.js";
 import { BalanceSchema, SettlementSchema } from "./settlement.js";
 import {
@@ -48,15 +42,17 @@ import type { Closed, Member, Open, RoomState, Sealed } from "./state.js";
 import { MillisSchema, latest, millis } from "./time.js";
 import type { Millis } from "./time.js";
 
-export const AudienceSchema = Schema.TaggedUnion({
-  Seated: { player: PlayerIdSchema, seat: SeatIndexSchema },
-  Spectator: {},
-  Unseated: { player: PlayerIdSchema },
-});
+export {
+  AudienceSchema,
+  Audiences,
+  PublicHandStartedSchema,
+  SeenEventSchema,
+  SeenEvents,
+  SeenTableEventSchema,
+  redact,
+} from "./redaction.js";
 
-export type Audience = typeof AudienceSchema.Type;
-
-export const Audiences = Data.taggedEnum<Audience>();
+export type { Audience, SeenEvent, SeenTableEvent } from "./redaction.js";
 
 export const audienceOf = (state: RoomState, player: PlayerId): Audience =>
   RoomStates.$match(state, {
@@ -67,111 +63,6 @@ export const audienceOf = (state: RoomState, player: PlayerId): Audience =>
         onSome: (seat) => Audiences.Seated({ player, seat }),
       }),
   });
-
-const { cases } = EventSchema;
-
-export const PublicHandStartedSchema = Schema.TaggedStruct("HandStarted", {
-  bigBlindSeat: SeatIndexSchema,
-  button: SeatIndexSchema,
-  dealtIn: Schema.Array(SeatIndexSchema),
-  handNumber: Schema.Int,
-  smallBlindSeat: SeatIndexSchema,
-});
-
-export const SeenTableEventSchema = Schema.Union([
-  cases.AntePosted,
-  cases.BlindPosted,
-  cases.Called,
-  cases.CardsShown,
-  cases.Checked,
-  cases.ChipsAdded,
-  cases.Folded,
-  cases.HandEnded,
-  cases.HandMucked,
-  PublicHandStartedSchema,
-  cases.HandTabled,
-  cases.HandsTabled,
-  cases.HoleCardsDealt,
-  cases.PlayerSat,
-  cases.PlayerStood,
-  cases.PotAwarded,
-  cases.RabbitHunted,
-  cases.RaisedTo,
-  cases.RulesChanged,
-  cases.RunsAgreed,
-  cases.RunsChosen,
-  cases.ShowdownReached,
-  cases.ShowdownStarted,
-  cases.SittingOutChanged,
-  cases.StraddlePosted,
-  cases.StreetDealt,
-  cases.UncalledBetReturned,
-]);
-
-export type SeenTableEvent = typeof SeenTableEventSchema.Type;
-
-export const SeenEventSchema = Schema.TaggedUnion({
-  ...roomEventFields,
-  HandSealed: sealFields,
-  Table: { at: MillisSchema, event: SeenTableEventSchema },
-});
-
-export type SeenEvent = typeof SeenEventSchema.Type;
-
-export const SeenEvents = Data.taggedEnum<SeenEvent>();
-
-const holdsSeat = (audience: Audience, seat: SeatIndex) =>
-  Audiences.$is("Seated")(audience) && audience.seat === seat;
-
-const seenTableEvent = (event: Event, audience: Audience): SeenTableEvent => {
-  if (Events.$is("HandStarted")(event)) {
-    return PublicHandStartedSchema.make({
-      bigBlindSeat: event.bigBlindSeat,
-      button: event.button,
-      dealtIn: event.dealtIn,
-      handNumber: event.handNumber,
-      smallBlindSeat: event.smallBlindSeat,
-    });
-  }
-
-  if (Events.$is("HoleCardsDealt")(event) && !holdsSeat(audience, event.seat)) {
-    return Events.HoleCardsDealt({ cards: [], seat: event.seat });
-  }
-
-  return event;
-};
-
-const holds = (audience: Audience, holder: Option.Option<Holder>) =>
-  Option.match(holder, {
-    onNone: () => true,
-    onSome: ({ player, seat }) =>
-      Audiences.$is("Seated")(audience) &&
-      audience.seat === seat &&
-      audience.player === player,
-  });
-
-export const redact = (event: RoomEvent, audience: Audience): SeenEvent => {
-  if (RoomEvents.$is("Table")(event)) {
-    return SeenEvents.Table({
-      at: event.at,
-      event: seenTableEvent(event.event, audience),
-    });
-  }
-
-  if (RoomEvents.$is("HandSealed")(event)) {
-    return SeenEvents.HandSealed({
-      at: event.at,
-      hand: event.hand,
-      roots: event.roots,
-      round: event.round,
-      seats: event.seats,
-    });
-  }
-
-  return RoomEvents.$is("CardsOpened")(event) && !holds(audience, event.holder)
-    ? SeenEvents.CardsOpened({ ...event, openings: [] })
-    : event;
-};
 
 const cards = Schema.Array(CardSchema);
 
@@ -370,6 +261,7 @@ export const RoomViewSchema = Schema.TaggedUnion({
     code: RoomCodeSchema,
     departed: departedField,
     members: Schema.Array(MemberViewSchema),
+    recap: recapField,
     settlement: SettlementSchema,
     you: youField,
   },
@@ -741,6 +633,7 @@ export const viewFor = (
         code: closed.code,
         departed: profilesOf(closed.departed),
         members: membersView(closed),
+        recap: closed.recap,
         settlement: closed.settlement,
         you: Audiences.$match(audience, {
           Seated: ({ player }) => Option.some(player),

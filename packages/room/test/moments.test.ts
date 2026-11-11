@@ -10,7 +10,13 @@ import type { Chips, Command, HandRank, SeatIndex } from "@nostakes/engine";
 import { Match, Option, Schema } from "effect";
 import * as Arbitrary from "effect/Arbitrary";
 
-import { MOST_MOMENTS, Moments, headline, momentsOf } from "../src/index.js";
+import {
+  MOST_MOMENTS,
+  Moments,
+  headline,
+  momentsCountingEveryBoard,
+  momentsOf,
+} from "../src/index.js";
 import type { Moment, SeenTableEvent } from "../src/index.js";
 import {
   act,
@@ -39,6 +45,8 @@ const handSeed = Arbitrary.schema(
 const FEW_HANDS = { arbitrary: { runs: 40 } };
 
 const EVERY_AUDIENCE = { arbitrary: { runs: 20 } };
+
+const QUICK_CHECKS = { arbitrary: { runs: 150 }, timeout: 120_000 };
 
 const pot = (amount: number): Chips => ChipsSchema.make(amount);
 
@@ -543,6 +551,17 @@ describe("moments any device can compute", () => {
       ).toStrictEqual([]);
     },
     FEW_HANDS
+  );
+
+  it.prop(
+    "a quick look at the first boards never hides a moment that counting every board would call",
+    { seed: handSeed },
+    ({ seed }) => {
+      const feed = spectatorFeed(generatedHand(seededRandom(seed)));
+
+      expect(momentsOf(feed)).toStrictEqual(momentsCountingEveryBoard(feed));
+    },
+    QUICK_CHECKS
   );
 
   it.prop(

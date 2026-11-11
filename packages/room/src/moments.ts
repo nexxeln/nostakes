@@ -1,6 +1,8 @@
 import {
   ChipsSchema,
   HandRankSchema,
+  SeatIndexSchema,
+  StreetSchema,
   describe,
   evaluate,
   handCategory,
@@ -27,46 +29,55 @@ import {
   winnersOf,
 } from "./hand-story.js";
 import type { HandStory, Wager } from "./hand-story.js";
+import type { SeenTableEvent } from "./redaction.js";
 import type { MomentCallouts } from "./settings.js";
-import type { SeenTableEvent } from "./views.js";
 
-export type Tier = 1 | 2 | 3;
+export const TierSchema = Schema.Literals([1, 2, 3]);
 
-export interface Odds {
-  readonly exact: boolean;
-  readonly percent: number;
-}
+export type Tier = typeof TierSchema.Type;
 
-interface Shared {
-  readonly pot: Chips;
-  readonly seats: readonly SeatIndex[];
-  readonly tier: Tier;
-}
+export const OddsSchema = Schema.Struct({
+  exact: Schema.Boolean,
+  percent: Schema.Int,
+});
 
-export type Moment = Data.TaggedEnum<{
-  BadBeat: Shared & {
-    readonly odds: Odds;
-    readonly rank: HandRank;
-    readonly street: Street;
-    readonly winningRank: HandRank;
-  };
-  BigHand: Shared & { readonly rank: HandRank };
-  Bluff: Shared & { readonly bet: Chips; readonly street: Street };
-  Cooler: Shared & {
-    readonly rank: HandRank;
-    readonly street: Street;
-    readonly winningRank: HandRank;
-  };
-  HeroCall: Shared & {
-    readonly call: Chips;
-    readonly rank: HandRank;
-    readonly street: Street;
-  };
-  SameHand: Shared & { readonly rank: HandRank };
-  SevenDeuce: Shared & { readonly showdown: boolean };
-  SplitRuns: Shared & { readonly runs: number };
-  Suckout: Shared & { readonly odds: Odds; readonly street: Street };
-}>;
+export type Odds = typeof OddsSchema.Type;
+
+const shared = {
+  pot: ChipsSchema,
+  seats: Schema.Array(SeatIndexSchema),
+  tier: TierSchema,
+};
+
+export const MomentSchema = Schema.TaggedUnion({
+  BadBeat: {
+    ...shared,
+    odds: OddsSchema,
+    rank: HandRankSchema,
+    street: StreetSchema,
+    winningRank: HandRankSchema,
+  },
+  BigHand: { ...shared, rank: HandRankSchema },
+  Bluff: { ...shared, bet: ChipsSchema, street: StreetSchema },
+  Cooler: {
+    ...shared,
+    rank: HandRankSchema,
+    street: StreetSchema,
+    winningRank: HandRankSchema,
+  },
+  HeroCall: {
+    ...shared,
+    call: ChipsSchema,
+    rank: HandRankSchema,
+    street: StreetSchema,
+  },
+  SameHand: { ...shared, rank: HandRankSchema },
+  SevenDeuce: { ...shared, showdown: Schema.Boolean },
+  SplitRuns: { ...shared, runs: Schema.Int },
+  Suckout: { ...shared, odds: OddsSchema, street: StreetSchema },
+});
+
+export type Moment = typeof MomentSchema.Type;
 
 export const MomentKindSchema = Schema.Literals([
   "BigHand",
@@ -625,10 +636,57 @@ const finalRank = (story: HandStory, hole: readonly Card[]) =>
 const ownsAtTheEnd = (story: HandStory, hole: readonly Card[]) =>
   story.boards.some((board) => ownsMore(hole, board));
 
+export const QUICK_SWING_BOARDS = 2000;
+
+export const QUICK_SWING_MARGIN = 10;
+
+interface Loser {
+  readonly hole: readonly Card[];
+  readonly index: number;
+  readonly seat: SeatIndex;
+}
+
+const percentHeld = (equity: Equity, index: number) =>
+  ((equity.shares[index] ?? 0) * 100) / Math.max(1, equity.total);
+
+const coolerStake = (story: HandStory, seat: SeatIndex) =>
+  story.allIn.includes(seat) ||
+  (story.committed[seat] ?? 0) >= COOLER_STAKE_BLINDS * story.bigBlind;
+
+const mightSwing = (
+  story: HandStory,
+  quick: Equity,
+  winning: { readonly hole: readonly Card[]; readonly index: number },
+  losers: readonly Loser[],
+  board: readonly Card[]
+) => {
+  const [favouriteFloor] = FAVOURITE_PERCENTS;
+  const [longShotCeiling] = LONG_SHOT_PERCENTS;
+  const won = percentHeld(quick, winning.index);
+
+  return (
+    won <= longShotCeiling + QUICK_SWING_MARGIN ||
+    losers.some(({ hole, index, seat }) => {
+      const lost = percentHeld(quick, index);
+
+      return (
+        lost >= favouriteFloor - QUICK_SWING_MARGIN ||
+        (lost + QUICK_SWING_MARGIN >= won &&
+          LOSING_HAND_TIERS[handCategory(finalRank(story, hole))] !==
+            undefined) ||
+        (coolerStake(story, seat) &&
+          collide(hole, winning.hole, board) &&
+          won + QUICK_SWING_MARGIN >= lost)
+      );
+    })
+  );
+};
+
 const swings = (
   story: HandStory,
   showdown: Showdown,
-  pot: Chips
+  pot: Chips,
+  everyBoard: boolean
 ): readonly Moment[] => {
   const [first = []] = showdown.runs;
   const [winner] = first;
@@ -645,20 +703,35 @@ const swings = (
 
   const moneyIn = moneyInBoard(story, showdown.contenders);
   const board = story.common.slice(0, moneyIn);
-  const equity = equities(showdown.holes, board);
   const won = showdown.contenders.indexOf(winner);
-  const street = streetOf(moneyIn);
   const winnerHole = showdown.holes[won] ?? [];
+
+  const losers = showdown.contenders.flatMap((seat, index) =>
+    index === won ? [] : [{ hole: showdown.holes[index] ?? [], index, seat }]
+  );
+
+  const quick = equities(
+    showdown.holes,
+    board,
+    QUICK_SWING_BOARDS * Math.max(1, showdown.holes.length)
+  );
+
+  if (
+    !everyBoard &&
+    !quick.exact &&
+    !mightSwing(story, quick, { hole: winnerHole, index: won }, losers, board)
+  ) {
+    return [];
+  }
+
+  const equity = quick.exact ? quick : equities(showdown.holes, board);
+  const street = streetOf(moneyIn);
   const winningRank = finalRank(story, winnerHole);
 
   const odds = (index: number) => ({
     exact: equity.exact,
     percent: percentOf(equity, index),
   });
-
-  const losers = showdown.contenders.flatMap((seat, index) =>
-    index === won ? [] : [{ hole: showdown.holes[index] ?? [], index, seat }]
-  );
 
   const beats = losers.flatMap(({ hole, index, seat }) => {
     const rank = finalRank(story, hole);
@@ -726,8 +799,7 @@ const swings = (
   const coolers = losers.flatMap(({ hole, index, seat }) => {
     const rank = finalRank(story, hole);
 
-    return (story.allIn.includes(seat) ||
-      (story.committed[seat] ?? 0) >= COOLER_STAKE_BLINDS * story.bigBlind) &&
+    return coolerStake(story, seat) &&
       collide(hole, winnerHole, board) &&
       (equity.shares[won] ?? 0) > (equity.shares[index] ?? 0)
       ? [
@@ -746,13 +818,16 @@ const swings = (
   return [...beats, ...suckouts, ...coolers];
 };
 
-const recognised = (story: HandStory): readonly Moment[] => {
+const recognised = (
+  story: HandStory,
+  everyBoard: boolean
+): readonly Moment[] => {
   const pot = chipsOf(potTotal(story));
 
   const fromShowdown = Option.match(mainShowdown(story), {
     onNone: () => [],
     onSome: (showdown) => [
-      ...swings(story, showdown, pot),
+      ...swings(story, showdown, pot, everyBoard),
       ...sameHands(story, showdown, pot),
       ...splitRuns(story, showdown, pot),
     ],
@@ -775,13 +850,21 @@ export const ranked = (moments: readonly Moment[]): readonly Moment[] =>
       right.tier - left.tier || kindOrder(left) - kindOrder(right)
   );
 
-export const momentsOf = (
-  events: readonly SeenTableEvent[]
+const momentsFrom = (
+  events: readonly SeenTableEvent[],
+  everyBoard: boolean
 ): readonly Moment[] =>
   Option.match(storyOf(events), {
     onNone: () => [],
-    onSome: (story) => ranked(recognised(story)).slice(0, MOST_MOMENTS),
+    onSome: (story) =>
+      ranked(recognised(story, everyBoard)).slice(0, MOST_MOMENTS),
   });
+
+export const momentsOf = (events: readonly SeenTableEvent[]) =>
+  momentsFrom(events, false);
+
+export const momentsCountingEveryBoard = (events: readonly SeenTableEvent[]) =>
+  momentsFrom(events, true);
 
 export const isPainful = (moment: Moment) =>
   Moments.$is("BadBeat")(moment) || Moments.$is("Cooler")(moment);

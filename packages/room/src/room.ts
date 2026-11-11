@@ -19,7 +19,7 @@ import { callNextHand, deal, pauseGame, startGame } from "./dealing.js";
 import type { Decision } from "./decision.js";
 import { RoomEvents } from "./events.js";
 import type { RoomEvent } from "./events.js";
-import { evolveAll } from "./evolve.js";
+import { evolveToDecide } from "./evolve.js";
 import type { RoomLog } from "./evolve.js";
 import { AvatarSchema, NameSchema, RoomCodeSchema } from "./identity.js";
 import {
@@ -214,7 +214,7 @@ const drain = (
     }
 
     events.push(...decided.value.success);
-    current = evolveAll(current, decided.value.success);
+    current = evolveToDecide(current, decided.value.success);
   }
 
   return Result.succeed({ events, state: current });
@@ -232,7 +232,7 @@ const appended = (
 
   return {
     events: [...batch.events, ...added],
-    state: evolveAll(batch.state, added),
+    state: evolveToDecide(batch.state, added),
   };
 };
 
@@ -248,7 +248,7 @@ const followThrough = (
   caused: readonly RoomEvent[],
   at: Millis
 ): Decision =>
-  drain({ events: caused, state: evolveAll(before, caused) }, (state) =>
+  drain({ events: caused, state: evolveToDecide(before, caused) }, (state) =>
     actForLeavingSeat(state, at)
   ).pipe(
     Result.map((played) =>

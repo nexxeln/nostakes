@@ -12,7 +12,9 @@ import { postingSeats } from "./dealing.js";
 import { RoomEvents } from "./events.js";
 import type { RoomEvent, RoomEventOf } from "./events.js";
 import { boughtIn, cashedOut, withEntry } from "./money.js";
+import { NO_RECAP, NO_TALLY, recapOf, tallied } from "./recap.js";
 import { recorded } from "./record.js";
+import { Audiences, redact } from "./redaction.js";
 import { beaconOf, planOf } from "./sealed-hand.js";
 import {
   Attendances,
@@ -68,6 +70,7 @@ export const opened = (event: RoomEventOf<"RoomOpened">): Open =>
     stalled: Option.none(),
     straddlers: [],
     table: initialTable(event.settings.table),
+    tally: NO_TALLY,
   });
 
 const withoutStreak = (state: Open, player: PlayerId): Open => ({
@@ -432,6 +435,7 @@ const evolveOpen = (state: Open, event: RoomEvent): RoomState =>
         entries: state.entries,
         members: state.members,
         now: at,
+        recap: NO_RECAP,
         settlement,
       }),
     RoomOpened: (opening) => opened(opening),
@@ -527,12 +531,53 @@ const evolveOpen = (state: Open, event: RoomEvent): RoomState =>
       ),
   });
 
-export const evolve = (state: RoomState, event: RoomEvent): RoomState =>
+const evolveUntallied = (state: RoomState, event: RoomEvent): RoomState =>
   RoomStates.$match(state, {
     Closed: (closed) => closed,
     Open: (open) =>
       evolveOpen({ ...open, now: latest(open.now, event.at) }, event),
   });
+
+const tallying = (state: RoomState, event: RoomEvent): RoomState =>
+  RoomStates.$match(state, {
+    Closed: (closed): RoomState => closed,
+    Open: (open): RoomState => ({
+      ...open,
+      tally: tallied(open.tally, redact(event, Audiences.Spectator())),
+    }),
+  });
+
+const withRecap = (before: RoomState, after: RoomState): RoomState =>
+  RoomStates.$match(before, {
+    Closed: (): RoomState => after,
+    Open: (open): RoomState =>
+      RoomStates.$match(after, {
+        Closed: (closed): RoomState => ({
+          ...closed,
+          recap: recapOf(open.tally, open.settings.moments),
+        }),
+        Open: (): RoomState => after,
+      }),
+  });
+
+export const evolve = (state: RoomState, event: RoomEvent): RoomState => {
+  const withTally = tallying(state, event);
+
+  return withRecap(withTally, evolveUntallied(withTally, event));
+};
+
+export const evolveToDecide = (
+  state: RoomState,
+  events: readonly RoomEvent[]
+) => {
+  let current = state;
+
+  for (const event of events) {
+    current = evolveUntallied(current, event);
+  }
+
+  return current;
+};
 
 export const evolveAll = (state: RoomState, events: readonly RoomEvent[]) => {
   let current = state;
