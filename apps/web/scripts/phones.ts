@@ -270,14 +270,34 @@ const PINCHED_ABOVE = 1.2;
 
 const PINCH_AT_Y = 300;
 
+const TEXT_FIELDS = "input, select, textarea";
+
+const FIELD_WAIT_MS = 10_000;
+
 const fieldSizes = (page: Page, screen: string) =>
-  attempt(`read the text fields' font sizes on ${screen}`, () =>
-    page.evaluate(() =>
-      [...document.querySelectorAll("input, select, textarea")].map((field) =>
-        Number(getComputedStyle(field).fontSize.replace("px", ""))
+  attempt(`find a text field on ${screen}`, () =>
+    page.locator(TEXT_FIELDS).first().waitFor({ timeout: FIELD_WAIT_MS })
+  ).pipe(
+    Effect.mapError(
+      (failure) =>
+        new PhoneCheckFailed({
+          detail: `found no field on ${screen}: ${failure.detail}`,
+          step: `measure the text fields on ${screen}`,
+        })
+    ),
+    Effect.andThen(
+      attempt(`read the text fields' font sizes on ${screen}`, () =>
+        page.evaluate(
+          (selector) =>
+            [...document.querySelectorAll(selector)].map((field) =>
+              Number(getComputedStyle(field).fontSize.replace("px", ""))
+            ),
+          TEXT_FIELDS
+        )
       )
-    )
-  ).pipe(Effect.map((sizes) => ({ screen, sizes })));
+    ),
+    Effect.map((sizes) => ({ screen, sizes }))
+  );
 
 const pretendZoom = (page: Page, scale: number) =>
   attempt(`pretend the page is zoomed to ${scale}`, () =>
@@ -838,7 +858,10 @@ const phoneChecks = (engine: BrowserType, app: string, watched: PageWatch) =>
         sizes.every((size) => size >= IOS_FOCUS_ZOOM_BELOW_PX)
       ) && screens.every(({ sizes }) => sizes.length > 0),
       screens
-        .map(({ screen, sizes }) => `${screen} ${sizes.join("/")}`)
+        .map(
+          ({ screen, sizes }) =>
+            `${screen} ${sizes.length === 0 ? "found no field" : sizes.join("/")}`
+        )
         .join(", ")
     );
 
