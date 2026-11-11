@@ -538,8 +538,8 @@ export const queueProblems = (steps: readonly Step[]): readonly string[] => {
   let runQueueOwed = false;
 
   for (const step of steps) {
-    let ended: boolean =
-      runQueueOwed && RoomCommands.$is("RunQueue")(step.command);
+    const owed: boolean = runQueueOwed;
+    let ended: boolean = owed && RoomCommands.$is("RunQueue")(step.command);
 
     let endedInDeal = false;
     let dealt = false;
@@ -549,11 +549,14 @@ export const queueProblems = (steps: readonly Step[]): readonly string[] => {
       endedInDeal ||= dealt && isHandEnded(event);
       ended ||= !dealt && isHandEnded(event);
       noteQueued(watch, event);
+
+      const handOver = ended || (owed && !dealt);
+
       problems.push(
-        ...chipsArrived(watch, event, ended),
-        ...leftSeat(watch, event, ended),
-        ...rulesApplied(watch, event, ended),
-        ...closed(watch, event, ended)
+        ...chipsArrived(watch, event, handOver),
+        ...leftSeat(watch, event, handOver),
+        ...rulesApplied(watch, event, handOver),
+        ...closed(watch, event, handOver)
       );
     }
 
@@ -566,7 +569,8 @@ export const queueProblems = (steps: readonly Step[]): readonly string[] => {
     }
 
     runQueueOwed =
-      (runQueueOwed && !ended) || (endedInDeal && stillQueued(watch));
+      (owed && !ended && stillQueued(watch)) ||
+      (endedInDeal && stillQueued(watch));
   }
 
   return problems;

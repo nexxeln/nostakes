@@ -14,6 +14,7 @@ import {
   Actors,
   Deadlines,
   HOST_CLAIM_AFTER_SECONDS,
+  MOST_PEOPLE,
   RoomCommands,
   RoomEvents,
   SealedSeatsMoved,
@@ -100,8 +101,12 @@ const answer = (deadline: Deadline, now: number, seed: number): RoomCommand => {
   });
 };
 
+const freshJoinRefused = (state: Open) =>
+  state.settings.locked ||
+  state.members.length + state.departed.length >= MOST_PEOPLE;
+
 const returning = (state: Open, without?: PlayerId) =>
-  state.settings.locked
+  freshJoinRefused(state)
     ? state.departed.find(({ player }) => player !== without)
     : undefined;
 
@@ -206,7 +211,7 @@ const hostVanishes = (night: Night): Option.Option<TakenOver> => {
   const back = returning(state, state.host);
   const standIn = others[0]?.player ?? back?.player ?? closer;
 
-  if (others.length === 0 && state.settings.locked && back === undefined) {
+  if (others.length === 0 && freshJoinRefused(state) && back === undefined) {
     return Option.none();
   }
 

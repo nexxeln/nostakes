@@ -1,9 +1,13 @@
 import { describe, expect, it } from "@effect/vitest";
 
 import {
+  Actors,
+  HOST_CLAIM_AFTER_SECONDS,
   MOST_PEOPLE,
   RoomCommands,
+  RoomEvents,
   RoomLocked,
+  RoomStates,
   TooManyPeople,
 } from "../src/index.js";
 import type { RoomState } from "../src/index.js";
@@ -21,6 +25,7 @@ import {
   run,
   runAll,
   settings,
+  sit,
 } from "./fixtures.js";
 
 const joining = (who: ReturnType<typeof player>, at = 30) =>
@@ -85,5 +90,77 @@ describe("the door", () => {
     ).state;
 
     expect(names(run(freed, joining(cat, 70)).state)).toContain(cat);
+  });
+
+  it("never traps a locked night: when everyone has left, someone who left comes back with their pass, hosts the empty room, and ends it with their chips settled", () => {
+    const emptied = runAll(openedBy(ann), [
+      joining(bob, 10),
+      sit(bob, 2, 150, 11),
+      lock(true),
+      RoomCommands.LeaveRoom({ at: ms(25), by: as(bob) }),
+      RoomCommands.LeaveRoom({ at: ms(26), by: as(ann) }),
+    ]);
+
+    const back = run(emptied, joining(bob, 30)).state;
+
+    const closed = run(
+      back,
+      RoomCommands.CloseRoom({ at: ms(31), by: as(bob) })
+    ).state;
+
+    expect({
+      host: openOf(back).host,
+      newcomer: rejection(emptied, joining(cat, 30)),
+      settled: RoomStates.$is("Closed")(closed)
+        ? closed.settlement.balances.map(({ net, player: who }) => [who, net])
+        : [],
+    }).toStrictEqual({
+      host: bob,
+      newcomer: new RoomLocked({ code: roomCode }),
+      settled: [[bob, 0]],
+    });
+  });
+
+  it("never traps a locked night whose host vanished: someone who left comes back with their pass, takes over two minutes later, and ends it", () => {
+    const away = runAll(openedBy(ann), [
+      joining(bob, 10),
+      lock(true),
+      RoomCommands.LeaveRoom({ at: ms(25), by: as(bob) }),
+      RoomCommands.NoteAttendance({
+        at: ms(26),
+        by: Actors.Server(),
+        connected: [],
+      }),
+      joining(bob, 30),
+    ]);
+
+    const claimed = run(
+      away,
+      RoomCommands.ClaimHost({
+        at: ms(26 + HOST_CLAIM_AFTER_SECONDS * 1000),
+        by: as(bob),
+      })
+    );
+
+    expect({
+      claimed: claimed.events.filter(RoomEvents.$is("HostChanged")),
+      closed: RoomStates.$is("Closed")(
+        run(
+          claimed.state,
+          RoomCommands.CloseRoom({
+            at: ms(27 + HOST_CLAIM_AFTER_SECONDS * 1000),
+            by: as(bob),
+          })
+        ).state
+      ),
+    }).toStrictEqual({
+      claimed: [
+        RoomEvents.HostChanged({
+          at: ms(26 + HOST_CLAIM_AFTER_SECONDS * 1000),
+          host: bob,
+        }),
+      ],
+      closed: true,
+    });
   });
 });
