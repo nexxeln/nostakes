@@ -6,7 +6,7 @@ A group of friends opens a room, up to 9 players, and plays no-limit hold'em. no
 
 ## Install
 
-nostakes needs Node `24.18.0` or later and pnpm `11.28.11`. pnpm 10 switches to `11.28.11` on its own through the `packageManager` field. Without pnpm, run `corepack enable` first.
+nostakes needs Node `24.22.1` or later and pnpm `11.28.11`. pnpm 10 switches to `11.28.11` on its own through the `packageManager` field. Without pnpm, run `corepack enable` first.
 
 ```sh
 pnpm install
