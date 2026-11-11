@@ -66,6 +66,15 @@ const program = Effect.gen(function* reels() {
     Config.withDefault("file")
   );
 
+  const style = yield* Config.Literals(
+    ["Broadcast", "Drift"],
+    "REEL_STYLE"
+  ).pipe(Config.withDefault("Broadcast" as const));
+
+  const calm = yield* Config.Boolean("REEL_CALM").pipe(
+    Config.withDefault(false)
+  );
+
   yield* files.makeDirectory(dir, { recursive: true });
 
   const origin = yield* servedVite("start the stage server", "STAGE_PORT", {
@@ -96,12 +105,12 @@ const program = Effect.gen(function* reels() {
 
   for (const { name: hand, query } of told) {
     for (const theme of themes) {
-      const label = `${engine === "webkit" ? "webkit-" : ""}${hand}-${theme.toLowerCase()}${frame === "Chat" ? "-chat" : ""}`;
+      const label = `${engine === "webkit" ? "webkit-" : ""}${hand}-${theme.toLowerCase()}${frame === "Chat" ? "-chat" : ""}${style === "Drift" ? "-drift" : ""}${calm ? "-calm" : ""}`;
       const page = yield* attempt("open a page", () => opened.newPage());
 
       yield* attempt("open the reel stage", () =>
         page.goto(
-          `${origin}${STAGE}?${query}&theme=${theme}&frame=${frame}&make=${make}`
+          `${origin}${STAGE}?${query}&theme=${theme}&frame=${frame}&make=${make}&style=${style}&calm=${calm}`
         )
       );
       yield* attempt("wait for the reel", () =>

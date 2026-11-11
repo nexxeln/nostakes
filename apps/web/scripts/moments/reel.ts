@@ -29,6 +29,10 @@ const frame = params.get("frame") === "Chat" ? "Chat" : "Story";
 
 const filmed = params.get("make") === "file";
 
+const style = params.get("style") === "Drift" ? "Drift" : "Broadcast";
+
+const calm = params.get("calm") === "true";
+
 const deck = "TwoColour" as const;
 
 const TILE = Number(params.get("tile") ?? "6");
@@ -170,12 +174,14 @@ const program = Effect.gen(function* reel() {
     {
       boxes,
       budgetMs: null,
+      calm,
       frame,
       notes: replayNotesOf(hand),
       principals: seats,
       record: hand.record,
       seats: replaySeatsOf(hand),
       slot: Effect.void,
+      style,
       support,
       svg: pictureSvg(picture, { deck, fonts: "", frame, theme }),
     }
@@ -210,6 +216,7 @@ const program = Effect.gen(function* reel() {
     kind: picture.kind,
     length: film.length,
     madeMs: Math.round(performance.now() - told),
+    redrawn: made?.redrawn ?? 0,
     score: plan.sheet,
     sheet: sheet.png,
     shots: film.shots.length,

@@ -2,6 +2,7 @@ import type { SeatIndex } from "@nostakes/engine";
 import { Effect, Option } from "effect";
 
 import type { Deck, Theme } from "../../features/model.js";
+import type { ClipStyle } from "../../features/moments/clip-style.js";
 import { MOMENT_TAG, momentElement } from "../../features/moments/element.js";
 import type { MomentHand } from "../../features/moments/element.js";
 import { NewestHand } from "../../features/moments/newest-hand.js";
@@ -23,6 +24,7 @@ import { adoptEarlyProperties } from "../early-properties.js";
 import { Keeper } from "../pictures/keeper.js";
 import { measureParts } from "./clip-measure.js";
 import type { PartBox } from "./clip-measure.js";
+import { rememberStyle, rememberedStyle } from "./clip-style.js";
 import type { Clipper, ClipState } from "./clipper.js";
 import { paintPicture } from "./markup.js";
 import { noiseFor, perform, seededNoise } from "./synth.js";
@@ -35,12 +37,13 @@ const STYLE = `
 .card svg { display: block; width: 100%; height: auto; overflow: visible; }
 .card .part { transform-box: fill-box; transform-origin: center; }
 .wrap { transform-origin: 50% 40%; }
-.keeping { position: absolute; right: 8px; top: 6px; display: flex; gap: 6px; pointer-events: none; }
+.keeping { position: absolute; left: 8px; right: 8px; top: 6px; display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; pointer-events: none; }
 .keeping button { pointer-events: auto; font: 700 var(--text-2, 15px)/1 var(--font-body, sans-serif); color: var(--color-raised-ink, #1f1c31); background: var(--color-raised, #fffdf8); border: 0; border-radius: var(--radius-3, 10px); padding: 8px 12px; box-shadow: var(--shadow-sheet-1); display: flex; gap: 6px; align-items: center; min-height: 36px; }
 .keeping button:active { transform: translate(var(--press-1, 1px 1.8px)); }
 .keeping b { color: var(--color-accent-ink, #d63a00); }
-.keeping .story, .keeping .clip, .keeping .hide { color: var(--color-ink-muted, #716a79); font-weight: 600; padding: 8px 10px; }
-.keeping:not(.lingering) .hide, .keeping.lingering .keep, .keeping.lingering .story { display: none; }
+.keeping .story, .keeping .clip, .keeping .hide, .keeping .style { color: var(--color-ink-muted, #716a79); font-weight: 600; padding: 8px 10px; }
+.keeping .style[aria-pressed="true"] { color: var(--color-on-accent, #fffaf3); background: var(--color-accent, #ef5326); }
+.keeping:not(.lingering) .hide, .keeping.lingering .keep, .keeping.lingering .story, .keeping.lingering .style { display: none; }
 .keeping .clip[aria-busy="true"] { opacity: 0.8; }
 .gone, .keeping .gone { display: none; }
 `;
@@ -123,6 +126,8 @@ class NostakesMoment extends HTMLElement {
   readonly #story: HTMLButtonElement;
   readonly #clip: HTMLButtonElement;
   readonly #hide: HTMLButtonElement;
+  readonly #drift: HTMLButtonElement;
+  #style: ClipStyle = rememberedStyle();
   #keeper: Keeper | null = null;
   #clipper: Clipper | null = null;
   #clipLive = false;
@@ -175,7 +180,22 @@ class NostakesMoment extends HTMLElement {
       this.#closeKeeping();
       this.#dropClip();
     });
-    this.#keeping.append(this.#keep, this.#story, this.#clip, this.#hide);
+    this.#drift = document.createElement("button");
+    this.#drift.className = "style gone";
+    this.#drift.type = "button";
+    this.#drift.textContent = "Drift";
+    this.#drift.title = "Cut the clip fast, to loud music";
+    this.#drift.setAttribute("aria-pressed", String(this.#style === "Drift"));
+    this.#drift.addEventListener("click", () => {
+      this.#restyle(this.#style === "Drift" ? "Broadcast" : "Drift");
+    });
+    this.#keeping.append(
+      this.#keep,
+      this.#story,
+      this.#clip,
+      this.#drift,
+      this.#hide
+    );
     this.#root.append(style, this.#card, this.#keeping);
     adoptEarlyProperties(this, momentElement.properties);
   }
@@ -203,6 +223,14 @@ class NostakesMoment extends HTMLElement {
     });
 
     return button;
+  }
+
+  #restyle(style: ClipStyle) {
+    this.#style = style;
+    rememberStyle(style);
+    this.dataset.style = style;
+    this.#drift.setAttribute("aria-pressed", String(style === "Drift"));
+    this.#clipper?.restyle(style);
   }
 
   #keepAs(frame: KeptFrame) {
@@ -303,6 +331,7 @@ class NostakesMoment extends HTMLElement {
     this.#clipper?.drop();
     this.#clipper = null;
     this.#clip.className = "clip gone";
+    this.#drift.className = "style gone";
     delete this.dataset.clip;
   }
 
@@ -334,6 +363,7 @@ class NostakesMoment extends HTMLElement {
                     scene.picture,
                     {
                       boxes,
+                      calm: this.#motion.matches,
                       look: { deck: scene.deck, theme: scene.theme },
                       story: this.#storyNow(scene),
                       svg: (frame) =>
@@ -344,8 +374,11 @@ class NostakesMoment extends HTMLElement {
                           theme: scene.theme,
                         }),
                     },
-                    (state) => {
-                      this.#showClip(state);
+                    {
+                      changed: (state) => {
+                        this.#showClip(state);
+                      },
+                      style: this.#style,
                     }
                   )
               );
@@ -373,6 +406,11 @@ class NostakesMoment extends HTMLElement {
     this.dataset.clip = state;
     this.#clip.className =
       state === "Unavailable" || state === "Checking" ? "clip gone" : "clip";
+    this.#drift.className =
+      this.#clipper?.offersDrift === true && state !== "Unavailable"
+        ? "style"
+        : "style gone";
+    this.dataset.style = this.#style;
     this.#clip.textContent = busy ? CLIP_LABELS.Asked : CLIP_LABELS[state];
     this.#clip.disabled = state === "Asked";
     this.#clip.setAttribute("aria-busy", String(busy));

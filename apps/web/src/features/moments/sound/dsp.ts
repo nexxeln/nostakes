@@ -506,3 +506,52 @@ export const mastered = (
 
   return mix;
 };
+
+const OVERSAMPLING = 4;
+
+const SINC_REACH = 8;
+
+const sincAt = (offset: number) => {
+  if (offset === 0) {
+    return 1;
+  }
+
+  const turn = Math.PI * offset;
+  const window = 0.5 + 0.5 * Math.cos(turn / SINC_REACH);
+
+  return (Math.sin(turn) / turn) * window;
+};
+
+const PHASES = Array.from({ length: OVERSAMPLING - 1 }, (_, phase) =>
+  Array.from({ length: SINC_REACH * 2 }, (__, tap) =>
+    sincAt(tap - SINC_REACH + 1 - (phase + 1) / OVERSAMPLING)
+  )
+);
+
+export const truePeakOf = (mix: Stereo) => {
+  let peak = 0;
+
+  for (const channel of [mix.left, mix.right]) {
+    for (
+      let index = SINC_REACH;
+      index < channel.length - SINC_REACH;
+      index += 1
+    ) {
+      peak = Math.max(peak, Math.abs(channel[index] ?? 0));
+
+      if (Math.abs(channel[index] ?? 0) > peak * 0.7) {
+        for (const taps of PHASES) {
+          let between = 0;
+
+          for (const [tap, weight] of taps.entries()) {
+            between += (channel[index + tap - SINC_REACH + 1] ?? 0) * weight;
+          }
+
+          peak = Math.max(peak, Math.abs(between));
+        }
+      }
+    }
+  }
+
+  return peak;
+};

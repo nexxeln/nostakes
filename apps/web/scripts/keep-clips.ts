@@ -394,6 +394,13 @@ const REPLAY: Told = {
   shortest: 11.9,
 };
 
+const DRIFT_REPLAY: Told = {
+  channels: 2,
+  longest: 13,
+  mostBytes: 2_600_000,
+  shortest: 11,
+};
+
 type Probed = typeof ProbeSchema.Type;
 
 const atomProblems = (bytes: Uint8Array, expected: Expected) => {
@@ -2018,7 +2025,11 @@ const STORY_CARD_TOP = (SIZES.Story.height - SIZES.Chat.height) / 2;
 const replayedClip = (
   engine: BrowserType,
   settings: Settings,
-  look: { readonly hand: string; readonly theme: string }
+  look: {
+    readonly hand: string;
+    readonly style: "Broadcast" | "Drift";
+    readonly theme: string;
+  }
 ) =>
   Effect.gen(function* keepReplay() {
     const origin = yield* StageOrigin;
@@ -2039,7 +2050,7 @@ const replayedClip = (
     );
 
     const page = yield* attempt("open a page", () => context.newPage());
-    const label = `${engine.name()}-${look.hand}-${look.theme.toLowerCase()}-replay`;
+    const label = `${engine.name()}-${look.hand}-${look.theme.toLowerCase()}-replay${look.style === "Drift" ? "-drift" : ""}`;
 
     yield* throttled(page, engine, settings.throttle);
     yield* attempt("open the stage", () =>
@@ -2081,6 +2092,19 @@ const replayedClip = (
     yield* attempt("tap the moment away", () =>
       page.locator("nostakes-moment .card").click()
     );
+
+    if (look.style === "Drift") {
+      yield* attempt("choose Drift", () =>
+        page.locator("nostakes-moment .style").click({ timeout: 60_000 })
+      );
+      yield* attempt("wait for the choice to be taken", () =>
+        page
+          .locator(
+            'nostakes-moment[data-style="Drift"]:not([data-clip="Ready"])'
+          )
+          .waitFor({ state: "attached", timeout: 15_000 })
+      );
+    }
 
     const before = yield* read(
       page,
@@ -2162,7 +2186,11 @@ const replayedClip = (
         still: stillIndex,
         title: { ...title, y: title.y + STORY_CARD_TOP },
       },
-      { frame: "Story", seconds: REPLAY, sound }
+      {
+        frame: "Story",
+        seconds: look.style === "Drift" ? DRIFT_REPLAY : REPLAY,
+        sound,
+      }
     );
 
     return {
@@ -2341,11 +2369,25 @@ const checks = Effect.gen(function* checkClips() {
         for (const theme of themes) {
           problems.push(
             ...(yield* reported(
-              yield* replayedClip(engine, settings, { hand, theme })
+              yield* replayedClip(engine, settings, {
+                hand,
+                style: "Broadcast",
+                theme,
+              })
             ))
           );
         }
       }
+
+      problems.push(
+        ...(yield* reported(
+          yield* replayedClip(engine, settings, {
+            hand: hands[0] ?? "AcesCracked",
+            style: "Drift",
+            theme: themes[0] ?? "Light",
+          })
+        ))
+      );
     }
 
     for (const sample of samples) {

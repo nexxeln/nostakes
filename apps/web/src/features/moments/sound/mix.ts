@@ -1,16 +1,24 @@
 import {
   added,
   chanceFrom,
+  gainOf,
   laid,
   leaned,
   mastered,
   ridden,
   roomOf,
+  steady,
   stereoOf,
+  truePeakOf,
 } from "./dsp.js";
 import type { Stereo } from "./dsp.js";
-import { LOUDNESS_TARGET, PEAK_CEILING } from "./sheet.js";
-import type { ScoreKit, ScoreSheet, ScoreTimes, Scoring } from "./sheet.js";
+import type {
+  Mastering,
+  ScoreKit,
+  ScoreSheet,
+  ScoreTimes,
+  Scoring,
+} from "./sheet.js";
 
 export const timesOf = (sheet: ScoreSheet): ScoreTimes => ({
   build: (sheet.pauseMs ?? sheet.resultMs) / 1000,
@@ -85,13 +93,43 @@ const bedLevel = (times: ScoreTimes) => (at: number) => {
   return 1;
 };
 
-const TAIL = 0.4;
-
 const LEAN_BELOW = 170;
 
 const TAG_ROOM = 0.3;
 
 const SEED_OFFSET = 17;
+
+const TRUE_PEAK_PASSES = 5;
+
+const finished = (mix: Stereo, master: Mastering): Stereo => {
+  const { truePeak } = master;
+
+  if (truePeak === undefined) {
+    return mastered(mix, master);
+  }
+
+  let { ceiling } = master;
+
+  for (let pass = 0; pass < TRUE_PEAK_PASSES; pass += 1) {
+    mastered(mix, { ceiling, loudness: master.loudness });
+
+    const over = 20 * Math.log10(truePeakOf(mix)) - truePeak;
+
+    if (over <= 0) {
+      break;
+    }
+
+    ceiling -= over + 0.2;
+  }
+
+  const left = truePeak - 20 * Math.log10(truePeakOf(mix));
+
+  if (left < 0) {
+    ridden(mix, steady(gainOf(left)));
+  }
+
+  return mix;
+};
 
 export const scoreOf = (sheet: ScoreSheet, kit: ScoreKit): Stereo => {
   const times = timesOf(sheet);
@@ -142,7 +180,10 @@ export const scoreOf = (sheet: ScoreSheet, kit: ScoreKit): Stereo => {
   added(hits, bed, 1);
   added(hits, roomOf(send, kit.room), kit.wet);
   leaned(hits, LEAN_BELOW, kit.lean);
-  ridden(hits, (at) => Math.min(1, Math.max(0, (seconds - at) / TAIL)));
+  ridden(hits, (at) =>
+    Math.min(1, Math.max(0, (seconds - at) / kit.master.tail))
+  );
+  kit.master.coloured?.(hits, times);
 
-  return mastered(hits, { ceiling: PEAK_CEILING, loudness: LOUDNESS_TARGET });
+  return finished(hits, kit.master);
 };

@@ -6,6 +6,7 @@ import {
   reachFor,
   replayScales,
 } from "../../features/moments/clip-reach.js";
+import type { ClipStyle } from "../../features/moments/clip-style.js";
 import type { MomentPicture } from "../../features/moments/picture.js";
 import {
   replayNotesOf,
@@ -31,6 +32,7 @@ export type ClipState =
 
 export interface ClipArt {
   readonly boxes: readonly PartBox[];
+  readonly calm: boolean;
   readonly look: { readonly deck: Deck; readonly theme: Theme };
   readonly story: SceneStory | null;
   readonly svg: (frame: KeptFrame) => string;
@@ -66,15 +68,49 @@ export class Clipper {
   #file: File | null = null;
   #making: AbortController | null = null;
   #dropped = false;
+  #style: ClipStyle;
 
   constructor(
     picture: MomentPicture,
     art: ClipArt,
-    changed: (state: ClipState) => void
+    look: {
+      readonly changed: (state: ClipState) => void;
+      readonly style: ClipStyle;
+    }
   ) {
     this.#picture = picture;
     this.#art = art;
-    this.#changed = changed;
+    this.#changed = look.changed;
+    this.#style = look.style;
+  }
+
+  get offersDrift(): boolean {
+    return (
+      this.#support !== null &&
+      this.#art.story !== null &&
+      tellsTheHand(this.#picture.kind, this.#picture.tier) &&
+      reachFor(deviceMemory()) === "Replay"
+    );
+  }
+
+  restyle(style: ClipStyle) {
+    if (style === this.#style) {
+      return;
+    }
+
+    const busy = this.#making !== null || this.#file !== null;
+
+    this.#style = style;
+    this.abandon();
+    this.#file = null;
+
+    if (this.#support !== null) {
+      this.#become("Waiting");
+    }
+
+    if (busy) {
+      this.prepare();
+    }
   }
 
   get state(): ClipState {
@@ -191,26 +227,42 @@ export class Clipper {
     const replay = replayOrderOf(this.#art.story);
     const short = clipFile(this.#picture, this.#art.look, order);
 
-    const vertical = (scale: number) =>
+    const vertical = (scale: number, style: ClipStyle) =>
       replay === null
         ? short
         : replayFile(this.#picture, this.#art.look, {
             ...order,
             ...replay,
             budgetMs: REPLAY_BUDGET_MS,
+            calm: this.#art.calm,
             frame: "Story",
             scale,
+            style,
             svg: this.#art.svg("Story"),
           });
 
+    const scales = replayScales(deviceMemory()).toReversed();
     let cascade: Effect.Effect<File, ClipUnavailable | ClipTooSlow> = short;
 
-    for (const scale of replayScales(deviceMemory()).toReversed()) {
+    for (const scale of scales) {
       const fallback = cascade;
 
-      cascade = vertical(scale).pipe(
+      cascade = vertical(scale, "Broadcast").pipe(
         Effect.catchTag("ClipTooSlow", () => fallback)
       );
+    }
+
+    if (this.#style === "Drift") {
+      for (const scale of scales) {
+        const fallback = cascade;
+
+        cascade = vertical(scale, "Drift").pipe(
+          Effect.catchTags({
+            ClipTooSlow: () => fallback,
+            ClipUnavailable: () => fallback,
+          })
+        );
+      }
     }
 
     Effect.runFork(

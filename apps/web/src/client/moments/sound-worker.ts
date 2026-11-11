@@ -1,5 +1,6 @@
 import { Effect, Schema } from "effect";
 
+import { CLIP_STYLES } from "../../features/moments/clip-style.js";
 import { soundtrackOf } from "../../features/moments/sound/soundtrack.js";
 import { isCloseRequest } from "./worker-close.js";
 
@@ -30,6 +31,7 @@ export const SoundRequestSchema = Schema.Struct({
     seed: Schema.Int,
     tagMs: Schema.Finite,
   }),
+  style: Schema.Literals(CLIP_STYLES),
 });
 
 export type SoundRequest = typeof SoundRequestSchema.Type;
@@ -43,7 +45,7 @@ globalThis.addEventListener("message", (event: MessageEvent<unknown>) => {
 
   Effect.runFork(
     Schema.decodeUnknownEffect(SoundRequestSchema)(event.data).pipe(
-      Effect.map(({ sheet }) => soundtrackOf(sheet)),
+      Effect.map(({ sheet, style }) => soundtrackOf(sheet, style)),
       Effect.match({
         onFailure: (failure) => {
           globalThis.postMessage(

@@ -1,5 +1,6 @@
 import { Effect, Schema } from "effect";
 
+import type { ClipStyle } from "../../features/moments/clip-style.js";
 import type { Mix } from "../../features/moments/film.js";
 import { SOUND_RATE } from "../../features/moments/sound/dsp.js";
 import type { ScoreSheet } from "../../features/moments/sound/sheet.js";
@@ -25,7 +26,8 @@ const owned = (samples: Float32Array): Float32Array<ArrayBuffer> => {
 };
 
 export const mixedOffThread = (
-  sheet: ScoreSheet
+  sheet: ScoreSheet,
+  style: ClipStyle = "Broadcast"
 ): Effect.Effect<Mix, ClipUnavailable> =>
   Effect.acquireRelease(
     Effect.try({
@@ -50,7 +52,7 @@ export const mixedOffThread = (
 
         worker.addEventListener("message", heard, { once: true });
         worker.addEventListener("error", broke, { once: true });
-        worker.postMessage({ sheet }, { transfer: [] });
+        worker.postMessage({ sheet, style }, { transfer: [] });
 
         return Effect.sync(() => {
           worker.removeEventListener("message", heard);

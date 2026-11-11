@@ -428,12 +428,14 @@ const filmFor = Effect.gen(function* chooseFilm() {
         pictureSvg(picture, { deck, fonts: "", frame: "Table", theme })
       ),
       budgetMs: null,
+      calm: params.get("calm") === "true",
       frame: cut,
       notes: replayNotesOf(hand),
       principals: seats,
       record: hand.record,
       seats: replaySeatsOf(hand),
       slot: Effect.void,
+      style: params.get("style") === "Drift" ? "Drift" : "Broadcast",
       support: { codec: "" },
       svg: pictureSvg(picture, { deck, fonts: "", frame: cut, theme }),
     }

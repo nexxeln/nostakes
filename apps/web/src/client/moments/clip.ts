@@ -1,6 +1,6 @@
 import type { SeatIndex } from "@nostakes/engine";
 import { oddsAskedBy, replayOf } from "@nostakes/room";
-import type { SeenTableEvent } from "@nostakes/room";
+import type { Replay, SeenTableEvent } from "@nostakes/room";
 import { Effect, Option } from "effect";
 
 import type { Deck, Theme } from "../../features/model.js";
@@ -13,6 +13,9 @@ import {
   shortSheet,
   tagPose,
 } from "../../features/moments/clip-plan.js";
+import type { ClipStyle } from "../../features/moments/clip-style.js";
+import { driftPlan } from "../../features/moments/drift/plan.js";
+import { driftTold } from "../../features/moments/drift/told.js";
 import { frameTime, sampledKeys } from "../../features/moments/film.js";
 import type {
   Film,
@@ -29,6 +32,7 @@ import type {
   ReplaySeat,
 } from "../../features/moments/replay-plan.js";
 import { FAMILIES } from "../../features/moments/score.js";
+import type { ScoreSheet } from "../../features/moments/sound/sheet.js";
 import { FRAME_SIZES, paletteFor } from "../../features/pictures/paper.js";
 import type { KeptFrame } from "../../features/pictures/paper.js";
 import { cardParts, ClipUnavailable } from "./clip-layers.js";
@@ -248,8 +252,10 @@ export const clipFile = (
   );
 
 export interface ReplayOrder extends ClipOrder {
+  readonly calm?: boolean;
   readonly notes: readonly ReplayNote[];
   readonly scale?: number;
+  readonly style?: ClipStyle;
   readonly principals: readonly SeatIndex[];
   readonly record: readonly SeenTableEvent[];
   readonly seats: readonly ReplaySeat[];
@@ -298,10 +304,60 @@ const spriteShots = (
 
 const UNDER_SPRITES = new Set([BASE_ROLE, "felt", "mark"]);
 
+export interface StoryPlan {
+  readonly beats: readonly { readonly at: number; readonly hold: number }[];
+  readonly sheet: ScoreSheet;
+}
+
 export interface ReplayStory {
   readonly film: Film;
-  readonly plan: ReplayPlan;
+  readonly plan: StoryPlan;
 }
+
+const driftStory = (
+  replay: Replay,
+  picture: MomentPicture,
+  look: { readonly deck: Deck; readonly theme: Theme },
+  order: ReplayOrder
+): Effect.Effect<ReplayStory, ClipUnavailable> =>
+  Effect.gen(function* driftClip() {
+    const plan = driftPlan(
+      driftTold(replay, {
+        kind: picture.kind,
+        principals: order.principals,
+        seats: order.seats,
+        title: picture.title,
+      }),
+      {
+        calm: order.calm ?? false,
+        deck: look.deck,
+        kept: {
+          shows: [
+            ...picture.boards.flat(),
+            ...picture.faces.flatMap((face) => face.cards),
+          ],
+          svg: order.svg,
+        },
+        seed: replay.handNumber,
+        theme: look.theme,
+      }
+    );
+
+    yield* order.slot;
+
+    return {
+      film: {
+        camera: plan.camera,
+        fps: CLIP_FPS,
+        height: FRAME_SIZES.Story.height,
+        length: plan.length,
+        shots: plan.shots,
+        sound: yield* mixedOffThread(plan.sheet, "Drift"),
+        width: FRAME_SIZES.Story.width,
+      },
+      plan,
+    };
+  });
 
 export const replayStory = (
   worker: ClipWorker,
@@ -330,6 +386,10 @@ export const replayStory = (
           })
       )
     );
+
+    if (order.style === "Drift" && frame === "Story") {
+      return yield* driftStory(replay, picture, look, order);
+    }
 
     const told = replayPlan(replay, {
       frame,

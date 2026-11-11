@@ -30,6 +30,7 @@ import {
 } from "./kit.js";
 import type { SmallLook } from "./kit.js";
 import { gridOf, tensionAt } from "./mix.js";
+import { LOUDNESS_TARGET, PEAK_CEILING } from "./sheet.js";
 import type { ScoreKit, Scoring, SmallCue, SmallSound } from "./sheet.js";
 
 const BROADCAST_BEAT = 60 / 96;
@@ -400,6 +401,7 @@ export const BROADCAST: ScoreKit = {
   bed: broadcastBed,
   hit: broadcastHit,
   lean: 0.5,
+  master: { ceiling: PEAK_CEILING, loudness: LOUDNESS_TARGET, tail: 0.4 },
   pause: broadcastPause,
   room: { damp: 0.35, size: 0.86 },
   small: broadcastSmall,

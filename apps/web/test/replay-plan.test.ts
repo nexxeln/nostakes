@@ -33,6 +33,9 @@ import type { Audience, SeenTableEvent } from "@nostakes/room";
 import { Match, Option, Result, Schema } from "effect";
 import * as Arbitrary from "effect/Arbitrary";
 
+import { driftPlan } from "../src/features/moments/drift/plan.js";
+import type { DriftPlan } from "../src/features/moments/drift/plan.js";
+import { driftTold } from "../src/features/moments/drift/told.js";
 import { replayPlan } from "../src/features/moments/replay-plan.js";
 import type { ReplayPlan } from "../src/features/moments/replay-plan.js";
 import type { SeatStack } from "../src/features/moments/watch.js";
@@ -42,6 +45,8 @@ const handSeed = Arbitrary.schema(
 );
 
 const HANDS = { arbitrary: { runs: 150 }, timeout: 120_000 };
+
+const DRIFT_HANDS = { arbitrary: { runs: 60 }, timeout: 120_000 };
 
 const chipCount = (amount: number) => ChipsSchema.make(amount);
 
@@ -253,6 +258,83 @@ const planFor = (feed: readonly SeenTableEvent[], seed: number) =>
     )
   );
 
+const driftFor = (feed: readonly SeenTableEvent[], seed: number) =>
+  replayOf(feed, evenChances).pipe(
+    Option.map((replay) =>
+      driftPlan(
+        driftTold(replay, {
+          kind: KINDS[seed % KINDS.length] ?? "BigHand",
+          principals: replay.dealtIn.slice(0, 2),
+          seats: replay.dealtIn.map((seat) => ({
+            avatar: "",
+            name: `Player ${seat}`,
+            seat,
+            stack: 1000,
+          })),
+          title: "A hand",
+        }),
+        {
+          calm: seed % 3 === 0,
+          deck: "TwoColour",
+          kept: { shows: [], svg: "" },
+          seed,
+          theme: "Light",
+        }
+      )
+    )
+  );
+
+const driftDigest = (plan: DriftPlan) => ({
+  beats: plan.beats,
+  dealt: plan.dealt,
+  sheet: plan.sheet,
+  shots: plan.shots.map((shot) => [shot.box, shot.keys, shot.shows]),
+});
+
+const driftFaceUp = (plan: DriftPlan) =>
+  plan.shots.flatMap((shot) =>
+    shot.shows.map((card) => ({ card, shownAt: shot.keys[0]?.at ?? 0 }))
+  );
+
+const driftNeverShown = (
+  plan: DriftPlan,
+  spectator: readonly SeenTableEvent[]
+) => {
+  const shown = new Set(
+    spectator.flatMap(revealedIn).map((card) => cardText(card))
+  );
+
+  return driftFaceUp(plan).filter(({ card }) => !shown.has(card));
+};
+
+const driftBoardTooSoon = (
+  plan: DriftPlan,
+  spectator: readonly SeenTableEvent[]
+) => {
+  const order = spectator.flatMap((event) =>
+    Events.$is("StreetDealt")(event) ? event.cards.map(cardText) : []
+  );
+
+  const dealtAt = new Map(plan.dealt.map((each) => [each.card, each.at]));
+
+  const outOfOrder = order.flatMap((card, index) => {
+    const before = order[index - 1];
+
+    return before === undefined ||
+      (dealtAt.get(before) ?? -1) <= (dealtAt.get(card) ?? -1)
+      ? []
+      : [{ before, card }];
+  });
+
+  const early = driftFaceUp(plan).flatMap(({ card, shownAt }) =>
+    order.includes(card) && shownAt < (dealtAt.get(card) ?? Infinity)
+      ? [{ card, shownAt }]
+      : []
+  );
+
+  return [...outOfOrder, ...early];
+};
+
 const faceUp = (plan: ReplayPlan) =>
   plan.sprites.flatMap((sprite) =>
     sprite.art.kind === "Card" && sprite.art.card.length > 0
@@ -329,20 +411,47 @@ describe("a moment's hand replay", () => {
   );
 
   it.prop(
-    "plans the same replay on every device",
+    "holds the same two rules in the Drift cut, on any device",
+    { seed: handSeed },
+    ({ seed }) => {
+      const events = generatedHand(seed);
+      const spectator = feedFor(events, Audiences.Spectator());
+
+      expect(
+        everyDevice(events).flatMap((audience) =>
+          Option.match(driftFor(feedFor(events, audience), seed), {
+            onNone: () => [],
+            onSome: (plan) => [
+              ...driftNeverShown(plan, spectator),
+              ...driftBoardTooSoon(plan, spectator),
+            ],
+          })
+        )
+      ).toStrictEqual([]);
+    },
+    DRIFT_HANDS
+  );
+
+  it.prop(
+    "plans the same replay on every device, in both styles",
     { seed: handSeed },
     ({ seed }) => {
       const events = generatedHand(seed);
 
-      const spectator = JSON.stringify(
-        planFor(feedFor(events, Audiences.Spectator()), seed)
-      );
+      const bothFor = (audience: Audience) => {
+        const feed = feedFor(events, audience);
 
-      expect(
-        audiencesOf(events).map((audience) =>
-          JSON.stringify(planFor(feedFor(events, audience), seed))
-        )
-      ).toStrictEqual(audiencesOf(events).map(() => spectator));
+        return JSON.stringify([
+          planFor(feed, seed),
+          driftFor(feed, seed).pipe(Option.map(driftDigest)),
+        ]);
+      };
+
+      const spectator = bothFor(Audiences.Spectator());
+
+      expect(audiencesOf(events).map(bothFor)).toStrictEqual(
+        audiencesOf(events).map(() => spectator)
+      );
     },
     HANDS
   );

@@ -1,4 +1,4 @@
-import type { Chance, Mono } from "./dsp.js";
+import type { Chance, Mono, Stereo } from "./dsp.js";
 
 export type Outcome = "Loss" | "Split" | "Win";
 
@@ -53,11 +53,20 @@ export interface Scoring {
   readonly times: ScoreTimes;
 }
 
+export interface Mastering {
+  readonly ceiling: number;
+  readonly loudness: number;
+  readonly coloured?: (mix: Stereo, times: ScoreTimes) => void;
+  readonly tail: number;
+  readonly truePeak?: number;
+}
+
 export interface ScoreKit {
   readonly aftermath: (scoring: Scoring) => void;
   readonly bed: (scoring: Scoring) => void;
   readonly hit: (scoring: Scoring, at: number) => void;
   readonly lean: number;
+  readonly master: Mastering;
   readonly pause: (scoring: Scoring, from: number, to: number) => void;
   readonly room: { readonly damp: number; readonly size: number };
   readonly small: (scoring: Scoring, cue: SmallCue) => void;
