@@ -20,6 +20,7 @@ import {
 import type {
   MemberCommand,
   Reaction,
+  RoomSignal,
   RoomView,
   SeenEvent,
 } from "@nostakes/room";
@@ -83,7 +84,12 @@ import type {
   RoomRecord,
   RulesSheet,
 } from "./model.js";
-import { NO_MOMENTS, seatStacksOf, watchedMoments } from "./moments/watch.js";
+import {
+  NO_MOMENTS,
+  reactionNoted,
+  seatStacksOf,
+  watchedMoments,
+} from "./moments/watch.js";
 import { enteredName, nameRefusal } from "./names.js";
 import { considerUpdate } from "./page-update.js";
 import { rejectionText } from "./rejections.js";
@@ -772,6 +778,15 @@ const peek = (model: Model, looking: boolean): Return =>
       : { model }
   );
 
+const reactionKept = (
+  room: InRoom,
+  from: InRoom["player"],
+  signal: RoomSignal
+): InRoom =>
+  RoomSignalSchema.guards.Reaction(signal)
+    ? { ...room, moments: reactionNoted(room.moments, from, signal.reaction) }
+    : room;
+
 const react = (model: Model, reaction: Reaction): Return =>
   inRoom(model, (room) =>
     isLive(room)
@@ -1437,12 +1452,16 @@ export const update = (model: Model, message: Message): Return =>
         model: {
           ...withRoom(
             { ...model, now: receivedAt },
-            heard(
-              forgetExpired(room, receivedAt),
+            reactionKept(
+              heard(
+                forgetExpired(room, receivedAt),
+                from,
+                signal,
+                receivedAt,
+                model.nextKey
+              ),
               from,
-              signal,
-              receivedAt,
-              model.nextKey
+              signal
             )
           ),
           nextKey: model.nextKey + 1,
@@ -1510,12 +1529,16 @@ export const update = (model: Model, message: Message): Return =>
             model: {
               ...withRoom(
                 { ...model, now: at },
-                reacted(
-                  forgetExpired(room, at),
+                reactionKept(
+                  reacted(
+                    forgetExpired(room, at),
+                    room.player,
+                    signal.reaction,
+                    at,
+                    model.nextKey
+                  ),
                   room.player,
-                  signal.reaction,
-                  at,
-                  model.nextKey
+                  signal
                 )
               ),
               nextKey: model.nextKey + 1,

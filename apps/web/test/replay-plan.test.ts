@@ -37,11 +37,15 @@ import { replayHand } from "../scripts/moments/replay-hands.js";
 import {
   BEAT_GRID_MS,
   poseAtKeys,
+  replayNotesOf,
   replayPlan,
   replaySeatsOf,
   tellsTheHand,
 } from "../src/features/moments/replay-plan.js";
-import type { ReplayPlan } from "../src/features/moments/replay-plan.js";
+import type {
+  ReplayNote,
+  ReplayPlan,
+} from "../src/features/moments/replay-plan.js";
 import { startingStacks } from "../src/features/moments/watch.js";
 import type { SeatStack } from "../src/features/moments/watch.js";
 
@@ -404,6 +408,113 @@ describe("a replay of a hand with a house rule", () => {
       onlyOneTier: [true, true, true],
     });
   });
+});
+
+const bluff = replayHand("AllInBluff", { deck: "TwoColour", theme: "Light" });
+
+const bluffPlan = (notes: readonly ReplayNote[]) =>
+  replayOf(bluff.record, evenChances).pipe(
+    Option.map((replay) =>
+      replayPlan(replay, {
+        frame: "Story",
+        kind: "Bluff",
+        notes,
+        principals: [],
+        seats: replaySeatsOf(bluff),
+        tier: 2,
+      })
+    )
+  );
+
+const plain = (text: string) => text.replaceAll(/[\u2066-\u2069]/gu, "");
+
+const CLOCK_WORDS = /time bank|whole clock/u;
+
+const REACTION = /\p{Extended_Pictographic}/u;
+
+const saidOf = (plan: ReplayPlan) =>
+  written(plan).map(({ text }) => plain(text));
+
+const clockSaid = (notes: readonly ReplayNote[]) =>
+  bluffPlan(notes).pipe(
+    Option.map((plan) => saidOf(plan).filter((text) => CLOCK_WORDS.test(text)))
+  );
+
+describe("what the device kept of a hand, in its replay", () => {
+  it("says a player went into the time bank, or used the whole clock, only on the decision the room recorded it for", () => {
+    const kept = replayNotesOf(bluff);
+
+    const clock = (kind: "Tanked" | "TimedOut") =>
+      kept.flatMap((note): readonly ReplayNote[] => {
+        if (note.kind === "Reacted") {
+          return [];
+        }
+
+        return kind === "Tanked"
+          ? [{ ...note, kind }]
+          : [{ after: note.after + 1, kind, seat: note.seat }];
+      });
+
+    expect({
+      nothingKept: clockSaid([]),
+      tanked: clockSaid(clock("Tanked")),
+      timedOut: clockSaid(clock("TimedOut")),
+    }).toStrictEqual({
+      nothingKept: Option.some([]),
+      tanked: Option.some(["Kit goes into the time bank."]),
+      timedOut: Option.some(["Kit used the whole clock."]),
+    });
+  });
+
+  it("floats each reaction with its sender's name from the beat it was thrown in, and clears it before the card", () => {
+    expect(
+      bluffPlan(replayNotesOf(bluff)).pipe(
+        Option.map((plan) =>
+          plan.sprites.flatMap((sprite) =>
+            sprite.art.kind === "Pill" && REACTION.test(sprite.art.text)
+              ? [
+                  {
+                    goneForTheCard:
+                      poseAtKeys(sprite.keys, plan.cardAt).opacity === 0,
+                    inThePayoff:
+                      sprite.shownAt >= plan.sheet.resultMs &&
+                      sprite.shownAt < plan.cardAt,
+                    text: plain(sprite.art.text),
+                  },
+                ]
+              : []
+          )
+        )
+      )
+    ).toStrictEqual(
+      Option.some([
+        { goneForTheCard: true, inThePayoff: true, text: "😂 Sam" },
+        { goneForTheCard: true, inThePayoff: true, text: "👏 Kit" },
+      ])
+    );
+  });
+
+  it.prop(
+    "never mentions a clock or shows a reaction the device did not keep",
+    { seed: handSeed },
+    ({ seed }) => {
+      const plan = planFor(
+        feedFor(generatedHand(seed), Audiences.Spectator()),
+        seed
+      );
+
+      expect(
+        plan.pipe(
+          Option.map((found) =>
+            saidOf(found).filter(
+              (text) => CLOCK_WORDS.test(text) || REACTION.test(text)
+            )
+          )
+        )
+      ).toStrictEqual(Option.some([]));
+    },
+    HANDS
+  );
 });
 
 describe("a moment's hand replay", () => {

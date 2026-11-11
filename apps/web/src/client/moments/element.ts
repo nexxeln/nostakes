@@ -306,6 +306,21 @@ class NostakesMoment extends HTMLElement {
     delete this.dataset.clip;
   }
 
+  #storyNow(scene: MomentScene): SceneStory | null {
+    const { story } = scene;
+    const latest = this.#newest.hand;
+
+    if (story === undefined) {
+      return null;
+    }
+
+    return latest !== null &&
+      latest.notes !== undefined &&
+      handKey(latest) === handKey(story.hand)
+      ? { ...story, hand: { ...story.hand, notes: latest.notes } }
+      : story;
+  }
+
   #offerClip(scene: MomentScene, boxes: readonly PartBox[]) {
     idle(() => {
       Effect.runFork(
@@ -320,7 +335,7 @@ class NostakesMoment extends HTMLElement {
                     {
                       boxes,
                       look: { deck: scene.deck, theme: scene.theme },
-                      story: scene.story ?? null,
+                      story: this.#storyNow(scene),
                       svg: pictureSvg(scene.picture, {
                         deck: scene.deck,
                         fonts: "",

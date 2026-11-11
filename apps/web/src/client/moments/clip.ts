@@ -24,6 +24,7 @@ import type { MomentPicture } from "../../features/moments/picture.js";
 import { spriteMarkup } from "../../features/moments/replay-art.js";
 import { outcomeOf, replayPlan } from "../../features/moments/replay-plan.js";
 import type {
+  ReplayNote,
   ReplayPlan,
   ReplaySeat,
 } from "../../features/moments/replay-plan.js";
@@ -273,6 +274,7 @@ export const clipFile = (
   );
 
 export interface ReplayOrder extends ClipOrder {
+  readonly notes: readonly ReplayNote[];
   readonly principals: readonly SeatIndex[];
   readonly record: readonly SeenTableEvent[];
   readonly seats: readonly ReplaySeat[];
@@ -357,6 +359,7 @@ export const replayStory = (
     const told = replayPlan(replay, {
       frame,
       kind: picture.kind,
+      notes: order.notes,
       principals: order.principals,
       seats: order.seats,
       tier: picture.tier,

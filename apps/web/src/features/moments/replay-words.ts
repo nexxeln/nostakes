@@ -90,6 +90,7 @@ export const REPLAY_WORDS = {
   callAllIn: (name: string) => `${who(name)} calls.\nAll in.`,
   climbs: (name: string, percent: number) =>
     `${who(name)} climbs to ${percent}%.`,
+  clock: (name: string) => `${who(name)} used\nthe whole clock.`,
   dead: (name: string) => `${who(name)} is drawing dead.`,
   fold: (name: string) => `${who(name)} folds.`,
   folds: (count: number) => `${countWord(count)} fold.`,

@@ -12,8 +12,9 @@ import { clipWorker, filmOn } from "../../src/client/moments/film-file.js";
 import { shortSheet } from "../../src/features/moments/clip-plan.js";
 import { pictureSvg } from "../../src/features/moments/picture.js";
 import {
-  replaySeatsOf,
   outcomeOf,
+  replayNotesOf,
+  replaySeatsOf,
 } from "../../src/features/moments/replay-plan.js";
 import { shownMomentOf } from "../../src/features/moments/scene.js";
 import { filmSheet } from "./film-sheet.js";
@@ -170,6 +171,7 @@ const program = Effect.gen(function* reel() {
       boxes,
       budgetMs: null,
       frame,
+      notes: replayNotesOf(hand),
       principals: seats,
       record: hand.record,
       seats: replaySeatsOf(hand),

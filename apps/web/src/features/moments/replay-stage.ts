@@ -174,9 +174,51 @@ const leave = (stager: Stager, name: string, at: number, ms: number) => {
   stager.slots.delete(name);
 };
 
+export const poseAtKeys = (keys: readonly Key[], ms: number): Pose => {
+  const [first] = keys;
+
+  if (first === undefined || ms < first.at) {
+    return HIDDEN;
+  }
+
+  const next = keys.findIndex((key) => key.at > ms);
+
+  if (next === -1) {
+    return lastPose(keys);
+  }
+
+  const from = keys[next - 1] ?? first;
+  const to = keys[next] ?? from;
+  const amount = 1 - (1 - (ms - from.at) / Math.max(1, to.at - from.at)) ** 3;
+  const mix = (one: number, other: number) => one + (other - one) * amount;
+
+  return {
+    dx: mix(from.pose.dx, to.pose.dx),
+    dy: mix(from.pose.dy, to.pose.dy),
+    opacity: mix(from.pose.opacity, to.pose.opacity),
+    scale: mix(from.pose.scale, to.pose.scale),
+    squeeze: mix(from.pose.squeeze, to.pose.squeeze),
+    turn: mix(from.pose.turn, to.pose.turn),
+  };
+};
+
 export const cleared = (stager: Stager, at: number, ms: number) => {
   for (const name of stager.slots.keys()) {
     leave(stager, name, at, ms);
+  }
+
+  for (const sprite of stager.sprites) {
+    if (lastAt(sprite.keys) > at + ms) {
+      const held = poseAtKeys(sprite.keys, at);
+      const kept = sprite.keys.filter((key) => key.at < at);
+
+      sprite.keys.length = 0;
+      sprite.keys.push(
+        ...kept,
+        { at, pose: held },
+        { at: at + ms, pose: { ...held, opacity: 0 } }
+      );
+    }
   }
 };
 
@@ -210,6 +252,24 @@ export const sent = (
     },
   });
   stager.slots.delete(name);
+};
+
+const FLOAT = { fades: 1600, rests: 140, rises: 230, travels: 1250 };
+
+export const floated = (stager: Stager, art: SpriteArt, at: number) => {
+  const low = { ...REST, dy: 26, opacity: 0 };
+  const high = { ...REST, dy: -FLOAT.rises };
+
+  stager.sprites.push({
+    art,
+    keys: [
+      { at, pose: low },
+      { at: at + FLOAT.rests, pose: REST },
+      { at: at + FLOAT.travels, pose: high },
+      { at: at + FLOAT.fades, pose: { ...high, opacity: 0 } },
+    ],
+    shownAt: at,
+  });
 };
 
 export const staged = (
@@ -263,32 +323,4 @@ export const staged = (
       }
     }
   }
-};
-
-export const poseAtKeys = (keys: readonly Key[], ms: number): Pose => {
-  const [first] = keys;
-
-  if (first === undefined || ms < first.at) {
-    return HIDDEN;
-  }
-
-  const next = keys.findIndex((key) => key.at > ms);
-
-  if (next === -1) {
-    return lastPose(keys);
-  }
-
-  const from = keys[next - 1] ?? first;
-  const to = keys[next] ?? from;
-  const amount = 1 - (1 - (ms - from.at) / Math.max(1, to.at - from.at)) ** 3;
-  const mix = (one: number, other: number) => one + (other - one) * amount;
-
-  return {
-    dx: mix(from.pose.dx, to.pose.dx),
-    dy: mix(from.pose.dy, to.pose.dy),
-    opacity: mix(from.pose.opacity, to.pose.opacity),
-    scale: mix(from.pose.scale, to.pose.scale),
-    squeeze: mix(from.pose.squeeze, to.pose.squeeze),
-    turn: mix(from.pose.turn, to.pose.turn),
-  };
 };

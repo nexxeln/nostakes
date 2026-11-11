@@ -550,6 +550,7 @@ const tableView = (
                 callouts: view.settings.moments,
                 deck: model.deck,
                 lastHand,
+                notes: room.moments.notes,
                 people: peopleOf(view),
                 record: room.moments.record,
                 stacks: room.moments.stacks,

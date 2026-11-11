@@ -1,6 +1,17 @@
-import { Events, SeatIndexSchema } from "@nostakes/engine";
-import { RoomViews, SeenEvents, SeenTableEventSchema } from "@nostakes/room";
-import type { RoomView, SeenEvent, SeenTableEvent } from "@nostakes/room";
+import { Events, PlayerIdSchema, SeatIndexSchema } from "@nostakes/engine";
+import type { PlayerId } from "@nostakes/engine";
+import {
+  ReactionSchema,
+  RoomViews,
+  SeenEvents,
+  SeenTableEventSchema,
+} from "@nostakes/room";
+import type {
+  Reaction,
+  RoomView,
+  SeenEvent,
+  SeenTableEvent,
+} from "@nostakes/room";
 import { Match, Option, Schema } from "effect";
 
 export const SeatStackSchema = Schema.Struct({
@@ -10,7 +21,26 @@ export const SeatStackSchema = Schema.Struct({
 
 export type SeatStack = typeof SeatStackSchema.Type;
 
+export const HandNoteSchema = Schema.Union([
+  Schema.Struct({
+    after: Schema.Int,
+    kind: Schema.Literals(["Tanked", "TimedOut"]),
+    player: PlayerIdSchema,
+  }),
+  Schema.Struct({
+    after: Schema.Int,
+    kind: Schema.Literal("Reacted"),
+    player: PlayerIdSchema,
+    reaction: ReactionSchema,
+  }),
+]);
+
+export type HandNote = typeof HandNoteSchema.Type;
+
+export const MOST_NOTES = 24;
+
 export const MomentWatchSchema = Schema.Struct({
+  notes: Schema.Array(HandNoteSchema),
   record: Schema.Array(SeenTableEventSchema),
   seq: Schema.Int,
   stacks: Schema.Array(SeatStackSchema),
@@ -18,7 +48,12 @@ export const MomentWatchSchema = Schema.Struct({
 
 export type MomentWatch = typeof MomentWatchSchema.Type;
 
-export const NO_MOMENTS: MomentWatch = { record: [], seq: -1, stacks: [] };
+export const NO_MOMENTS: MomentWatch = {
+  notes: [],
+  record: [],
+  seq: -1,
+  stacks: [],
+};
 
 export const seatStacksOf = (view: RoomView): readonly SeatStack[] =>
   RoomViews.$is("Open")(view)
@@ -105,12 +140,44 @@ const recorded = (
   return contiguous && record.length > 0 ? [...record, event.event] : [];
 };
 
+const noted = (
+  notes: readonly HandNote[],
+  note: HandNote
+): readonly HandNote[] =>
+  notes.length < MOST_NOTES ? [...notes, note] : notes;
+
+const clockNoted = (
+  notes: readonly HandNote[],
+  record: readonly SeenTableEvent[],
+  event: SeenEvent
+): readonly HandNote[] => {
+  if (record.length === 0 || record.some(Events.$is("HandEnded"))) {
+    return notes;
+  }
+
+  if (SeenEvents.$is("TimeBankStarted")(event)) {
+    return noted(notes, {
+      after: record.length,
+      kind: "Tanked",
+      player: event.player,
+    });
+  }
+
+  return SeenEvents.$is("TimedOut")(event)
+    ? noted(notes, {
+        after: record.length,
+        kind: "TimedOut",
+        player: event.player,
+      })
+    : notes;
+};
+
 export const watchedMoments = (
   watch: MomentWatch,
   applied: readonly Applied[],
   seats: readonly SeatStack[] = []
 ): MomentWatch => {
-  let { record, seq, stacks } = watch;
+  let { notes, record, seq, stacks } = watch;
 
   for (const { event, seq: at } of applied) {
     record = recorded(record, event, seq < 0 || at === seq + 1);
@@ -121,17 +188,38 @@ export const watchedMoments = (
       Events.$is("HandStarted")(event.event)
     ) {
       stacks = [];
+      notes = [];
     }
+
+    notes = clockNoted(notes, record, event);
   }
 
   if (record.length === 0) {
     stacks = [];
+    notes = [];
   } else if (stacks.length === 0) {
     stacks = startingStacks(record, seats);
   }
 
-  return { record, seq, stacks };
+  return { notes, record, seq, stacks };
 };
+
+export const reactionNoted = (
+  watch: MomentWatch,
+  player: PlayerId,
+  reaction: Reaction
+): MomentWatch =>
+  watch.record.length === 0
+    ? watch
+    : {
+        ...watch,
+        notes: noted(watch.notes, {
+          after: watch.record.length,
+          kind: "Reacted",
+          player,
+          reaction,
+        }),
+      };
 
 export const handEnded = (record: readonly SeenTableEvent[]) =>
   record.some(Events.$is("HandEnded"));

@@ -6,7 +6,10 @@ import { measureParts } from "../../src/client/moments/clip-measure.js";
 import { replayFilm } from "../../src/client/moments/clip.js";
 import { clipWorker } from "../../src/client/moments/film-file.js";
 import { pictureSvg } from "../../src/features/moments/picture.js";
-import { replaySeatsOf } from "../../src/features/moments/replay-plan.js";
+import {
+  replayNotesOf,
+  replaySeatsOf,
+} from "../../src/features/moments/replay-plan.js";
 import { shownMomentOf } from "../../src/features/moments/scene.js";
 import { evenTimes, filmSheet } from "./film-sheet.js";
 import { replayHand } from "./replay-hands.js";
@@ -68,6 +71,7 @@ const program = Effect.gen(function* storyboard() {
       boxes,
       budgetMs: null,
       frame,
+      notes: replayNotesOf(hand),
       principals: seats,
       record: hand.record,
       seats: replaySeatsOf(hand),

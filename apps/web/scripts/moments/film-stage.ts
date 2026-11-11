@@ -15,7 +15,10 @@ import type {
 } from "../../src/features/moments/film.js";
 import { frameTime } from "../../src/features/moments/film.js";
 import { pictureSvg } from "../../src/features/moments/picture.js";
-import { replaySeatsOf } from "../../src/features/moments/replay-plan.js";
+import {
+  replayNotesOf,
+  replaySeatsOf,
+} from "../../src/features/moments/replay-plan.js";
 import { shownMomentOf } from "../../src/features/moments/scene.js";
 import { REST } from "../../src/features/moments/timeline.js";
 import {
@@ -413,6 +416,7 @@ const filmFor = Effect.gen(function* chooseFilm() {
       ),
       budgetMs: null,
       frame: "Chat",
+      notes: replayNotesOf(hand),
       principals: seats,
       record: hand.record,
       seats: replaySeatsOf(hand),

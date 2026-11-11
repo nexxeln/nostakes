@@ -128,11 +128,20 @@ interface Player {
   readonly stack: number;
 }
 
+type Noted =
+  | { readonly kind: "Tanked"; readonly seat: number }
+  | {
+      readonly kind: "Reacted";
+      readonly reaction: "Clap" | "Cry" | "Fire" | "Laugh" | "Wow";
+      readonly seat: number;
+    };
+
 interface Scripted {
   readonly deck: string;
   readonly house?: House;
   readonly maxRuns: number;
   readonly moves: readonly Command[];
+  readonly noted?: readonly Noted[];
   readonly players: readonly Player[];
 }
 
@@ -163,6 +172,11 @@ export const REPLAY_HANDS = {
       act(0, raises(1280)),
       act(2, folds),
       shows(0, "8h 7h"),
+    ],
+    noted: [
+      { kind: "Tanked", seat: 2 },
+      { kind: "Reacted", reaction: "Laugh", seat: 1 },
+      { kind: "Reacted", reaction: "Clap", seat: 2 },
     ],
     players: [
       { look: 5, name: "Lou", stack: 1500 },
@@ -436,6 +450,22 @@ export const replayHand = (
       })),
       yourCards: [],
     },
+    notes: (scripted.noted ?? []).map((note) =>
+      note.kind === "Tanked"
+        ? {
+            after: feed.findLastIndex(
+              (event) => Events.$is("Folded")(event) && event.seat === note.seat
+            ),
+            kind: "Tanked" as const,
+            player: player(seat(note.seat)),
+          }
+        : {
+            after: feed.length,
+            kind: "Reacted" as const,
+            player: player(seat(note.seat)),
+            reaction: note.reaction,
+          }
+    ),
     people: scripted.players.map((each, index) => ({
       avatar: codeFor(randomAvatar(each.look)),
       name: each.name,

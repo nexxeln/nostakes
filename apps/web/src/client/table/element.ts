@@ -3,7 +3,7 @@ import type { Expression, Theme } from "@nostakes/avatar";
 import { REACTIONS } from "@nostakes/room";
 import type { Reaction } from "@nostakes/room";
 
-import { PEEK_REFRESH_MS } from "../../features/signals.js";
+import { PEEK_REFRESH_MS, REACTION_GLYPHS } from "../../features/signals.js";
 import { showdownWords, showOffer } from "../../features/table/showing.js";
 import type { ShowOffer } from "../../features/table/showing.js";
 import { raiseDetents, raiseLadder } from "../../features/table/sizing.js";
@@ -630,14 +630,6 @@ const keyParts = (
   }
 
   return bettingKeys(legal, me);
-};
-
-const REACTION_GLYPHS: Record<Reaction, string> = {
-  Clap: "👏",
-  Cry: "😢",
-  Fire: "🔥",
-  Laugh: "😂",
-  Wow: "😮",
 };
 
 const PEEK_SETTLE_MS = 120;

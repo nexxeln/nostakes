@@ -12,6 +12,14 @@ export const REACTION_SHOWN_MS = 2400;
 
 export const KEPT_REACTIONS = 12;
 
+export const REACTION_GLYPHS: Readonly<Record<Reaction, string>> = {
+  Clap: "👏",
+  Cry: "😢",
+  Fire: "🔥",
+  Laugh: "😂",
+  Wow: "😮",
+};
+
 export const reacted = (
   room: InRoom,
   player: PlayerId,

@@ -6,11 +6,19 @@ import type { MomentKind, Replay, ReplayStep, Tier } from "@nostakes/room";
 
 import { FRAME_SIZES } from "../pictures/paper.js";
 import type { KeptFrame } from "../pictures/paper.js";
+import { REACTION_GLYPHS } from "../signals.js";
 import type { MomentHand } from "./element.js";
 import { handName, startingHandName } from "./hand-names.js";
 import { STAGE, captionLines, layoutOf } from "./replay-shots.js";
 import type { Cast, Chances, Person, Shot } from "./replay-shots.js";
-import { SLAM_MS, cleared, sent, staged, stagerOf } from "./replay-stage.js";
+import {
+  SLAM_MS,
+  cleared,
+  floated,
+  sent,
+  staged,
+  stagerOf,
+} from "./replay-stage.js";
 import type { Key, ReplaySprite } from "./replay-stage.js";
 import { REPLAY_WORDS, shortName } from "./replay-words.js";
 import { FAMILIES } from "./score.js";
@@ -46,12 +54,51 @@ export const replaySeatsOf = (hand: MomentHand): readonly ReplaySeat[] =>
     };
   });
 
+export type ReplayNote =
+  | {
+      readonly after: number;
+      readonly kind: "Tanked" | "TimedOut";
+      readonly seat: SeatIndex;
+    }
+  | {
+      readonly after: number;
+      readonly glyph: string;
+      readonly kind: "Reacted";
+      readonly name: string;
+    };
+
+export const replayNotesOf = (hand: MomentHand): readonly ReplayNote[] =>
+  (hand.notes ?? []).flatMap((note): readonly ReplayNote[] => {
+    if (note.kind !== "Reacted") {
+      const dealt = hand.lastHand.dealtIn.find(
+        (each) => each.player === note.player
+      );
+
+      return dealt === undefined
+        ? []
+        : [{ after: note.after, kind: note.kind, seat: dealt.seat }];
+    }
+
+    const person = hand.people.find((each) => each.player === note.player);
+
+    return person === undefined
+      ? []
+      : [
+          {
+            after: note.after,
+            glyph: REACTION_GLYPHS[note.reaction],
+            kind: "Reacted",
+            name: shortName(person.name),
+          },
+        ];
+  });
+
 export interface ReplayFacts {
   readonly frame: KeptFrame;
   readonly kind: MomentKind;
+  readonly notes?: readonly ReplayNote[];
   readonly principals: readonly SeatIndex[];
   readonly seats: readonly ReplaySeat[];
-  readonly tanked?: readonly SeatIndex[];
   readonly tier: Tier;
 }
 
@@ -90,6 +137,8 @@ export const SHORTEST_MS = 12_000;
 export const LONGEST_MS = 25_000;
 
 const HOOK_MS = 1900;
+
+const TANK_MS = 1100;
 
 const PAUSE_MS = 1900;
 
@@ -164,6 +213,7 @@ interface Show {
   readonly fly: (name: string, by: { x: number; y: number }) => void;
   readonly mark: (what: Mark, offset?: number) => void;
   readonly punch: () => void;
+  readonly react: (glyph: string, name: string, place: number) => void;
   readonly push: (to: number) => void;
   readonly seat: (seat: SeatIndex) => DraftSeat;
   readonly seen: (record: number, offset: number) => void;
@@ -189,6 +239,8 @@ type Decisive =
   | { readonly kind: "Fold"; readonly step: ActedStep }
   | { readonly kind: "None" };
 
+type Reacted = Extract<ReplayNote, { kind: "Reacted" }>;
+
 interface Told {
   readonly cast: Cast;
   readonly decisive: Decisive;
@@ -197,6 +249,8 @@ interface Told {
   readonly names: ReadonlyMap<SeatIndex, string>;
   readonly other: SeatIndex | null;
   readonly tabled: ReadonlyMap<SeatIndex, readonly Card[]>;
+  readonly tanks: ReadonlySet<ActedStep>;
+  readonly timeouts: ReadonlySet<ActedStep>;
   readonly winners: ReadonlyMap<number, readonly SeatIndex[]>;
 }
 
@@ -355,6 +409,34 @@ const loudOf = (replay: Replay): ReadonlySet<ActedStep> => {
   ]);
 };
 
+const clocksOf = (replay: Replay, facts: ReplayFacts) => {
+  const acted = replay.steps.filter(ReplaySteps.$is("Acted"));
+  const tanks = new Set<ActedStep>();
+  const timeouts = new Set<ActedStep>();
+
+  for (const note of facts.notes ?? []) {
+    if (note.kind === "Tanked") {
+      const decided = acted.find(
+        (step) => step.seat === note.seat && step.at >= note.after
+      );
+
+      if (decided !== undefined) {
+        tanks.add(decided);
+      }
+    } else if (note.kind === "TimedOut") {
+      const forced = acted.findLast(
+        (step) => step.seat === note.seat && step.at < note.after
+      );
+
+      if (forced !== undefined) {
+        timeouts.add(forced);
+      }
+    }
+  }
+
+  return { tanks, timeouts };
+};
+
 const toldOf = (replay: Replay, facts: ReplayFacts): Told => {
   const lead = facts.principals[0] ?? replay.dealtIn[0] ?? replay.button;
   const other = otherOf(replay, facts, lead);
@@ -390,6 +472,7 @@ const toldOf = (replay: Replay, facts: ReplayFacts): Told => {
     names: new Map(facts.seats.map((seat) => [seat.seat, seat.name] as const)),
     other,
     tabled: new Map(replay.tabled.map((each) => [each.seat, each.cards])),
+    ...clocksOf(replay, facts),
     winners,
   };
 };
@@ -580,6 +663,7 @@ interface Walk {
   folds: SeatIndex[];
   odds: OddsStep | null;
   pot: number;
+  reacting: readonly Reacted[];
   shared: OddsStep | null;
   readonly stacks: Map<SeatIndex, number>;
 }
@@ -593,10 +677,22 @@ const add = (
   },
   play: (show: Show) => void
 ) => {
+  const thrown = beat.hold > 0 ? walk.reacting : [];
+
+  if (thrown.length > 0) {
+    walk.reacting = [];
+  }
+
   walk.beats.push({
     firm: beat.firm ?? false,
     hold: beat.hold,
-    play,
+    play: (show) => {
+      play(show);
+
+      for (const [place, note] of thrown.entries()) {
+        show.react(note.glyph, note.name, place);
+      }
+    },
     section: beat.section,
   });
 };
@@ -678,6 +774,17 @@ const wagered = (walk: Walk, told: Told, step: ActedStep) => {
 
   flushFolds(walk, told);
 
+  if (told.tanks.has(step)) {
+    add(walk, { hold: TANK_MS, section: "Build" }, (show) => {
+      show.cut("TwoShot");
+      show.seat(step.seat).expression = "Thinking";
+      show.draft.caption = captionLines(
+        REPLAY_WORDS.tank(nameOf(told, step.seat))
+      );
+      show.apply();
+    });
+  }
+
   if (decisive) {
     add(walk, { firm: true, hold: PAUSE_MS, section: "Pause" }, (show) => {
       show.cut("CloseUp", step.seat);
@@ -729,14 +836,21 @@ const wagered = (walk: Walk, told: Told, step: ActedStep) => {
   );
 };
 
-const foldedOut = (
-  walk: Walk,
-  told: Told,
-  step: ActedStep,
-  facts: ReplayFacts
-) => {
+const clockLine = (told: Told, step: ActedStep) => {
+  const name = nameOf(told, step.seat);
+
+  if (told.timeouts.has(step)) {
+    return REPLAY_WORDS.clock(name);
+  }
+
+  return told.tanks.has(step)
+    ? REPLAY_WORDS.tank(name)
+    : REPLAY_WORDS.pauseCall(name, nameOf(told, told.lead));
+};
+
+const foldedOut = (walk: Walk, told: Told, step: ActedStep) => {
   const facing = facingOf(walk, step.seat);
-  const tanked = facts.tanked?.includes(step.seat) ?? false;
+  const waited = clockLine(told, step);
   const hole = fullHole(told, told.lead);
   const [board = []] = walk.boards;
   const holding = hole === null ? "" : heldBy(hole, [...board]);
@@ -749,14 +863,7 @@ const foldedOut = (
     show.cut("CloseUp", step.seat);
     show.seat(step.seat).expression = "Thinking";
     show.draft.facing = facing;
-    show.draft.caption = captionLines(
-      tanked
-        ? REPLAY_WORDS.tank(nameOf(told, step.seat))
-        : REPLAY_WORDS.pauseCall(
-            nameOf(told, step.seat),
-            nameOf(told, told.lead)
-          )
-    );
+    show.draft.caption = captionLines(waited);
     show.apply();
     show.push(1.08);
     show.mark("Pause");
@@ -792,7 +899,7 @@ const foldedOut = (
   });
 };
 
-const acted = (walk: Walk, told: Told, step: ActedStep, facts: ReplayFacts) => {
+const acted = (walk: Walk, told: Told, step: ActedStep) => {
   if (step.act === "Check") {
     return;
   }
@@ -804,7 +911,7 @@ const acted = (walk: Walk, told: Told, step: ActedStep, facts: ReplayFacts) => {
   }
 
   if (told.decisive.kind === "Fold" && told.decisive.step === step) {
-    foldedOut(walk, told, step, facts);
+    foldedOut(walk, told, step);
   } else {
     walk.folds = [...walk.folds, step.seat];
   }
@@ -1183,6 +1290,7 @@ const openingOf = (replay: Replay, facts: ReplayFacts, told: Told): Walk => {
     folds: [],
     odds: null,
     pot: 0,
+    reacting: [],
     shared: null,
     stacks: new Map(
       facts.seats.flatMap((seat) =>
@@ -1308,10 +1416,22 @@ const beatsOf = (replay: Replay, facts: ReplayFacts, told: Told) => {
   const counted = new Set<OddsStep>();
   const streets = replay.steps.filter(ReplaySteps.$is("StreetDealt"));
 
+  const thrown = (facts.notes ?? [])
+    .filter((note) => note.kind === "Reacted")
+    .toSorted((one, other) => one.after - other.after);
+
+  const heardBy = (at: number) => {
+    walk.reacting = [
+      ...walk.reacting,
+      ...thrown.splice(0, thrown.findLastIndex((note) => note.after <= at) + 1),
+    ];
+  };
+
   for (const [index, step] of replay.steps.entries()) {
+    heardBy(step.at);
     ReplaySteps.$match(step, {
       Acted: (each) => {
-        acted(walk, told, each, facts);
+        acted(walk, told, each);
       },
       Awarded: (each) => {
         awards.push(each);
@@ -1363,6 +1483,7 @@ const beatsOf = (replay: Replay, facts: ReplayFacts, told: Told) => {
     });
   }
 
+  heardBy(Number.POSITIVE_INFINITY);
   paidOut(walk, told, facts, awards);
 
   for (const bounty of bounties) {
@@ -1406,6 +1527,8 @@ export const outcomeOf = (kind: MomentKind): Outcome =>
   OUTCOMES[FAMILIES[kind]];
 
 export const BEAT_GRID_MS = 100;
+
+const REACTION_LANE = { after: 150, apart: 120, step: 84, x: 820, y: 1170 };
 
 const LAYERS: Readonly<Record<ReplaySprite["art"]["kind"], number>> = {
   Bar: 0,
@@ -1519,6 +1642,25 @@ export const replayPlan = (replay: Replay, facts: ReplayFacts): ReplayPlan => {
       push: (to) => {
         rested(start);
         camera.push({ at: start + hold - 1, pose: { ...REST, scale: to } });
+      },
+      react: (glyph, name, place) => {
+        floated(
+          stager,
+          {
+            kind: "Pill",
+            size: 40,
+            text: `${glyph} ${name}`,
+            tone: "Paper",
+            x: REACTION_LANE.x,
+            y: told.cast.top + REACTION_LANE.y - place * REACTION_LANE.step,
+          },
+          start + REACTION_LANE.after + place * REACTION_LANE.apart
+        );
+        cues.push({
+          atMs: start + REACTION_LANE.after + place * REACTION_LANE.apart,
+          kind: "Bar",
+          pan: 0.5,
+        });
       },
       seat: (seat) => {
         const found = draft.seats.get(seat) ?? {

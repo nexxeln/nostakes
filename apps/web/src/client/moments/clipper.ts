@@ -7,6 +7,7 @@ import {
 } from "../../features/moments/clip-reach.js";
 import type { MomentPicture } from "../../features/moments/picture.js";
 import {
+  replayNotesOf,
   replaySeatsOf,
   tellsTheHand,
 } from "../../features/moments/replay-plan.js";
@@ -36,6 +37,7 @@ const replayOrderOf = (story: SceneStory | null) =>
   story === null
     ? null
     : {
+        notes: replayNotesOf(story.hand),
         principals: story.seats,
         record: story.hand.record,
         seats: replaySeatsOf(story.hand),
