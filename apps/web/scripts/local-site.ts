@@ -193,6 +193,7 @@ export const mutedBrowser = (engine: BrowserType) =>
       try: () =>
         engine.launch({
           args: engine.name() === "chromium" ? ["--mute-audio"] : [],
+          firefoxUserPrefs: { "media.volume_scale": "0.0" },
           headless: true,
         }),
     }),

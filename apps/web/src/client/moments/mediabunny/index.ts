@@ -1,4 +1,6 @@
-export { liveMedia, Media } from "./media.js";
+export { liveMedia, mediaWithoutNativeAac } from "./live.js";
+
+export { Media } from "./media.js";
 
 export type {
   AacEncoding,

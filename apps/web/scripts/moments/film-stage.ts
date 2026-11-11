@@ -58,6 +58,7 @@ const asked = (name: string) => {
 const cut = params.get("frame") === "Story" ? "Story" : "Chat";
 
 const checks: FilmChecks = {
+  aac: params.get("aac") === "Extension" ? "Extension" : "Browser",
   bitrate: asked("bitrate"),
   compare: params.get("compare") === "true",
   redraw: params.get("redraw") === "Whole" ? "Whole" : "Changed",
@@ -433,7 +434,7 @@ const filmFor = Effect.gen(function* chooseFilm() {
       record: hand.record,
       seats: replaySeatsOf(hand),
       slot: Effect.void,
-      support: { codec: "", sound: false },
+      support: { codec: "" },
       svg: pictureSvg(picture, { deck, fonts: "", frame: cut, theme }),
     }
   );
@@ -523,7 +524,6 @@ const program = Effect.gen(function* makeFilm() {
   return {
     bytes: made.file.size,
     compared: made.compared,
-    delay: made.delay,
     flashes:
       params.get("scene") === "sync" ? syncTimes(number("seconds", 25)) : [],
     frames: Math.ceil((film.length * film.fps) / 1000),

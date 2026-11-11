@@ -76,7 +76,7 @@ const program = Effect.gen(function* storyboard() {
       record: hand.record,
       seats: replaySeatsOf(hand),
       slot: Effect.void,
-      support: { codec: "", sound: false },
+      support: { codec: "" },
       svg: pictureSvg(picture, { deck, fonts: "", frame, theme }),
     }
   );

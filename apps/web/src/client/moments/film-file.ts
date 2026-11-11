@@ -13,8 +13,6 @@ import { ClipReplySchema } from "./clip-wire.js";
 import type { ClipReply, FilmRequest, WorkerRequest } from "./clip-wire.js";
 import { closedPolitely } from "./worker-close.js";
 
-type ClipReplyDelay = Extract<ClipReply, { tag: "Made" }>["delay"];
-
 export class ClipTooSlow extends Schema.TaggedError<
   ClipTooSlow,
   { readonly brand: unique symbol }
@@ -26,7 +24,6 @@ export class ClipTooSlow extends Schema.TaggedError<
 
 export interface ClipSupport {
   readonly codec: string;
-  readonly sound: boolean;
 }
 
 export interface FilmOrder {
@@ -38,7 +35,6 @@ export interface FilmOrder {
 
 export interface FilmMade {
   readonly compared: FilmCompared | null;
-  readonly delay: ClipReplyDelay;
   readonly file: File;
   readonly redrawn: number;
 }
@@ -50,12 +46,14 @@ export interface FilmCompared {
 }
 
 export interface FilmChecks {
+  readonly aac: FilmRequest["aac"];
   readonly bitrate: number | null;
   readonly compare: boolean;
   readonly redraw: FilmRequest["redraw"];
 }
 
 const EVERYDAY: FilmChecks = {
+  aac: "Browser",
   bitrate: null,
   compare: false,
   redraw: "Changed",
@@ -227,22 +225,22 @@ export const filmOn = (
     const atlas = yield* shotAtlas(film.shots, EMBEDDED_FONTS, order.slot);
 
     const sound =
-      film.sound !== null && order.support.sound
-        ? {
+      film.sound === null
+        ? null
+        : {
             bitrate: soundBitrate(film.sound.channels.length),
             channels: fitted(
               film.sound,
               filmSamples(film, film.sound.sampleRate)
             ),
             sampleRate: film.sound.sampleRate,
-          }
-        : null;
+          };
 
     const request: FilmRequest = {
+      aac: checks.aac,
       bands: atlas.bands,
       bitrate: checks.bitrate ?? videoBitrate(film),
       camera: film.camera,
-      codec: order.support.codec,
       compare: checks.compare,
       fps: film.fps,
       frames: filmFrames(film),
@@ -272,7 +270,6 @@ export const filmOn = (
 
     return {
       compared: reply.compared,
-      delay: reply.delay,
       file: new File([reply.file], order.name, { type: "video/mp4" }),
       redrawn: reply.redrawn,
     };

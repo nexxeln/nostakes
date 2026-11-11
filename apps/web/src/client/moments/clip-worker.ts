@@ -11,16 +11,11 @@ import {
   writeI420Area,
 } from "../../features/moments/i420.js";
 import type { Channels } from "../../features/moments/i420.js";
-import { aacConfig, mp4Parts } from "../../features/moments/mp4.js";
-import type { AudioTrack, Sample } from "../../features/moments/mp4.js";
 import { drawAreas, placementsAt } from "./clip-draw.js";
-import {
-  CLIP_AUDIO_CODEC,
-  KEY_FRAME_EVERY,
-  VIDEO_TIMESCALE,
-  WorkerRequestSchema,
-} from "./clip-wire.js";
+import { WorkerRequestSchema } from "./clip-wire.js";
 import type { ClipReply, FilmRequest, WorkerRequest } from "./clip-wire.js";
+import { liveMedia, Media, mediaWithoutNativeAac } from "./mediabunny/index.js";
+import type { MediaFailed, Mp4Writer } from "./mediabunny/index.js";
 import { isCloseRequest } from "./worker-close.js";
 
 class ClipFailed extends Schema.TaggedError<
@@ -34,46 +29,9 @@ class ClipFailed extends Schema.TaggedError<
 const failedAt = (step: string) => (cause: unknown) =>
   new ClipFailed({ detail: String(cause), step });
 
-const MICROS = 1_000_000;
-
-const QUEUE_DEPTH = 2;
-
 const PROGRESS_EVERY = 15;
 
 const SNAPSHOT_SHARE = 0.25;
-
-const bytesOf = (chunk: EncodedAudioChunk | EncodedVideoChunk) => {
-  const bytes = new Uint8Array(chunk.byteLength);
-
-  chunk.copyTo(bytes);
-
-  return bytes;
-};
-
-const drained = (encoder: VideoEncoder) =>
-  encoder.encodeQueueSize <= QUEUE_DEPTH
-    ? Effect.void
-    : Effect.callback<"Drained">((resume) => {
-        const go = () => {
-          if (encoder.encodeQueueSize <= QUEUE_DEPTH) {
-            encoder.removeEventListener("dequeue", go);
-            resume(Effect.succeed("Drained"));
-          }
-        };
-
-        encoder.addEventListener("dequeue", go);
-
-        return Effect.sync(() => {
-          encoder.removeEventListener("dequeue", go);
-        });
-      });
-
-interface Collected {
-  avcC: Uint8Array | null;
-  failure: string | null;
-  last: number;
-  readonly samples: Sample[];
-}
 
 const reply = (message: ClipReply, transfer: readonly Transferable[]) => {
   globalThis.postMessage(message, { transfer: [...transfer] });
@@ -132,7 +90,7 @@ interface Reading {
   readonly canvas: OffscreenCanvas;
   readonly ctx: OffscreenCanvasRenderingContext2D;
   readonly frame: { readonly height: number; readonly width: number };
-  readonly pixels: Uint8Array;
+  readonly pixels: Uint8Array<ArrayBuffer>;
   readonly scratch: Uint8Array;
   readonly snapshot: Option.Option<Channels>;
 }
@@ -220,76 +178,91 @@ interface Drawn {
   redrawn: number;
 }
 
-const videoTrack = (request: FilmRequest) =>
-  Effect.gen(function* encodeVideo() {
-    const collected: Collected = {
-      avcC: null,
-      failure: null,
-      last: -1,
-      samples: [],
-    };
+const KEY_FRAME_SECONDS = 2;
 
-    const frameTicks = VIDEO_TIMESCALE / request.fps;
+const SOUND_PIECE_SECONDS = 1;
 
-    const encoder = yield* Effect.acquireRelease(
-      Effect.try({
-        catch: failedAt("start the video encoder"),
-        try: () =>
-          new VideoEncoder({
-            error: (failure) => {
-              collected.failure = String(failure);
-            },
-            output: (chunk, metadata) => {
-              const description = metadata?.decoderConfig?.description;
+const failedInMedia = (failure: MediaFailed) =>
+  new ClipFailed({ detail: String(failure.cause), step: failure.step });
 
-              if (description !== undefined && collected.avcC === null) {
-                collected.avcC = Uint8Array.from(
-                  ArrayBuffer.isView(description)
-                    ? new Uint8Array(
-                        description.buffer,
-                        description.byteOffset,
-                        description.byteLength
-                      )
-                    : new Uint8Array(description)
-                );
-              }
+const pictureSpecOf = (request: FilmRequest) => ({
+  bitrate: request.bitrate,
+  frameRate: request.fps,
+  height: request.height,
+  keyFrameSeconds: KEY_FRAME_SECONDS,
+  width: request.width,
+});
 
-              if (chunk.timestamp <= collected.last) {
-                collected.failure = "the encoder reordered frames";
-              }
+const codecFor = (request: FilmRequest) =>
+  Media.use((media) => media.pictureCodec(pictureSpecOf(request))).pipe(
+    Effect.flatMap((codec) =>
+      Option.match(codec, {
+        onNone: () =>
+          Effect.fail(
+            new ClipFailed({
+              detail: `this browser cannot encode H.264 at ${request.width} by ${request.height}`,
+              step: "choose the video codec",
+            })
+          ),
+        onSome: (found) => Effect.succeed(found),
+      })
+    )
+  );
 
-              collected.last = chunk.timestamp;
-              collected.samples.push({
-                bytes: bytesOf(chunk),
-                duration: frameTicks,
-                sync: chunk.type === "key",
-              });
-            },
-          }),
-      }),
-      (opened) =>
-        Effect.sync(() => {
-          if (opened.state !== "closed") {
-            opened.close();
-          }
-        })
+const soundFor = (request: FilmRequest) => {
+  const { sound } = request;
+
+  if (sound === null) {
+    return Effect.succeed(null);
+  }
+
+  return Media.use((media) =>
+    media.aacEncoding({
+      bitrate: sound.bitrate,
+      channels: sound.channels.length,
+      sampleRate: sound.sampleRate,
+    })
+  ).pipe(Effect.map((encoding) => (encoding === "None" ? null : sound)));
+};
+
+const soundIn = (writer: Mp4Writer, sound: NonNullable<FilmRequest["sound"]>) =>
+  Effect.gen(function* feedSound() {
+    const piece = sound.sampleRate * SOUND_PIECE_SECONDS;
+    const length = sound.channels[0]?.length ?? 0;
+
+    for (let start = 0; start < length; start += piece) {
+      yield* writer.addSound({
+        planes: sound.channels.map((channel) =>
+          channel.subarray(start, Math.min(length, start + piece))
+        ),
+        seconds: start / sound.sampleRate,
+      });
+    }
+  });
+
+const made = (request: FilmRequest) =>
+  Effect.gen(function* makeFilm() {
+    const codec = yield* codecFor(request);
+    const sound = yield* soundFor(request);
+
+    const writer = yield* Media.use((media) =>
+      media.mp4({
+        picture: { ...pictureSpecOf(request), codec },
+        playFor: request.frames / request.fps,
+        sound:
+          sound === null
+            ? null
+            : {
+                bitrate: sound.bitrate,
+                channels: sound.channels.length,
+                sampleRate: sound.sampleRate,
+              },
+      })
     );
 
-    yield* Effect.try({
-      catch: failedAt("configure the video encoder"),
-      try: () => {
-        encoder.configure({
-          avc: { format: "avc" },
-          bitrate: request.bitrate,
-          bitrateMode: "variable",
-          codec: request.codec,
-          framerate: request.fps,
-          height: request.height,
-          latencyMode: "quality",
-          width: request.width,
-        });
-      },
-    });
+    if (sound !== null) {
+      yield* soundIn(writer, sound);
+    }
 
     const canvas = new OffscreenCanvas(request.width, request.height);
     const ctx = canvas.getContext("2d", { willReadFrequently: true });
@@ -314,7 +287,6 @@ const videoTrack = (request: FilmRequest) =>
 
     const sizes = request.shots.map((shot) => shot.box);
     const whole: readonly Box[] = [{ ...frame, x: 0, y: 0 }];
-
     const drawn: Drawn = { before: null, redrawn: 0 };
     const compared: Compared = { frames: 0, most: 0, pixels: 0 };
 
@@ -372,333 +344,33 @@ const videoTrack = (request: FilmRequest) =>
         );
       }
 
-      yield* Effect.try({
-        catch: failedAt(`encode frame ${index}`),
-        try: () => {
-          const image = new VideoFrame(reading.pixels, {
-            codedHeight: request.height,
-            codedWidth: request.width,
-            colorSpace: LIMITED_BT709,
-            duration: Math.round(MICROS / request.fps),
-            format: "I420",
-            timestamp: Math.round(ms * 1000),
-          });
-
-          encoder.encode(image, { keyFrame: index % KEY_FRAME_EVERY === 0 });
-          image.close();
-        },
+      yield* writer.addPicture({
+        colour: LIMITED_BT709,
+        i420: reading.pixels,
+        lasts: 1 / request.fps,
+        seconds: ms / 1000,
       });
-      yield* drained(encoder);
 
       if ((index + 1) % PROGRESS_EVERY === 0) {
         reply({ made: index + 1, tag: "Progress" }, []);
       }
     }
 
-    yield* Effect.tryPromise({
-      catch: failedAt("finish the video"),
-      try: () => encoder.flush(),
-    });
-
-    const { avcC, failure, samples } = collected;
-
-    if (
-      failure !== null ||
-      avcC === null ||
-      samples.length !== request.frames
-    ) {
-      return yield* new ClipFailed({
-        detail:
-          failure ??
-          (avcC === null
-            ? "the encoder gave no avcC description"
-            : `${samples.length} of ${request.frames} frames came back`),
-        step: "encode the video",
-      });
-    }
+    const bytes = yield* writer.finished;
 
     return {
       compared: request.compare ? compared : null,
+      file: new Blob([bytes], { type: "video/mp4" }),
       redrawn: drawn.redrawn,
-      track: {
-        avcC,
-        height: request.height,
-        samples,
-        timescale: VIDEO_TIMESCALE,
-        width: request.width,
-      },
     };
-  }).pipe(Effect.scoped);
-
-const AAC_FRAME = 1024;
-
-const PIECE_SECONDS = 1;
-
-const KNOWN_AAC_DELAY = 2112;
-
-const LEAD_SAMPLES = 1024;
-
-const PROBE_SAMPLES = 8192;
-
-const PROBE_AT = 4096;
-
-interface Encoded {
-  readonly chunks: readonly EncodedAudioChunk[];
-  readonly first: number;
-}
-
-const encodedSound = (
-  sound: { readonly bitrate: number; readonly sampleRate: number },
-  channels: readonly Float32Array[]
-) =>
-  Effect.gen(function* encodeSound() {
-    const chunks: EncodedAudioChunk[] = [];
-    const failures: string[] = [];
-    const count = channels.length;
-    const length = channels[0]?.length ?? 0;
-
-    const encoder = yield* Effect.acquireRelease(
-      Effect.try({
-        catch: failedAt("start the audio encoder"),
-        try: () =>
-          new AudioEncoder({
-            error: (failure) => {
-              failures.push(String(failure));
-            },
-            output: (chunk) => {
-              chunks.push(chunk);
-            },
-          }),
-      }),
-      (opened) =>
-        Effect.sync(() => {
-          if (opened.state !== "closed") {
-            opened.close();
-          }
-        })
-    );
-
-    yield* Effect.try({
-      catch: failedAt("encode the sound"),
-      try: () => {
-        encoder.configure({
-          bitrate: sound.bitrate,
-          codec: CLIP_AUDIO_CODEC,
-          numberOfChannels: count,
-          sampleRate: sound.sampleRate,
-        });
-
-        const piece = sound.sampleRate * PIECE_SECONDS;
-
-        for (let start = 0; start < length; start += piece) {
-          const frames = Math.min(piece, length - start);
-          const planar = new Float32Array(frames * count);
-
-          for (const [index, channel] of channels.entries()) {
-            planar.set(channel.subarray(start, start + frames), index * frames);
-          }
-
-          const data = new AudioData({
-            data: planar,
-            format: "f32-planar",
-            numberOfChannels: count,
-            numberOfFrames: frames,
-            sampleRate: sound.sampleRate,
-            timestamp: Math.round((start * MICROS) / sound.sampleRate),
-          });
-
-          encoder.encode(data);
-          data.close();
-        }
-      },
-    });
-
-    yield* Effect.tryPromise({
-      catch: failedAt("finish the sound"),
-      try: () => encoder.flush(),
-    });
-
-    if (failures.length > 0 || chunks.length === 0) {
-      return yield* new ClipFailed({
-        detail: failures.join("; ") || "the encoder gave no audio",
-        step: "encode the sound",
-      });
-    }
-
-    const encoded: Encoded = { chunks, first: chunks[0]?.timestamp ?? 0 };
-
-    return encoded;
-  }).pipe(Effect.scoped);
-
-const firstChannelOf = (data: AudioData): Float32Array => {
-  const frames = data.numberOfFrames;
-  const out = new Float32Array(frames);
-
-  data.copyTo(out, { format: "f32-planar", planeIndex: 0 });
-
-  return out;
-};
-
-const peakOf = (samples: readonly Float32Array[]) => {
-  let at = 0;
-  let index = 0;
-  let loudest = 0;
-
-  for (const piece of samples) {
-    for (const value of piece) {
-      if (Math.abs(value) > loudest) {
-        loudest = Math.abs(value);
-        at = index;
-      }
-
-      index += 1;
-    }
-  }
-
-  return at;
-};
-
-const decodedDelay = (
-  sound: { readonly bitrate: number; readonly sampleRate: number },
-  count: number
-) =>
-  Effect.gen(function* probeDelay() {
-    const impulse = Array.from({ length: count }, () => {
-      const channel = new Float32Array(PROBE_SAMPLES);
-
-      channel[PROBE_AT] = 0.9;
-
-      return channel;
-    });
-
-    const encoded = yield* encodedSound(sound, impulse);
-    const decoded: Float32Array[] = [];
-    const failures: string[] = [];
-
-    const decoder = yield* Effect.acquireRelease(
-      Effect.try({
-        catch: failedAt("start the audio decoder"),
-        try: () =>
-          new AudioDecoder({
-            error: (failure) => {
-              failures.push(String(failure));
-            },
-            output: (data) => {
-              decoded.push(firstChannelOf(data));
-              data.close();
-            },
-          }),
-      }),
-      (opened) =>
-        Effect.sync(() => {
-          if (opened.state !== "closed") {
-            opened.close();
-          }
-        })
-    );
-
-    yield* Effect.try({
-      catch: failedAt("decode the probe"),
-      try: () => {
-        decoder.configure({
-          codec: CLIP_AUDIO_CODEC,
-          description: aacConfig(sound.sampleRate, count),
-          numberOfChannels: count,
-          sampleRate: sound.sampleRate,
-        });
-
-        for (const chunk of encoded.chunks) {
-          decoder.decode(chunk);
-        }
-      },
-    });
-
-    yield* Effect.tryPromise({
-      catch: failedAt("finish the probe"),
-      try: () => decoder.flush(),
-    });
-
-    const delay = peakOf(decoded) - PROBE_AT;
-
-    return failures.length === 0 && delay >= 0 && delay < PROBE_AT
-      ? Option.some(delay)
-      : Option.none<number>();
-  }).pipe(Effect.scoped);
-
-const reportedDelay = (encoded: Encoded, sampleRate: number) =>
-  encoded.first < 0
-    ? Math.round((-encoded.first * sampleRate) / MICROS)
-    : KNOWN_AAC_DELAY;
-
-const led = (channels: readonly Float32Array[]) =>
-  channels.map((channel) => {
-    const lead = new Float32Array(channel.length + LEAD_SAMPLES);
-
-    lead.set(channel, LEAD_SAMPLES);
-
-    return lead;
-  });
-
-const audioTrack = (sound: NonNullable<FilmRequest["sound"]>) =>
-  Effect.gen(function* encodeAudio() {
-    const count = sound.channels.length;
-    const length = sound.channels[0]?.length ?? 0;
-
-    const measured = yield* decodedDelay(sound, count).pipe(
-      Effect.orElseSucceed(() => Option.none<number>())
-    );
-
-    const encoded = yield* encodedSound(sound, led(sound.channels));
-
-    const delay = Option.getOrElse(measured, () =>
-      reportedDelay(encoded, sound.sampleRate)
-    );
-
-    const chunks = encoded.chunks.map((chunk) => {
-      const bytes = new Uint8Array(chunk.byteLength);
-
-      chunk.copyTo(bytes);
-
-      return bytes;
-    });
-
-    const track: AudioTrack = {
-      bitrate: sound.bitrate,
-      channels: count,
-      playable: length,
-      priming: delay + LEAD_SAMPLES,
-      sampleRate: sound.sampleRate,
-      samples: chunks.map((bytes) => ({
-        bytes,
-        duration: AAC_FRAME,
-        sync: true,
-      })),
-      specificConfig: aacConfig(sound.sampleRate, count),
-    };
-
-    return {
-      delay: {
-        samples: delay,
-        source: Option.isSome(measured) ? "Measured" : "Assumed",
-      } as const,
-      track,
-    };
-  });
-
-const made = (request: FilmRequest) =>
-  Effect.all([
-    videoTrack(request),
-    request.sound === null ? Effect.succeed(null) : audioTrack(request.sound),
-  ]).pipe(
-    Effect.map(([video, audio]) => ({
-      compared: video.compared,
-      delay: audio?.delay ?? null,
-      file: new Blob(
-        [...mp4Parts({ audio: audio?.track ?? null, video: video.track })],
-        { type: "video/mp4" }
-      ),
-      redrawn: video.redrawn,
-    }))
+  }).pipe(
+    Effect.scoped,
+    Effect.catchTag("MediaFailed", (failure) =>
+      Effect.fail(failedInMedia(failure))
+    ),
+    Effect.provide(
+      request.aac === "Extension" ? mediaWithoutNativeAac : liveMedia
+    )
   );
 
 const answered = (request: WorkerRequest) =>
@@ -716,9 +388,9 @@ const answered = (request: WorkerRequest) =>
         );
       })
     : made(request).pipe(
-        Effect.flatMap(({ compared, delay, file, redrawn }) =>
+        Effect.flatMap(({ compared, file, redrawn }) =>
           Effect.sync(() => {
-            reply({ compared, delay, file, redrawn, tag: "Made" }, []);
+            reply({ compared, file, redrawn, tag: "Made" }, []);
           })
         )
       );

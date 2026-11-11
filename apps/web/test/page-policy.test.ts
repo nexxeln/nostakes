@@ -2,6 +2,9 @@ import { describe, expect, it } from "@effect/vitest";
 
 import { DRAND_RELAYS, SITE_HOSTS } from "../src/features/outside-hosts.js";
 import {
+  CLIP_WORKER_DIRECTIVES,
+  CLIP_WORKER_HEADERS,
+  headersFor,
   HEADERS_FILE,
   PAGE_HEADERS,
   POLICY_DIRECTIVES,
@@ -62,6 +65,50 @@ describe("the page's security policy", () => {
           !ours.has(source)
       )
     ).toStrictEqual([]);
+  });
+
+  it("lets only the clip worker start a blob: worker and compile WebAssembly, for the AAC extension", () => {
+    const pagePaths = [
+      "/",
+      "/r/ABCDEF",
+      "/privacy",
+      "/assets/index-a1b2c3.js",
+      "/assets/clipper-a1b2c3.js",
+      "/assets/mediabunny-aac-encoder-a1b2c3.js",
+      "/src/client/moments/clip.ts",
+    ];
+
+    const workerPaths = [
+      "/assets/clip-worker-a1b2c3.js",
+      "/src/client/moments/clip-worker.ts?worker_file&type=module",
+    ];
+
+    expect({
+      added: CLIP_WORKER_DIRECTIVES.flatMap(([name, sources]) =>
+        sources
+          .filter((source) => !sourcesOf(name).includes(source))
+          .map((source) => `${name} ${source}`)
+      ),
+      looserPages: pagePaths.filter(
+        (path) => headersFor(path) !== PAGE_HEADERS
+      ),
+      stricterWorkers: workerPaths.filter(
+        (path) => headersFor(path) !== CLIP_WORKER_HEADERS
+      ),
+      writtenAfterThePage: HEADERS_FILE.endsWith(
+        [
+          "/assets/clip-worker-*",
+          "  ! Content-Security-Policy",
+          `  Content-Security-Policy: ${CLIP_WORKER_HEADERS["Content-Security-Policy"]}`,
+          "",
+        ].join("\n")
+      ),
+    }).toStrictEqual({
+      added: ["script-src 'wasm-unsafe-eval'", "worker-src blob:"],
+      looserPages: [],
+      stricterWorkers: [],
+      writtenAfterThePage: true,
+    });
   });
 
   it("writes every header for every path of the built site", () => {

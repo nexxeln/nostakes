@@ -1,12 +1,6 @@
 import { CardSchema } from "@nostakes/engine";
 import { Schema } from "effect";
 
-export const VIDEO_TIMESCALE = 30_000;
-
-export const KEY_FRAME_EVERY = 60;
-
-export const CLIP_AUDIO_CODEC = "mp4a.40.2";
-
 const PointSchema = Schema.Struct({ x: Schema.Finite, y: Schema.Finite });
 
 const PoseSchema = Schema.Struct({
@@ -49,10 +43,10 @@ export const ChancesRequestSchema = Schema.Struct({
 });
 
 export const FilmRequestSchema = Schema.Struct({
+  aac: Schema.Literals(["Browser", "Extension"]),
   bands: Schema.Array(Schema.instanceOf(ImageBitmap)),
   bitrate: Schema.Int,
   camera: Schema.Array(KeySchema),
-  codec: Schema.String,
   compare: Schema.Boolean,
   fps: Schema.Literals([24, 25, 30]),
   frames: Schema.Int,
@@ -90,12 +84,6 @@ export const ClipReplySchema = Schema.Union([
         frames: Schema.Int,
         most: Schema.Int,
         pixels: Schema.Int,
-      })
-    ),
-    delay: Schema.NullOr(
-      Schema.Struct({
-        samples: Schema.Int,
-        source: Schema.Literals(["Assumed", "Measured"]),
       })
     ),
     file: Schema.instanceOf(Blob),

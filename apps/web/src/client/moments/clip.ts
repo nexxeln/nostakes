@@ -34,7 +34,6 @@ import type { KeptFrame } from "../../features/pictures/paper.js";
 import { cardParts, ClipUnavailable } from "./clip-layers.js";
 import type { CardPart } from "./clip-layers.js";
 import type { PartBox } from "./clip-measure.js";
-import { CLIP_AUDIO_CODEC } from "./clip-wire.js";
 import { clipWorker, filmFile, filmOn } from "./film-file.js";
 import type { ClipSupport, ClipTooSlow, ClipWorker } from "./film-file.js";
 import { mixedOffThread } from "./soundtrack.js";
@@ -50,10 +49,6 @@ export type { ClipSupport, FilmMade, FilmOrder } from "./film-file.js";
 const VIDEO_CODECS = ["avc1.640028", "avc1.4D4028", "avc1.42E028"];
 
 const VIDEO_BITRATE = 3_000_000;
-
-const SOUND_RATE = 48_000;
-
-const SOUND_BITRATE = 96_000;
 
 const ENCODING_GLOBALS = [
   "OffscreenCanvas",
@@ -86,31 +81,12 @@ const videoCodec = (size: {
     )
   ).pipe(Effect.map((found) => Option.fromNullishOr(found.flat()[0])));
 
-const aacSupported =
-  "AudioEncoder" in globalThis
-    ? Effect.tryPromise(() =>
-        AudioEncoder.isConfigSupported({
-          bitrate: SOUND_BITRATE,
-          codec: CLIP_AUDIO_CODEC,
-          numberOfChannels: 1,
-          sampleRate: SOUND_RATE,
-        })
-      ).pipe(
-        Effect.map((found) => found.supported === true),
-        Effect.orElseSucceed(() => false)
-      )
-    : Effect.succeed(false);
-
 export const filmSupport = (size: {
   readonly height: number;
   readonly width: number;
 }): Effect.Effect<Option.Option<ClipSupport>> =>
   hasEncoders()
-    ? Effect.all([videoCodec(size), aacSupported]).pipe(
-        Effect.map(([codec, sound]) =>
-          codec.pipe(Option.map((found) => ({ codec: found, sound })))
-        )
-      )
+    ? videoCodec(size).pipe(Effect.map(Option.map((codec) => ({ codec }))))
     : Effect.succeedNone;
 
 export const clipSupport = (
@@ -213,7 +189,7 @@ export const cardFilm = (
   order: ClipOrder
 ): Effect.Effect<Film, ClipUnavailable> =>
   Effect.gen(function* clip() {
-    const { frame, slot, support } = order;
+    const { frame, slot } = order;
     const size = FRAME_SIZES[frame];
     const parts = yield* cardParts(order.svg, order.boxes, size);
     const frames = Math.ceil((SHORT_CLIP.lengthMs * CLIP_FPS) / 1000);
@@ -249,9 +225,7 @@ export const cardFilm = (
       height: size.height,
       length,
       shots,
-      sound: support.sound
-        ? yield* mixedOffThread({ ...sheet, lengthMs: length })
-        : null,
+      sound: yield* mixedOffThread({ ...sheet, lengthMs: length }),
       width: size.width,
     };
   });
@@ -335,7 +309,7 @@ export const replayStory = (
   order: ReplayOrder
 ): Effect.Effect<ReplayStory, ClipUnavailable | ClipTooSlow> =>
   Effect.gen(function* replayClip() {
-    const { frame, slot, support } = order;
+    const { frame, slot } = order;
     const size = FRAME_SIZES[frame];
     const percents = yield* chancesOf(worker, order.record);
 
@@ -389,7 +363,7 @@ export const replayStory = (
 
     const sprites = yield* spriteShots(plan, look, slot);
 
-    const sound = support.sound ? yield* mixedOffThread(plan.sheet) : null;
+    const sound = yield* mixedOffThread(plan.sheet);
 
     return {
       film: {

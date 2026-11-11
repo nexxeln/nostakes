@@ -13,6 +13,7 @@ import {
   VideoSampleSource,
 } from "mediabunny";
 
+import { playingFor } from "./exact-length.js";
 import { MediaFailed } from "./media-failed.js";
 
 export interface PictureSpec {
@@ -59,6 +60,7 @@ export class Media extends Context.Service<
     ) => Effect.Effect<Option.Option<string>>;
     readonly mp4: (spec: {
       readonly picture: PictureSpec;
+      readonly playFor: number | null;
       readonly sound: SoundSpec | null;
     }) => Effect.Effect<Mp4Writer, MediaFailed, Scope.Scope>;
   }
@@ -104,30 +106,80 @@ const encodes = (codec: string, spec: Omit<PictureSpec, "codec">) =>
 const pictureCodec = (spec: Omit<PictureSpec, "codec">) =>
   Effect.findFirst(AVC_PROFILES, (codec) => encodes(codec, spec));
 
-const polyfilledAac = Effect.tryPromise(
-  () => import("@mediabunny/aac-encoder")
-).pipe(
-  Effect.flatMap((extension) =>
-    Effect.sync(() => {
-      extension.registerAacEncoder();
-    })
-  ),
-  Effect.as<AacEncoding>("Polyfill"),
-  Effect.orElseSucceed((): AacEncoding => "None")
-);
-
-const aacEncoding = (spec: SoundSpec) =>
+export const nativeAac = (spec: SoundSpec) =>
   Effect.tryPromise(() =>
     canEncodeAudio("aac", {
       numberOfChannels: spec.channels,
       quality: new Quality({ bitrate: spec.bitrate }),
       sampleRate: spec.sampleRate,
     })
-  ).pipe(
-    Effect.orElseSucceed(() => false),
-    Effect.flatMap((native) =>
-      native ? Effect.succeed<AacEncoding>("Native") : polyfilledAac
-    )
+  ).pipe(Effect.orElseSucceed(() => false));
+
+const PROBE_FRAMES = 4096;
+
+const cancelled = (output: Output) =>
+  output.state === "finalized" || output.state === "canceled"
+    ? Effect.void
+    : Effect.promise(() => output.cancel()).pipe(Effect.ignore);
+
+const probeOutput = (spec: SoundSpec) =>
+  Effect.sync(() => {
+    const target = new BufferTarget();
+
+    const output = new Output({
+      format: new Mp4OutputFormat({ fastStart: "in-memory" }),
+      target,
+    });
+
+    const sounds = new AudioSampleSource({
+      codec: "aac",
+      quality: new Quality({ bitrate: spec.bitrate }),
+    });
+
+    output.addAudioTrack(sounds);
+
+    return { output, sounds, target };
+  });
+
+const probed = (spec: SoundSpec) =>
+  Effect.acquireUseRelease(
+    probeOutput(spec),
+    ({ output, sounds, target }) =>
+      Effect.tryPromise(() => output.start()).pipe(
+        Effect.andThen(
+          Effect.acquireUseRelease(
+            Effect.try(
+              () =>
+                new AudioSample({
+                  data: new Float32Array(PROBE_FRAMES * spec.channels),
+                  format: "f32-planar",
+                  numberOfChannels: spec.channels,
+                  sampleRate: spec.sampleRate,
+                  timestamp: 0,
+                })
+            ),
+            (sample) => Effect.tryPromise(() => sounds.add(sample)),
+            (sample) =>
+              Effect.sync(() => {
+                sample.close();
+              })
+          )
+        ),
+        Effect.andThen(Effect.tryPromise(() => output.finalize())),
+        Effect.map(() => (target.buffer?.byteLength ?? 0) > 0)
+      ),
+    ({ output }) => cancelled(output)
+  ).pipe(Effect.orElseSucceed(() => false));
+
+export const encodesAac = (
+  spec: SoundSpec,
+  register: Effect.Effect<boolean>
+): Effect.Effect<AacEncoding> =>
+  register.pipe(
+    Effect.flatMap((registered) =>
+      registered ? probed(spec) : Effect.succeed(false)
+    ),
+    Effect.map((works): AacEncoding => (works ? "Polyfill" : "None"))
   );
 
 interface Opened {
@@ -137,10 +189,7 @@ interface Opened {
   readonly target: BufferTarget;
 }
 
-const opened = (spec: {
-  readonly picture: PictureSpec;
-  readonly sound: SoundSpec | null;
-}) =>
+const opened = (spec: WriterSpec) =>
   Effect.try({
     catch: failedTo("set up the MP4 output"),
     try: (): Opened => {
@@ -180,15 +229,13 @@ const opened = (spec: {
     },
   });
 
-const cancelled = (output: Output) =>
-  output.state === "finalized" || output.state === "canceled"
-    ? Effect.void
-    : Effect.promise(() => output.cancel()).pipe(Effect.ignore);
+interface WriterSpec {
+  readonly picture: PictureSpec;
+  readonly playFor: number | null;
+  readonly sound: SoundSpec | null;
+}
 
-const writerOf = (
-  open: Opened,
-  spec: { readonly picture: PictureSpec; readonly sound: SoundSpec | null }
-): Mp4Writer => ({
+const writerOf = (open: Opened, spec: WriterSpec): Mp4Writer => ({
   addPicture: (picture) =>
     Effect.acquireUseRelease(
       Effect.try({
@@ -256,18 +303,25 @@ const writerOf = (
     catch: failedTo("finish the MP4 file"),
     try: () => open.output.finalize(),
   }).pipe(
-    Effect.flatMap(() =>
-      open.target.buffer === null
-        ? Effect.fail(failedTo("read the finished file")("no buffer"))
-        : Effect.succeed(open.target.buffer)
-    )
+    Effect.flatMap(() => {
+      const { buffer } = open.target;
+      const { playFor } = spec;
+
+      if (buffer === null) {
+        return Effect.fail(failedTo("read the finished file")("no buffer"));
+      }
+
+      return playFor === null
+        ? Effect.succeed(buffer)
+        : Effect.try({
+            catch: failedTo("cut the file to its length"),
+            try: () => playingFor(buffer, playFor),
+          });
+    })
   ),
 });
 
-const mp4 = (spec: {
-  readonly picture: PictureSpec;
-  readonly sound: SoundSpec | null;
-}) =>
+const mp4 = (spec: WriterSpec) =>
   Effect.acquireRelease(
     opened(spec).pipe(
       Effect.tap((open) =>
@@ -280,15 +334,18 @@ const mp4 = (spec: {
     (open) => cancelled(open.output)
   ).pipe(Effect.map((open) => writerOf(open, spec)));
 
-export const liveMedia = Layer.sync(Media, () => {
-  const pictures = new Map<string, Effect.Effect<Option.Option<string>>>();
-  const sounds = new Map<string, Effect.Effect<AacEncoding>>();
+export const mediaLayer = (
+  aacEncoding: (spec: SoundSpec) => Effect.Effect<AacEncoding>
+) =>
+  Layer.sync(Media, () => {
+    const pictures = new Map<string, Effect.Effect<Option.Option<string>>>();
+    const sounds = new Map<string, Effect.Effect<AacEncoding>>();
 
-  return {
-    aacEncoding: (spec) =>
-      memo(sounds, JSON.stringify(spec), aacEncoding(spec)),
-    mp4,
-    pictureCodec: (spec) =>
-      memo(pictures, JSON.stringify(spec), pictureCodec(spec)),
-  };
-});
+    return {
+      aacEncoding: (spec) =>
+        memo(sounds, JSON.stringify(spec), aacEncoding(spec)),
+      mp4,
+      pictureCodec: (spec) =>
+        memo(pictures, JSON.stringify(spec), pictureCodec(spec)),
+    };
+  });

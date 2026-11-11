@@ -26,9 +26,31 @@ export const POLICY_DIRECTIVES: readonly (readonly [
   ["frame-ancestors", [NONE]],
 ];
 
-export const CONTENT_SECURITY_POLICY = POLICY_DIRECTIVES.map(
-  ([name, sources]) => `${name} ${sources.join(" ")}`
-).join("; ");
+const policyOf = (
+  directives: readonly (readonly [string, readonly string[]])[]
+) =>
+  directives
+    .map(([name, sources]) => `${name} ${sources.join(" ")}`)
+    .join("; ");
+
+export const CONTENT_SECURITY_POLICY = policyOf(POLICY_DIRECTIVES);
+
+const AAC_EXTENSION_NEEDS = new Map<string, readonly string[]>([
+  ["script-src", ["'wasm-unsafe-eval'"]],
+  ["worker-src", ["blob:"]],
+]);
+
+export const CLIP_WORKER_DIRECTIVES = POLICY_DIRECTIVES.map(
+  ([name, sources]) =>
+    [name, [...sources, ...(AAC_EXTENSION_NEEDS.get(name) ?? [])]] as const
+);
+
+export const CLIP_WORKER_PATHS = [
+  "/assets/clip-worker-",
+  "/src/client/moments/clip-worker.ts",
+] as const;
+
+const BUILT_CLIP_WORKERS = `${CLIP_WORKER_PATHS[0]}*`;
 
 export const PERMISSIONS = [
   ["screen-wake-lock", "(self)"],
@@ -54,8 +76,21 @@ export const PAGE_HEADERS = {
   "X-Content-Type-Options": "nosniff",
 } as const satisfies Readonly<Record<string, string>>;
 
+export const CLIP_WORKER_HEADERS = {
+  ...PAGE_HEADERS,
+  "Content-Security-Policy": policyOf(CLIP_WORKER_DIRECTIVES),
+} as const satisfies Readonly<Record<string, string>>;
+
+export const headersFor = (path: string) =>
+  CLIP_WORKER_PATHS.some((prefix) => path.startsWith(prefix))
+    ? CLIP_WORKER_HEADERS
+    : PAGE_HEADERS;
+
 export const HEADERS_FILE = [
   "/*",
   ...Object.entries(PAGE_HEADERS).map(([name, value]) => `  ${name}: ${value}`),
+  BUILT_CLIP_WORKERS,
+  "  ! Content-Security-Policy",
+  `  Content-Security-Policy: ${CLIP_WORKER_HEADERS["Content-Security-Policy"]}`,
   "",
 ].join("\n");

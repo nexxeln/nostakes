@@ -3,7 +3,7 @@ import { Config, Console, Effect, Option, Schema } from "effect";
 import * as FileSystem from "effect/FileSystem";
 import * as ChildProcess from "effect/process/ChildProcess";
 import { ChildProcessSpawner } from "effect/process/ChildProcessSpawner";
-import { chromium, webkit } from "playwright-core";
+import { chromium, firefox, webkit } from "playwright-core";
 import type { BrowserType, Page } from "playwright-core";
 
 import {
@@ -23,7 +23,7 @@ import type { Picture, Swatches } from "./moments/clip-colour.ts";
 import { policyBreaks, watchPolicy } from "./page-evidence.ts";
 import { SHARE_STUB, sharedAtLeast, sharedOrAsked } from "./share-stub.ts";
 import { StageOrigin } from "./stage-origin.ts";
-import { pagePolicy } from "./stage-policy.ts";
+import { PAGE_POLICY_ASKED, pagePolicy } from "./stage-policy.ts";
 
 const WEB = new URL("..", import.meta.url).pathname;
 
@@ -105,7 +105,6 @@ const CLIP_TOOLS = `
     requestAnimationFrame(tick);
   };
   requestAnimationFrame(tick);
-  window.__aac = async () => typeof AudioEncoder === "function" && (await AudioEncoder.isConfigSupported({ codec: "mp4a.40.2", sampleRate: 48000, numberOfChannels: 1, bitrate: 96000 })).supported === true;
   window.__bytes = async (index) => {
     const bytes = new Uint8Array(await window.__files[index].arrayBuffer());
     let binary = "";
@@ -714,9 +713,7 @@ const liveClip = (
         .waitFor({ state: "attached", timeout: 60_000 })
     );
 
-    const sound = yield* attempt("ask whether this browser encodes AAC", () =>
-      page.evaluate<boolean>("window.__aac()")
-    );
+    const sound = true;
 
     const title = yield* attempt("measure the title on the card", () =>
       page.locator("nostakes-moment").evaluate((node) => {
@@ -1369,6 +1366,7 @@ const filmResult = (engine: BrowserType, query: string) =>
 
 const SyncResultSchema = Schema.Struct({
   flashes: Schema.optionalKey(Schema.Array(Schema.Finite)),
+  frames: Schema.optionalKey(Schema.Int),
   state: Schema.String,
 });
 
@@ -1555,10 +1553,12 @@ const soundText = (sound: SoundStream | undefined) =>
 
 const syncVerdict = (
   label: string,
-  planned: readonly number[],
+  planned: { readonly flashes: readonly number[]; readonly frames: number },
   found: Decoded
 ) => {
-  const [first = 0, last = 0] = planned;
+  const [first = 0, last = 0] = planned.flashes;
+  const heard = found.pcm.length / 2;
+  const shown = (planned.frames * SYNC_RATE) / SYNC_FPS;
   const [shownFirst = Number.NaN, shownLast = Number.NaN] = found.flashes;
   const left = onsetOf(found.pcm, 0, shownFirst);
   const right = onsetOf(found.pcm, 1, shownLast);
@@ -1583,7 +1583,7 @@ const syncVerdict = (
 
   return {
     label,
-    line: `${label}: ${soundText(sound)}; flashes at ${found.flashes.map((at) => (at / 1000).toFixed(3)).join(" and ")} s; the left click ${lateFirst.toFixed(2)} ms after the first, the right click ${lateLast.toFixed(2)} ms after the last; ${apart ? "each click only in its own channel" : "a click leaks into the other channel"}`,
+    line: `${label}: ${soundText(sound)}; ${heard} samples of sound under ${shown} samples' worth of picture; flashes at ${found.flashes.map((at) => (at / 1000).toFixed(3)).join(" and ")} s; the left click ${lateFirst.toFixed(2)} ms after the first, the right click ${lateLast.toFixed(2)} ms after the last; ${apart ? "each click only in its own channel" : "a click leaks into the other channel"}`,
     problems: [
       ...(placed
         ? []
@@ -1599,13 +1599,20 @@ const syncVerdict = (
             `${label}: the clicks land ${lateFirst.toFixed(2)} and ${lateLast.toFixed(2)} ms from their flashes, more than ${SYNC_TOLERANCE_MS} ms`,
           ]),
       ...(apart ? [] : [`${label}: a click is heard in the other channel`]),
+      ...(heard === shown
+        ? []
+        : [
+            `${label}: the sound plays ${(((heard - shown) * 1000) / SYNC_RATE).toFixed(2)} ms longer than the picture, so a player holds the last frame or cuts the sound`,
+          ]),
     ],
   };
 };
 
-const syncedFilm = (engine: BrowserType) =>
+type SoundPath = "Browser" | "Extension";
+
+const syncedFilm = (engine: BrowserType, aac: SoundPath) =>
   Effect.gen(function* checkSync() {
-    const label = `${engine.name()}-sync`;
+    const label = `${engine.name()}-sync-${aac === "Browser" ? "browser-aac" : "aac-extension"}`;
     const origin = yield* StageOrigin;
     const fs = yield* FileSystem.FileSystem;
     const opened = yield* mutedBrowser(engine);
@@ -1613,7 +1620,7 @@ const syncedFilm = (engine: BrowserType) =>
 
     yield* policed(page, engine.name());
     yield* attempt("open the film stage", () =>
-      page.goto(`${origin}${STAGE}/film.html?scene=sync&seconds=25`)
+      page.goto(`${origin}${STAGE}/film.html?scene=sync&seconds=25&aac=${aac}`)
     );
     yield* attempt("wait for the film", () =>
       page.waitForFunction(
@@ -1655,7 +1662,124 @@ const syncedFilm = (engine: BrowserType) =>
         line: `${label}: no ffmpeg to read the film with`,
         problems: [],
       }),
-      onSome: (found) => syncVerdict(label, result.flashes ?? [], found),
+      onSome: (found) =>
+        syncVerdict(
+          label,
+          { flashes: result.flashes ?? [], frames: result.frames ?? 0 },
+          found
+        ),
+    });
+  }).pipe(Effect.scoped);
+
+const StreamsSchema = Schema.Struct({
+  streams: Schema.Array(
+    Schema.Struct({
+      codec_type: Schema.String,
+      duration: Schema.optional(Schema.String),
+    })
+  ),
+});
+
+const streamsOf = (path: string) =>
+  Effect.gen(function* probeStreams() {
+    const spawner = yield* ChildProcessSpawner;
+
+    const probe = yield* spawner
+      .string(
+        ChildProcess.make("ffprobe", [
+          "-v",
+          "error",
+          "-show_entries",
+          "stream=codec_type,duration",
+          "-of",
+          "json",
+          path,
+        ])
+      )
+      .pipe(Effect.option);
+
+    return yield* Option.match(probe, {
+      onNone: () => Effect.succeedNone,
+      onSome: (text) =>
+        decoded(
+          StreamsSchema,
+          "read ffprobe's streams"
+        )(text).pipe(Effect.map(({ streams }) => Option.some(streams))),
+    });
+  });
+
+const blockedExtension = (engine: BrowserType) =>
+  Effect.gen(function* checkBlocked() {
+    const label = `${engine.name()}-aac-extension-refused`;
+    const origin = yield* StageOrigin;
+    const fs = yield* FileSystem.FileSystem;
+    const opened = yield* mutedBrowser(engine);
+    const page = yield* attempt("open a page", () => opened.newPage());
+
+    yield* attempt("open the film stage", () =>
+      page.goto(
+        `${origin}${STAGE}/film.html?scene=sync&seconds=25&aac=Extension&${PAGE_POLICY_ASKED}`
+      )
+    );
+    yield* attempt("wait for the film", () =>
+      page.waitForFunction(
+        () => {
+          const stage = document.querySelector("#stage");
+
+          return (
+            stage instanceof HTMLElement && stage.dataset.result !== undefined
+          );
+        },
+        undefined,
+        { timeout: 300_000 }
+      )
+    );
+
+    const result = yield* read(
+      page,
+      'document.querySelector("#stage").dataset.result',
+      SyncResultSchema,
+      "read the film's result"
+    );
+
+    if (result.state !== "Made") {
+      return {
+        label,
+        line: `${label}: no film (${result.state})`,
+        problems: [
+          `${label}: the clip failed when the AAC extension could not run, where it should have come out silent`,
+        ],
+      };
+    }
+
+    const dir = yield* fs.makeTempDirectoryScoped({
+      prefix: "nostakes-refused",
+    });
+
+    const path = `${dir}/refused.mp4`;
+
+    yield* fs.writeFile(path, yield* filmBytes(page));
+
+    return Option.match(yield* streamsOf(path), {
+      onNone: () => ({
+        label,
+        line: `${label}: no ffprobe to read the film with`,
+        problems: [],
+      }),
+      onSome: (streams) => {
+        const kinds = streams.map((stream) => stream.codec_type);
+
+        return {
+          label,
+          line: `${label}: made with ${kinds.join(" and ")} while the worker ran under the page's policy`,
+          problems:
+            kinds.join(",") === "video"
+              ? []
+              : [
+                  `${label}: expected a silent clip, got streams ${kinds.join(", ")}`,
+                ],
+        };
+      },
     });
   }).pipe(Effect.scoped);
 
@@ -1909,9 +2033,7 @@ const replayedClip = (
       })
     ).pipe(Effect.flatMap(decoded(TitleBoxSchema, "measure the title")));
 
-    const sound = yield* attempt("ask whether this browser encodes AAC", () =>
-      page.evaluate<boolean>("window.__aac()")
-    );
+    const sound = true;
 
     yield* attempt("wait for the pictures", () =>
       page
@@ -2017,9 +2139,7 @@ const StagedSchema = Schema.Struct({
   size: Schema.optional(Schema.Int),
   slices: Schema.optional(Schema.Array(Schema.Int)),
   support: Schema.optional(
-    Schema.NullOr(
-      Schema.Struct({ codec: Schema.String, sound: Schema.Boolean })
-    )
+    Schema.NullOr(Schema.Struct({ codec: Schema.String }))
   ),
   title: Schema.optional(TitleBoxSchema),
 });
@@ -2081,7 +2201,7 @@ const stagedClip = (
       page,
       settings,
       { clip: 1, label, still: 0, title: staged.title ?? NO_TITLE },
-      { frame: look.frame, seconds: SHORT_CLIP, sound: staged.support.sound }
+      { frame: look.frame, seconds: SHORT_CLIP, sound: true }
     );
 
     return {
@@ -2114,7 +2234,7 @@ const reported = (checked: {
   });
 
 const checks = Effect.gen(function* checkClips() {
-  const engines = yield* listOf("CLIP_ENGINES", "chromium,webkit");
+  const engines = yield* listOf("CLIP_ENGINES", "chromium,webkit,firefox");
   const samples = yield* listOf("CLIP_SAMPLES", "BigHand-2,BadBeat-1");
   const hands = yield* listOf("CLIP_HANDS", "AcesCracked");
   const themes = yield* listOf("CLIP_THEMES", "Light");
@@ -2145,6 +2265,15 @@ const checks = Effect.gen(function* checkClips() {
 
   const quietChat = pace === "Quiet" && frames.includes("Chat");
 
+  if (engines.includes(firefox.name())) {
+    for (const flow of [
+      syncedFilm(firefox, "Browser"),
+      blockedExtension(firefox),
+    ]) {
+      problems.push(...(yield* reported(yield* flow)));
+    }
+  }
+
   for (const engine of chosen) {
     if (quietChat) {
       for (const flow of [
@@ -2153,7 +2282,9 @@ const checks = Effect.gen(function* checkClips() {
         abandonedClip(engine),
         lingeredClip(engine),
         redrawnFilms(engine),
-        syncedFilm(engine),
+        syncedFilm(engine, "Browser"),
+        syncedFilm(engine, "Extension"),
+        blockedExtension(engine),
         sharpFilm(engine),
         guardedClip(engine, 1),
         guardedClip(engine, 2),
