@@ -11,6 +11,7 @@ import { EMBEDDED_FONTS } from "../pictures/png.js";
 import { ClipUnavailable, failedAt, shotAtlas } from "./clip-layers.js";
 import { ClipReplySchema } from "./clip-wire.js";
 import type { ClipReply, FilmRequest, WorkerRequest } from "./clip-wire.js";
+import { closedPolitely } from "./worker-close.js";
 
 type ClipReplyDelay = Extract<ClipReply, { tag: "Made" }>["delay"];
 
@@ -83,10 +84,7 @@ export const clipWorker: Effect.Effect<
         type: "module",
       }),
   }),
-  (worker) =>
-    Effect.sync(() => {
-      worker.terminate();
-    })
+  closedPolitely
 ).pipe(
   Effect.map((worker) => ({
     ask: (

@@ -5,6 +5,7 @@ import { SOUND_RATE } from "../../features/moments/sound/dsp.js";
 import type { ScoreSheet } from "../../features/moments/sound/sheet.js";
 import { failedAt } from "./clip-layers.js";
 import type { ClipUnavailable } from "./clip-layers.js";
+import { closedPolitely } from "./worker-close.js";
 
 const MixedSchema = Schema.Union([
   Schema.Struct({
@@ -35,10 +36,7 @@ export const mixedOffThread = (
           type: "module",
         }),
     }),
-    (worker) =>
-      Effect.sync(() => {
-        worker.terminate();
-      })
+    closedPolitely
   ).pipe(
     Effect.flatMap((worker) =>
       Effect.callback<unknown, ClipUnavailable>((resume) => {

@@ -1,6 +1,7 @@
 import { Effect, Schema } from "effect";
 
 import { soundtrackOf } from "../../features/moments/sound/soundtrack.js";
+import { isCloseRequest } from "./worker-close.js";
 
 const SMALL_SOUNDS = [
   "AllIn",
@@ -34,6 +35,12 @@ export const SoundRequestSchema = Schema.Struct({
 export type SoundRequest = typeof SoundRequestSchema.Type;
 
 globalThis.addEventListener("message", (event: MessageEvent<unknown>) => {
+  if (isCloseRequest(event.data)) {
+    globalThis.close();
+
+    return;
+  }
+
   Effect.runFork(
     Schema.decodeUnknownEffect(SoundRequestSchema)(event.data).pipe(
       Effect.map(({ sheet }) => soundtrackOf(sheet)),

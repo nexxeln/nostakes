@@ -21,6 +21,7 @@ import {
   WorkerRequestSchema,
 } from "./clip-wire.js";
 import type { ClipReply, FilmRequest, WorkerRequest } from "./clip-wire.js";
+import { isCloseRequest } from "./worker-close.js";
 
 class ClipFailed extends Schema.TaggedError<
   ClipFailed,
@@ -723,6 +724,12 @@ const answered = (request: WorkerRequest) =>
       );
 
 globalThis.addEventListener("message", (event: MessageEvent<unknown>) => {
+  if (isCloseRequest(event.data)) {
+    globalThis.close();
+
+    return;
+  }
+
   Effect.runFork(
     Schema.decodeUnknownEffect(WorkerRequestSchema)(event.data).pipe(
       Effect.mapError(failedAt("read the request")),
