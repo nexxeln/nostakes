@@ -32,7 +32,7 @@ const SIZES = {
 
 const SHORTEST_SECONDS = 2.9;
 
-const LONGEST_SECONDS = 4.1;
+const LONGEST_SECONDS = 4.6;
 
 const FPS = 30;
 

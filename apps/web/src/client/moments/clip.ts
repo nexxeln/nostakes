@@ -1,11 +1,17 @@
 import { Effect, Option, Schema } from "effect";
 
-import { clipFrames, CLIP_FPS } from "../../features/moments/clip-plan.js";
+import {
+  clipFrames,
+  CLIP_FPS,
+  CLIP_STAGING,
+  stingStartMs,
+} from "../../features/moments/clip-plan.js";
 import type { MomentPicture } from "../../features/moments/picture.js";
 import {
   FAMILIES,
   momentScore,
   scoreLength,
+  shiftedScore,
 } from "../../features/moments/score.js";
 import { FRAME_SIZES } from "../../features/pictures/paper.js";
 import type { KeptFrame } from "../../features/pictures/paper.js";
@@ -147,12 +153,15 @@ export const slotFor = (pace: ClipPace): Effect.Effect<void> =>
 
 const stingOf = (
   picture: MomentPicture,
-  seconds: number,
+  timing: { readonly seconds: number; readonly startMs: number },
   slot: Effect.Effect<void>
 ) =>
   renderScore(
-    momentScore(picture.kind, picture.tier),
-    { channels: 1, sampleRate: SOUND_RATE, seconds },
+    shiftedScore(
+      momentScore(picture.kind, picture.tier),
+      timing.startMs / 1000
+    ),
+    { channels: 1, sampleRate: SOUND_RATE, seconds: timing.seconds },
     slot
   ).pipe(
     Effect.map((rendered) => rendered.getChannelData(0)),
@@ -227,11 +236,19 @@ export const clipFile = (
     );
 
     const motion = { family: FAMILIES[picture.kind], tier: picture.tier };
-    const stingMs = scoreLength(momentScore(picture.kind, picture.tier)) * 1000;
+    const stingAt = stingStartMs(motion.family, CLIP_STAGING);
+
+    const stingMs =
+      stingAt + scoreLength(momentScore(picture.kind, picture.tier)) * 1000;
+
     const frames = clipFrames(atlas.layers, motion, stingMs);
 
     const sound = support.sound
-      ? yield* stingOf(picture, frames / CLIP_FPS, slot).pipe(
+      ? yield* stingOf(
+          picture,
+          { seconds: frames / CLIP_FPS, startMs: stingAt },
+          slot
+        ).pipe(
           Effect.map((pcm) => ({
             bitrate: SOUND_BITRATE,
             pcm,

@@ -187,6 +187,19 @@ export const momentScore = (
   ...SIGNATURES[kind],
 ];
 
+export const STING_HITS: Readonly<Record<Family, number>> = {
+  Celebration: 0.08,
+  Groan: 0.94,
+  Relief: 0.18,
+  Reveal: 0.68,
+};
+
+export const shiftedScore = (
+  steps: readonly SoundStep[],
+  seconds: number
+): readonly SoundStep[] =>
+  steps.map((step) => ({ ...step, at: step.at + seconds }));
+
 export const scoreLength = (steps: readonly SoundStep[]) =>
   Math.max(0, ...steps.map((step) => step.at + step.dur));
 

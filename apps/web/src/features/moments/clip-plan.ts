@@ -1,5 +1,6 @@
 import type { Tier } from "@nostakes/room";
 
+import { STING_HITS } from "./score.js";
 import type { Family } from "./score.js";
 import { partPose } from "./timeline.js";
 import type { Pose, Staging } from "./timeline.js";
@@ -10,7 +11,13 @@ export const CLIP_HOLD_MS = 2000;
 
 export const STING_TAIL_MS = 300;
 
-export const CLIP_LONGEST_MS = 4000;
+export const CLIP_LONGEST_MS = 4500;
+
+export const CLIP_SPREAD = 2.5;
+
+const POT_LANDS_AFTER = 240;
+
+const POT_STARTS = 620;
 
 export const BASE_ROLE = "base";
 
@@ -53,7 +60,16 @@ const resting = (pose: Pose) =>
   Math.abs(pose.scale - 1) < NEAR &&
   Math.abs(pose.squeeze - 1) < NEAR;
 
-export const CLIP_STAGING: Staging = { landed: new Set(["felt", "title"]) };
+export const CLIP_STAGING: Staging = {
+  landed: new Set(["felt", "title"]),
+  spread: CLIP_SPREAD,
+};
+
+export const potLandsAt = (staging: Staging) =>
+  POT_STARTS * staging.spread + POT_LANDS_AFTER;
+
+export const stingStartMs = (family: Family, staging: Staging) =>
+  Math.max(0, potLandsAt(staging) - STING_HITS[family] * 1000);
 
 export const poseOf = (layer: Layer, ms: number, motion: Motion): Pose =>
   partPose(

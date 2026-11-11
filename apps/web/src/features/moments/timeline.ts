@@ -81,8 +81,14 @@ export const cardPose = (family: Family, ms: number, plan: Plan): Pose => {
   };
 };
 
-const shake = (ms: number, tier: Tier) =>
-  tier === 3 && ms > 320 && ms < 560 ? Math.sin(ms / 18) * 7 : 0;
+const SHAKE_FROM = 320;
+
+const SHAKE_FOR = 240;
+
+const shake = (ms: number, tier: Tier, from: number) =>
+  tier === 3 && ms > from && ms < from + SHAKE_FOR
+    ? Math.sin((ms - from + SHAKE_FROM) / 18) * 7
+    : 0;
 
 const stamp = (ms: number, from: number): Pose => {
   const landed = easeBack(progress(ms, from, from + 240));
@@ -115,8 +121,7 @@ const flip = (ms: number, from: number): Pose => ({
   squeeze: Math.max(0.02, easeOut(progress(ms, from, from + 200))),
 });
 
-const fall = (ms: number, index: number): Pose => {
-  const from = 160 + index * 14;
+const fall = (ms: number, index: number, from: number): Pose => {
   const amount = easeOut(progress(ms, from, from + 900));
 
   return {
@@ -129,9 +134,10 @@ const fall = (ms: number, index: number): Pose => {
 
 export interface Staging {
   readonly landed: ReadonlySet<string>;
+  readonly spread: number;
 }
 
-export const TABLE_STAGING: Staging = { landed: new Set() };
+export const TABLE_STAGING: Staging = { landed: new Set(), spread: 1 };
 
 export const partPose = (
   role: string,
@@ -146,38 +152,44 @@ export const partPose = (
   }
 
   const groan = family === "Groan";
+  const at = (start: number) => start * staging.spread;
+
+  const fadeFrom = (start: number, length: number) =>
+    fade(ms, at(start), at(start) + length);
+
+  const shaken = shake(ms, tier, at(SHAKE_FROM));
 
   const face = () =>
     groan
-      ? rise(ms, 200 + index * 120, index === 0 ? -14 : 14)
-      : { ...stamp(ms, 200 + index * 90), dx: shake(ms, tier) };
+      ? rise(ms, at(200 + index * 120), index === 0 ? -14 : 14)
+      : { ...stamp(ms, at(200 + index * 90)), dx: shaken };
 
   const hole = () =>
     family === "Reveal"
-      ? flip(ms, 420 + index * 90)
-      : rise(ms, 300 + index * 60, 34);
+      ? flip(ms, at(420 + index * 90))
+      : rise(ms, at(300 + index * 60), 34);
 
   const lifted = () => ({
-    ...rise(ms, 520 + index * 50, 26),
-    opacity: fade(ms, 240 + index * 40, 420 + index * 40).opacity,
+    ...rise(ms, at(520 + index * 50), 26),
+    opacity: fadeFrom(240 + index * 40, 180).opacity,
   });
 
   const title = () =>
     groan
-      ? fade(ms, 300, 900)
-      : { ...stamp(ms, family === "Reveal" ? 760 : 140), dx: shake(ms, tier) };
+      ? fadeFrom(300, 600)
+      : { ...stamp(ms, at(family === "Reveal" ? 760 : 140)), dx: shaken };
 
   const poses = new Map<string, () => Pose>([
-    ["also", () => fade(ms, 760, 960)],
-    ["board", () => fade(ms, 240 + index * 40, 420 + index * 40)],
+    ["also", () => fadeFrom(760, 200)],
+    ["board", () => fadeFrom(240 + index * 40, 180)],
     ["face", face],
-    ["felt", () => ({ ...REST, dx: shake(ms, tier) })],
+    ["felt", () => ({ ...REST, dx: shaken })],
     ["hole", hole],
     ["lifted", lifted],
-    ["line", () => fade(ms, groan ? 700 : 380, groan ? 1000 : 600)],
-    ["mark", () => fade(ms, 760, 960)],
-    ["pot", () => stamp(ms, 620)],
-    ["scrap", () => fall(ms, index)],
+    ["line", () => fadeFrom(groan ? 700 : 380, 300)],
+    ["mark", () => fadeFrom(760, 200)],
+    ["pot", () => stamp(ms, at(620))],
+    ["scrap", () => fall(ms, index, at(160 + index * 14))],
     ["title", title],
   ]);
 

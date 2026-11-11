@@ -7,6 +7,7 @@ import {
   bandsOf,
   CLIP_FPS,
   CLIP_STAGING,
+  potLandsAt,
   CLIP_HOLD_MS,
   CLIP_LONGEST_MS,
   clipFrames,
@@ -23,7 +24,11 @@ import {
   momentScore,
   scoreLength,
 } from "../src/features/moments/score.js";
-import { partPose, REST } from "../src/features/moments/timeline.js";
+import {
+  partPose,
+  REST,
+  TABLE_STAGING,
+} from "../src/features/moments/timeline.js";
 
 const PART = /data-part="(?<role>[a-z]+)" data-index="(?<index>\d+)"/gu;
 
@@ -67,6 +72,12 @@ const roundedPose = (pose: typeof REST) => ({
   turn: rounded(pose.turn),
 });
 
+const orderOf = (times: readonly number[]) =>
+  times
+    .map((at, index) => ({ at, index }))
+    .toSorted((one, other) => one.at - other.at || one.index - other.index)
+    .map((time) => time.index);
+
 describe("a moment's clip", () => {
   it("ends every sample moment with every part at rest, the frame the still picture shows", () => {
     const ends = SAMPLE_NAMES.map((name) => {
@@ -92,54 +103,107 @@ describe("a moment's clip", () => {
     );
   });
 
-  it("opens every sample clip with the card and the title landed, and moves every other part exactly as the table does", () => {
+  it("opens every sample clip with the card and the title landed, starts every other part in the table's order and lands it no earlier, and lands the last about two seconds in", () => {
+    const STEP = 10;
+    const LONGEST = 6000;
+    const REVEAL_SHORTEST = 1700;
+    const REVEAL_LONGEST = 2400;
+    const tableStaging = { landed: new Set<string>(), spread: 1 };
+    const resting = JSON.stringify(roundedPose(REST));
+
+    const timesOf = (pose: (ms: number) => typeof REST) => {
+      let rests = 0;
+      let shows = LONGEST;
+
+      for (let ms = 0; ms <= LONGEST; ms += STEP) {
+        const at = pose(ms);
+
+        if (JSON.stringify(roundedPose(at)) !== resting) {
+          rests = ms + STEP;
+        }
+
+        if (at.opacity > 0) {
+          shows = Math.min(shows, ms);
+        }
+      }
+
+      return { rests, shows };
+    };
+
     const found = SAMPLE_NAMES.map((name) => {
       const motion = motionOf(name);
       const layers = layersOf(name);
-      const frames = clipFrames(layers, motion, stingMsOf(name));
 
-      const landed = layers.filter((layer) =>
-        CLIP_STAGING.landed.has(layer.role)
+      const moving = layers.filter(
+        (layer) => !CLIP_STAGING.landed.has(layer.role)
       );
 
-      const drifted = layers
-        .filter((layer) => !CLIP_STAGING.landed.has(layer.role))
-        .flatMap((layer) =>
-          Array.from({ length: frames }, (_, frame) => frameMs(frame)).filter(
-            (ms) =>
-              JSON.stringify(poseOf(layer, ms, motion)) !==
-              JSON.stringify(
-                partPose(
-                  layer.role,
-                  layer.index,
-                  ms,
-                  motion.family,
-                  motion.tier
-                )
-              )
+      const table = moving.map((layer) =>
+        timesOf((ms) =>
+          partPose(
+            layer.role,
+            layer.index,
+            ms,
+            motion.family,
+            motion.tier,
+            tableStaging
           )
+        )
+      );
+
+      const clip = moving.map((layer) =>
+        timesOf((ms) => poseOf(layer, ms, motion))
+      );
+
+      const startsOf = (times: readonly { readonly shows: number }[]) =>
+        times.flatMap((time, index) =>
+          moving[index]?.role === "scrap" ? [] : [time.shows]
         );
 
+      const lastLands = Math.max(
+        ...clip
+          .filter((_, index) => moving[index]?.role !== "scrap")
+          .map((time) => time.rests)
+      );
+
       return {
-        drifted: drifted.length,
-        firstFrame: landed.map((layer) => ({
-          pose: roundedPose(poseOf(layer, 0, motion)),
-          role: layer.role,
-        })),
+        early: clip.filter(
+          (time, index) => time.rests < (table[index]?.rests ?? 0)
+        ).length,
+        firstFrame: layers
+          .filter((layer) => CLIP_STAGING.landed.has(layer.role))
+          .map((layer) => ({
+            pose: roundedPose(poseOf(layer, 0, motion)),
+            role: layer.role,
+          })),
+        lastLandsInTime:
+          lastLands >= REVEAL_SHORTEST && lastLands <= REVEAL_LONGEST,
         name,
+        order: orderOf(startsOf(clip)),
+        tableOrder: orderOf(startsOf(table)),
       };
     });
 
     expect(found).toStrictEqual(
-      SAMPLE_NAMES.map((name) => ({
-        drifted: 0,
+      found.map(({ name, tableOrder }) => ({
+        early: 0,
         firstFrame: [
           { pose: roundedPose(REST), role: "felt" },
           { pose: roundedPose(REST), role: "title" },
         ],
+        lastLandsInTime: true,
         name,
+        order: tableOrder,
+        tableOrder,
       }))
     );
+  });
+
+  it("lands the pot about two seconds into a clip and well under one on the table", () => {
+    expect({
+      clip: potLandsAt(CLIP_STAGING),
+      table: potLandsAt(TABLE_STAGING),
+    }).toStrictEqual({ clip: 1790, table: 860 });
   });
 
   it("leaves the table's own staging alone, so the table still brings the title in", () => {
