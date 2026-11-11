@@ -24,7 +24,7 @@ import type {
   ReplyResult,
   RoomTypes,
 } from "./codec.js";
-import { connectionEvents } from "./connection.js";
+import { commandBudget, connectionEvents } from "./connection.js";
 import { BatchFits, fitBatch, fitWelcome, WelcomeFits } from "./sequence.js";
 import type { WelcomeSpan } from "./sequence.js";
 import {
@@ -172,9 +172,11 @@ export const roomClientMachine = <T extends RoomTypes>(
     }
   };
 
+  const budget = commandBudget();
+
   const connection = createEffectEventStreamLogic({
     schemas: { input: ConnectionInput },
-    stream: ({ input }) => connectionEvents(codec, input.url),
+    stream: ({ input }) => connectionEvents(codec, input.url, budget),
   });
 
   const backoff = createEffectEventStreamLogic({

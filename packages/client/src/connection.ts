@@ -1,4 +1,6 @@
-import { Effect, Queue, Result, Stream } from "effect";
+import { fullBucket, spendToken } from "@nostakes/protocol";
+import type { Bucket } from "@nostakes/protocol";
+import { Clock, Duration, Effect, Option, Queue, Result, Stream } from "effect";
 import type { Cause } from "effect";
 
 import type { ConnectionEvent, Link } from "./client-events.js";
@@ -6,8 +8,8 @@ import type { ClientCodec, ClientMessage, RoomTypes } from "./codec.js";
 import { SocketEvents } from "./socket-event.js";
 import {
   CLIENT_BURST_REFILL_MS,
-  CLIENT_COMMAND_BURST,
-  CLIENT_COMMAND_REFILL_MS,
+  CLIENT_COMMAND_ALLOWANCE,
+  CLIENT_COMMAND_TOKEN_MS,
   CLIENT_FRAME_BURST,
 } from "./timing.js";
 import type { Socket } from "./transport.js";
@@ -73,20 +75,56 @@ const answerOwedFor = <T extends RoomTypes>(
     Signal: (): readonly ConnectionEvent<T>[] => [],
   });
 
+export interface CommandBudget {
+  bucket: Option.Option<Bucket>;
+}
+
+export const commandBudget = (): CommandBudget => ({ bucket: Option.none() });
+
+const spendAt = (budget: CommandBudget, at: number) =>
+  spendToken(
+    CLIENT_COMMAND_ALLOWANCE,
+    Option.getOrElse(budget.bucket, () =>
+      fullBucket(CLIENT_COMMAND_ALLOWANCE, at)
+    ),
+    at
+  );
+
+const takeCommandToken = (budget: CommandBudget) =>
+  Clock.currentTimeMillis.pipe(
+    Effect.flatMap((at) =>
+      Option.match(spendAt(budget, at), {
+        onNone: () =>
+          Effect.sleep(Duration.millis(CLIENT_COMMAND_TOKEN_MS)).pipe(
+            Effect.andThen(Clock.currentTimeMillis),
+            Effect.flatMap((later) =>
+              Effect.sync(() => {
+                budget.bucket = spendAt(budget, later);
+              })
+            )
+          ),
+        onSome: (bucket) =>
+          Effect.sync(() => {
+            budget.bucket = Option.some(bucket);
+          }),
+      })
+    )
+  );
+
 const writeFrames = <T extends RoomTypes>(
   codec: ClientCodec<T>,
   outlet: Queue.Queue<ClientMessage<T>>,
   inlet: Inlet<T>,
-  socket: Socket
+  socket: Socket,
+  budget: CommandBudget
 ) =>
   Stream.fromQueue(outlet).pipe(
+    Stream.mapEffect((message): Effect.Effect<ClientMessage<T>> =>
+      codec.client.guards.Command(message)
+        ? takeCommandToken(budget).pipe(Effect.as(message))
+        : Effect.succeed(message)
+    ),
     Stream.rechunk(1),
-    Stream.throttle({
-      cost: (frames) => frames.filter(codec.client.guards.Command).length,
-      duration: `${CLIENT_COMMAND_REFILL_MS} millis`,
-      strategy: "shape",
-      units: CLIENT_COMMAND_BURST,
-    }),
     Stream.throttle({
       cost: (frames) => frames.length,
       duration: `${CLIENT_BURST_REFILL_MS} millis`,
@@ -106,7 +144,8 @@ const writeFrames = <T extends RoomTypes>(
 
 export const connectionEvents = <T extends RoomTypes>(
   codec: ClientCodec<T>,
-  url: string
+  url: string,
+  budget: CommandBudget
 ) =>
   Stream.unwrap(
     Effect.gen(function* openConnection() {
@@ -146,7 +185,9 @@ export const connectionEvents = <T extends RoomTypes>(
         Effect.ensuring(Effect.sync(() => Queue.endUnsafe(inlet))),
         Effect.forkScoped
       );
-      yield* writeFrames(codec, outlet, inlet, socket).pipe(Effect.forkScoped);
+      yield* writeFrames(codec, outlet, inlet, socket, budget).pipe(
+        Effect.forkScoped
+      );
 
       return Stream.fromQueue(inlet);
     })

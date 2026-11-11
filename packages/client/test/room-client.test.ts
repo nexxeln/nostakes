@@ -1525,6 +1525,42 @@ describe("room client against a fake socket", () => {
   );
 
   it.effect(
+    "commands never outrun the room's command allowance across reconnects, because the budget belongs to the client and not to one line",
+    () =>
+      Effect.gen(function* acrossReconnects() {
+        const { client, fake, greet, live, socket } = yield* harness;
+
+        yield* live(1);
+
+        yield* Effect.all(
+          Array.from({ length: 40 }, (_, index) => client.issue(add(index)))
+        );
+
+        for (let round = 0; round < 5; round += 1) {
+          yield* advance(400);
+          yield* cut(yield* socket(round));
+          yield* advance(250);
+          yield* greet(round + 1, 1);
+        }
+
+        for (let step = 0; step < 400; step += 1) {
+          yield* advance(50);
+        }
+
+        const commands = fake.sockets
+          .flatMap((open) =>
+            open.sent.filter(({ message }) => Sent.Command(message))
+          )
+          .toSorted((left, right) => left.at - right.at);
+
+        expect(commands.length).toBeGreaterThan(40);
+        expect(serverAdmits(commands, COMMAND_BURST, COMMANDS_PER_SECOND)).toBe(
+          true
+        );
+      }).pipe(Effect.scoped, lowestJitter)
+  );
+
+  it.effect(
     "cancelling locally withdraws an unsent command and only stops waiting for a sent one",
     () =>
       Effect.gen(function* cancelLocally() {

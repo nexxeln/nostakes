@@ -1,4 +1,9 @@
-import { COMMAND_BURST, FRAME_BURST } from "@nostakes/protocol";
+import {
+  COMMAND_BURST,
+  COMMANDS_PER_SECOND,
+  FRAME_BURST,
+} from "@nostakes/protocol";
+import type { Allowance } from "@nostakes/protocol";
 
 export { PING_INTERVAL_MS } from "@nostakes/protocol";
 
@@ -24,6 +29,11 @@ export const CLIENT_FRAME_BURST = FRAME_BURST - 2;
 
 export const CLIENT_BURST_REFILL_MS = 500;
 
-export const CLIENT_COMMAND_BURST = COMMAND_BURST - 2;
+export const CLIENT_COMMAND_ALLOWANCE: Allowance = {
+  burst: COMMAND_BURST - 2,
+  perSecond: COMMANDS_PER_SECOND,
+};
 
-export const CLIENT_COMMAND_REFILL_MS = 5000;
+export const CLIENT_COMMAND_TOKEN_MS = Math.ceil(
+  1000 / CLIENT_COMMAND_ALLOWANCE.perSecond
+);
