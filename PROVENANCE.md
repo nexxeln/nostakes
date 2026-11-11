@@ -28,7 +28,7 @@ Adapted:
 - `turbo.json`: no site, web, or infra tasks and no signed remote cache. Adds `verify` and the root inputs the fence tests read.
 - `tsconfig.json`: no `allowedUnstableApis`, because no root script uses Effect.
 - `oxfmt.config.ts`: no site ignores or overrides.
-- `oxlint.config.ts`: the Foldkit plugin as rat-stack wires it, except `no-impure-call-at-decision-time` stays off in `apps/web/src/client`; no site or web overrides, and the dropped rules below.
+- `oxlint.config.ts`: the Foldkit plugin as rat-stack wires it, except `no-impure-call-at-decision-time` stays off in five named files under `apps/web/src/client`; no site or web overrides, and the dropped rules below.
 - `scripts/oxlint-plugin-patterns.ts` is `nostakes-patterns`. `scripts/oxlint-plugin-boundaries.ts` is `nostakes-boundaries`. `scripts/oxlint-plugin-debt-ledger.ts` is `nostakes-debt`, read by `pnpm debt` instead of a site page.
 - `nostakes-boundaries/no-cross-layer-imports` keeps only the rule that a package cannot import app code.
 - `scripts/vcs-command-policy.js` is rat-stack's later policy from its commit `2417db8` ("fence: block every hook bypass, not only --no-verify"), unchanged: it reads the command with shell quoting and blocks `--no-verify` and its abbreviations, `commit -n`, `LEFTHOOK=0`, `LEFTHOOK_EXCLUDE`, `HUSKY=0`, `core.hooksPath` overrides, `lefthook uninstall`, and writes under `.git/hooks`, also inside `sh -c`. `tools/fence/test/vcs-command-policy.test.ts` holds rat-stack's cases and properties with ours added.

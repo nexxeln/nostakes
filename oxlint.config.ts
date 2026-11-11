@@ -19,6 +19,14 @@ const foldkitSeverity = ([rule, severity]: readonly [string, string]) => {
 const foldkitRules = (rules: Readonly<Record<string, string>>) =>
   Object.fromEntries(Object.entries(rules).map(foldkitSeverity));
 
+const CLIENT_FILES_THAT_READ_THE_CLOCK_THEMSELVES = [
+  "client/counting.ts",
+  "client/landing/face.ts",
+  "client/learn/page.ts",
+  "client/moments/film-file.ts",
+  "client/table/element.ts",
+];
+
 const foldkitOverrides = [
   {
     files: [foldkitScope("**/*.ts")],
@@ -30,7 +38,7 @@ const foldkitOverrides = [
     rules: foldkitRules(rules),
   })),
   {
-    files: [foldkitScope("client/**/*.ts")],
+    files: CLIENT_FILES_THAT_READ_THE_CLOCK_THEMSELVES.map(foldkitScope),
     rules: { "foldkit/no-impure-call-at-decision-time": "off" as const },
   },
 ];

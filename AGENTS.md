@@ -16,7 +16,7 @@ Workspace `package.json` files declare the pinned stack. Keep every dependency e
 - `@yielded/effect-tsrs` `0.2.3` runs `typecheck` and `check` with `diagnostics --strict --type-check`. `--strict` makes Effect warnings fail.
 - tsrs `0.24.0-ts7.1.0-beta` runs `typecheck:fast`. It has no Effect diagnostics.
 - Vitest `5.1.0`
-- Oxlint `1.93.0` with `oxlint-tsgolint` `7.0.2006` for type-aware rules, `@oxlint/plugins` `1.93.0`, `@foldkit/oxlint-plugin` `0.15.4` (its recommended rules on `apps/web/src`, with `no-impure-call-at-decision-time` off in `src/client`, whose custom elements time their own frames), Ultracite `8.1.1`, and Oxfmt `0.78.0`
+- Oxlint `1.93.0` with `oxlint-tsgolint` `7.0.2006` for type-aware rules, `@oxlint/plugins` `1.93.0`, `@foldkit/oxlint-plugin` `0.15.4` (its recommended rules on `apps/web/src`, with `no-impure-call-at-decision-time` off only in the five `src/client` files that read the clock or the random source themselves, listed in `oxlint.config.ts`: the list only shrinks, and a new file takes its time from the frame callback or an Effect instead), Ultracite `8.1.1`, and Oxfmt `0.78.0`
 - Lefthook `2.2.2` and `@types/node` `24.19.2`
 - Alchemy `2.0.0-beta.85` (`alchemy`, `@alchemy.run/cloudflare`, `@alchemy.run/test`), `@cloudflare/workers-types` `5.20261110.1`, and `@effect/platform-node` `4.1.2`, which Alchemy's local Worker bridge imports. `workerd` is the only extra entry under `allowBuilds`, so its postinstall can fetch the local runtime.
 - `@noble/hashes` `2.4.0` and `@noble/curves` `2.4.0` in `packages/shuffle`: SHA-256 and HMAC behind `src/sha256.ts`, and the drand BLS check in `src/beacon.ts`. The owner approved both.
