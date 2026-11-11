@@ -6,6 +6,10 @@ import { ChildProcessSpawner } from "effect/process/ChildProcessSpawner";
 import { chromium, webkit } from "playwright-core";
 import type { BrowserType, Page } from "playwright-core";
 
+import {
+  NO_CLIP_BELOW_GB,
+  SHORT_ONLY_BELOW_GB,
+} from "../src/features/moments/clip-reach.ts";
 import { mutedBrowser, servedVite } from "./local-site.ts";
 import {
   declaredColour,
@@ -1007,6 +1011,93 @@ const stateOf = (page: Page) =>
       )
   );
 
+const SHORT_LONGEST_SECONDS = 6;
+
+const guardedClip = (engine: BrowserType, gigabytes: number) =>
+  Effect.gen(function* guardClip() {
+    const origin = yield* StageOrigin;
+    const opened = yield* mutedBrowser(engine);
+
+    const context = yield* attempt("open a phone-sized context", () =>
+      opened.newContext({
+        hasTouch: true,
+        viewport: { height: 844, width: 390 },
+      })
+    );
+
+    yield* attempt("report the device's memory", () =>
+      Promise.all([
+        context.addInitScript(SHARE_STUB),
+        context.addInitScript(CLIP_TOOLS),
+        context.addInitScript(
+          `Object.defineProperty(Navigator.prototype, "deviceMemory", { configurable: true, get: () => ${gigabytes} });`
+        ),
+      ])
+    );
+
+    const page = yield* attempt("open a page", () => context.newPage());
+    const label = `${engine.name()}-memory-${gigabytes}gb`;
+
+    yield* policed(page, engine.name());
+    yield* attempt("open the stage", () =>
+      page.goto(
+        `${origin}${STAGE}/stage.html?view=hand&hand=AcesCracked&theme=Light`
+      )
+    );
+    yield* attempt("wait for the pictures", () =>
+      page
+        .locator('nostakes-moment[data-drawn="Chat Story"]')
+        .waitFor({ state: "attached", timeout: 60_000 })
+    );
+    yield* attempt("tap the moment away", () =>
+      page.locator("nostakes-moment .card").click()
+    );
+    yield* attempt("wait for the clip to be made or refused", () =>
+      page
+        .locator(
+          'nostakes-moment[data-clip="Ready"], nostakes-moment[data-clip="Unavailable"]'
+        )
+        .waitFor({ state: "attached", timeout: 120_000 })
+    );
+
+    const state = yield* stateOf(page);
+
+    if (gigabytes < NO_CLIP_BELOW_GB) {
+      return {
+        label,
+        line: `${label}: clip ${state}`,
+        problems:
+          state === "Unavailable"
+            ? []
+            : [
+                `${label}: a device reporting ${gigabytes} GB still made a clip`,
+              ],
+      };
+    }
+
+    yield* attempt("tap Clip", () =>
+      page.locator("nostakes-moment .clip").click()
+    );
+    yield* attempt("wait for the clip to reach the share sheet", () =>
+      sharedAtLeast(page, 1, 15_000)
+    );
+
+    const { seconds } = atomsOf(yield* fileOf(page, 0));
+    const replayed = seconds > SHORT_LONGEST_SECONDS;
+    const wanted = gigabytes >= SHORT_ONLY_BELOW_GB;
+
+    return {
+      label,
+      line: `${label}: ${replayed ? "the replay" : "the short clip"}, ${seconds.toFixed(2)} s`,
+      problems:
+        replayed === wanted
+          ? []
+          : [
+              `${label}: a device reporting ${gigabytes} GB got ${replayed ? "the replay" : "the short clip"}`,
+            ],
+    };
+  }).pipe(Effect.scoped);
+
 const turnTo = (page: Page, yours: boolean) =>
   attempt("deal the player in", () =>
     page.locator("nostakes-moment").evaluate((node, dealing) => {
@@ -1385,6 +1476,9 @@ const checks = Effect.gen(function* checkClips() {
         refusedClip(engine),
         askedClip(engine, settings),
         abandonedClip(engine),
+        guardedClip(engine, 1),
+        guardedClip(engine, 2),
+        guardedClip(engine, 8),
       ]) {
         problems.push(...(yield* reported(yield* flow)));
       }

@@ -18,19 +18,27 @@ const PoseSchema = Schema.Struct({
   turn: Schema.Finite,
 });
 
-const LayerSchema = Schema.Struct({
+const KeySchema = Schema.Struct({
+  at: Schema.Finite,
+  ease: Schema.optionalKey(
+    Schema.Literals(["Hold", "In", "InOut", "Linear", "Out"])
+  ),
+  pose: PoseSchema,
+});
+
+const BoxSchema = Schema.Struct({
+  height: Schema.Int,
+  width: Schema.Int,
+  x: Schema.Int,
+  y: Schema.Int,
+});
+
+const DrawnShotSchema = Schema.Struct({
   band: Schema.Int,
-  cell: Schema.Struct({
-    height: Schema.Int,
-    width: Schema.Int,
-    x: Schema.Int,
-    y: Schema.Int,
-  }),
-  centre: PointSchema,
-  from: Schema.Finite,
-  index: Schema.Int,
-  keys: Schema.Array(Schema.Struct({ at: Schema.Finite, pose: PoseSchema })),
-  role: Schema.String,
+  box: BoxSchema,
+  keys: Schema.Array(KeySchema),
+  pinned: Schema.Boolean,
+  pivot: PointSchema,
   source: PointSchema,
 });
 
@@ -40,33 +48,33 @@ export const ChancesRequestSchema = Schema.Struct({
   kind: Schema.Literal("Chances"),
 });
 
-export const ClipRequestSchema = Schema.Struct({
+export const FilmRequestSchema = Schema.Struct({
   bands: Schema.Array(Schema.instanceOf(ImageBitmap)),
   bitrate: Schema.Int,
+  camera: Schema.Array(KeySchema),
   codec: Schema.String,
+  digest: Schema.Boolean,
+  fps: Schema.Literals([24, 25, 30]),
   frames: Schema.Int,
   height: Schema.Int,
-  kind: Schema.Literal("Frames"),
-  layers: Schema.Array(LayerSchema),
-  motion: Schema.Struct({
-    family: Schema.Literals(["Celebration", "Groan", "Relief", "Reveal"]),
-    tier: Schema.Literals([1, 2, 3]),
-  }),
+  kind: Schema.Literal("Film"),
+  redraw: Schema.Literals(["Changed", "Whole"]),
+  shots: Schema.Array(DrawnShotSchema),
   sound: Schema.NullOr(
     Schema.Struct({
       bitrate: Schema.Int,
-      pcm: Schema.instanceOf(Float32Array),
+      channels: Schema.Array(Schema.instanceOf(Float32Array)),
       sampleRate: Schema.Int,
     })
   ),
   width: Schema.Int,
 });
 
-export type ClipRequest = typeof ClipRequestSchema.Type;
+export type FilmRequest = typeof FilmRequestSchema.Type;
 
 export const WorkerRequestSchema = Schema.Union([
   ChancesRequestSchema,
-  ClipRequestSchema,
+  FilmRequestSchema,
 ]);
 
 export type WorkerRequest = typeof WorkerRequestSchema.Type;
@@ -77,8 +85,14 @@ export const ClipReplySchema = Schema.Union([
     tag: Schema.Literal("Chances"),
   }),
   Schema.Struct({
-    bytes: Schema.instanceOf(Uint8Array),
+    digest: Schema.NullOr(Schema.String),
+    file: Schema.instanceOf(Blob),
+    redrawn: Schema.Int,
     tag: Schema.Literal("Made"),
+  }),
+  Schema.Struct({
+    made: Schema.Int,
+    tag: Schema.Literal("Progress"),
   }),
   Schema.Struct({
     detail: Schema.String,

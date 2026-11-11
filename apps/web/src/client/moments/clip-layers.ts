@@ -11,7 +11,9 @@ import type {
   Layer,
   Packed,
 } from "../../features/moments/clip-plan.js";
-import type { Key } from "../../features/moments/replay-plan.js";
+import { pivotOf } from "../../features/moments/film.js";
+import type { Shot } from "../../features/moments/film.js";
+import type { DrawnShot } from "./clip-draw.js";
 import { indexOf, isGraphic, roleOf, topParts } from "./clip-measure.js";
 import type { PartBox } from "./clip-measure.js";
 
@@ -28,11 +30,6 @@ export const failedAt =
   (step: string) =>
   (cause: unknown): ClipUnavailable =>
     new ClipUnavailable({ detail: String(cause), step });
-
-export interface Atlas {
-  readonly bands: readonly ImageBitmap[];
-  readonly layers: readonly Layer[];
-}
 
 const MARGIN = 8;
 
@@ -264,107 +261,87 @@ const rasterized = (
     };
   });
 
-export const atlasOf = (
-  svg: string,
-  look: {
-    readonly boxes: readonly PartBox[];
-    readonly fonts: string;
-    readonly from: (role: string) => number;
-    readonly size: { readonly height: number; readonly width: number };
-  },
-  slot: Effect.Effect<void>
-): Effect.Effect<Atlas, ClipUnavailable> =>
-  Effect.gen(function* buildAtlas() {
-    yield* slot;
-
-    const measured = yield* Effect.try({
-      catch: failedAt("lay the picture's parts out"),
-      try: () => layersIn(svg, look.boxes, look.size),
-    });
-
-    const drawn = yield* rasterized(measured, look.fonts, slot);
-
-    return {
-      bands: drawn.bands,
-      layers: measured.map((layer, index) => ({
-        band: drawn.places[index]?.band ?? 0,
-        cell: layer.cell,
-        centre: layer.centre,
-        from: look.from(layer.role),
-        index: layer.index,
-        keys: [],
-        role: layer.role,
-        source: drawn.places[index]?.source ?? { x: 0, y: 0 },
-      })),
-    };
-  });
-
-export interface Sprite {
-  readonly box: Box;
-  readonly keys: readonly Key[];
-  readonly markup: string;
+export interface CardPart {
+  readonly art: string;
+  readonly cell: Box;
+  readonly centre: { readonly x: number; readonly y: number };
+  readonly index: number;
+  readonly role: string;
 }
 
-export const SPRITE_ROLE = "sprite";
+export const cardParts = (
+  svg: string,
+  boxes: readonly PartBox[],
+  size: { readonly height: number; readonly width: number }
+): Effect.Effect<readonly CardPart[], ClipUnavailable> =>
+  Effect.try({
+    catch: failedAt("lay the picture's parts out"),
+    try: () =>
+      layersIn(svg, boxes, size).map((layer) => ({
+        art:
+          layer.cell.x === layer.local.x && layer.cell.y === layer.local.y
+            ? layer.markup
+            : `<g transform="translate(${layer.cell.x - layer.local.x} ${layer.cell.y - layer.local.y})">${layer.markup}</g>`,
+        cell: layer.cell,
+        centre: layer.centre,
+        index: layer.index,
+        role: layer.role,
+      })),
+  });
 
-export const spriteAtlas = (
-  sprites: readonly Sprite[],
+export interface ShotAtlas {
+  readonly bands: readonly ImageBitmap[];
+  readonly shots: readonly DrawnShot[];
+}
+
+const artKey = (shot: Shot) =>
+  `${shot.box.x},${shot.box.y},${shot.box.width},${shot.box.height}|${shot.art}`;
+
+export const shotAtlas = (
+  shots: readonly Shot[],
   fonts: string,
   slot: Effect.Effect<void>
-): Effect.Effect<Atlas, ClipUnavailable> =>
-  Effect.gen(function* buildSprites() {
-    const unique = [...new Set(sprites.map((sprite) => sprite.markup))];
-    const boxes = new Map(sprites.map((sprite) => [sprite.markup, sprite.box]));
+): Effect.Effect<ShotAtlas, ClipUnavailable> =>
+  Effect.gen(function* buildShots() {
+    const firsts = new Map<string, number>();
 
-    const measured: readonly Measured[] = unique.map((markup, index) => {
-      const cell = boxes.get(markup) ?? { height: 1, width: 1, x: 0, y: 0 };
+    for (const [index, shot] of shots.entries()) {
+      if (!firsts.has(artKey(shot))) {
+        firsts.set(artKey(shot), index);
+      }
+    }
 
-      return {
-        cell,
-        centre: { x: cell.x + cell.width / 2, y: cell.y + cell.height / 2 },
-        index,
-        local: { x: cell.x, y: cell.y },
-        markup,
-        role: SPRITE_ROLE,
-      };
+    const unique = [...firsts.values()].flatMap((index) => {
+      const shot = shots[index];
+
+      return shot === undefined ? [] : [shot];
     });
 
+    const measured: readonly Measured[] = unique.map((shot, index) => ({
+      cell: shot.box,
+      centre: pivotOf(shot),
+      index,
+      local: { x: shot.box.x, y: shot.box.y },
+      markup: shot.art,
+      role: "shot",
+    }));
+
     const drawn = yield* rasterized(measured, fonts, slot);
+    const keys = [...firsts.keys()];
 
     return {
       bands: drawn.bands,
-      layers: sprites.map((sprite, index) => {
-        const art = unique.indexOf(sprite.markup);
-        const cell = measured[art]?.cell ?? sprite.box;
+      shots: shots.map((shot) => {
+        const art = keys.indexOf(artKey(shot));
 
         return {
           band: drawn.places[art]?.band ?? 0,
-          cell,
-          centre: { x: cell.x + cell.width / 2, y: cell.y + cell.height / 2 },
-          from: 0,
-          index,
-          keys: sprite.keys,
-          role: SPRITE_ROLE,
+          box: shot.box,
+          keys: shot.keys,
+          pinned: shot.pinned === true,
+          pivot: pivotOf(shot),
           source: drawn.places[art]?.source ?? { x: 0, y: 0 },
         };
       }),
     };
   });
-
-const UNDER_SPRITES = new Set([BASE_ROLE, "felt"]);
-
-export const replayAtlas = (card: Atlas, sprites: Atlas): Atlas => {
-  const shifted = sprites.layers.map((layer) => ({
-    ...layer,
-    band: layer.band + card.bands.length,
-  }));
-
-  return {
-    bands: [...card.bands, ...sprites.bands],
-    layers: [
-      ...card.layers.filter((layer) => UNDER_SPRITES.has(layer.role)),
-      ...shifted,
-      ...card.layers.filter((layer) => !UNDER_SPRITES.has(layer.role)),
-    ],
-  };
-};

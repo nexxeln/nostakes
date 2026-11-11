@@ -1,22 +1,26 @@
 import { tableChances } from "@nostakes/room";
-import { Effect, Schema } from "effect";
+import { Effect, Option, Schema } from "effect";
 
-import { CLIP_FPS, frameMs } from "../../features/moments/clip-plan.js";
+import { frameTime, samePlace } from "../../features/moments/film.js";
+import type { Box, Placed } from "../../features/moments/film.js";
 import {
+  BGRA_ORDER,
   i420Size,
   LIMITED_BT709,
-  writeI420,
+  RGBA_ORDER,
+  writeI420Area,
 } from "../../features/moments/i420.js";
-import { aacConfig, mp4Of } from "../../features/moments/mp4.js";
+import type { Channels } from "../../features/moments/i420.js";
+import { aacConfig, mp4Parts } from "../../features/moments/mp4.js";
 import type { AudioTrack, Sample } from "../../features/moments/mp4.js";
-import { drawFrame, placementsAt } from "./clip-draw.js";
+import { drawAreas, placementsAt } from "./clip-draw.js";
 import {
   CLIP_AUDIO_CODEC,
   KEY_FRAME_EVERY,
   VIDEO_TIMESCALE,
   WorkerRequestSchema,
 } from "./clip-wire.js";
-import type { ClipReply, ClipRequest, WorkerRequest } from "./clip-wire.js";
+import type { ClipReply, FilmRequest, WorkerRequest } from "./clip-wire.js";
 
 class ClipFailed extends Schema.TaggedError<
   ClipFailed,
@@ -31,7 +35,11 @@ const failedAt = (step: string) => (cause: unknown) =>
 
 const MICROS = 1_000_000;
 
-const QUEUE_DEPTH = 3;
+const QUEUE_DEPTH = 2;
+
+const PROGRESS_EVERY = 15;
+
+const SNAPSHOT_SHARE = 0.25;
 
 const bytesOf = (chunk: EncodedAudioChunk | EncodedVideoChunk) => {
   const bytes = new Uint8Array(chunk.byteLength);
@@ -66,7 +74,150 @@ interface Collected {
   readonly samples: Sample[];
 }
 
-const videoTrack = (request: ClipRequest) =>
+const reply = (message: ClipReply, transfer: readonly Transferable[]) => {
+  globalThis.postMessage(message, { transfer: [...transfer] });
+};
+
+const SNAPSHOT_ORDERS = new Map<string, Channels>([
+  ["BGRA", BGRA_ORDER],
+  ["BGRX", BGRA_ORDER],
+  ["RGBA", RGBA_ORDER],
+  ["RGBX", RGBA_ORDER],
+]);
+
+const snapshotOrder = (canvas: OffscreenCanvas): Option.Option<Channels> => {
+  try {
+    const probe = new VideoFrame(canvas, { timestamp: 0 });
+    const order = Option.fromNullishOr(SNAPSHOT_ORDERS.get(probe.format ?? ""));
+
+    probe.close();
+
+    return order;
+  } catch {
+    return Option.none();
+  }
+};
+
+const areaOf = (box: Box) => box.width * box.height;
+
+const DIGEST_BASE = 257;
+
+const DIGEST_PRIME = 2_147_483_647;
+
+const DIGEST_START = 1;
+
+const digestOf = (hash: number, bytes: Uint8Array) => {
+  let next = hash;
+
+  for (const byte of bytes) {
+    next = (next * DIGEST_BASE + byte + 1) % DIGEST_PRIME;
+  }
+
+  return next;
+};
+
+interface Reading {
+  readonly canvas: OffscreenCanvas;
+  readonly ctx: OffscreenCanvasRenderingContext2D;
+  readonly frame: { readonly height: number; readonly width: number };
+  readonly pixels: Uint8Array;
+  readonly scratch: Uint8Array;
+  readonly snapshot: Option.Option<Channels>;
+}
+
+const readByImageData = (reading: Reading, areas: readonly Box[]) => {
+  for (const area of areas) {
+    const image = reading.ctx.getImageData(
+      area.x,
+      area.y,
+      area.width,
+      area.height
+    );
+
+    writeI420Area(
+      {
+        bytes: image.data,
+        offset: 0,
+        order: RGBA_ORDER,
+        stride: area.width * 4,
+      },
+      area,
+      reading.frame,
+      reading.pixels
+    );
+  }
+};
+
+const readBySnapshot = (
+  reading: Reading,
+  order: Channels,
+  areas: readonly Box[]
+) =>
+  Effect.acquireUseRelease(
+    Effect.sync(() => new VideoFrame(reading.canvas, { timestamp: 0 })),
+    (snapshot) =>
+      Effect.forEach(
+        areas,
+        (area) =>
+          Effect.promise(() =>
+            snapshot.copyTo(reading.scratch, { rect: area })
+          ).pipe(
+            Effect.map(([plane]) =>
+              writeI420Area(
+                {
+                  bytes: reading.scratch,
+                  offset: plane?.offset ?? 0,
+                  order,
+                  stride: plane?.stride ?? area.width * 4,
+                },
+                area,
+                reading.frame,
+                reading.pixels
+              )
+            )
+          ),
+        { discard: true }
+      ),
+    (snapshot) =>
+      Effect.sync(() => {
+        snapshot.close();
+      })
+  );
+
+const readAreas = (reading: Reading, areas: readonly Box[]) => {
+  const share =
+    areas.reduce((total, area) => total + areaOf(area), 0) /
+    (reading.frame.width * reading.frame.height);
+
+  return Option.match(reading.snapshot, {
+    onNone: () =>
+      Effect.sync(() => {
+        readByImageData(reading, areas);
+      }),
+    onSome: (order) =>
+      share >= SNAPSHOT_SHARE
+        ? readBySnapshot(reading, order, areas)
+        : Effect.sync(() => {
+            readByImageData(reading, areas);
+          }),
+  });
+};
+
+const moved = (before: readonly Placed[] | null, now: readonly Placed[]) =>
+  before === null ||
+  now.some((placed, index) => {
+    const earlier = before[index];
+
+    return earlier === undefined || !samePlace(earlier, placed);
+  });
+
+interface Drawn {
+  before: readonly Placed[] | null;
+  digest: number;
+  redrawn: number;
+}
+
+const videoTrack = (request: FilmRequest) =>
   Effect.gen(function* encodeVideo() {
     const collected: Collected = {
       avcC: null,
@@ -74,6 +225,8 @@ const videoTrack = (request: ClipRequest) =>
       last: -1,
       samples: [],
     };
+
+    const frameTicks = VIDEO_TIMESCALE / request.fps;
 
     const encoder = yield* Effect.acquireRelease(
       Effect.try({
@@ -105,7 +258,7 @@ const videoTrack = (request: ClipRequest) =>
               collected.last = chunk.timestamp;
               collected.samples.push({
                 bytes: bytesOf(chunk),
-                duration: VIDEO_TIMESCALE / CLIP_FPS,
+                duration: frameTicks,
                 sync: chunk.type === "key",
               });
             },
@@ -127,7 +280,7 @@ const videoTrack = (request: ClipRequest) =>
           bitrate: request.bitrate,
           bitrateMode: "variable",
           codec: request.codec,
-          framerate: CLIP_FPS,
+          framerate: request.fps,
           height: request.height,
           latencyMode: "quality",
           width: request.width,
@@ -145,46 +298,68 @@ const videoTrack = (request: ClipRequest) =>
       });
     }
 
-    const pixels = new Uint8Array(i420Size(request.width, request.height));
-    const drawn = { key: "" };
+    const frame = { height: request.height, width: request.width };
 
-    for (let frame = 0; frame < request.frames; frame += 1) {
+    const reading: Reading = {
+      canvas,
+      ctx,
+      frame,
+      pixels: new Uint8Array(i420Size(request.width, request.height)),
+      scratch: new Uint8Array(request.width * request.height * 4),
+      snapshot: snapshotOrder(canvas),
+    };
+
+    const whole: readonly Box[] = [{ ...frame, x: 0, y: 0 }];
+
+    const drawn: Drawn = { before: null, digest: DIGEST_START, redrawn: 0 };
+
+    for (let index = 0; index < request.frames; index += 1) {
+      const ms = frameTime(index, request.fps);
+      const placements = placementsAt(request, ms);
+
+      const areas =
+        request.redraw === "Whole" || moved(drawn.before, placements)
+          ? whole
+          : [];
+
+      if (areas.length > 0) {
+        yield* Effect.try({
+          catch: failedAt(`draw frame ${index}`),
+          try: () => {
+            drawAreas(ctx, request.bands, request, placements, areas);
+          },
+        });
+        yield* readAreas(reading, areas);
+        drawn.redrawn += 1;
+      }
+
+      drawn.before = placements;
+
+      if (request.digest) {
+        drawn.digest = digestOf(drawn.digest, reading.pixels);
+      }
+
       yield* Effect.try({
-        catch: failedAt(`draw and encode frame ${frame}`),
+        catch: failedAt(`encode frame ${index}`),
         try: () => {
-          const placements = placementsAt(
-            request.layers,
-            request.motion,
-            frameMs(frame)
-          );
-
-          const key = JSON.stringify(placements);
-
-          if (key !== drawn.key) {
-            drawFrame(ctx, request.bands, request.layers, placements);
-            writeI420(
-              ctx.getImageData(0, 0, request.width, request.height).data,
-              request.width,
-              request.height,
-              pixels
-            );
-            drawn.key = key;
-          }
-
-          const image = new VideoFrame(pixels, {
+          const image = new VideoFrame(reading.pixels, {
             codedHeight: request.height,
             codedWidth: request.width,
             colorSpace: LIMITED_BT709,
-            duration: Math.round(MICROS / CLIP_FPS),
+            duration: Math.round(MICROS / request.fps),
             format: "I420",
-            timestamp: Math.round(frameMs(frame) * 1000),
+            timestamp: Math.round(ms * 1000),
           });
 
-          encoder.encode(image, { keyFrame: frame % KEY_FRAME_EVERY === 0 });
+          encoder.encode(image, { keyFrame: index % KEY_FRAME_EVERY === 0 });
           image.close();
         },
       });
       yield* drained(encoder);
+
+      if ((index + 1) % PROGRESS_EVERY === 0) {
+        reply({ made: index + 1, tag: "Progress" }, []);
+      }
     }
 
     yield* Effect.tryPromise({
@@ -210,20 +385,28 @@ const videoTrack = (request: ClipRequest) =>
     }
 
     return {
-      avcC,
-      height: request.height,
-      samples,
-      timescale: VIDEO_TIMESCALE,
-      width: request.width,
+      digest: request.digest ? drawn.digest.toString(16) : null,
+      redrawn: drawn.redrawn,
+      track: {
+        avcC,
+        height: request.height,
+        samples,
+        timescale: VIDEO_TIMESCALE,
+        width: request.width,
+      },
     };
   }).pipe(Effect.scoped);
 
 const AAC_FRAME = 1024;
 
-const audioTrack = (sound: NonNullable<ClipRequest["sound"]>) =>
+const PIECE_SECONDS = 1;
+
+const audioTrack = (sound: NonNullable<FilmRequest["sound"]>) =>
   Effect.gen(function* encodeAudio() {
-    const chunks: { bytes: Uint8Array; timestamp: number }[] = [];
+    const chunks: { bytes: Uint8Array<ArrayBuffer>; timestamp: number }[] = [];
     const failures: string[] = [];
+    const count = sound.channels.length;
+    const length = sound.channels[0]?.length ?? 0;
 
     const encoder = yield* Effect.acquireRelease(
       Effect.try({
@@ -250,38 +433,49 @@ const audioTrack = (sound: NonNullable<ClipRequest["sound"]>) =>
     );
 
     yield* Effect.try({
-      catch: failedAt("encode the sting"),
+      catch: failedAt("encode the sound"),
       try: () => {
         encoder.configure({
           bitrate: sound.bitrate,
           codec: CLIP_AUDIO_CODEC,
-          numberOfChannels: 1,
+          numberOfChannels: count,
           sampleRate: sound.sampleRate,
         });
 
-        const data = new AudioData({
-          data: sound.pcm,
-          format: "f32-planar",
-          numberOfChannels: 1,
-          numberOfFrames: sound.pcm.length,
-          sampleRate: sound.sampleRate,
-          timestamp: 0,
-        });
+        const piece = sound.sampleRate * PIECE_SECONDS;
 
-        encoder.encode(data);
-        data.close();
+        for (let start = 0; start < length; start += piece) {
+          const frames = Math.min(piece, length - start);
+          const planar = new Float32Array(frames * count);
+
+          for (const [index, channel] of sound.channels.entries()) {
+            planar.set(channel.subarray(start, start + frames), index * frames);
+          }
+
+          const data = new AudioData({
+            data: planar,
+            format: "f32-planar",
+            numberOfChannels: count,
+            numberOfFrames: frames,
+            sampleRate: sound.sampleRate,
+            timestamp: Math.round((start * MICROS) / sound.sampleRate),
+          });
+
+          encoder.encode(data);
+          data.close();
+        }
       },
     });
 
     yield* Effect.tryPromise({
-      catch: failedAt("finish the sting"),
+      catch: failedAt("finish the sound"),
       try: () => encoder.flush(),
     });
 
     if (failures.length > 0 || chunks.length === 0) {
       return yield* new ClipFailed({
         detail: failures.join("; ") || "the encoder gave no audio",
-        step: "encode the sting",
+        step: "encode the sound",
       });
     }
 
@@ -289,7 +483,7 @@ const audioTrack = (sound: NonNullable<ClipRequest["sound"]>) =>
 
     const track: AudioTrack = {
       bitrate: sound.bitrate,
-      channels: 1,
+      channels: count,
       priming: first < 0 ? Math.round((-first * sound.sampleRate) / MICROS) : 0,
       sampleRate: sound.sampleRate,
       samples: chunks.map((chunk) => ({
@@ -297,21 +491,25 @@ const audioTrack = (sound: NonNullable<ClipRequest["sound"]>) =>
         duration: AAC_FRAME,
         sync: true,
       })),
-      specificConfig: aacConfig(sound.sampleRate, 1),
+      specificConfig: aacConfig(sound.sampleRate, count),
     };
 
     return track;
   }).pipe(Effect.scoped);
 
-const made = (request: ClipRequest) =>
+const made = (request: FilmRequest) =>
   Effect.all([
     videoTrack(request),
     request.sound === null ? Effect.succeed(null) : audioTrack(request.sound),
-  ]).pipe(Effect.map(([video, audio]) => mp4Of({ audio, video })));
-
-const reply = (message: ClipReply, transfer: readonly Transferable[]) => {
-  globalThis.postMessage(message, { transfer: [...transfer] });
-};
+  ]).pipe(
+    Effect.map(([video, audio]) => ({
+      digest: video.digest,
+      file: new Blob([...mp4Parts({ audio, video: video.track })], {
+        type: "video/mp4",
+      }),
+      redrawn: video.redrawn,
+    }))
+  );
 
 const answered = (request: WorkerRequest) =>
   request.kind === "Chances"
@@ -328,9 +526,9 @@ const answered = (request: WorkerRequest) =>
         );
       })
     : made(request).pipe(
-        Effect.flatMap((bytes) =>
+        Effect.flatMap(({ digest, file, redrawn }) =>
           Effect.sync(() => {
-            reply({ bytes, tag: "Made" }, [bytes.buffer]);
+            reply({ digest, file, redrawn, tag: "Made" }, []);
           })
         )
       );

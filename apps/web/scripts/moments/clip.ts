@@ -142,6 +142,7 @@ const program = Effect.gen(function* stageClip() {
 
   const clip = yield* clipFile(picture, {
     boxes,
+    budgetMs: null,
     frame,
     slot: timedSlot(),
     support: support.value,

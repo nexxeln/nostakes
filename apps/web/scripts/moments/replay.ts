@@ -2,21 +2,13 @@ import "../../src/client/tokens.css";
 import { replayOf } from "@nostakes/room";
 import { Effect, Option } from "effect";
 
-import { drawFrame, placementsAt } from "../../src/client/moments/clip-draw.js";
-import {
-  atlasOf,
-  replayAtlas,
-  spriteAtlas,
-} from "../../src/client/moments/clip-layers.js";
 import { measureParts } from "../../src/client/moments/clip-measure.js";
-import { EMBEDDED_FONTS } from "../../src/client/pictures/png.js";
-import { CLIP_STAGING } from "../../src/features/moments/clip-plan.js";
+import { replayFilm } from "../../src/client/moments/clip.js";
+import { clipWorker } from "../../src/client/moments/film-file.js";
 import { pictureSvg } from "../../src/features/moments/picture.js";
-import { spriteMarkup } from "../../src/features/moments/replay-art.js";
-import { replayPlan } from "../../src/features/moments/replay-plan.js";
+import { replaySeatsOf } from "../../src/features/moments/replay-plan.js";
 import { shownMomentOf } from "../../src/features/moments/scene.js";
-import { FAMILIES } from "../../src/features/moments/score.js";
-import { paletteFor } from "../../src/features/pictures/paper.js";
+import { evenTimes, filmSheet } from "./film-sheet.js";
 import { replayHand } from "./replay-hands.js";
 
 const params = new URLSearchParams(globalThis.location.search);
@@ -24,10 +16,6 @@ const params = new URLSearchParams(globalThis.location.search);
 const theme = params.get("theme") === "Dark" ? "Dark" : "Light";
 
 const deck = "TwoColour" as const;
-
-const WIDTH = 1080;
-
-const HEIGHT = 1350;
 
 const TILE = Number(params.get("tile") ?? "6");
 
@@ -61,17 +49,6 @@ const program = Effect.gen(function* storyboard() {
   }
 
   const { picture, seats } = found.value;
-  const people = new Map(hand.people.map((person) => [person.player, person]));
-
-  const plan = replayPlan(replay.value, {
-    lead: seats[0] ?? replay.value.dealtIn[0] ?? replay.value.button,
-    seats: hand.lastHand.dealtIn.map(({ player, seat }) => ({
-      avatar: people.get(player)?.avatar ?? "",
-      name: people.get(player)?.name ?? "Someone",
-      seat,
-      stack: hand.stacks?.find((each) => each.seat === seat)?.stack ?? null,
-    })),
-  });
 
   yield* Effect.promise(() => document.fonts.ready);
 
@@ -79,95 +56,46 @@ const program = Effect.gen(function* storyboard() {
     pictureSvg(picture, { deck, fonts: "", frame: "Table", theme })
   );
 
-  const card = yield* atlasOf(
-    pictureSvg(picture, { deck, fonts: "", frame: "Chat", theme }),
+  const worker = yield* clipWorker;
+
+  const film = yield* replayFilm(
+    worker,
+    picture,
+    { deck, theme },
     {
       boxes,
-      fonts: EMBEDDED_FONTS,
-      from: (role) =>
-        role === "base" || CLIP_STAGING.landed.has(role) ? 0 : plan.cardAt,
-      size: { height: HEIGHT, width: WIDTH },
-    },
-    Effect.void
+      budgetMs: null,
+      frame: "Chat",
+      lead: seats[0] ?? replay.value.dealtIn[0] ?? replay.value.button,
+      record: hand.record,
+      seats: replaySeatsOf(hand),
+      slot: Effect.void,
+      support: { codec: "", sound: false },
+      svg: pictureSvg(picture, { deck, fonts: "", frame: "Chat", theme }),
+    }
   );
-
-  const palette = paletteFor(theme, deck);
-
-  const sprites = yield* spriteAtlas(
-    plan.sprites.map((sprite) => ({
-      ...spriteMarkup(palette, theme, sprite.art),
-      keys: sprite.keys,
-    })),
-    EMBEDDED_FONTS,
-    Effect.void
-  );
-
-  const atlas = replayAtlas(card, sprites);
-  const motion = { family: FAMILIES[picture.kind], tier: picture.tier };
 
   const asked = (params.get("at") ?? "")
     .split(",")
     .filter((each) => each.length > 0)
     .map(Number);
 
-  const times =
-    asked.length > 0
-      ? asked
-      : Array.from({ length: TILE * 2 }, (_, index) =>
-          Math.round((index * (plan.length - 1)) / (TILE * 2 - 1))
-        );
-
-  const sheet = new OffscreenCanvas(
-    WIDTH * SCALE * TILE,
-    HEIGHT * SCALE * Math.ceil(times.length / TILE)
-  );
-
-  const sheetContext = sheet.getContext("2d");
-  const frame = new OffscreenCanvas(WIDTH, HEIGHT);
-  const context = frame.getContext("2d");
-
-  if (sheetContext === null || context === null) {
-    return { failure: "no canvas", frames: "" };
-  }
-
-  for (const [index, ms] of times.entries()) {
-    drawFrame(
-      context,
-      atlas.bands,
-      atlas.layers,
-      placementsAt(atlas.layers, motion, ms)
-    );
-    sheetContext.drawImage(
-      frame,
-      (index % TILE) * WIDTH * SCALE,
-      Math.floor(index / TILE) * HEIGHT * SCALE,
-      WIDTH * SCALE,
-      HEIGHT * SCALE
-    );
-  }
-
-  const blob = yield* Effect.promise(() =>
-    sheet.convertToBlob({ type: "image/png" })
-  );
-
-  const bytes = new Uint8Array(yield* Effect.promise(() => blob.arrayBuffer()));
-  let binary = "";
-
-  for (let at = 0; at < bytes.length; at += 32_768) {
-    binary += String.fromCodePoint(...bytes.subarray(at, at + 32_768));
-  }
+  const sheet = yield* filmSheet(film, {
+    scale: SCALE,
+    tile: TILE,
+    times: asked.length > 0 ? asked : evenTimes(film, TILE * 2),
+  });
 
   return {
-    cardAt: plan.cardAt,
-    frames: btoa(binary),
+    frames: sheet.png,
     kind: picture.kind,
-    length: plan.length,
-    sprites: plan.sprites.length,
+    length: film.length,
+    shots: film.shots.length,
     tier: picture.tier,
-    times,
+    times: sheet.times,
     title: picture.title,
   };
-});
+}).pipe(Effect.scoped);
 
 await Effect.runPromise(
   program.pipe(

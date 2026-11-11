@@ -2,7 +2,12 @@ import { describe, expect, it } from "@effect/vitest";
 import { Schema } from "effect";
 import * as Arbitrary from "effect/Arbitrary";
 
-import { i420Size, writeI420 } from "../src/features/moments/i420.js";
+import {
+  BGRA_ORDER,
+  i420Size,
+  writeI420,
+  writeI420Area,
+} from "../src/features/moments/i420.js";
 import { sequenceOf } from "../src/features/moments/sps.js";
 
 const block = (pixels: readonly (readonly [number, number, number])[]) => {
@@ -133,4 +138,101 @@ describe("the colour a clip's H.264 stream declares", () => {
   it("finds no sequence in a description that carries none", () => {
     expect(sequenceOf(Uint8Array.of(1, 0x64, 0, 0x28, 0xff, 0xe0))).toBe(null);
   });
+});
+
+const frameOf = Arbitrary.schema(
+  Schema.Struct({
+    across: Schema.Int.check(Schema.isBetween({ maximum: 8, minimum: 1 })),
+    down: Schema.Int.check(Schema.isBetween({ maximum: 8, minimum: 1 })),
+    seed: Schema.Int.check(
+      Schema.isBetween({ maximum: 1_000_000, minimum: 1 })
+    ),
+    split: Schema.Int.check(Schema.isBetween({ maximum: 8, minimum: 0 })),
+  })
+);
+
+const noise = (seed: number, length: number) => {
+  let state = seed;
+
+  return Uint8ClampedArray.from({ length }, () => {
+    state = (state * 48_271) % 2_147_483_647;
+
+    return state % 256;
+  });
+};
+
+const swapped = (rgba: Uint8ClampedArray) =>
+  Uint8ClampedArray.from(rgba, (_, index) => {
+    const channel = index % 4;
+    const pixel = index - channel;
+
+    return channel === 3
+      ? (rgba[index] ?? 0)
+      : (rgba[pixel + 2 - channel] ?? 0);
+  });
+
+const areaBytes = (
+  rgba: Uint8ClampedArray,
+  width: number,
+  area: {
+    readonly height: number;
+    readonly width: number;
+    readonly x: number;
+    readonly y: number;
+  }
+) => {
+  const out = new Uint8ClampedArray(area.width * area.height * 4);
+
+  for (let row = 0; row < area.height; row += 1) {
+    out.set(
+      rgba.subarray(
+        ((area.y + row) * width + area.x) * 4,
+        ((area.y + row) * width + area.x + area.width) * 4
+      ),
+      row * area.width * 4
+    );
+  }
+
+  return out;
+};
+
+describe("a frame converted area by area", () => {
+  it.prop(
+    "gives the same planes as the whole frame at once, read in either byte order",
+    { picked: frameOf },
+    ({ picked }) => {
+      const width = picked.across * 2;
+      const height = picked.down * 2;
+      const rgba = noise(picked.seed, width * height * 4);
+
+      const whole = writeI420(
+        rgba,
+        width,
+        height,
+        new Uint8Array(i420Size(width, height))
+      );
+
+      const cut = Math.min(width, (picked.split % (picked.across + 1)) * 2);
+      const pieces = new Uint8Array(i420Size(width, height));
+
+      for (const area of [
+        { height, width: cut, x: 0, y: 0 },
+        { height, width: width - cut, x: cut, y: 0 },
+      ].filter((each) => each.width > 0)) {
+        writeI420Area(
+          {
+            bytes: swapped(areaBytes(rgba, width, area)),
+            offset: 0,
+            order: BGRA_ORDER,
+            stride: area.width * 4,
+          },
+          area,
+          { height, width },
+          pieces
+        );
+      }
+
+      expect([...pieces]).toStrictEqual([...whole]);
+    }
+  );
 });

@@ -1,7 +1,7 @@
 import { sequenceOf } from "./sps.js";
 
 export interface Sample {
-  readonly bytes: Uint8Array;
+  readonly bytes: Uint8Array<ArrayBuffer>;
   readonly duration: number;
   readonly sync: boolean;
 }
@@ -461,7 +461,7 @@ const bytesOf = (track: Track, chunk: Chunk) =>
     .slice(chunk.first, chunk.first + chunk.count)
     .reduce((total, sample) => total + sample.bytes.length, 0);
 
-export const mp4Of = (movie: Movie): Uint8Array<ArrayBuffer> => {
+export const mp4Parts = (movie: Movie): readonly Uint8Array<ArrayBuffer>[] => {
   const { audio, video } = movie;
 
   const tracks: Track[] = [
@@ -567,5 +567,10 @@ export const mp4Of = (movie: Movie): Uint8Array<ArrayBuffer> => {
       .map((sample) => sample.bytes);
   });
 
-  return concat([FTYP, moov, box("mdat", ...payload)]);
+  const mdatSize = payload.reduce((total, part) => total + part.length, 8);
+
+  return [FTYP, moov, concat([u32(mdatSize), ascii("mdat")]), ...payload];
 };
+
+export const mp4Of = (movie: Movie): Uint8Array<ArrayBuffer> =>
+  concat(mp4Parts(movie));

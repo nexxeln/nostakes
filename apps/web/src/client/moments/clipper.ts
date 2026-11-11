@@ -1,7 +1,11 @@
 import { Events } from "@nostakes/engine";
-import { Effect, Option } from "effect";
+import { Effect, Option, Schema } from "effect";
 
 import type { Deck, Theme } from "../../features/model.js";
+import {
+  REPLAY_BUDGET_MS,
+  reachFor,
+} from "../../features/moments/clip-reach.js";
 import type { MomentPicture } from "../../features/moments/picture.js";
 import { replaySeatsOf } from "../../features/moments/replay-plan.js";
 import { offer } from "../pictures/keeper.js";
@@ -45,6 +49,13 @@ const replayOrderOf = (story: SceneStory | null) => {
 };
 
 export const REPLAY_TIER = 2;
+
+const ReportedMemorySchema = Schema.Struct({ deviceMemory: Schema.Finite });
+
+const deviceMemory = () =>
+  Schema.decodeUnknownOption(ReportedMemorySchema)(globalThis.navigator).pipe(
+    Option.map((reported) => reported.deviceMemory)
+  );
 
 const activationLasts = () =>
   globalThis.navigator.userActivation?.isActive ?? false;
@@ -91,7 +102,7 @@ export class Clipper {
       return;
     }
 
-    if (Option.isNone(found)) {
+    if (Option.isNone(found) || reachFor(deviceMemory()) === "None") {
       this.#become("Unavailable");
 
       return;
@@ -174,6 +185,7 @@ export class Clipper {
 
     const order = {
       boxes: this.#art.boxes,
+      budgetMs: null,
       frame: "Chat" as const,
       slot: Effect.suspend(() => slotFor(this.#pace)),
       support,
@@ -181,11 +193,18 @@ export class Clipper {
     };
 
     const replay = replayOrderOf(this.#art.story);
+    const short = clipFile(this.#picture, order);
 
     Effect.runFork(
-      (replay !== null && this.#picture.tier >= REPLAY_TIER
-        ? replayFile(this.#picture, this.#art.look, { ...order, ...replay })
-        : clipFile(this.#picture, order)
+      (replay !== null &&
+      this.#picture.tier >= REPLAY_TIER &&
+      reachFor(deviceMemory()) === "Replay"
+        ? replayFile(this.#picture, this.#art.look, {
+            ...order,
+            ...replay,
+            budgetMs: REPLAY_BUDGET_MS,
+          }).pipe(Effect.catchTag("ClipTooSlow", () => short))
+        : short
       ).pipe(
         Effect.match({
           onFailure: () => {
