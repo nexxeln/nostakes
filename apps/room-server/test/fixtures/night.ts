@@ -10,6 +10,7 @@ import {
   RoomSettingsSchema,
   RoomViews,
   TimeBankRefills,
+  MIN_KNOCK_SECONDS,
 } from "@nostakes/room";
 import type { RoomSettings, RoomView, Shuffle } from "@nostakes/room";
 import { beaconWaitLimitMs, SEALING_MARGIN_MS } from "@nostakes/shuffle";
@@ -44,6 +45,8 @@ import {
   knockAt,
 } from "./intruder.js";
 import type { IntruderRecord } from "./intruder.js";
+import { KNOCK_PLANS, knockAndWait, knockProblems } from "./knocker.js";
+import type { KnockRecord } from "./knocker.js";
 import { checkNight } from "./night-checks.js";
 import type {
   HaltEvidence,
@@ -95,6 +98,7 @@ export interface NightPlan {
   readonly intruderAtHand: Option.Option<number>;
   readonly intruderSits: boolean;
   readonly regularAtHand: Option.Option<number>;
+  readonly knocksAtHand: Option.Option<number>;
 }
 
 export interface PlayedNight {
@@ -105,6 +109,7 @@ export interface PlayedNight {
   readonly analytics: NightAnalytics;
   readonly intruder: Option.Option<IntruderRecord>;
   readonly regular: Option.Option<RegularRecord>;
+  readonly knocks: Option.Option<readonly KnockRecord[]>;
 }
 
 export interface NightResult {
@@ -276,6 +281,7 @@ export interface NightRecipe {
   readonly tableRules: TableRules;
   readonly stranger?: StrangerPlan;
   readonly regular?: boolean;
+  readonly knocks?: boolean;
 }
 
 const clientIndices = (random: Random, bots: number, percent: number) => {
@@ -319,6 +325,8 @@ const tableFrom = (
 
 export const HOST_DEAL_WAIT_MS = 6000;
 
+const KNOCKS_ALLOWANCE_MS = 30_000;
+
 const longestBankSeconds = (settings: RoomSettings) =>
   Math.max(
     settings.timeBankSeconds,
@@ -340,26 +348,46 @@ export const slowRulesAllowanceMs = (settings: RoomSettings) => {
   );
 };
 
-const strangerOf = (recipe: NightRecipe, seed: number) => ({
-  intruderAtHand:
+const visitorsAtHand = (recipe: NightRecipe) =>
+  Math.max(2, Math.floor(recipe.hands / 3));
+
+const knocksOf = (
+  recipe: NightRecipe,
+  seed: number,
+  intruderAtHand: Option.Option<number>
+) =>
+  recipe.ending !== "Halted" &&
+  recipe.hands >= 6 &&
+  Option.isNone(intruderAtHand) &&
+  (recipe.knocks ?? randomSource(seed * 13 + 11).chance(30))
+    ? Option.some(visitorsAtHand(recipe))
+    : Option.none();
+
+const strangerOf = (recipe: NightRecipe, seed: number) => {
+  const intruderAtHand =
     recipe.ending !== "Halted" &&
     recipe.hands >= 6 &&
     (recipe.stranger === undefined
       ? randomSource(seed * 13 + 5).chance(50)
       : recipe.stranger !== "None")
-      ? Option.some(Math.max(2, Math.floor(recipe.hands / 3)))
-      : Option.none(),
-  intruderSits:
-    recipe.stranger === undefined
-      ? randomSource(seed * 13 + 7).chance(70)
-      : recipe.stranger === "Sits",
-  regularAtHand:
-    recipe.ending !== "Halted" &&
-    recipe.hands >= 6 &&
-    (recipe.regular ?? randomSource(seed * 13 + 9).chance(30))
-      ? Option.some(Math.max(2, Math.floor(recipe.hands / 3)))
-      : Option.none(),
-});
+      ? Option.some(visitorsAtHand(recipe))
+      : Option.none<number>();
+
+  return {
+    intruderAtHand,
+    intruderSits:
+      recipe.stranger === undefined
+        ? randomSource(seed * 13 + 7).chance(70)
+        : recipe.stranger === "Sits",
+    knocksAtHand: knocksOf(recipe, seed, intruderAtHand),
+    regularAtHand:
+      recipe.ending !== "Halted" &&
+      recipe.hands >= 6 &&
+      (recipe.regular ?? randomSource(seed * 13 + 9).chance(30))
+        ? Option.some(visitorsAtHand(recipe))
+        : Option.none(),
+  };
+};
 
 export const planNight = (
   seed: number,
@@ -476,10 +504,15 @@ export const planNight = (
     ending: recipe.ending,
 
     ...visitors,
-    limitMs: plan.limitMs + recipe.hands * slowRulesAllowanceMs(played),
-    settings: Option.isSome(visitors.regularAtHand)
-      ? { ...played, seats: SEAT_COUNT }
-      : played,
+    limitMs:
+      plan.limitMs +
+      recipe.hands * slowRulesAllowanceMs(played) +
+      (Option.isSome(visitors.knocksAtHand) ? KNOCKS_ALLOWANCE_MS : 0),
+    settings:
+      Option.isSome(visitors.regularAtHand) ||
+      Option.isSome(visitors.knocksAtHand)
+        ? { ...played, seats: SEAT_COUNT }
+        : played,
   };
 };
 
@@ -652,10 +685,13 @@ export const playNight = (base: string, opened: OpenedNight) =>
     const started = wallClock();
 
     const control: NightControl = {
+      approval: Option.none(),
       closing: false,
       door: Option.none(),
       head: 0,
       intruders: new Map(),
+      knocks: new Map(),
+      knocksPending: Option.isSome(plan.knocksAtHand) ? KNOCK_PLANS.length : 0,
       quiet: new Set(),
       regulars: new Map(),
       ruleChanges: plan.ruleChanges,
@@ -858,6 +894,9 @@ export const playNight = (base: string, opened: OpenedNight) =>
       );
     };
 
+    const mayClose = (hands: number) =>
+      hands >= plan.hands && !control.closing && control.knocksPending === 0;
+
     const supervise = Effect.gen(function* superviseNight() {
       let progress = wallClock();
       let problem = Option.none<string>();
@@ -892,7 +931,7 @@ export const playNight = (base: string, opened: OpenedNight) =>
           continue;
         }
 
-        if (hands >= plan.hands && !control.closing) {
+        if (mayClose(hands)) {
           const reason = yield* timeToClose(open.value, now);
 
           if (Option.isSome(reason) && plan.ending === "Halted") {
@@ -972,6 +1011,7 @@ export const playNight = (base: string, opened: OpenedNight) =>
 
     let intruder = Option.none<IntruderRecord>();
     let regular = Option.none<RegularRecord>();
+    let knocks = Option.none<readonly KnockRecord[]>();
 
     const regularPlays = Option.match(plan.regularAtHand, {
       onNone: () => Effect.void,
@@ -1049,6 +1089,62 @@ export const playNight = (base: string, opened: OpenedNight) =>
         }),
     });
 
+    const knocking = Option.match(plan.knocksAtHand, {
+      onNone: () => Effect.void,
+      onSome: (atHand) =>
+        Effect.gen(function* knockAtTheDoor() {
+          while (
+            (handsNow() < atHand || lateJoined < plan.lateJoiners) &&
+            !control.closing &&
+            !control.stop
+          ) {
+            yield* Effect.sleep(Duration.millis(100));
+          }
+
+          if (control.closing || control.stop) {
+            return;
+          }
+
+          control.approval = Option.some(true);
+
+          const since = wallClock();
+
+          while (
+            !freshest().pipe(
+              Option.exists(
+                (view) =>
+                  RoomViews.$is("Open")(view) &&
+                  view.settings.approval.joins &&
+                  view.settings.knockSeconds === MIN_KNOCK_SECONDS
+              )
+            ) &&
+            wallClock() - since < DOOR_WAIT_MS &&
+            !control.stop
+          ) {
+            yield* Effect.sleep(Duration.millis(100));
+          }
+
+          note("the host turned on join approval; three strangers knock");
+
+          const answers = yield* Effect.all(
+            KNOCK_PLANS.map((knockPlan) =>
+              knockAndWait(base, plan.code, knockPlan, control, note, () => {
+                control.knocksPending -= 1;
+              })
+            ),
+            { concurrency: "unbounded" }
+          );
+
+          knocks = Option.some(answers);
+        }).pipe(
+          Effect.ensuring(
+            Effect.sync(() => {
+              control.knocksPending = 0;
+            })
+          )
+        ),
+    });
+
     const late = Array.from({ length: plan.lateJoiners }, (_, offset) =>
       lateJoiner(
         plan.players + plan.spectators + offset,
@@ -1056,9 +1152,10 @@ export const playNight = (base: string, opened: OpenedNight) =>
       )
     );
 
-    yield* Effect.all([supervise, intruding, regularPlays, ...loops, ...late], {
-      concurrency: "unbounded",
-    }).pipe(
+    yield* Effect.all(
+      [supervise, intruding, regularPlays, knocking, ...loops, ...late],
+      { concurrency: "unbounded" }
+    ).pipe(
       Effect.ensuring(
         Effect.all(closers, { discard: true }).pipe(Effect.ignore)
       )
@@ -1122,6 +1219,7 @@ export const playNight = (base: string, opened: OpenedNight) =>
         voteRestarts,
       },
       intruder,
+      knocks,
       plan,
       regular,
     };
@@ -1188,6 +1286,18 @@ export const judgeNight = (played: PlayedNight): NightResult => {
           intruderProblems(
             record,
             played.events.map((text) => pokerCodec.decodeEvent(text))
+          ),
+      }),
+      ...Option.match(played.knocks, {
+        onNone: () =>
+          Option.isSome(played.plan.knocksAtHand)
+            ? ["the night planned knocks at the door, and nobody knocked"]
+            : [],
+        onSome: (records) =>
+          knockProblems(
+            records,
+            played.events.map((text) => pokerCodec.decodeEvent(text)),
+            MIN_KNOCK_SECONDS
           ),
       }),
     ],

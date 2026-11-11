@@ -75,6 +75,7 @@ const CHECKED_HANDS_PER_ROOM = 2;
 const CHECKED_HANDS = 2 * CHECKED_HANDS_PER_ROOM;
 
 interface SmallRoom {
+  readonly knocks?: boolean;
   readonly regular?: boolean;
   readonly stranger?: StrangerPlan;
   readonly ending: NightEnding;
@@ -110,6 +111,7 @@ const ROOMS: readonly SmallRoom[] = [
   {
     ending: "AsItComes",
     hands: 9,
+    knocks: true,
     players: 2,
     regular: true,
     restarts: 1,
@@ -160,7 +162,16 @@ test(
 
     const plans = ROOMS.map(
       (
-        { ending, hands, players, regular, restarts, shuffle, stranger },
+        {
+          ending,
+          hands,
+          knocks,
+          players,
+          regular,
+          restarts,
+          shuffle,
+          stranger,
+        },
         index
       ) =>
         planNight(
@@ -171,6 +182,7 @@ test(
             ending,
             handBudgetMs: 4000,
             hands,
+            knocks: knocks ?? false,
             players,
             regular: regular ?? false,
             restarts,

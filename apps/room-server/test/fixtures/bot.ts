@@ -22,6 +22,7 @@ import {
 import type { Allowance, PlayerId, RoomPass } from "@nostakes/protocol";
 import {
   ChipAmountSchema,
+  MIN_KNOCK_SECONDS,
   RoomSettingsSchema,
   RoomViews,
   clearableOf,
@@ -33,6 +34,7 @@ import { Duration, Effect, Option, Queue, Schedule, Schema } from "effect";
 
 import { MemberCommandSchema } from "../../src/poker-room.js";
 import type { MemberCommand } from "../../src/poker-room.js";
+import type { KnockPlan } from "./knocker.js";
 import {
   awaitArrival,
   encodeClientFrame,
@@ -132,6 +134,9 @@ export interface NightControl {
   readonly intruders: Map<PlayerId, number>;
   readonly regulars: Map<PlayerId, number>;
   door: Option.Option<boolean>;
+  approval: Option.Option<boolean>;
+  readonly knocks: Map<PlayerId, KnockPlan>;
+  knocksPending: number;
 }
 
 export interface SocketRecord {
@@ -555,6 +560,46 @@ export const plannerFor = (setup: PlannerSetup) => {
       )
     );
 
+  const doorIntent = (open: OpenView): Option.Option<Intent> => {
+    const approval = control.approval.pipe(
+      Option.filter(
+        (on) =>
+          on !== open.settings.approval.joins ||
+          (on && open.settings.knockSeconds !== MIN_KNOCK_SECONDS)
+      )
+    );
+
+    if (Option.isSome(approval)) {
+      return intent(
+        Commands.ChangeSettings.make({
+          settings: {
+            ...open.settings,
+            approval: { ...open.settings.approval, joins: approval.value },
+            knockSeconds: MIN_KNOCK_SECONDS,
+            table: Option.getOrElse(
+              open.queued.rules,
+              () => open.settings.table
+            ),
+          },
+        })
+      );
+    }
+
+    const knock = open.knocking.find(
+      ({ player }) => control.knocks.get(player) !== "Ignore"
+    );
+
+    if (knock === undefined || !control.knocks.has(knock.player)) {
+      return Option.none();
+    }
+
+    return intent(
+      control.knocks.get(knock.player) === "LetIn"
+        ? Commands.LetIn.make({ player: knock.player })
+        : Commands.TurnAway.make({ player: knock.player })
+    );
+  };
+
   const hostIntent = (open: OpenView): Option.Option<Intent> => {
     const [seatRequest] = open.requests.seats;
     const [chipRequest] = open.requests.chips;
@@ -890,7 +935,7 @@ export const plannerFor = (setup: PlannerSetup) => {
 
     const regularOut =
       open.host === pass.player && !control.closing
-        ? regularIntent(open)
+        ? doorIntent(open).pipe(Option.orElse(() => regularIntent(open)))
         : Option.none();
 
     if (Option.isSome(regularOut)) {
