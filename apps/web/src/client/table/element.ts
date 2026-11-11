@@ -438,6 +438,8 @@ const mostOnTable = (snapshot: TableSnapshot | null) =>
 
 const BUTTON_TRAVEL_MS = 720;
 
+const LAYOUTS_KEPT = 12;
+
 interface Landing {
   readonly amount: number;
   readonly at: number;
@@ -739,6 +741,7 @@ export class NostakesTable extends HTMLElement {
   #order = "";
   #piles = new Map<number, Pile>();
   readonly #pending = new Map<string, number>();
+  readonly #layouts = new Map<string, Table>();
   readonly #landing = new Map<number, Landing>();
   readonly #won = new Map<number, number>();
   #later: Later[] = [];
@@ -1423,7 +1426,7 @@ export class NostakesTable extends HTMLElement {
       return;
     }
 
-    const geo = computeGeo(w, h, count, most);
+    const geo = this.#laidOut(w, h, count, most);
 
     this.#geo = geo;
     this.#spots = geo.buttons;
@@ -1655,6 +1658,29 @@ export class NostakesTable extends HTMLElement {
     const point = this.#tilePoint(seat);
 
     return { x: point.x, y: point.y + (geo?.tile ?? 0) * 0.3 };
+  }
+
+  #laidOut(w: number, h: number, count: number, most: number): Table {
+    const key = `${w}x${h}:${count}:${String(Math.trunc(Math.max(0, most))).length}`;
+    const kept = this.#layouts.get(key);
+
+    if (kept !== undefined) {
+      return kept;
+    }
+
+    const geo = computeGeo(w, h, count, most);
+
+    this.#layouts.set(key, geo);
+
+    for (const old of this.#layouts.keys()) {
+      if (this.#layouts.size <= LAYOUTS_KEPT) {
+        break;
+      }
+
+      this.#layouts.delete(old);
+    }
+
+    return geo;
   }
 
   #hold(key: string) {

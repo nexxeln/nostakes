@@ -3558,21 +3558,37 @@ const lanesClearFor = (
 const lanesOfEverySeat = (geo: Geo): readonly (readonly Lane[])[] =>
   geo.seats.map((seat) => lanesAround(geo, seat));
 
-const everySeatHasALane = (
-  geo: Geo,
-  candidates: readonly (readonly Lane[])[]
-) => {
+type SeatLanes =
+  | { readonly lanes: readonly (readonly Lane[])[] }
+  | { readonly stuck: number };
+
+const lanesIfEverySeatHasOne = (geo: Geo, firstLook: number): SeatLanes => {
   const owners = ownersAt(geo, geo.seats);
   const fixed = fixedGround(geo, geo.seats);
+  const hand = liftedHand(geo);
+  const count = geo.seats.length;
+  const found: (readonly Lane[])[] = [];
 
-  return geo.seats.every((__, index) =>
-    (candidates[index] ?? []).some(
+  for (let look = 0; look < count; look += 1) {
+    const index = (firstLook + look) % count;
+    const seat = geo.seats[index];
+    const nearby = seat === undefined ? [] : lanesAround(geo, seat);
+
+    const clear = nearby.some(
       laneClearFor(geo, index, owners, {
         all: fixed,
-        button: [...fixedGround(geo, geo.seats, index), liftedHand(geo)],
+        button: [...fixedGround(geo, geo.seats, index), hand],
       })
-    )
-  );
+    );
+
+    if (!clear) {
+      return { stuck: index };
+    }
+
+    found[index] = nearby;
+  }
+
+  return { lanes: found };
 };
 
 const LANE_SEARCH = 4000;
@@ -4113,6 +4129,8 @@ export const computeGeo = (
   const ringOf = (attempt: Attempt) =>
     JSON.stringify(tallGeo(w, h, seated, roomOf(attempt)).seats);
 
+  let stuckAt = 0;
+
   const spacingsAt = (cap: number, compact: boolean, round: number) => {
     if (wide) {
       return [{ cap, compact, round, spacing: "Column" as const }];
@@ -4169,12 +4187,15 @@ export const computeGeo = (
       ),
       (attempt) => {
         const rested = restedAt(attempt);
+        const seatLanes = lanesIfEverySeatHasOne(rested, stuckAt);
 
-        const candidates = lanesOfEverySeat(rested);
+        if ("stuck" in seatLanes) {
+          stuckAt = seatLanes.stuck;
 
-        return everySeatHasALane(rested, candidates)
-          ? laned(rested, candidates)
-          : null;
+          return null;
+        }
+
+        return laned(rested, seatLanes.lanes);
       }
     );
 
