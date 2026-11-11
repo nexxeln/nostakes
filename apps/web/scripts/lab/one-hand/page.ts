@@ -83,7 +83,7 @@ ${film.layers.talk}
 <div class="streets">
 ${film.layers.hud}
 </div>
-<p class="chat">The group chat</p>
+<p class="chat"><span>The group chat</span></p>
 <div class="caps">
 ${film.layers.caps}
 </div>

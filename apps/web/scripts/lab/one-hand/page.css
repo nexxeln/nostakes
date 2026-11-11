@@ -1418,9 +1418,12 @@ body {
   .chat {
     position: absolute;
     left: calc(100% - var(--side) + var(--gutter));
-    top: calc(50% - 17.6em);
+    top: calc(50% - 204em);
     display: block;
     margin: 0;
+  }
+
+  .chat span {
     font-size: 11.5em;
     font-weight: var(--weight-display);
     letter-spacing: 0.14em;

@@ -561,11 +561,11 @@ const camera = ({ frame, go, starts }: Director) => {
 };
 
 const opening = ({ frame, go, set, starts }: Director) => {
-  starts("headline", ROOT, at(frame.headline));
-  starts("headline", "sh", SHADOW);
-  go("headline", "sh", [10, 22, "In"], lifted(14));
+  starts("headline", ROOT, { ...at(frame.headline), turn: -1.5 });
+  starts("headline", "sh", lifted(3));
+  go("headline", "sh", [8, 20, "In"], lifted(16));
   go("headline", ROOT, [12, 30, "In"], {
-    turn: -7,
+    turn: -8,
     x: frame.headline[0] - frame.spread,
     y: frame.edge.Top,
   });
