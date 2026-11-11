@@ -24,6 +24,7 @@ export const PlainRefusalSchema = Schema.Struct({
     "ServerFault",
     "NotAuthorized",
     "RoomOpen",
+    "BodyTooLarge",
   ]),
 });
 

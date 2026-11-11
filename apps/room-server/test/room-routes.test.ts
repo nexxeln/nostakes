@@ -1,5 +1,6 @@
 import { RpcCallError } from "@alchemy.run/cloudflare";
 import { describe, expect, it } from "@effect/vitest";
+import { MAX_BODY_BYTES } from "@nostakes/protocol";
 import { Effect, Logger, References } from "effect";
 import type { Schema } from "effect";
 import * as HttpRouter from "effect/http/HttpRouter";
@@ -10,7 +11,7 @@ import { unlimited } from "../src/address-limits.js";
 import type { AddressLimits } from "../src/address-limits.js";
 import { noAnalytics } from "../src/analytics.js";
 import { roomKeyOf } from "../src/room-object.js";
-import { roomRoutes } from "../src/room-routes.js";
+import { REPORTS_ROUTE, roomRoutes } from "../src/room-routes.js";
 import type { RoomNamespace } from "../src/room-routes.js";
 import { seededEntropy } from "./fixtures/test-entropy.js";
 
@@ -213,5 +214,102 @@ describe("a route that dies", () => {
         );
         expect(logs.map(({ text }) => text).join("")).not.toContain("Ana");
       })
+  );
+});
+
+const RAW_ROUTES = [
+  "/rooms",
+  `/rooms/${CODE}/members`,
+  `/rooms/${CODE}/standings`,
+  REPORTS_ROUTE,
+] as const;
+
+const sentRaw = (path: string, text: string, length: "Declared" | "Chunked") =>
+  new Request(new URL(path, ORIGIN), {
+    body:
+      length === "Declared"
+        ? text
+        : new ReadableStream({
+            start: (controller) => {
+              controller.enqueue(new TextEncoder().encode(text));
+              controller.close();
+            },
+          }),
+    duplex: "half",
+    headers: { "content-type": "application/json", origin: ORIGIN },
+    method: "POST",
+  });
+
+const padded = (bytes: number) =>
+  JSON.stringify({ avatar: "fox", name: "Ana", pad: "x".repeat(bytes) });
+
+const callsTo = (calls: string[]): RoomNamespace => ({
+  getByName: () => ({
+    check: () => refusedCall("check"),
+    fetch: () => Effect.die(new Error(CLOUDFLARE_REFUSAL)),
+    join: () =>
+      Effect.sync(() => calls.push("join")).pipe(
+        Effect.andThen(refusedCall("join"))
+      ),
+    open: () =>
+      Effect.sync(() => calls.push("open")).pipe(
+        Effect.andThen(refusedCall("open"))
+      ),
+    standings: () =>
+      Effect.sync(() => calls.push("standings")).pipe(
+        Effect.andThen(refusedCall("standings"))
+      ),
+  }),
+  idFromName: (name) => ({ toString: () => objectIdOf(name) }),
+});
+
+describe("a request body past the limit", () => {
+  it.effect(
+    "is refused with 413 BodyTooLarge on every route, declared or chunked, before any room is called",
+    () =>
+      Effect.gen(function* tooLarge() {
+        const calls: string[] = [];
+
+        const answers: { readonly body: string; readonly status: number }[] =
+          [];
+
+        for (const path of RAW_ROUTES) {
+          for (const length of ["Declared", "Chunked"] as const) {
+            const { body, status } = yield* answer(
+              callsTo(calls),
+              unlimited,
+              sentRaw(path, padded(MAX_BODY_BYTES), length)
+            );
+
+            answers.push({ body, status });
+          }
+        }
+
+        expect(answers).toStrictEqual(
+          RAW_ROUTES.flatMap(() => [
+            { body: '{"refusal":"BodyTooLarge"}', status: 413 },
+            { body: '{"refusal":"BodyTooLarge"}', status: 413 },
+          ])
+        );
+        expect(calls).toStrictEqual([]);
+      })
+  );
+
+  it.effect("reaches the room when it fits", () =>
+    Effect.gen(function* fits() {
+      const calls: string[] = [];
+      const fitting = padded(MAX_BODY_BYTES - padded(0).length);
+
+      for (const length of ["Declared", "Chunked"] as const) {
+        yield* answer(
+          callsTo(calls),
+          unlimited,
+          sentRaw("/rooms", fitting, length)
+        );
+      }
+
+      expect(new TextEncoder().encode(fitting).length).toBe(MAX_BODY_BYTES);
+      expect(calls).toStrictEqual(["open", "open"]);
+    })
   );
 });

@@ -1,5 +1,6 @@
 import type { RpcCallError } from "@alchemy.run/cloudflare";
 import {
+  MAX_BODY_BYTES,
   haltedStandings,
   joinRefused,
   revokedStandings,
@@ -8,7 +9,7 @@ import {
   StandingsRequestSchema,
 } from "@nostakes/protocol";
 import type { RoomCode } from "@nostakes/protocol";
-import { Effect, Layer, Option, Schema } from "effect";
+import { Effect, Layer, Option, Result, Schema } from "effect";
 import * as HttpRouter from "effect/http/HttpRouter";
 import type { HttpServerError } from "effect/http/HttpServerError";
 import * as HttpServerRequest from "effect/http/HttpServerRequest";
@@ -23,6 +24,8 @@ import { DEVICE_HEADER, deviceOf } from "./device.js";
 import { Entropy } from "./entropy.js";
 import { measure, SITE_SCOPE } from "./measures.js";
 import { refuseSocket } from "./refused-socket.js";
+import { bodyWithin } from "./request-body.js";
+import type { BodyRefusal } from "./request-body.js";
 import { callRoom } from "./room-call-failed.js";
 import type { RoomCallFailed } from "./room-call-failed.js";
 import {
@@ -126,10 +129,20 @@ const roomCodeOf = HttpRouter.schemaPathParams(CodePath).pipe(
   Effect.map(({ code }) => Schema.decodeOption(RoomCodeSchema)(code))
 );
 
-const jsonBody = HttpServerRequest.HttpServerRequest.pipe(
-  Effect.flatMap((request) => request.json),
-  Effect.flatMap(Schema.decodeUnknownEffect(Schema.Json)),
-  Effect.option
+const decodeJsonText = Schema.decodeUnknownOption(
+  Schema.fromJsonString(Schema.Json)
+);
+
+const parsedOr =
+  <A>(parse: (input: string | Schema.Json) => Option.Option<A>) =>
+  (input: string | Schema.Json): Result.Result<A, BodyRefusal> =>
+    Option.match(parse(input), {
+      onNone: () => Result.fail<BodyRefusal>("BadRequest"),
+      onSome: (value) => Result.succeed(value),
+    });
+
+const jsonBody = bodyWithin(MAX_BODY_BYTES).pipe(
+  Effect.map(Result.flatMap(parsedOr(decodeJsonText)))
 );
 
 const keyIn = (rooms: RoomNamespace, code: RoomCode) =>
@@ -213,8 +226,8 @@ export const roomRoutes = <R>(
     const createRoom = Effect.gen(function* createRoom() {
       const body = yield* jsonBody;
 
-      if (Option.isNone(body)) {
-        return yield* refuse("BadRequest");
+      if (Result.isFailure(body)) {
+        return yield* refuse(body.failure);
       }
 
       const device = yield* deviceOf;
@@ -227,7 +240,7 @@ export const roomRoutes = <R>(
           "open",
           rooms
             .getByName(code)
-            .open({ code, request: body.value, ...withDevice(device) })
+            .open({ code, request: body.success, ...withDevice(device) })
             .pipe(Effect.flatMap(decodeOpenOutcome))
         );
 
@@ -252,8 +265,8 @@ export const roomRoutes = <R>(
 
       const body = yield* jsonBody;
 
-      if (Option.isNone(body)) {
-        return yield* refuse("BadRequest");
+      if (Result.isFailure(body)) {
+        return yield* refuse(body.failure);
       }
 
       const device = yield* deviceOf;
@@ -263,7 +276,7 @@ export const roomRoutes = <R>(
         "join",
         rooms
           .getByName(code.value)
-          .join({ request: body.value, ...withDevice(device) })
+          .join({ request: body.success, ...withDevice(device) })
           .pipe(Effect.flatMap(decodeJoinOutcome))
       );
 
@@ -291,12 +304,14 @@ export const roomRoutes = <R>(
 
       const body = yield* jsonBody.pipe(
         Effect.map(
-          Option.flatMap(Schema.decodeUnknownOption(StandingsRequestSchema))
+          Result.flatMap(
+            parsedOr(Schema.decodeUnknownOption(StandingsRequestSchema))
+          )
         )
       );
 
-      if (Option.isNone(body)) {
-        return yield* refuse("BadRequest");
+      if (Result.isFailure(body)) {
+        return yield* refuse(body.failure);
       }
 
       const outcome = yield* callRoom(
@@ -304,7 +319,7 @@ export const roomRoutes = <R>(
         "standings",
         rooms
           .getByName(code.value)
-          .standings(encodeStandingsRequest(body.value))
+          .standings(encodeStandingsRequest(body.success))
           .pipe(Effect.flatMap(decodeStandingsOutcome))
       );
 
@@ -363,11 +378,11 @@ export const roomRoutes = <R>(
     const report = Effect.gen(function* report() {
       const received = yield* reportFrom;
 
-      if (Option.isNone(received)) {
-        return yield* refuse("BadRequest");
+      if (Result.isFailure(received)) {
+        return yield* refuse(received.failure);
       }
 
-      yield* record([reportMeasure(received.value)]);
+      yield* record([reportMeasure(received.success)]);
 
       return HttpServerResponse.empty({ status: 204 });
     });

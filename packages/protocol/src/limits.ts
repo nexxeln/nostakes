@@ -1,5 +1,7 @@
 export const MAX_FRAME_BYTES = 8192;
 
+export const MAX_BODY_BYTES = 4096;
+
 export const FRAMES_PER_SECOND = 20;
 
 export const FRAME_BURST = 10;

@@ -1,9 +1,10 @@
 import { ROOM_CODE_ALPHABET, ROOM_CODE_LENGTH } from "@nostakes/protocol";
-import { Effect, Match, Option, Schema } from "effect";
-import * as HttpServerRequest from "effect/http/HttpServerRequest";
+import { Effect, Match, Option, Result, Schema } from "effect";
 
 import { measure } from "./measures.js";
 import type { Measure } from "./measures.js";
+import { bodyWithin } from "./request-body.js";
+import type { BodyRefusal } from "./request-body.js";
 
 export const MAX_REPORT_BYTES = 1024;
 
@@ -89,16 +90,13 @@ const decodeReport = Schema.decodeUnknownOption(
   Schema.fromJsonString(ClientReportSchema)
 );
 
-export const reportFrom = HttpServerRequest.HttpServerRequest.pipe(
-  Effect.flatMap((request) =>
-    Number(request.headers["content-length"] ?? MAX_REPORT_BYTES + 1) >
-    MAX_REPORT_BYTES
-      ? Effect.succeed(Option.none<ClientReport>())
-      : request.text.pipe(
-          Effect.map((text) =>
-            text.length > MAX_REPORT_BYTES ? Option.none() : decodeReport(text)
-          ),
-          Effect.orElseSucceed(() => Option.none<ClientReport>())
-        )
+export const reportFrom = bodyWithin(MAX_REPORT_BYTES).pipe(
+  Effect.map(
+    Result.flatMap((text): Result.Result<ClientReport, BodyRefusal> =>
+      Option.match(decodeReport(text), {
+        onNone: () => Result.fail<BodyRefusal>("BadRequest"),
+        onSome: (report) => Result.succeed(report),
+      })
+    )
   )
 );

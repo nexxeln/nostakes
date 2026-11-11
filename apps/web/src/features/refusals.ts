@@ -5,6 +5,7 @@ import { Schema } from "effect";
 const PLAIN_TEXT = {
   BadOrigin: "The room server does not accept this page's address.",
   BadRequest: "The server could not read that. Check the name.",
+  BodyTooLarge: "That was too much to send at once. Try a shorter name.",
   NoFreeCode: "No free room code right now. Try again.",
   NotAuthorized: "The room does not know this device's pass.",
   NotFound: "No room has that code.",

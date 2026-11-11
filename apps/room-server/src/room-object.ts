@@ -110,6 +110,7 @@ export interface RoomObjectOptions<T extends RoomTypes, Tally> {
 const refusalStatus: Record<PlainRefusal["refusal"], number> = {
   BadOrigin: 403,
   BadRequest: 400,
+  BodyTooLarge: 413,
   NoFreeCode: 503,
   NotAuthorized: 403,
   NotFound: 404,
