@@ -5,10 +5,8 @@ import * as ChildProcess from "effect/process/ChildProcess";
 import { ChildProcessSpawner } from "effect/process/ChildProcessSpawner";
 import { chromium, webkit } from "playwright-core";
 import type { BrowserType, Page } from "playwright-core";
-import { createServer } from "vite";
-import type { ViteDevServer } from "vite";
 
-import { mutedBrowser } from "./local-site.ts";
+import { mutedBrowser, servedVite } from "./local-site.ts";
 import {
   declaredColour,
   declaredText,
@@ -20,13 +18,12 @@ import {
 import type { Picture, Swatches } from "./moments/clip-colour.ts";
 import { policyBreaks, watchPolicy } from "./page-evidence.ts";
 import { SHARE_STUB, sharedAtLeast, sharedOrAsked } from "./share-stub.ts";
+import { StageOrigin } from "./stage-origin.ts";
 import { pagePolicy } from "./stage-policy.ts";
 
 const WEB = new URL("..", import.meta.url).pathname;
 
-const STAGE_PORT = 5193;
-
-const STAGE = `http://localhost:${STAGE_PORT}/scripts/moments`;
+const STAGE = "/scripts/moments";
 
 const SIZES = {
   Chat: { height: 1350, width: 1080 },
@@ -52,7 +49,7 @@ class ClipCheckFailed extends Schema.TaggedError<
   { readonly brand: unique symbol }
 >()("ClipCheckFailed", { detail: Schema.String, step: Schema.String }) {
   override get message() {
-    return `Checking a moment's clip failed at "${this.step}": ${this.detail}. Open ${STAGE}/stage.html?view=live, tap the moment away, and tap Clip to see it.`;
+    return `Checking a moment's clip failed at "${this.step}": ${this.detail}. Open ${STAGE}/stage.html?view=live on the stage server, tap the moment away, and tap Clip to see it.`;
   }
 }
 
@@ -82,21 +79,16 @@ const policed = (page: Page, name: string) =>
     )
   );
 
-const stageServer = Effect.acquireRelease(
-  attempt("start the stage server", () =>
-    createServer({
-      configFile: false,
-      logLevel: "warn",
-      plugins: [pagePolicy()],
-      root: WEB,
-      server: { port: STAGE_PORT, strictPort: true },
-    })
-  ).pipe(
-    Effect.tap((server) =>
-      attempt("listen for the stage", () => server.listen())
-    )
-  ),
-  (server: ViteDevServer) => Effect.promise(() => server.close())
+const stageServer = servedVite("start the stage server", "STAGE_PORT", {
+  configFile: false,
+  logLevel: "warn",
+  plugins: [pagePolicy()],
+  root: WEB,
+}).pipe(
+  Effect.mapError(
+    (failure) =>
+      new ClipCheckFailed({ detail: failure.detail, step: failure.step })
+  )
 );
 
 const CLIP_TOOLS = `
@@ -655,6 +647,8 @@ const liveClip = (
   look: { readonly sample: string; readonly theme: string }
 ) =>
   Effect.gen(function* keepClip() {
+    const origin = yield* StageOrigin;
+
     const opened = yield* mutedBrowser(engine);
 
     const context = yield* attempt("open a phone-sized context", () =>
@@ -678,7 +672,7 @@ const liveClip = (
     yield* throttled(page, engine, settings.throttle);
     yield* attempt("open the stage", () =>
       page.goto(
-        `${STAGE}/stage.html?view=live&sample=${look.sample}&theme=${look.theme}`
+        `${origin}${STAGE}/stage.html?view=live&sample=${look.sample}&theme=${look.theme}`
       )
     );
     yield* attempt("wait for the pictures", () =>
@@ -828,6 +822,8 @@ const liveClip = (
 
 const askedClip = (engine: BrowserType, settings: Settings) =>
   Effect.gen(function* askForClip() {
+    const origin = yield* StageOrigin;
+
     const opened = yield* mutedBrowser(engine);
 
     const context = yield* attempt("open a phone-sized context", () =>
@@ -851,7 +847,9 @@ const askedClip = (engine: BrowserType, settings: Settings) =>
 
     yield* throttled(page, engine, settings.throttle);
     yield* attempt("open the stage", () =>
-      page.goto(`${STAGE}/stage.html?view=live&sample=Bluff-2&theme=Dark`)
+      page.goto(
+        `${origin}${STAGE}/stage.html?view=live&sample=Bluff-2&theme=Dark`
+      )
     );
     yield* attempt("wait for the pictures", () =>
       page
@@ -932,6 +930,8 @@ const askedClip = (engine: BrowserType, settings: Settings) =>
 
 const refusedClip = (engine: BrowserType) =>
   Effect.gen(function* refuseClip() {
+    const origin = yield* StageOrigin;
+
     const opened = yield* mutedBrowser(engine);
 
     const context = yield* attempt("open a phone-sized context", () =>
@@ -951,7 +951,9 @@ const refusedClip = (engine: BrowserType) =>
     const label = `${engine.name()}-no-encoder`;
 
     yield* attempt("open the stage", () =>
-      page.goto(`${STAGE}/stage.html?view=live&sample=BigHand-2&theme=Light`)
+      page.goto(
+        `${origin}${STAGE}/stage.html?view=live&sample=BigHand-2&theme=Light`
+      )
     );
     yield* attempt("wait for the pictures", () =>
       page
@@ -1005,6 +1007,8 @@ const turnTo = (page: Page, yours: boolean) =>
 
 const abandonedClip = (engine: BrowserType) =>
   Effect.gen(function* abandonClip() {
+    const origin = yield* StageOrigin;
+
     const opened = yield* mutedBrowser(engine);
 
     const page = yield* attempt("open a page", () =>
@@ -1016,7 +1020,9 @@ const abandonedClip = (engine: BrowserType) =>
     const label = `${engine.name()}-your-turn`;
 
     yield* attempt("open the stage", () =>
-      page.goto(`${STAGE}/stage.html?view=live&sample=Cooler-2&theme=Light`)
+      page.goto(
+        `${origin}${STAGE}/stage.html?view=live&sample=Cooler-2&theme=Light`
+      )
     );
     yield* attempt("wait for the pictures", () =>
       page
@@ -1100,6 +1106,8 @@ const stagedClip = (
   }
 ) =>
   Effect.gen(function* stageClip() {
+    const origin = yield* StageOrigin;
+
     const opened = yield* mutedBrowser(engine);
     const context = yield* attempt("open a context", () => opened.newContext());
 
@@ -1112,7 +1120,7 @@ const stagedClip = (
     yield* throttled(page, engine, settings.throttle);
     yield* attempt("open the clip stage", () =>
       page.goto(
-        `${STAGE}/clip.html?sample=${look.sample}&theme=${look.theme}&frame=${look.frame}&pace=${look.pace}`
+        `${origin}${STAGE}/clip.html?sample=${look.sample}&theme=${look.theme}&frame=${look.frame}&pace=${look.pace}`
       )
     );
     yield* attempt("wait for the clip", () =>
@@ -1160,7 +1168,7 @@ const listOf = (name: string, fallback: string) =>
     Config.map((text) => text.split(",").filter((each) => each.length > 0))
   );
 
-const program = Effect.gen(function* checkClips() {
+const checks = Effect.gen(function* checkClips() {
   const engines = yield* listOf("CLIP_ENGINES", "chromium,webkit");
   const samples = yield* listOf("CLIP_SAMPLES", "BigHand-2,BadBeat-1");
   const themes = yield* listOf("CLIP_THEMES", "Light");
@@ -1182,8 +1190,6 @@ const program = Effect.gen(function* checkClips() {
   ).pipe(Config.withDefault("nothing" as const));
 
   const settings: Settings = { dir, require, throttle };
-
-  yield* stageServer;
 
   const chosen = [chromium, webkit].filter((engine) =>
     engines.includes(engine.name())
@@ -1249,6 +1255,12 @@ const program = Effect.gen(function* checkClips() {
         step: "check the clips",
       });
 });
+
+const program = stageServer.pipe(
+  Effect.flatMap((origin) =>
+    checks.pipe(Effect.provideService(StageOrigin, origin))
+  )
+);
 
 await Effect.runPromise(
   program.pipe(Effect.scoped, Effect.provide(NodeServices.layer))

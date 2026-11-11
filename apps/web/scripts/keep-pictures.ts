@@ -3,21 +3,18 @@ import { Config, Console, Effect, Option, pipe, Schema } from "effect";
 import * as FileSystem from "effect/FileSystem";
 import { chromium, webkit } from "playwright-core";
 import type { BrowserType, Page } from "playwright-core";
-import { createServer } from "vite";
-import type { ViteDevServer } from "vite";
 
-import { mutedBrowser } from "./local-site.ts";
+import { mutedBrowser, servedVite } from "./local-site.ts";
 import { policyBreaks, watchPolicy } from "./page-evidence.ts";
 import { SHARE_STUB, sharedAtLeast } from "./share-stub.ts";
+import { StageOrigin } from "./stage-origin.ts";
 import { pagePolicy } from "./stage-policy.ts";
 
 const WEB = new URL("..", import.meta.url).pathname;
 
-const STAGE_PORT = 5194;
+const STAGE = "/scripts/moments/stage.html";
 
-const STAGE = `http://localhost:${STAGE_PORT}/scripts/moments/stage.html`;
-
-const NIGHT_STAGE = `http://localhost:${STAGE_PORT}/scripts/night/stage.html`;
+const NIGHT_STAGE = "/scripts/night/stage.html";
 
 const SMALLEST_PNG_BYTES = 20_000;
 
@@ -28,7 +25,7 @@ class KeepCheckFailed extends Schema.TaggedError<
   { readonly brand: unique symbol }
 >()("KeepCheckFailed", { detail: Schema.String, step: Schema.String }) {
   override get message() {
-    return `Keeping a picture failed at "${this.step}": ${this.detail}. Open ${STAGE}?view=live and tap Keep to see it.`;
+    return `Keeping a picture failed at "${this.step}": ${this.detail}. Open ${STAGE}?view=live on the stage server and tap Keep to see it.`;
   }
 }
 
@@ -38,21 +35,16 @@ const attempt = <A>(step: string, run: () => Promise<A>) =>
     try: run,
   });
 
-const stageServer = Effect.acquireRelease(
-  attempt("start the stage server", () =>
-    createServer({
-      configFile: false,
-      logLevel: "warn",
-      plugins: [pagePolicy()],
-      root: WEB,
-      server: { port: STAGE_PORT, strictPort: true },
-    })
-  ).pipe(
-    Effect.tap((server) =>
-      attempt("listen for the stage", () => server.listen())
-    )
-  ),
-  (server: ViteDevServer) => Effect.promise(() => server.close())
+const stageServer = servedVite("start the stage server", "STAGE_PORT", {
+  configFile: false,
+  logLevel: "warn",
+  plugins: [pagePolicy()],
+  root: WEB,
+}).pipe(
+  Effect.mapError(
+    (failure) =>
+      new KeepCheckFailed({ detail: failure.detail, step: failure.step })
+  )
 );
 
 const SharedSchema = Schema.Array(
@@ -111,6 +103,8 @@ const checkEngine = (engine: BrowserType, dir: Option.Option<string>) => {
   const policy = policyBreaks();
 
   return Effect.gen(function* checkKeep() {
+    const origin = yield* StageOrigin;
+
     const opened = yield* mutedBrowser(engine);
 
     const context = yield* attempt("open a phone-sized context", () =>
@@ -130,7 +124,7 @@ const checkEngine = (engine: BrowserType, dir: Option.Option<string>) => {
     policy.listen(page, `${engine.name()} moment`);
 
     yield* attempt("open the stage", () =>
-      page.goto(`${STAGE}?view=live&sample=BadBeat-1&theme=Dark`)
+      page.goto(`${origin}${STAGE}?view=live&sample=BadBeat-1&theme=Dark`)
     );
     yield* attempt("wait for both pictures to be drawn before any tap", () =>
       page
@@ -215,7 +209,7 @@ const checkEngine = (engine: BrowserType, dir: Option.Option<string>) => {
 
     yield* attempt("open the night stage", () =>
       settled.goto(
-        `${NIGHT_STAGE}?view=keep&card=settle&sample=nine&theme=Light`
+        `${origin}${NIGHT_STAGE}?view=keep&card=settle&sample=nine&theme=Light`
       )
     );
     yield* attempt("draw the settle-up at both sizes before any tap", () =>
@@ -302,14 +296,12 @@ const checkEngine = (engine: BrowserType, dir: Option.Option<string>) => {
   );
 };
 
-const program = Effect.gen(function* checkKeeping() {
+const checks = Effect.gen(function* checkKeeping() {
   const engines = yield* Config.String("KEEP_ENGINES").pipe(
     Config.withDefault("chromium,webkit")
   );
 
   const dir = yield* Config.String("KEEP_SHOTS_DIR").pipe(Config.option);
-
-  yield* stageServer;
 
   const chosen = [chromium, webkit].filter((engine) =>
     engines.split(",").includes(engine.name())
@@ -329,6 +321,12 @@ const program = Effect.gen(function* checkKeeping() {
         step: "keep a moment",
       });
 });
+
+const program = stageServer.pipe(
+  Effect.flatMap((origin) =>
+    checks.pipe(Effect.provideService(StageOrigin, origin))
+  )
+);
 
 await Effect.runPromise(
   program.pipe(Effect.scoped, Effect.provide(NodeServices.layer))

@@ -6,12 +6,9 @@ import { chromium } from "playwright-core";
 import type { Browser, Page } from "playwright-core";
 
 import { localRoomServer, localWebApp, mutedBrowser } from "./local-site.ts";
+import type { WebApp } from "./local-site.ts";
 import { watchPages } from "./page-evidence.ts";
 import { SHARE_STUB, sharedAtLeast } from "./share-stub.ts";
-
-const WEB_PORT = 5199;
-
-const WEB = `http://localhost:${WEB_PORT}`;
 
 class NightFailed extends Schema.TaggedError<
   NightFailed,
@@ -579,8 +576,13 @@ const sameMoment = (ana: Page, ben: Page) =>
     return seenByAna;
   });
 
-const deployed = (build: string) =>
-  localRoomServer(WEB_PORT, STAGE, Option.some(build)).pipe(
+const deployed = (web: WebApp, build: string) =>
+  localRoomServer(web.url, STAGE, Option.some(build)).pipe(
+    Effect.tap((roomServer) =>
+      Effect.sync(() => {
+        web.reach(roomServer);
+      })
+    ),
     Effect.tap((roomServer) =>
       Console.log(`room server at ${roomServer} serves ${build}`)
     )
@@ -764,13 +766,13 @@ const night = Effect.gen(function* playOneHand() {
 
   yield* Effect.addFinalizer(() => Scope.close(firstDeploy, Exit.void));
 
-  const roomServer = yield* deployed(FIRST_BUILD).pipe(
+  const web = yield* localWebApp;
+
+  yield* Console.log(`web app at ${web.url}`);
+
+  const roomServer = yield* deployed(web, FIRST_BUILD).pipe(
     Scope.provide(firstDeploy)
   );
-
-  const app = yield* localWebApp(WEB_PORT, roomServer);
-
-  yield* Console.log(`web app at ${app}`);
 
   const opened = yield* mutedBrowser(chromium);
   const ana = yield* player(opened, "Ana");
@@ -808,7 +810,7 @@ const night = Effect.gen(function* playOneHand() {
   });
 
   yield* attempt("Ana opens the home page", () =>
-    ana.goto(`${WEB}/${MUTED_PAGE}`)
+    ana.goto(`${web.url}/${MUTED_PAGE}`)
   );
   yield* attempt("Ana types her name", () =>
     ana.getByPlaceholder("Name").fill("Ana", { timeout: 60_000 })
@@ -856,18 +858,15 @@ const night = Effect.gen(function* playOneHand() {
   yield* Scope.close(firstDeploy, Exit.void);
   yield* Console.log(`deploying ${SECOND_BUILD} in the middle of hand 2`);
 
-  const redeployed = yield* deployed(SECOND_BUILD);
+  const redeployed = yield* deployed(web, SECOND_BUILD);
 
+  yield* Console.log(
+    redeployed === roomServer
+      ? `the room server came back at ${redeployed}`
+      : `the room server came back at ${redeployed}, not ${roomServer}; the web app's proxy follows it`
+  );
   yield* serveBuild(ana, SECOND_BUILD);
   yield* serveBuild(ben, SECOND_BUILD);
-
-  yield* holds(
-    redeployed === roomServer,
-    new NightFailed({
-      detail: `it came back at ${redeployed}, not ${roomServer}, so the web app's proxy cannot reach it`,
-      step: "restart the room server with the new build",
-    })
-  );
   yield* toldToWait(ana, "Ana");
   yield* toldToWait(ben, "Ben");
   yield* Console.log(
@@ -879,6 +878,13 @@ const night = Effect.gen(function* playOneHand() {
   yield* drag(folder, HAND, 170, "flick the cards up to end hand 2");
   yield* onBuild(ana, "Ana", SECOND_BUILD);
   yield* onBuild(ben, "Ben", SECOND_BUILD);
+  yield* holds(
+    [ana, ben].every((page) => new URL(page.url()).origin === web.url),
+    new NightFailed({
+      detail: `the pages are at ${ana.url()} and ${ben.url()}, not ${web.url}`,
+      step: "reach the new build from the same page as before",
+    })
+  );
   yield* seated(ana, "Ana");
   yield* seated(ben, "Ben");
 

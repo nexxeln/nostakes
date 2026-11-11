@@ -5,8 +5,6 @@ import type { Browser, BrowserType, Page } from "playwright-core";
 
 import { localSite, mutedBrowser } from "./local-site.ts";
 
-const WEB_PORT = 5195;
-
 const TABLE = "nostakes-table";
 
 const VIEWPORTS = [
@@ -213,7 +211,7 @@ const program = Effect.gen(function* takeShots() {
     Config.withDefault("tables,boards")
   );
 
-  const { app } = yield* localSite(WEB_PORT, "phone_shots");
+  const { app } = yield* localSite("phone_shots");
 
   const chosen: readonly BrowserType[] = [chromium, webkit].filter((engine) =>
     engines.split(",").includes(engine.name())

@@ -21,8 +21,6 @@ import { localSite, mutedBrowser } from "./local-site.ts";
 import { watchPages } from "./page-evidence.ts";
 import type { PageWatch } from "./page-evidence.ts";
 
-const WEB_PORT = 5196;
-
 const PHONE = { height: 844, width: 390 };
 
 const LANDSCAPE = { height: 390, width: 844 };
@@ -992,7 +990,7 @@ const checkEngine = (engine: BrowserType, app: string) =>
   }).pipe(Effect.scoped);
 
 const program = Effect.gen(function* checkPhones() {
-  const { app } = yield* localSite(WEB_PORT, "verify_phones");
+  const { app } = yield* localSite("verify_phones");
 
   const engines = yield* Config.String("PHONE_ENGINES").pipe(
     Config.withDefault("chromium,webkit")

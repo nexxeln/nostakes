@@ -1,12 +1,16 @@
-import { Deferred, Effect, Option, Schema, Stream } from "effect";
+import { Config, Deferred, Effect, Option, Schema, Stream } from "effect";
 import * as ChildProcess from "effect/process/ChildProcess";
 import type { BrowserType } from "playwright-core";
+import { createServer } from "vite";
+import type { InlineConfig, ProxyOptions } from "vite";
 
 const REPO = new URL("../../..", import.meta.url).pathname;
 
+const WEB = new URL("..", import.meta.url).pathname;
+
 const ROOM_SERVER_READY = /ready at (?<url>http:\/\/localhost:\d+)/u;
 
-const WEB_READY = /Local:\s+(?<url>http:\/\/localhost:\d+)/u;
+const NOWHERE_YET = "http://localhost:9";
 
 export class LocalSiteFailed extends Schema.TaggedError<
   LocalSiteFailed,
@@ -16,7 +20,7 @@ export class LocalSiteFailed extends Schema.TaggedError<
   step: Schema.String,
 }) {
   override get message() {
-    return `Could not run the local site at "${this.step}": ${this.detail}. Run pnpm build first, and check that nothing else holds the ports.`;
+    return `Could not run the local site at "${this.step}": ${this.detail}. Run pnpm build first, and if WEB_PORT or STAGE_PORT is set, check that nothing else holds it.`;
   }
 }
 
@@ -51,7 +55,7 @@ const started = (label: string, ready: RegExp, command: ChildProcess.Command) =>
   });
 
 export const localRoomServer = (
-  webPort: number,
+  webOrigin: string,
   stage: string,
   build: Option.Option<string> = Option.none()
 ) =>
@@ -74,7 +78,7 @@ export const localRoomServer = (
       {
         cwd: REPO,
         env: {
-          ALLOWED_ORIGINS: `http://localhost:${webPort}`,
+          ALLOWED_ORIGINS: webOrigin,
           CLOUDFLARE_ACCOUNT_ID: "00000000000000000000000000000000",
           NO_COLOR: "1",
           ...Option.match(build, {
@@ -88,36 +92,94 @@ export const localRoomServer = (
     )
   );
 
-export const localWebApp = (webPort: number, roomServer: string) =>
-  started(
-    "start the web app",
-    WEB_READY,
-    ChildProcess.make(
-      "pnpm",
-      [
-        "--filter",
-        "@nostakes/web",
-        "exec",
-        "vite",
-        "dev",
-        "--port",
-        String(webPort),
-        "--strictPort",
-      ],
-      {
-        cwd: REPO,
-        env: { NO_COLOR: "1", ROOM_SERVER_URL: roomServer },
-        extendEnv: true,
-      }
+const portFrom = (name: string) =>
+  Config.Int(name).pipe(
+    Config.withDefault(0),
+    Effect.mapError(
+      (failure) =>
+        new LocalSiteFailed({
+          detail: failure.message,
+          step: `read ${name}`,
+        })
     )
   );
 
-export const localSite = (webPort: number, stage: string) =>
-  Effect.gen(function* startLocalSite() {
-    const roomServer = yield* localRoomServer(webPort, stage);
-    const app = yield* localWebApp(webPort, roomServer);
+export const servedVite = (
+  step: string,
+  portName: string,
+  config: InlineConfig
+) =>
+  Effect.gen(function* serveVite() {
+    const port = yield* portFrom(portName);
 
-    return { app, roomServer };
+    const server = yield* Effect.acquireRelease(
+      Effect.tryPromise({
+        catch: (cause) => new LocalSiteFailed({ detail: String(cause), step }),
+        try: () =>
+          createServer({
+            ...config,
+            server: { ...config.server, port, strictPort: true },
+          }),
+      }),
+      (vite) => Effect.promise(() => vite.close())
+    );
+
+    yield* Effect.tryPromise({
+      catch: (cause) => new LocalSiteFailed({ detail: String(cause), step }),
+      try: () => server.listen(),
+    });
+
+    const [address] = server.resolvedUrls?.local ?? [];
+
+    return address === undefined
+      ? yield* new LocalSiteFailed({ detail: "it reported no address", step })
+      : address.replace(/\/$/u, "");
+  });
+
+export interface WebApp {
+  readonly url: string;
+  readonly reach: (roomServer: string) => void;
+}
+
+export const localWebApp = Effect.gen(function* startWebApp() {
+  const routes: ProxyOptions[] = [];
+
+  const url = yield* servedVite("start the web app", "WEB_PORT", {
+    logLevel: "silent",
+    root: WEB,
+    server: {
+      proxy: {
+        "/rooms": {
+          configure: (_proxy, route) => {
+            routes.push(route);
+          },
+          target: NOWHERE_YET,
+          ws: true,
+        },
+      },
+    },
+  });
+
+  const app: WebApp = {
+    reach: (roomServer) => {
+      for (const route of routes) {
+        route.target = roomServer;
+      }
+    },
+    url,
+  };
+
+  return app;
+});
+
+export const localSite = (stage: string) =>
+  Effect.gen(function* startLocalSite() {
+    const web = yield* localWebApp;
+    const roomServer = yield* localRoomServer(web.url, stage);
+
+    web.reach(roomServer);
+
+    return { app: web.url, roomServer };
   });
 
 export const mutedBrowser = (engine: BrowserType) =>

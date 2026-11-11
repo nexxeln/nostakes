@@ -5,8 +5,6 @@ import type { Browser, Page } from "playwright-core";
 
 import { localSite, mutedBrowser } from "./local-site.ts";
 
-const WEB_PORT = 5193;
-
 const PHONE = { height: 640, width: 360 } as const;
 
 const THEMES = ["light", "dark"] as const;
@@ -81,7 +79,7 @@ const named = (page: Page, name: string) =>
 
 const program = Effect.gen(function* takeMembershipShots() {
   const dir = yield* Config.String("MEMBERSHIP_DIR");
-  const { app } = yield* localSite(WEB_PORT, "membership_shots");
+  const { app } = yield* localSite("membership_shots");
   const opened = yield* mutedBrowser(chromium);
 
   const host = yield* phone(opened);
