@@ -54,7 +54,13 @@ export const openRecap = (
       said.textContent = words;
     },
     shown: (on: boolean) => {
+      const focused = document.activeElement;
+
       recap.inert = !on;
+
+      if (!on && focused instanceof HTMLElement && recap.contains(focused)) {
+        focused.blur();
+      }
     },
   };
 };

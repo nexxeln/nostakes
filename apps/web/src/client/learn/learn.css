@@ -1238,10 +1238,6 @@ kbd {
   display: none;
 }
 
-.intro .chipctl {
-  translate: calc((50 - var(--chip-x)) * 1cqw) calc((80 - var(--chip-y)) * 1cqh);
-}
-
 .intro .hand,
 .recapped .hand {
   opacity: 0;
@@ -1391,7 +1387,7 @@ kbd {
 
 .controls {
   position: absolute;
-  z-index: 12;
+  z-index: 15;
   left: var(--gutter-left);
   right: var(--gutter-right);
   bottom: var(--inset-bottom);
