@@ -30,6 +30,7 @@ import {
   sawOf,
 } from "./hands.js";
 import type { HonestHand } from "./hands.js";
+import { generated } from "./scale.js";
 
 const outcome = (saw: PlayerSaw) =>
   Result.match(verifyHand(saw), {
@@ -72,7 +73,8 @@ describe("verifyHand on honest hands", () => {
           dealtSlot: hand.plan.dealtSlot,
         })
       );
-    }
+    },
+    generated(30, 100)
   );
 });
 
@@ -98,7 +100,8 @@ describe("verifyHand on a changed hand", () => {
           slot: hand.plan.dealtSlot,
         })
       );
-    }
+    },
+    generated(30, 100)
   );
 
   it.prop(
@@ -126,7 +129,8 @@ describe("verifyHand on a changed hand", () => {
           slot: hand.plan.dealtSlot,
         })
       );
-    }
+    },
+    generated(30, 100)
   );
 
   it.prop(
@@ -143,7 +147,8 @@ describe("verifyHand on a changed hand", () => {
           shown,
         })
       );
-    }
+    },
+    generated(30, 100)
   );
 
   it.prop(
@@ -169,7 +174,8 @@ describe("verifyHand on a changed hand", () => {
           opened: elsewhere,
         })
       );
-    }
+    },
+    generated(30, 100)
   );
 
   it.prop(
@@ -202,7 +208,8 @@ describe("verifyHand on a changed hand", () => {
           opened: laterSighting.opening.position,
         })
       );
-    }
+    },
+    generated(30, 100)
   );
 
   it.prop(
@@ -222,7 +229,8 @@ describe("verifyHand on a changed hand", () => {
         Schema.is(SpareDeckMismatch)(rejected) ||
           Schema.is(WrongPosition)(rejected)
       ).toBe(true);
-    }
+    },
+    generated(30, 100)
   );
 
   it.prop(
@@ -237,7 +245,8 @@ describe("verifyHand on a changed hand", () => {
           beacon: { ...hand.beacon, round: used },
         })
       ).toEqual(new BeaconRoundMismatch({ sealed: hand.beacon.round, used }));
-    }
+    },
+    generated(30, 100)
   );
 
   it.prop(
@@ -257,7 +266,8 @@ describe("verifyHand on a changed hand", () => {
           new DealtSeatsDiffer({ dealt, sealed })
         );
       }
-    }
+    },
+    generated(30, 100)
   );
 
   it.prop(
@@ -300,7 +310,8 @@ describe("verifyHand on a changed hand", () => {
           ? outcome(everything(hand))
           : new SpareDeckMismatch({ slot: hand.plan.spareSlot })
       );
-    }
+    },
+    generated(30, 100)
   );
 
   it.prop(
@@ -324,6 +335,7 @@ describe("verifyHand on a changed hand", () => {
           new RoleOutOfRange({ dealtIn, role })
         );
       }
-    }
+    },
+    generated(30, 100)
   );
 });

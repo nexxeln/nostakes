@@ -5,6 +5,7 @@ import * as Hex from "effect/encoding/Hex";
 
 import { hmacSha256, sha256 } from "../src/index.js";
 import { between, bytesOfLength, bytesUpTo } from "./arbitraries.js";
+import { generated } from "./scale.js";
 
 const text = (value: string) => new TextEncoder().encode(value);
 
@@ -87,7 +88,7 @@ describe("sha256", () => {
 
         expect(Hex.encode(sha256(message))).toBe(expected);
       }),
-    { arbitrary: { runs: 500 } }
+    generated(100, 500)
   );
 });
 
@@ -127,6 +128,6 @@ describe("hmacSha256", () => {
 
         expect(Hex.encode(hmacSha256(key, message))).toBe(expected);
       }),
-    { arbitrary: { runs: 300 } }
+    generated(60, 300)
   );
 });

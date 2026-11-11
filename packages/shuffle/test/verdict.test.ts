@@ -43,6 +43,7 @@ import { between, deck, handContext, saltSecret } from "./arbitraries.js";
 import { QUICKNET_ROUNDS } from "./fixtures/drand-rounds.js";
 import { dealHonestly, keepFlags, pickedFrom, seats } from "./hands.js";
 import type { HonestHand } from "./hands.js";
+import { generated } from "./scale.js";
 
 const drand = selfSignedChain("test beacon");
 
@@ -131,7 +132,7 @@ const failedWith = (reason: HandRejected) => ({ reason, verdict: "failed" });
 
 const hexOf = (value = "") => Result.getOrThrow(Hex.decode(value));
 
-const RUNS = { arbitrary: { runs: 25 } };
+const RUNS = generated(8, 25);
 
 describe("judgeHand on honest hands", () => {
   it.prop(
