@@ -1,3 +1,5 @@
+import { PIC_LIFT } from "./layout.js";
+
 export const tableCss = `
 :host {
   display: block; position: relative; overflow: hidden; contain: strict;
@@ -43,7 +45,7 @@ export const tableCss = `
   box-shadow: var(--shadow-face); transition: box-shadow var(--duration-2) var(--ease);
 }
 .pic {
-  position: absolute; left: 0; top: -5%; width: 100%; height: 100%; display: grid; place-items: center; color: var(--color-face-ink);
+  position: absolute; left: 0; top: ${-PIC_LIFT * 100}%; width: 100%; height: 100%; display: grid; place-items: center; color: var(--color-face-ink);
   font-size: calc(var(--t) * 0.34); font-weight: var(--weight-body); letter-spacing: 0.01em;
   transition: color var(--duration-3) var(--ease), transform var(--duration-3) var(--ease);
 }

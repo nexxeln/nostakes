@@ -72,6 +72,16 @@ const CAPTION = 40;
 
 const CAPTION_DEPTH = CAPTION + 6;
 
+export const FACE_RISE = 0.175;
+
+export const FACE_SPREAD = 0.045;
+
+export const PIC_LIFT = 0.05;
+
+export const CAPTION_INK = 43.5;
+
+export const CAPTION_GAP = 3;
+
 const MAX_TILE = 170;
 
 const TOP = 12;
@@ -327,12 +337,15 @@ const heroRow = (
 
 const ITERATIONS = 8;
 
+type Spacing = "Column" | "Aside" | "AsideBelow" | "TopRow";
+
 interface Room {
   readonly cap: number;
   readonly tabW: number;
   readonly laneW: number;
   readonly pileW: number;
   readonly round: number;
+  readonly spacing: Spacing;
 }
 
 interface Solved {
@@ -499,42 +512,185 @@ const ovalMiddle = (w: number, inside: Solved, cardW: number): Middle => {
 
 const BET_ABOVE_BOARD = 16;
 
-const CAPTION_CLEARANCE = 1;
+const aboveTheStrip = (strip: number, size: number, scale: number) =>
+  strip - size / 2 - (CAPTION_INK + CAPTION_GAP) * scale;
 
-const ORIGIN_TRACK = { nx: 0, ny: 0, x: 0, y: 0 };
-
-const STRIP_CLEARANCE = 6;
-
-const droppedClear = (
+const asideOfColumns = (
   pts: readonly TrackPoint[],
-  tile: number,
-  bottom: number
-): readonly TrackPoint[] => {
-  const half = tile / 2;
-  const reach = Math.max(tile * 0.65, half) + half;
-  const lowest = bottom - STRIP_CLEARANCE - half - CAPTION_DEPTH;
-  const placed: TrackPoint[] = [...pts];
-
-  const topDown = pts
-    .map((p, index) => ({ index, y: p.y }))
-    .toSorted((a, b) => a.y - b.y);
-
-  for (const { index } of topDown) {
-    const p = placed[index] ?? ORIGIN_TRACK;
-
-    const clear = Math.max(
-      p.y,
-      ...placed.flatMap((above, other) =>
-        other !== index && above.y < p.y && Math.abs(above.x - p.x) < reach
-          ? [above.y + tile + CAPTION_DEPTH + CAPTION_CLEARANCE]
-          : []
-      )
+  reach: number,
+  cx: number
+): readonly TrackPoint[] =>
+  pts.map((p) => {
+    const under = pts.filter(
+      (below) =>
+        below.y > p.y &&
+        Math.abs(below.x - p.x) < reach &&
+        Math.abs(below.x - cx) > Math.abs(p.x - cx)
     );
 
-    placed[index] = { ...p, y: Math.max(p.y, Math.min(clear, lowest)) };
+    return under.length === 0
+      ? p
+      : {
+          ...p,
+          x:
+            cx +
+            Math.sign(p.x - cx) *
+              Math.min(
+                ...under.map(
+                  (below) => Math.abs(below.x - cx) - reach - CAPTION_GAP
+                )
+              ),
+        };
+  });
+
+const asideBelowColumns = (
+  pts: readonly TrackPoint[],
+  reach: number,
+  cx: number
+): readonly TrackPoint[] => {
+  const lowestOfColumn = pts.map(
+    (p) =>
+      !pts.some((below) => below.y > p.y && Math.abs(below.x - p.x) < reach) &&
+      pts.some((above) => above.y < p.y && Math.abs(above.x - p.x) < reach)
+  );
+
+  return pts.map((p, index) => {
+    if (lowestOfColumn[index] !== true) {
+      return p;
+    }
+
+    const over = pts.filter(
+      (above) => above.y < p.y && Math.abs(above.x - p.x) < reach
+    );
+
+    return {
+      ...p,
+      x:
+        cx +
+        Math.sign(p.x - cx) *
+          Math.min(
+            ...over.map((above) => Math.abs(above.x - cx) - reach - CAPTION_GAP)
+          ),
+    };
+  });
+};
+
+const topRowOf = (
+  pts: readonly TrackPoint[],
+  tile: number
+): readonly TrackPoint[] => {
+  const top = Math.min(...pts.map(({ y }) => y));
+  const left = Math.min(...pts.map(({ x }) => x));
+  const right = Math.max(...pts.map(({ x }) => x));
+
+  const row = pts
+    .flatMap((p, index) => (p.y < top + tile ? [{ index, p }] : []))
+    .toSorted((one, other) => one.p.x - other.p.x);
+
+  return pts.map((p, index) => {
+    const place = row.findIndex((seat) => seat.index === index);
+
+    return place === -1
+      ? p
+      : {
+          ...p,
+          x: left + ((right - left) * (place + 0.5)) / row.length,
+          y: top,
+        };
+  });
+};
+
+const spacedColumns = (
+  ring: readonly TrackPoint[],
+  tile: number,
+  bottom: number,
+  spacing: Spacing,
+  cx: number
+): readonly TrackPoint[] => {
+  const half = tile / 2;
+  const reach = Math.max(tile * 0.65, half) + half + tile * FACE_SPREAD;
+  const pitch = tile * (1 + FACE_RISE) + CAPTION_INK + CAPTION_GAP;
+
+  const crowding = ring.some((above) =>
+    ring.some(
+      (below) =>
+        below.y > above.y &&
+        below.y - above.y < pitch &&
+        Math.abs(below.x - above.x) < reach
+    )
+  );
+
+  if (!crowding && spacing !== "TopRow") {
+    return ring;
   }
 
-  return placed;
+  const pts = {
+    Aside: () => asideOfColumns(ring, reach, cx),
+    AsideBelow: () => asideBelowColumns(ring, reach, cx),
+    Column: () => ring,
+    TopRow: () => topRowOf(ring, tile),
+  }[spacing]();
+
+  const lowest = aboveTheStrip(bottom, tile, 1);
+  const highest = TOP + half + tile * FACE_RISE;
+
+  const topDown = pts
+    .map((p, index) => ({ index, p }))
+    .toSorted((one, other) => one.p.y - other.p.y);
+
+  const linked = (one: Pt, other: Pt) => Math.abs(one.x - other.x) < reach;
+  const ys = pts.map(({ y }) => y);
+  const yOf = (index: number) => ys[index] ?? 0;
+
+  for (const [rank, { index, p }] of topDown.entries()) {
+    const under = topDown
+      .slice(0, rank)
+      .flatMap((above) =>
+        linked(above.p, p) ? [yOf(above.index) + pitch] : []
+      );
+
+    ys[index] = Math.max(p.y, Math.min(Math.max(p.y, ...under), lowest));
+  }
+
+  for (const [rank, { index, p }] of [...topDown.entries()].toReversed()) {
+    const over = topDown
+      .slice(rank + 1)
+      .flatMap((below) =>
+        linked(below.p, p) ? [yOf(below.index) - pitch] : []
+      );
+
+    ys[index] = Math.max(Math.min(yOf(index), ...over), Math.min(p.y, highest));
+  }
+
+  const chainFrom = (index: number): readonly number[] => {
+    const here = pts[index] ?? ORIGIN;
+
+    const next = topDown.find(({ p }) => p.y > here.y && linked(here, p));
+
+    return next === undefined ? [index] : [index, ...chainFrom(next.index)];
+  };
+
+  const chains = topDown.flatMap(({ index, p }, rank) =>
+    topDown.slice(0, rank).some((above) => linked(above.p, p))
+      ? []
+      : [chainFrom(index)]
+  );
+
+  for (const chain of chains) {
+    const first = yOf(chain[0] ?? 0);
+    const last = yOf(chain.at(-1) ?? 0);
+
+    if (
+      chain.length > 2 &&
+      chain.some((index) => yOf(index) !== pts[index]?.y)
+    ) {
+      for (const [step, index] of chain.entries()) {
+        ys[index] = first + ((last - first) * step) / (chain.length - 1);
+      }
+    }
+  }
+
+  return pts.map((p, index) => ({ ...p, y: yOf(index) }));
 };
 
 const tallSeat = (
@@ -565,8 +721,6 @@ const tallSeat = (
 export const HAND_HINT = { gap: 4, h: 34, w: 240 };
 
 const RING_REACH = 10;
-
-const FACE_RISE = 0.15;
 
 const HERO_ROW_ROOM = 44;
 
@@ -666,10 +820,12 @@ const tallGeo = (w: number, h: number, count: number, room: Room): Geo => {
           y: TOP + (middle.strip.y - TOP) * READOUT_DEPTH,
         }
       : { align: "right", x: chip.x - 170, y: (railTop + chip.y) / 2 - 40 },
-    seats: droppedClear(
+    seats: spacedColumns(
       middle.pts,
       middle.tile,
-      boardInStrip ? middle.strip.y : heroTop
+      boardInStrip ? middle.strip.y : heroTop,
+      room.spacing,
+      cx
     ).map((p) => tallSeat(p, cx, middle.tile, middle.strip)),
     self,
     strip: middle.strip,
@@ -1986,11 +2142,17 @@ const boxesOf = (
   const half = size / 2;
   const captionHalf = Math.max(size * 0.65, half);
   const rise = size * rising;
+  const drawn = rising > 0;
 
   return [
-    { h: size + rise, w: size, x: place.x - half, y: place.y - half - rise },
     {
-      h: CAPTION_DEPTH * place.scale,
+      h: size + rise,
+      w: size * (drawn ? 1 + FACE_SPREAD : 1),
+      x: place.x - half,
+      y: place.y - half - rise,
+    },
+    {
+      h: (drawn ? CAPTION_INK + CAPTION_GAP : CAPTION_DEPTH) * place.scale,
       w: captionHalf * 2,
       x: place.x - captionHalf,
       y: place.y + half,
@@ -2014,12 +2176,13 @@ interface Placement {
 const keptIn = (geo: Geo, box: Placement) => {
   const half = (geo.tile * box.scale) / 2 + (box.fixed ? 14 : 8);
 
+  const lowest =
+    geo.boardInStrip && !box.fixed
+      ? aboveTheStrip(geo.strip.y, geo.tile * box.scale, box.scale)
+      : geo.zone.bottom - geo.caption - half + (box.fixed ? 30 : 0);
+
   box.x = clamp(box.x, half, geo.w - half);
-  box.y = clamp(
-    box.y,
-    geo.zone.top + half,
-    geo.zone.bottom - geo.caption - half + (box.fixed ? 30 : 0)
-  );
+  box.y = clamp(box.y, geo.zone.top + half, lowest);
 };
 
 const pushApart = (a: Placement, b: Placement, geo: Geo) => {
@@ -2045,6 +2208,20 @@ const pushApart = (a: Placement, b: Placement, geo: Geo) => {
 
     keptIn(geo, moving);
   }
+};
+
+const crowded = (geo: Geo, placed: readonly Placement[]) => {
+  const drawn = placed.map((place) => roomyBoxes(geo, place));
+
+  return drawn.some(([, caption], which) =>
+    drawn.some(
+      ([face], other) =>
+        other !== which &&
+        caption !== undefined &&
+        face !== undefined &&
+        overlap(caption, face) > 0
+    )
+  );
 };
 
 const separate = (placed: readonly Placement[], geo: Geo) => {
@@ -2522,9 +2699,7 @@ export const placeSeats = <Plan extends SeatPlan>(
             { x: acting.x, y: acting.y },
             home,
             awayFromLane(geo, home, acting.scale),
-          ].flatMap((spot) =>
-            [roomyBoxes, seatBoxes].map((boxes) => ({ boxes, spot }))
-          ),
+          ].map((spot) => ({ boxes: roomyBoxes, spot })),
           ({ boxes, spot }) =>
             fitActor(
               geo,
@@ -2542,7 +2717,11 @@ export const placeSeats = <Plan extends SeatPlan>(
     acting.y = fitted.spot.y;
   }
 
-  const placed = acting === undefined || fitted !== null ? lit : settle(false);
+  const placed =
+    acting === undefined || (fitted !== null && !crowded(geo, lit))
+      ? lit
+      : settle(false);
+
   const winner = seats.findIndex((plan) => plan.winner);
   const calm = winner === -1 ? placed : settle(false, false);
   const shown = winner === -1 || grows(placed, calm, winner) ? placed : calm;
@@ -2560,6 +2739,7 @@ interface Attempt {
   readonly cap: number;
   readonly compact: boolean;
   readonly round: number;
+  readonly spacing: Spacing;
 }
 
 interface Laned {
@@ -2629,6 +2809,13 @@ const LANE_GAP = 4;
 
 const LANE_ROUNDS = [0, 0.15, 0.3] as const;
 
+const SPACINGS: readonly Spacing[] = [
+  "Column",
+  "Aside",
+  "AsideBelow",
+  "TopRow",
+];
+
 export interface TagSides {
   readonly narrow: readonly TagSide[];
   readonly wide: readonly TagSide[];
@@ -2695,10 +2882,13 @@ const ownersAt = (geo: Geo, seats: readonly Pt[]) => [
 ];
 
 const captionsOnFaces = (geo: Geo, seats: readonly Pt[]) => {
-  const owners = ownersAt(geo, seats);
+  const drawn = [
+    ...seats.map((seat) => roomyBoxes(geo, { ...seat, scale: 1 })),
+    roomyBoxes(geo, { ...geo.self, scale: geo.self.size / geo.tile }),
+  ];
 
-  return owners.flatMap(({ seat: [, caption] }, index) =>
-    owners.flatMap(({ seat: [face] }, other) =>
+  return drawn.flatMap(([, caption], index) =>
+    drawn.flatMap(([face], other) =>
       other !== index &&
       caption !== undefined &&
       face !== undefined &&
@@ -3863,6 +4053,7 @@ export const computeGeo = (
       laneW: full,
       pileW: full,
       round: 0,
+      spacing: "Column",
       tabW: awardTabWidthFor(most),
     },
     TODAYS_LIFT,
@@ -3909,15 +4100,33 @@ export const computeGeo = (
     };
   }
 
-  const restedAt = ({ cap, compact, round }: Attempt) => {
+  const roomOf = ({ cap, compact, round, spacing }: Attempt): Room => {
     const pileW = pileWidthFor(most, compact);
     const laneW = Math.max(pileW, pileWidthFor(DEFAULT_MOST, compact));
 
-    return laidOut(
-      { cap, laneW, pileW, round, tabW: awardTabWidthFor(most) },
-      LANES_LIFT,
-      settled
-    );
+    return { cap, laneW, pileW, round, spacing, tabW: awardTabWidthFor(most) };
+  };
+
+  const restedAt = (attempt: Attempt) =>
+    laidOut(roomOf(attempt), LANES_LIFT, settled);
+
+  const ringOf = (attempt: Attempt) =>
+    JSON.stringify(tallGeo(w, h, seated, roomOf(attempt)).seats);
+
+  const spacingsAt = (cap: number, compact: boolean, round: number) => {
+    if (wide) {
+      return [{ cap, compact, round, spacing: "Column" as const }];
+    }
+
+    const column = ringOf({ cap, compact, round, spacing: "Column" });
+
+    return SPACINGS.flatMap((spacing) => {
+      const attempt = { cap, compact, round, spacing };
+
+      return spacing === "Column" || ringOf(attempt) !== column
+        ? [attempt]
+        : [];
+    });
   };
 
   const laned = (
@@ -3955,7 +4164,9 @@ export const computeGeo = (
 
   const fitAmong = (caps: readonly number[], compact: boolean) =>
     firstFitting(
-      caps.flatMap((cap) => rounds.map((round) => ({ cap, compact, round }))),
+      caps.flatMap((cap) =>
+        rounds.flatMap((round) => spacingsAt(cap, compact, round))
+      ),
       (attempt) => {
         const rested = restedAt(attempt);
 
@@ -3995,8 +4206,15 @@ export const computeGeo = (
     ? null
     : (finer(coarseFit, above) ?? coarseFit)) ??
     fitAmong([FACE_FLOOR], true) ?? {
-      attempt: { cap: FACE_FLOOR, compact: true, round: 0 },
-      result: laned(restedAt({ cap: FACE_FLOOR, compact: true, round: 0 })),
+      attempt: { cap: FACE_FLOOR, compact: true, round: 0, spacing: "Column" },
+      result: laned(
+        restedAt({
+          cap: FACE_FLOOR,
+          compact: true,
+          round: 0,
+          spacing: "Column",
+        })
+      ),
     };
 
   const { geo, hint, lanes } = fitted.result;

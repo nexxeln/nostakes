@@ -1,4 +1,9 @@
-import { codeFor, randomAvatar, render } from "@nostakes/avatar";
+import {
+  codeFor,
+  DEFAULT_AVATAR,
+  randomAvatar,
+  render,
+} from "@nostakes/avatar";
 
 import "../../src/client/tokens.css";
 import "../../src/client/app.css";
@@ -52,12 +57,20 @@ const boards = Math.min(
   Math.max(1, Number(params.get("boards") ?? "3"))
 );
 
+const TALLEST_HAT = codeFor({
+  ...DEFAULT_AVATAR,
+  headwear: "Fedora",
+  species: "Octopus",
+});
+
+const tallest = params.get("hat") === "tallest";
+
 const seatOf = (index: number): SeatSnapshot => {
   const shownAt = SHOWDOWN_SEATS.indexOf(index);
   const shown = shownAt === -1 ? [] : (SHOWN[shownAt] ?? []);
 
   return {
-    avatar: codeFor(randomAvatar(index * 7919 + 17)),
+    avatar: tallest ? TALLEST_HAT : codeFor(randomAvatar(index * 7919 + 17)),
     away: false,
     bet: 0,
     cardsHeld: shown.length === 0 ? 0 : 2,

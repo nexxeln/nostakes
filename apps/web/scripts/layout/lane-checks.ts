@@ -1,10 +1,21 @@
 import {
+  boxOfPart,
+  choicesOf,
+  DEFAULT_AVATAR,
+  EXPRESSIONS,
+  PLACED_PARTS,
+  SPECIES,
+} from "@nostakes/avatar";
+import { Option } from "effect";
+
+import {
   buttonBox,
   computeGeo,
   flightControl,
   handHintBox,
   handHintGround,
   HINT_LINES,
+  PIC_LIFT,
   placeSeats,
   potTabOf,
   ridingScale,
@@ -20,6 +31,87 @@ import type {
 } from "../../src/client/table/layout.js";
 
 export const VISIBLE_PX = 1;
+
+const DRAWN_CAPTION_INK_PX = 43.5;
+
+export const CAPTION_GAP_PX = 3;
+
+const FACE_UNITS = 100;
+
+const drawnParts = SPECIES.flatMap((species) =>
+  PLACED_PARTS.flatMap((part) =>
+    choicesOf(part).flatMap((choice) =>
+      EXPRESSIONS.flatMap((expression) =>
+        Option.toArray(
+          boxOfPart(
+            { ...DEFAULT_AVATAR, [part]: choice, species },
+            part,
+            expression
+          )
+        )
+      )
+    )
+  )
+);
+
+const DRAWN_FACE = {
+  above: Math.max(
+    0,
+    PIC_LIFT - Math.min(...drawnParts.map(({ y }) => y)) / FACE_UNITS
+  ),
+  right: Math.max(
+    0,
+    Math.max(...drawnParts.map(({ width, x }) => x + width)) / FACE_UNITS - 1
+  ),
+};
+
+const drawnFaceOf = (centre: Pt, size: number): Box => ({
+  h: size * (1 + DRAWN_FACE.above),
+  w: size * (1 + DRAWN_FACE.right),
+  x: centre.x - size / 2,
+  y: centre.y - size / 2 - size * DRAWN_FACE.above,
+});
+
+const inkWithGapOf = (centre: Pt, size: number, scale: number): Box => ({
+  h: (DRAWN_CAPTION_INK_PX + CAPTION_GAP_PX) * scale,
+  w: Math.max(size * 1.3, size),
+  x: centre.x - Math.max(size * 0.65, size / 2),
+  y: centre.y + size / 2,
+});
+
+const reaches = (a: Box, b: Box) =>
+  Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x) > 0.1 &&
+  Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y) > 0.1;
+
+const captionsNearFaces = (
+  geo: Geo,
+  places: readonly (SeatPlace & { readonly index: number })[],
+  when: string
+): readonly string[] => {
+  const drawn = [
+    ...geo.seats.map((home, index) => {
+      const place = places.find((seat) => seat.index === index);
+      const scale = place?.scale ?? 1;
+
+      return { centre: place ?? home, scale, size: geo.tile * scale };
+    }),
+    { centre: geo.self, scale: 1, size: geo.self.size },
+  ];
+
+  return drawn.flatMap((mine, seat) =>
+    drawn.flatMap((theirs, other) =>
+      other !== seat &&
+      reaches(
+        inkWithGapOf(mine.centre, mine.size, mine.scale),
+        drawnFaceOf(theirs.centre, theirs.size)
+      )
+        ? [
+            `${when}: seat ${seat}'s name or stack comes within ${CAPTION_GAP_PX} px of seat ${other}'s drawn face`,
+          ]
+        : []
+    )
+  );
+};
 
 export const NAME_DEPTH = 46;
 
@@ -337,16 +429,7 @@ export const laneProblemsOn = (
   const resting = placeSeats(geo, plan(null, false));
   const restingSeats = seatsDrawn(geo, resting);
 
-  const captionsOnFaces = restingSeats.flatMap(([, caption], seat) =>
-    restingSeats.flatMap(([face], other) =>
-      other !== seat &&
-      caption !== undefined &&
-      face !== undefined &&
-      covers(caption, face)
-        ? [`seat ${seat} name or stack covers seat ${other} face at rest`]
-        : []
-    )
-  );
+  const captionsOnFaces = captionsNearFaces(geo, resting, "at rest");
 
   const captionsInTheMiddle = restingSeats.flatMap(([, caption], seat) =>
     seat === you || caption === undefined || !geo.boardInStrip
@@ -411,6 +494,7 @@ export const laneProblemsOn = (
     ];
 
     return [
+      ...captionsNearFaces(geo, places, "grown"),
       ...fixed.flatMap((item) => covering(item, seats)),
       ...(onScreen(button.box, geo, table.screen)
         ? []
