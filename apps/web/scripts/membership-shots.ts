@@ -112,6 +112,29 @@ const program = Effect.gen(function* takeMembershipShots() {
     guest.getByRole("button", { exact: true, name: "Menu" }).waitFor()
   );
 
+  const watchers = yield* Effect.forEach(["Di", "Ed"], (name) =>
+    Effect.gen(function* watch() {
+      const page = yield* phone(opened);
+
+      yield* attempt(`${name} opens the room link`, () =>
+        page.goto(`${host.url()}?mute=1`, { waitUntil: "networkidle" })
+      );
+      yield* named(page, name);
+      yield* press(page, "Join the room");
+      yield* attempt(`${name} is in the room`, () =>
+        page.getByRole("button", { exact: true, name: "Menu" }).waitFor()
+      );
+
+      return page;
+    })
+  );
+
+  yield* press(host, "Menu");
+  yield* seen(host, "Lock the room");
+  yield* press(host, "Remove everyone who isn't seated");
+  yield* seen(host, "Clear the room?");
+  yield* shoot(host, dir, "clear-sheet");
+  yield* press(host, "Cancel");
   yield* press(host, "Menu");
   yield* seen(host, "Lock the room");
   yield* shoot(host, dir, "menu-unlocked");
@@ -152,7 +175,7 @@ const program = Effect.gen(function* takeMembershipShots() {
   yield* shoot(guest, dir, "removed");
 
   yield* Effect.forEach(
-    [host, guest, knocker],
+    [host, guest, knocker, ...watchers],
     (page) => attempt("close a phone", () => page.context().close()),
     { discard: true }
   );
