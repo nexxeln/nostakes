@@ -10,7 +10,12 @@ import {
 import type { Avatar, Part } from "@nostakes/avatar";
 import { Config, Console, Effect, Option, Schema } from "effect";
 import { chromium, webkit } from "playwright-core";
-import type { BrowserContext, BrowserType, Page } from "playwright-core";
+import type {
+  BrowserContext,
+  BrowserType,
+  CDPSession,
+  Page,
+} from "playwright-core";
 
 import { mutedBrowser, servedVite } from "./local-site.ts";
 import { policyBreaks, watchPolicy } from "./page-evidence.ts";
@@ -24,6 +29,10 @@ const SCRUB_STEP_PX = 34;
 const MOST_STEPS_A_SWIPE = 3;
 
 const MOST_TABS = 60;
+
+const WAIT_MS = 8000;
+
+const HOLD_STILL_MS = 160;
 
 const PLACED: ReadonlySet<string> = new Set(
   PARTS.filter((part) => isPlaced(part))
@@ -217,8 +226,20 @@ const waitForLabel = (page: Page, part: Part, choice: string) =>
         `.face-callout[data-part="${part}"]`,
         expectedLabel(part, choice),
       ] as const,
-      { timeout: 4000 }
+      { timeout: WAIT_MS }
     )
+  );
+
+const pickedUpNow = (page: Page) =>
+  Effect.promise(() =>
+    page.evaluate(() => ({
+      held:
+        document.querySelector<HTMLElement>(".face-callout.is-held")?.dataset
+          .part ?? "nothing",
+      tray:
+        document.querySelector<HTMLElement>(".face-choices")?.dataset.part ??
+        "nothing",
+    }))
   );
 
 const waitForHeld = (page: Page, part: Part) =>
@@ -226,7 +247,20 @@ const waitForHeld = (page: Page, part: Part) =>
     page.waitForFunction(
       (selector) => document.querySelector(selector) !== null,
       `.face-callout.is-held[data-part="${part}"]`,
-      { timeout: 4000 }
+      { timeout: WAIT_MS }
+    )
+  ).pipe(
+    Effect.catchTag("FaceCheckFailed", (failure) =>
+      pickedUpNow(page).pipe(
+        Effect.flatMap(({ held, tray }) =>
+          Effect.fail(
+            new FaceCheckFailed({
+              detail: `${held} is picked up and the tray shows ${tray}`,
+              step: failure.step,
+            })
+          )
+        )
+      )
     )
   );
 
@@ -312,7 +346,7 @@ const stepsBetween = (part: Part, from: string, to: string) => {
 
 const swipe = <E>(
   page: Page,
-  context: BrowserContext,
+  fingers: CDPSession | null,
   from: readonly [number, number],
   steps: number,
   whileDown: Effect.Effect<unknown, E>
@@ -326,36 +360,7 @@ const swipe = <E>(
       (_, index) => ((index + 1) * reach) / 8
     );
 
-    if (context.browser()?.browserType().name() === "chromium") {
-      const session = yield* attempt("open a touch session", () =>
-        context.newCDPSession(page)
-      );
-
-      yield* attempt("put a finger down", () =>
-        session.send("Input.dispatchTouchEvent", {
-          touchPoints: [{ x, y }],
-          type: "touchStart",
-        })
-      );
-
-      for (const dx of moves) {
-        yield* attempt("drag the finger", () =>
-          session.send("Input.dispatchTouchEvent", {
-            touchPoints: [{ x: x + dx, y }],
-            type: "touchMove",
-          })
-        );
-      }
-
-      yield* whileDown;
-      yield* attempt("lift the finger", () =>
-        session.send("Input.dispatchTouchEvent", {
-          touchPoints: [],
-          type: "touchEnd",
-        })
-      );
-      yield* attempt("close the touch session", () => session.detach());
-    } else {
+    if (fingers === null) {
       yield* attempt("press on the face", () => page.mouse.move(x, y));
       yield* attempt("hold the press", () => page.mouse.down());
 
@@ -367,6 +372,39 @@ const swipe = <E>(
 
       yield* whileDown;
       yield* attempt("let go", () => page.mouse.up());
+    } else {
+      yield* attempt("put a finger down", () =>
+        fingers.send("Input.dispatchTouchEvent", {
+          touchPoints: [{ x, y }],
+          type: "touchStart",
+        })
+      );
+
+      for (const dx of moves) {
+        yield* attempt("drag the finger", () =>
+          fingers.send("Input.dispatchTouchEvent", {
+            touchPoints: [{ x: x + dx, y }],
+            type: "touchMove",
+          })
+        );
+      }
+
+      yield* whileDown;
+      yield* attempt("hold the finger still", () =>
+        page.waitForTimeout(HOLD_STILL_MS)
+      );
+      yield* attempt("rest the finger", () =>
+        fingers.send("Input.dispatchTouchEvent", {
+          touchPoints: [{ x: x + reach, y }],
+          type: "touchMove",
+        })
+      );
+      yield* attempt("lift the finger", () =>
+        fingers.send("Input.dispatchTouchEvent", {
+          touchPoints: [],
+          type: "touchEnd",
+        })
+      );
     }
   });
 
@@ -395,7 +433,7 @@ const pickUp = (page: Page, part: Part) =>
     return on !== null;
   });
 
-const flipByTouch = (page: Page, context: BrowserContext, part: Part) =>
+const flipByTouch = (page: Page, fingers: CDPSession | null, part: Part) =>
   Effect.gen(function* flip() {
     let now = yield* wornNow(page, part);
     let fromOtherSheets = 0;
@@ -420,7 +458,7 @@ const flipByTouch = (page: Page, context: BrowserContext, part: Part) =>
 
       now = choices[(choices.indexOf(now) + steps) % choices.length] ?? now;
       fromOtherSheets += onSheet === null ? 0 : 1;
-      yield* swipe(page, context, from, steps, waitForLabel(page, part, now));
+      yield* swipe(page, fingers, from, steps, waitForLabel(page, part, now));
       yield* waitForLabel(page, part, now);
       yield* waitForHeld(page, part);
     }
@@ -428,7 +466,7 @@ const flipByTouch = (page: Page, context: BrowserContext, part: Part) =>
     return fromOtherSheets;
   });
 
-const buildByTouch = (page: Page, context: BrowserContext) =>
+const buildByTouch = (page: Page, fingers: CDPSession | null) =>
   Effect.gen(function* build() {
     const touched: Part[] = [];
     let fromOtherSheets = 0;
@@ -440,7 +478,7 @@ const buildByTouch = (page: Page, context: BrowserContext) =>
         touched.push(part);
       }
 
-      fromOtherSheets += yield* flipByTouch(page, context, part);
+      fromOtherSheets += yield* flipByTouch(page, fingers, part);
       yield* waitForLabel(page, part, WANTED[part]);
     }
 
@@ -603,7 +641,11 @@ const expectSaved = (page: Page, name: string) =>
     ]);
   });
 
-const checkByTouch = (engine: BrowserType, origin: string) =>
+const checkByTouch = (
+  engine: BrowserType,
+  origin: string,
+  realFingers: boolean
+) =>
   Effect.gen(function* touch() {
     const name = `${engine.name()} 360x640 by touch`;
     const browser = yield* mutedBrowser(engine);
@@ -639,7 +681,14 @@ const checkByTouch = (engine: BrowserType, origin: string) =>
 
     yield* tallestFaces(page, name);
 
-    const { fromOtherSheets, touched } = yield* buildByTouch(page, context);
+    const fingers =
+      realFingers && engine.name() === "chromium"
+        ? yield* attempt("open a touch session", () =>
+            context.newCDPSession(page)
+          )
+        : null;
+
+    const { fromOtherSheets, touched } = yield* buildByTouch(page, fingers);
     const built = yield* sheetState(page);
 
     yield* failWith(`${name}: build a face`, [
@@ -669,7 +718,7 @@ const checkByTouch = (engine: BrowserType, origin: string) =>
     yield* policy.held;
     yield* attempt("close the phone", () => context.close());
     yield* Console.log(
-      `${name}: every fish fits in every hat, built a face from scratch (${touched.length} parts picked up on the face, ${fromOtherSheets} swipes started on another part's sheet, labels followed each drag before release), every target at least ${SMALLEST_TARGET_PX} px, Done saved it`
+      `${name}: every fish fits in every hat, built a face from scratch (${touched.length} parts picked up on the face, ${fromOtherSheets} swipes started on another part's sheet, labels followed each drag before release, swipes by ${fingers === null ? "pointer" : "finger"}), every target at least ${SMALLEST_TARGET_PX} px, Done saved it`
     );
   }).pipe(Effect.scoped);
 
@@ -824,6 +873,10 @@ const program = Effect.gen(function* checkFaceBuilder() {
     Config.withDefault("chromium,webkit")
   );
 
+  const swipes = yield* Config.String("FACE_SWIPES").pipe(
+    Config.withDefault("pointer")
+  );
+
   const origin = yield* servedVite("start the web app", "WEB_PORT", {
     logLevel: "silent",
     root: WEB,
@@ -839,7 +892,7 @@ const program = Effect.gen(function* checkFaceBuilder() {
   );
 
   for (const engine of chosen) {
-    yield* checkByTouch(engine, origin);
+    yield* checkByTouch(engine, origin, swipes === "touch");
 
     for (const desktop of DESKTOPS) {
       yield* checkByKeyboard(engine, origin, desktop);

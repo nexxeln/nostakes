@@ -14,7 +14,7 @@
     "check": "pnpm run typecheck",
     "verify": "vitest run --config vitest.verify.config.ts --silent=false && node scripts/two-players.ts && PHONE_ENGINES=chromium node scripts/phones.ts && FACE_ENGINES=chromium node scripts/face.ts && node scripts/landing.ts && KEEP_ENGINES=chromium node scripts/keep-pictures.ts && CLIP_ENGINES=chromium node scripts/keep-clips.ts",
     "phones": "node scripts/phones.ts",
-    "face": "node scripts/face.ts",
+    "face": "FACE_SWIPES=touch node scripts/face.ts",
     "landing": "LANDING_ENGINES=chromium,webkit node scripts/landing.ts",
     "shots": "node scripts/phone-shots.ts",
     "membership-shots": "node scripts/membership-shots.ts",
