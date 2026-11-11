@@ -42,7 +42,6 @@ export interface BeaconAnswer {
 
 export const askBeacon = (
   beacon: BeaconRelays,
-  code: string,
   round: BeaconRound
 ): Effect.Effect<BeaconAnswer> =>
   Effect.gen(function* askForTheRound() {
@@ -65,7 +64,6 @@ export const askBeacon = (
     return {
       gaveUp: Option.some(
         new BeaconGaveUp({
-          code,
           pastDueMs: gaveUpAt - roundTime(beacon.chain, round),
           round,
           triedMs: answeredAt - askedAt,

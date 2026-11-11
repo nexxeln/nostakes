@@ -57,6 +57,7 @@ export const InspectionSchema = Schema.Struct({
   halted: Schema.OptionFromNullOr(Schema.String),
   headSeq: Schema.Int,
   instance: Schema.String,
+  logged: Schema.Array(Schema.String),
   members: Schema.Int,
   memoryMatchesLog: Schema.Boolean,
   replies: Schema.Int,

@@ -8,7 +8,7 @@ import {
   StandingsRequestSchema,
 } from "@nostakes/protocol";
 import type { RoomCode } from "@nostakes/protocol";
-import { Cause, Effect, Layer, Option, Schema } from "effect";
+import { Effect, Layer, Option, Schema } from "effect";
 import * as HttpRouter from "effect/http/HttpRouter";
 import type { HttpServerError } from "effect/http/HttpServerError";
 import * as HttpServerRequest from "effect/http/HttpServerRequest";
@@ -30,14 +30,14 @@ import {
   codeFromBytes,
   MAX_CODE_ATTEMPTS,
 } from "./room-code.js";
-import { refuse } from "./room-object.js";
+import { refuse, roomKeyOf } from "./room-object.js";
 import {
   CheckOutcomeSchema,
   JoinOutcomeSchema,
   OpenOutcomeSchema,
   StandingsOutcomeSchema,
 } from "./room-rpc.js";
-import { RouteFault } from "./route-fault.js";
+import { defectWhere, RouteFault } from "./route-fault.js";
 
 export interface RoomStub {
   readonly open: (input: {
@@ -63,6 +63,7 @@ export interface RoomStub {
 
 export interface RoomNamespace {
   readonly getByName: (name: string) => RoomStub;
+  readonly idFromName: (name: string) => { readonly toString: () => string };
 }
 
 export interface RoomRoutesOptions<R> {
@@ -80,7 +81,11 @@ export const CHECK_ROUTE = "/rooms/:code/check";
 
 const logged = (failure: RoomCallFailed | RouteFault) =>
   Effect.logError(failure.message).pipe(
-    Effect.annotateLogs({ error: failure._tag })
+    Effect.annotateLogs(
+      Schema.is(RouteFault)(failure)
+        ? { error: failure._tag }
+        : { error: failure._tag, room: failure.room }
+    )
   );
 
 const withDevice = (device: Option.Option<string>) =>
@@ -127,12 +132,16 @@ const jsonBody = HttpServerRequest.HttpServerRequest.pipe(
   Effect.option
 );
 
+const keyIn = (rooms: RoomNamespace, code: RoomCode) =>
+  roomKeyOf(rooms.idFromName(code).toString());
+
 export const roomRoutes = <R>(
   rooms: RoomNamespace,
   options: RoomRoutesOptions<R>
 ) =>
   Effect.gen(function* buildRoomRoutes() {
     const entropy = yield* Entropy.pipe(Effect.provide(options.entropy));
+
     const record = recorder(options.analytics, SITE_SCOPE);
 
     const unavailable = (failure: RoomCallFailed) =>
@@ -165,12 +174,7 @@ export const roomRoutes = <R>(
         Effect.catchDefect((defect) =>
           record([measure("ServerFault", { fault: "RouteFault" })]).pipe(
             Effect.andThen(
-              logged(
-                new RouteFault({
-                  detail: Cause.pretty(Cause.die(defect)),
-                  route,
-                })
-              )
+              logged(new RouteFault({ detail: defectWhere(defect), route }))
             ),
             Effect.andThen(refuse("ServerFault"))
           )
@@ -219,7 +223,7 @@ export const roomRoutes = <R>(
         const code = yield* drawCode.pipe(Effect.eventually);
 
         const outcome = yield* callRoom(
-          code,
+          keyIn(rooms, code),
           "open",
           rooms
             .getByName(code)
@@ -255,7 +259,7 @@ export const roomRoutes = <R>(
       const device = yield* deviceOf;
 
       const outcome = yield* callRoom(
-        code.value,
+        keyIn(rooms, code.value),
         "join",
         rooms
           .getByName(code.value)
@@ -296,7 +300,7 @@ export const roomRoutes = <R>(
       }
 
       const outcome = yield* callRoom(
-        code.value,
+        keyIn(rooms, code.value),
         "standings",
         rooms
           .getByName(code.value)
@@ -323,7 +327,7 @@ export const roomRoutes = <R>(
       }
 
       const outcome = yield* callRoom(
-        code.value,
+        keyIn(rooms, code.value),
         "check",
         rooms
           .getByName(code.value)
@@ -350,7 +354,7 @@ export const roomRoutes = <R>(
       }
 
       return yield* callRoom(
-        code.value,
+        keyIn(rooms, code.value),
         "connect",
         rooms.getByName(code.value).fetch(request)
       );

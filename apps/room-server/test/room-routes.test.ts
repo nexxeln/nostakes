@@ -9,6 +9,7 @@ import * as HttpServerResponse from "effect/http/HttpServerResponse";
 import { unlimited } from "../src/address-limits.js";
 import type { AddressLimits } from "../src/address-limits.js";
 import { noAnalytics } from "../src/analytics.js";
+import { roomKeyOf } from "../src/room-object.js";
 import { roomRoutes } from "../src/room-routes.js";
 import type { RoomNamespace } from "../src/room-routes.js";
 import { seededEntropy } from "./fixtures/test-entropy.js";
@@ -30,6 +31,8 @@ const refusedCall = (method: string) =>
     new RpcCallError({ cause: new Error(CLOUDFLARE_REFUSAL), method })
   );
 
+const objectIdOf = (name: string) => `object for ${name}`;
+
 const unreachableRooms: RoomNamespace = {
   getByName: () => ({
     check: () => refusedCall("check"),
@@ -38,15 +41,17 @@ const unreachableRooms: RoomNamespace = {
     open: () => refusedCall("open"),
     standings: () => refusedCall("standings"),
   }),
+  idFromName: (name) => ({ toString: () => objectIdOf(name) }),
 };
 
 const brokenLimiter: AddressLimits = {
-  allow: () => Effect.die(new Error("the limiter broke")),
+  allow: () => Effect.die(new Error(`the limiter broke for ${CODE} and Ana`)),
 };
 
 interface Logged {
   readonly error: unknown;
   readonly level: string;
+  readonly room: unknown;
   readonly text: string;
 }
 
@@ -59,9 +64,14 @@ const answer = (
     const logs: Logged[] = [];
 
     const capture = Logger.make((options) => {
+      const annotations = options.fiber.getRef(
+        References.CurrentLogAnnotations
+      );
+
       logs.push({
-        error: options.fiber.getRef(References.CurrentLogAnnotations).error,
+        error: annotations.error,
         level: options.logLevel,
+        room: annotations.room,
         text: String(options.message),
       });
     });
@@ -85,6 +95,14 @@ const answer = (
 
     const web = HttpServerResponse.toWeb(response);
     const body = yield* Effect.promise(() => web.text());
+
+    expect(
+      logs.some(
+        (logged) =>
+          JSON.stringify(logged).includes(CODE) ||
+          JSON.stringify(logged).includes(OPENED_CODE)
+      )
+    ).toBe(false);
 
     return { body, logs, status: web.status };
   }).pipe(Effect.scoped);
@@ -118,7 +136,8 @@ describe("a room Cloudflare refuses to call", () => {
         {
           error: "RoomCallFailed",
           level: "Error",
-          text: `Room ${OPENED_CODE} failed the open call: RPC call to "open" failed: ${CLOUDFLARE_REFUSAL}. ${RETRY_HINT}`,
+          room: yield* roomKeyOf(objectIdOf(OPENED_CODE)),
+          text: `A room failed the open call: RPC call to "open" failed: ${CLOUDFLARE_REFUSAL}. ${RETRY_HINT}`,
         },
       ]);
     })
@@ -140,7 +159,8 @@ describe("a room Cloudflare refuses to call", () => {
         {
           error: "RoomCallFailed",
           level: "Error",
-          text: `Room ${CODE} failed the join call: RPC call to "join" failed: ${CLOUDFLARE_REFUSAL}. ${RETRY_HINT}`,
+          room: yield* roomKeyOf(objectIdOf(CODE)),
+          text: `A room failed the join call: RPC call to "join" failed: ${CLOUDFLARE_REFUSAL}. ${RETRY_HINT}`,
         },
       ]);
     })
@@ -162,7 +182,8 @@ describe("a room Cloudflare refuses to call", () => {
         {
           error: "RoomCallFailed",
           level: "Error",
-          text: `Room ${CODE} failed the connect call: ${CLOUDFLARE_REFUSAL}. ${RETRY_HINT}`,
+          room: yield* roomKeyOf(objectIdOf(CODE)),
+          text: `A room failed the connect call: ${CLOUDFLARE_REFUSAL}. ${RETRY_HINT}`,
         },
       ]);
     })
@@ -170,24 +191,27 @@ describe("a room Cloudflare refuses to call", () => {
 });
 
 describe("a route that dies", () => {
-  it.effect("answers ServerFault and logs the defect", () =>
-    Effect.gen(function* routeDies() {
-      const { body, logs, status } = yield* answer(
-        unreachableRooms,
-        brokenLimiter,
-        post("/rooms", { avatar: "fox", name: "Ana" })
-      );
+  it.effect(
+    "answers ServerFault and logs where the defect happened, not what it said",
+    () =>
+      Effect.gen(function* routeDies() {
+        const { body, logs, status } = yield* answer(
+          unreachableRooms,
+          brokenLimiter,
+          post("/rooms", { avatar: "fox", name: "Ana" })
+        );
 
-      expect({ body, status }).toEqual({
-        body: '{"refusal":"ServerFault"}',
-        status: 500,
-      });
-      expect(logs.map(({ error, level }) => ({ error, level }))).toEqual([
-        { error: "RouteFault", level: "Error" },
-      ]);
-      expect(logs.map(({ text }) => text).join("")).toMatch(
-        /^The room route POST \/rooms died: Error: the limiter broke\n {4}at .+The client was answered ServerFault\. This is a bug in the room server\.$/su
-      );
-    })
+        expect({ body, status }).toEqual({
+          body: '{"refusal":"ServerFault"}',
+          status: 500,
+        });
+        expect(logs.map(({ error, level }) => ({ error, level }))).toEqual([
+          { error: "RouteFault", level: "Error" },
+        ]);
+        expect(logs.map(({ text }) => text).join("")).toMatch(
+          /^The room route POST \/rooms died: Error at .+\. The client was answered ServerFault\. This is a bug in the room server\.$/su
+        );
+        expect(logs.map(({ text }) => text).join("")).not.toContain("Ana");
+      })
   );
 });

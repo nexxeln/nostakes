@@ -37,6 +37,7 @@ import {
   Effect,
   Equal,
   Layer,
+  Logger,
   Option,
   Order,
   Redacted,
@@ -54,6 +55,7 @@ import type { BeaconGaveUp } from "./beacon-gave-up.js";
 import { askBeacon, Beacon } from "./beacon.js";
 import type { BeaconAnswer } from "./beacon.js";
 import type { CommandFault } from "./command-fault.js";
+import { commitLogOf } from "./commit-log.js";
 import { DeviceHashSchema } from "./device.js";
 import { Entropy, liveEntropy } from "./entropy.js";
 import { oversized } from "./frame-limits.js";
@@ -230,6 +232,8 @@ const JoinCallSchema = <JoinRequest extends Schema.Top>(request: JoinRequest) =>
 
 const ROOM_KEY_LENGTH = 16;
 
+const LOG_LINES_KEPT = 200;
+
 export const roomKeyOf = (objectId: string) =>
   sha256(new TextEncoder().encode(`nostakes room ${objectId}`)).pipe(
     Effect.map((digest) => Hex.encode(digest).slice(0, ROOM_KEY_LENGTH))
@@ -274,6 +278,22 @@ export const roomObject = <T extends RoomTypes, Tally>(
         const commandBuckets = new Map<PlayerId, Bucket>();
         const signalBuckets = new Map<PlayerId, Bucket>();
         const runtimeContext = yield* Effect.context<RuntimeContext>();
+        const roomKey = yield* roomKeyOf(raw.id.toString());
+        const logLines: string[] = [];
+
+        const keepLine = Logger.make((entry) => {
+          logLines.push(Logger.formatJson.log(entry));
+          logLines.splice(0, Math.max(0, logLines.length - LOG_LINES_KEPT));
+        });
+
+        const traced = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
+          effect.pipe(
+            Effect.annotateLogs({ room: roomKey }),
+            Effect.updateService(
+              Logger.CurrentLoggers,
+              (current) => new Set([...current, keepLine])
+            )
+          );
 
         const record = recorder(
           {
@@ -282,7 +302,7 @@ export const roomObject = <T extends RoomTypes, Tally>(
                 .write(points)
                 .pipe(Effect.provideContext(runtimeContext)),
           },
-          yield* roomKeyOf(raw.id.toString()),
+          roomKey,
           (text) => {
             faults.push(text);
           }
@@ -337,9 +357,10 @@ export const roomObject = <T extends RoomTypes, Tally>(
         yield* Effect.logInfo("the room object started").pipe(
           Effect.annotateLogs({
             instance,
-            room: Option.isSome(host) ? "loaded from storage" : "empty",
             sockets: raw.getWebSockets().length,
-          })
+            stored: Option.isSome(host) ? "loaded from storage" : "empty",
+          }),
+          traced
         );
 
         const codecOf = (room: RoomHost<T>) => room.codec;
@@ -418,32 +439,27 @@ export const roomObject = <T extends RoomTypes, Tally>(
                   Effect.sync(() => {
                     note(measure("ServerFault", { fault: "CoreCrashed" }));
                   }),
-                Halted: ({ events, violations }) =>
+                Halted: () =>
                   Effect.sync(() => {
                     note(measure("ServerFault", { fault: "RoomHalted" }));
-                  }).pipe(
-                    Effect.andThen(
-                      Effect.logError("room halted on an unsound commit", {
-                        command,
-                        events,
-                        violations,
-                      })
-                    )
-                  ),
+                  }),
                 Rejected: () => Effect.void,
                 Replayed: () => Effect.void,
                 RoomHalted: () => Effect.void,
-                StorageFailed: ({ cause }) =>
+                StorageFailed: () =>
                   Effect.sync(() => {
                     note(measure("ServerFault", { fault: "StorageFailed" }));
-                  }).pipe(
-                    Effect.andThen(
-                      Effect.logWarning("room commit could not be stored", {
-                        cause,
-                        command,
-                      })
-                    )
-                  ),
+                  }),
+              })
+            ),
+            Effect.andThen(
+              Option.match(commitLogOf(core, result, command), {
+                onNone: () => Effect.void,
+                onSome: ({ annotations, level, message }) =>
+                  (level === "Error"
+                    ? Effect.logError(message)
+                    : Effect.logWarning(message)
+                  ).pipe(Effect.annotateLogs(annotations)),
               })
             )
           );
@@ -1026,7 +1042,7 @@ export const roomObject = <T extends RoomTypes, Tally>(
             core.beaconRoundFor(due.value.due),
             {
               onNone: () => Effect.succeed(noBeacon),
-              onSome: (round) => askBeacon(beacon, room.snapshot().code, round),
+              onSome: (round) => askBeacon(beacon, round),
             }
           );
 
@@ -1215,6 +1231,7 @@ export const roomObject = <T extends RoomTypes, Tally>(
                 })
               ),
               instance,
+              logged: logLines,
               members: snapshot.pipe(
                 Option.match({
                   onNone: () => 0,
@@ -1334,25 +1351,27 @@ export const roomObject = <T extends RoomTypes, Tally>(
         });
 
         return {
-          alarm: () => runAlarm.pipe(Effect.ensuring(flush)),
-          check,
-          fetch: upgrade.pipe(Effect.ensuring(flush)),
+          alarm: () => runAlarm.pipe(Effect.ensuring(flush), traced),
+          check: () => check().pipe(traced),
+          fetch: upgrade.pipe(Effect.ensuring(flush), traced),
           inspect,
           join: (input: typeof JoinCall.Encoded) =>
-            join(input).pipe(Effect.ensuring(flush)),
+            join(input).pipe(Effect.ensuring(flush), traced),
           open: (input: typeof OpenCall.Encoded) =>
-            open(input).pipe(Effect.ensuring(flush)),
+            open(input).pipe(Effect.ensuring(flush), traced),
           standings: (input: typeof StandingsRequestSchema.Encoded) =>
-            standings(input).pipe(Effect.ensuring(flush)),
+            standings(input).pipe(Effect.ensuring(flush), traced),
           webSocketClose: (socket: Cloudflare.WebSocket) =>
             release(socket.ws, "ClosedByClient").pipe(
               Effect.andThen(attend(Option.some(socket.ws))),
-              Effect.ensuring(flush)
+              Effect.ensuring(flush),
+              traced
             ),
           webSocketError: (socket: Cloudflare.WebSocket) =>
             release(socket.ws, "SocketError").pipe(
               Effect.andThen(attend(Option.some(socket.ws))),
-              Effect.ensuring(flush)
+              Effect.ensuring(flush),
+              traced
             ),
           webSocketMessage: (
             socket: Cloudflare.WebSocket,
@@ -1360,7 +1379,8 @@ export const roomObject = <T extends RoomTypes, Tally>(
           ) =>
             receive(socket.ws, message).pipe(
               Effect.andThen(attend(Option.none())),
-              Effect.ensuring(flush)
+              Effect.ensuring(flush),
+              traced
             ),
         };
       });

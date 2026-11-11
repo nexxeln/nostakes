@@ -75,7 +75,11 @@ export type CommitNote = Data.TaggedEnum<{
   Committed: { readonly from: number; readonly to: number };
   StorageFailed: { readonly cause: string };
   Crashed: { readonly cause: string; readonly fault: string };
-  Halted: { readonly violations: readonly string[]; readonly events: string };
+  Halted: {
+    readonly violations: readonly string[];
+    readonly kinds: readonly string[];
+    readonly from: number;
+  };
   RoomHalted: { readonly reason: string };
 }>;
 
@@ -576,7 +580,8 @@ export const hostRoom = <T extends RoomTypes>(
       return {
         events: [],
         note: CommitNotes.Halted({
-          events: Inspectable.toStringUnknown(events, 0),
+          from,
+          kinds: events.map(core.eventKind),
           violations,
         }),
         reply: unavailable("RoomHalted"),
@@ -624,7 +629,8 @@ export const hostRoom = <T extends RoomTypes>(
       return {
         events: [],
         note: CommitNotes.Halted({
-          events: Inspectable.toStringUnknown(events, 0),
+          from,
+          kinds: events.map(core.eventKind),
           violations: persisted.failure,
         }),
         reply: unavailable("RoomHalted"),
@@ -825,7 +831,6 @@ export const hostRoom = <T extends RoomTypes>(
     return {
       refused: Option.some(
         new RefusedDeadline({
-          code: current.code,
           deadline: core.dueKind(deadline.due),
           refusals: count,
           rejection,
@@ -882,11 +887,11 @@ export const hostRoom = <T extends RoomTypes>(
 
     const refusal = CommitNotes.$match(result.note, {
       Committed: () => Option.none<string>(),
-      Crashed: ({ cause }) => Option.some(`the room core threw: ${cause}`),
+      Crashed: ({ fault }) => Option.some(`the room core threw ${fault}`),
       Halted: () => Option.none<string>(),
       Rejected: () =>
         stillDue && codec.reply.guards.Rejected(result.reply)
-          ? Option.some(codec.encodeRejection(result.reply.rejection))
+          ? Option.some(core.rejectionKind(result.reply.rejection))
           : Option.none(),
       Replayed: () => Option.none<string>(),
       RoomHalted: () => Option.none<string>(),
@@ -956,7 +961,6 @@ export const hostRoom = <T extends RoomTypes>(
     return {
       fault: Option.some(
         new CommandFault({
-          code: current.code,
           command: core.commandKind(input.command),
           fault: result.note.fault,
           faults,

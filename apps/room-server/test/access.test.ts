@@ -37,6 +37,7 @@ import type * as HttpClientResponse from "effect/http/HttpClientResponse";
 import { retryDelay } from "../src/refused-deadline.js";
 import { MAX_MEMBERS, PENDING_SOCKETS } from "../src/room-rpc.js";
 import { REJECTIONS_KEPT_PER_SOCKET } from "../src/socket-attachment.js";
+import { roomAnalytics } from "./fixtures/analytics-checks.js";
 import {
   codec,
   command,
@@ -538,7 +539,7 @@ test(
     expect(stalled.faults).toStrictEqual(
       [1, 2, 3].map(
         (count) =>
-          `Room ${anaPass.code} refused the server's answer to its Deal deadline, ${count} in a row: {"_tag":"ToyRefusal","reason":"Jammed"}. The server asks again in ${retryDelay(TOY_RETRIES, count)} ms.${count === TOY_RETRIES.stallAfter ? " The room is marked stalled, so its players see that the table is stuck and can end the night." : ""} This is a bug in the room core.`
+          `The room refused the server's answer to its Deal deadline, ${count} in a row: ToyRefusal. The server asks again in ${retryDelay(TOY_RETRIES, count)} ms.${count === TOY_RETRIES.stallAfter ? " The room is marked stalled, so its players see that the table is stuck and can end the night." : ""} This is a bug in the room core.`
       )
     );
 
@@ -621,7 +622,7 @@ test(
       seqs: before.seqs,
     });
     expect(afterBoom.faults).toStrictEqual([
-      `Room ${code} threw ToyCoreBrokeError while deciding a member's Throw command, 1 in a row. Nothing was stored, and the member was told the room could not take it. This is a bug in the room core.`,
+      `The room core threw ToyCoreBrokeError while deciding a member's Throw command, 1 in a row. Nothing was stored, and the member was told the room could not take it. This is a bug in the room core.`,
     ]);
     expect(codec.reply.guards.Accepted(counted.result)).toBe(true);
     expect(seen.events.map(({ _tag }) => _tag)).toStrictEqual(["Incremented"]);
@@ -649,7 +650,7 @@ test(
     expect(stalled.faults.slice(1)).toStrictEqual(
       [1, 2, 3].map(
         (count) =>
-          `Room ${code} threw ToyCoreBrokeError while deciding a member's Throw command, ${count} in a row. Nothing was stored, and the member was told the room could not take it.${count === TOY_RETRIES.stallAfter ? " The room is marked stalled, so its players see that the table is stuck and can end the night." : ""} This is a bug in the room core.`
+          `The room core threw ToyCoreBrokeError while deciding a member's Throw command, ${count} in a row. Nothing was stored, and the member was told the room could not take it.${count === TOY_RETRIES.stallAfter ? " The room is marked stalled, so its players see that the table is stuck and can end the night." : ""} This is a bug in the room core.`
       )
     );
     expect(stalled.faults.join(" ")).not.toContain("a private note");
@@ -914,5 +915,67 @@ test(
       codec.server.cases.Closing.make({ reason: "TooManyFrames" })
     );
     expect(cyClosing.reason).toBe("TooManyFrames");
+  }).pipe(Effect.provide(FetchHttpClient.layer))
+);
+
+const MARKED_NAME = "Nadia Markerworth";
+
+test(
+  "16. a halt logs only the kinds, sequence numbers, and invariants of the batch it refused, and no log line from the room names the room's code, a member, or a secret",
+  Effect.gen(function* haltLogs() {
+    const base = yield* baseUrl;
+
+    const [hostPass, nadiaPass] = yield* openRoomWith(base, [
+      "Host",
+      MARKED_NAME,
+    ]);
+
+    if (hostPass === undefined || nadiaPass === undefined) {
+      return;
+    }
+
+    const { code } = hostPass;
+    const nadia = yield* joinAs(base, nadiaPass, "nadia");
+
+    yield* nadia.client.send(command("deal", Commands.RequestDeal.make({})));
+    yield* nadia.client.next("reply deal", replyTo("deal"));
+
+    const dealt = yield* nadia.client.next(
+      "her secret",
+      eventsWith(isEvent.SecretDealt)
+    );
+
+    const secrets = dealt.events.flatMap((event) =>
+      isEvent.SecretDealt(event) ? Option.toArray(event.secret) : []
+    );
+
+    const before = yield* inspect(base, code);
+
+    yield* nadia.client.send(command("bad", Commands.Corrupt.make({})));
+    yield* nadia.client.waitClosed;
+
+    const after = yield* inspect(base, code);
+    const lines = after.logged.join("\n");
+
+    const keys = (yield* roomAnalytics(base, code)).map(
+      ({ point }) => point.indexes[0]
+    );
+
+    for (const marker of [MARKED_NAME, code, ...secrets]) {
+      expect(lines).not.toContain(marker);
+      expect(after.faults.join("\n")).not.toContain(marker);
+    }
+
+    expect(secrets).toHaveLength(1);
+    expect(Option.isSome(after.halted)).toBe(true);
+    expect(lines).toContain("room halted on an unsound commit");
+    expect(lines).toContain("Joined,SecretDealt,Incremented");
+    expect(lines).toContain(`"from":${before.headSeq + 1}`);
+    expect(lines).toContain(`"to":${before.headSeq + 3}`);
+    expect(lines).toContain("differs from");
+    expect(new Set(keys).size).toBe(1);
+    expect(
+      after.logged.every((line) => line.includes(`"room":"${keys[0]}"`))
+    ).toBe(true);
   }).pipe(Effect.provide(FetchHttpClient.layer))
 );

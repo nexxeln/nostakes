@@ -1,4 +1,30 @@
-import { Schema } from "effect";
+import { Option, Schema } from "effect";
+import { flow } from "effect/Function";
+
+const STACK_FRAMES = 4;
+
+const FRAME = /^\s*at /u;
+
+const DefectSchema = Schema.Struct({
+  name: Schema.String,
+  stack: Schema.optionalKey(Schema.String),
+});
+
+export const defectWhere = flow(
+  Schema.decodeUnknownOption(DefectSchema),
+  Option.match({
+    onNone: () => "a value that is not an error",
+    onSome: ({ name, stack }) =>
+      [
+        name,
+        ...(stack ?? "")
+          .split("\n")
+          .filter((line) => FRAME.test(line))
+          .slice(0, STACK_FRAMES)
+          .map((line) => line.trim()),
+      ].join(" "),
+  })
+);
 
 export class RouteFault extends Schema.TaggedError<
   RouteFault,

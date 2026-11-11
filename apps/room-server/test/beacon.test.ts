@@ -151,7 +151,7 @@ describe("the relay beacon", () => {
 const WAIT = beaconWaitLimitMs(CHAIN);
 
 const askedBy = (relaysLayer: Layer.Layer<Beacon>) =>
-  Beacon.use((beacon) => askBeacon(beacon, "K7P2XZ", ROUND)).pipe(
+  Beacon.use((beacon) => askBeacon(beacon, ROUND)).pipe(
     Effect.provide(relaysLayer)
   );
 
@@ -177,7 +177,6 @@ describe("asking the beacon for a sealed deal", () => {
         expect(answer).toStrictEqual({
           gaveUp: Option.some(
             new BeaconGaveUp({
-              code: "K7P2XZ",
               pastDueMs: WAIT,
               round: ROUND,
               triedMs: WAIT - 2000,
@@ -186,7 +185,7 @@ describe("asking the beacon for a sealed deal", () => {
           signature: Option.none(),
         });
         expect(Option.getOrThrow(answer.gaveUp).message).toBe(
-          `Room K7P2XZ could not get drand round ${ROUND}: it asked the relays for ${WAIT - 2000} ms and gave up ${WAIT} ms after the round was due, so it shuffled the hand itself and every player sees that hand as not checked. Check that the Worker can reach the drand relays.`
+          `The room could not get drand round ${ROUND}: it asked the relays for ${WAIT - 2000} ms and gave up ${WAIT} ms after the round was due, so it shuffled the hand itself and every player sees that hand as not checked. Check that the Worker can reach the drand relays.`
         );
       })
   );

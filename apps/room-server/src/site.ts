@@ -25,3 +25,8 @@ export const siteOrigin = (stage: SiteStage) => `https://${SITE_HOSTS[stage]}`;
 export const WEB_ASSETS = "../web/dist";
 
 export const ROOM_ROUTES = ["/rooms", "/rooms/*"];
+
+export const APPLICATION_LOGS_ONLY = {
+  enabled: true,
+  logs: { enabled: true, invocationLogs: false },
+} as const;

@@ -245,7 +245,24 @@ const decideMember = (
                   ])
                 : refuse("NotYourTurn"),
           }),
-        Corrupt: () => Result.succeed([incremented(by, state.count + 2)]),
+        Corrupt: () =>
+          Result.succeed([
+            ...state.members
+              .filter(({ player }) => player === by)
+              .map(({ avatar, name }) =>
+                ToyEventSchema.cases.Joined.make({ avatar, name, player: by })
+              ),
+            ...Option.toArray(
+              Option.fromUndefinedOr(state.secrets.get(by))
+            ).map((secret) =>
+              ToyEventSchema.cases.SecretDealt.make({
+                round: state.round,
+                secret,
+                to: by,
+              })
+            ),
+            incremented(by, state.count + 2),
+          ]),
         Explode: () =>
           Result.succeed([
             incremented(by, state.count + 1),
@@ -566,6 +583,7 @@ export const toyRoom: HostedRoom<ToyTypes> = {
       Deal: () => DEAL_ENTROPY_BYTES,
       ExpireTurn: () => 0,
     }),
+  eventKind: (event) => event._tag,
   evolve,
   haltedView: viewFor,
   invariants,
@@ -581,6 +599,7 @@ export const toyRoom: HostedRoom<ToyTypes> = {
     }),
   ],
   redact,
+  rejectionKind: (rejection) => rejection._tag,
   replay,
   revoked: () => false,
   revokedView: (state, player, at) =>

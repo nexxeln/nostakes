@@ -10,6 +10,7 @@ import {
   sitePages,
 } from "./site-pages.js";
 import {
+  APPLICATION_LOGS_ONLY,
   ROOM_ROUTES,
   SITE_HOSTS,
   siteOrigin,
@@ -43,6 +44,7 @@ export default class SiteWorker extends Cloudflare.Worker<SiteWorker>()(
       domain: { name: SITE_HOSTS[stage], zoneName: ZONE },
       main: import.meta.url,
       name: `nostakes-${stage}`,
+      observability: APPLICATION_LOGS_ONLY,
       workersDev: false,
     } as const;
   }),

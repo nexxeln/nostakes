@@ -168,6 +168,7 @@ export const pokerRoomOn = (chain: DrandChain): HostedRoom<PokerTypes> => ({
       ShowdownClock: () => 0,
       TurnClock: () => 0,
     }),
+  eventKind: (event) => event._tag,
   evolve,
   haltedView: (state, audience, at) =>
     standingsView(state, audience, millis(at)),
@@ -187,6 +188,7 @@ export const pokerRoomOn = (chain: DrandChain): HostedRoom<PokerTypes> => ({
       settings: request.settings ?? DEFAULT_SETTINGS,
     }),
   redact: (event, audience) => Option.some(redact(event, audience)),
+  rejectionKind: (rejection) => rejection._tag,
   replay: replayLog,
   revoked: isRemoved,
   revokedView: (state, player, at, halted) =>

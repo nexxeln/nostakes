@@ -9,7 +9,7 @@ import { ToyMemberCommandSchema, toyRoom } from "./fixtures/toy-room.js";
 
 const Commands = ToyMemberCommandSchema.cases;
 
-const REJECTION = '{"_tag":"ToyRefusal","reason":"Jammed"}';
+const REJECTION = "ToyRefusal";
 
 const jammedDeal = () => {
   const room = openToyHost();
@@ -64,7 +64,7 @@ describe("a deadline the room refuses", () => {
     ]);
   });
 
-  it("logs each refusal with the room, the deadline, and the rejection, and marks the room stalled once at the fifth", () => {
+  it("logs each refusal with the deadline and the kind of rejection, never the room's code, and marks the room stalled once at the fifth", () => {
     const { room, viewer } = jammedDeal();
 
     const answers = [1002, 2002, 4002, 8002, 16_002, 32_002].map((at) =>
@@ -79,7 +79,7 @@ describe("a deadline the room refuses", () => {
       [1, 2, 3, 4, 5, 6].map((count) =>
         Option.some(
           expect.stringContaining(
-            `Room K7P2XZ refused the server's answer to its Deal deadline, ${count} in a row: ${REJECTION}. The server asks again in ${retryDelay(RETRY_POLICY, count)} ms.`
+            `The room refused the server's answer to its Deal deadline, ${count} in a row: ${REJECTION}. The server asks again in ${retryDelay(RETRY_POLICY, count)} ms.`
           )
         )
       )
@@ -178,7 +178,7 @@ describe("a deadline the room refuses", () => {
     expect(
       Option.getOrThrow(answers[0]?.refused ?? Option.none()).message
     ).toContain(
-      `refused the server's answer to its Deal deadline, 1 in a row: the room core threw: {"_tag":"ToyRefusal","reason":"Broken"}.`
+      `refused the server's answer to its Deal deadline, 1 in a row: the room core threw ToyRefusal.`
     );
     expect(Option.isSome(answers[4]?.stall ?? Option.none())).toBe(true);
     expect(lastView(room, viewer)?.view.stalled).toStrictEqual(
