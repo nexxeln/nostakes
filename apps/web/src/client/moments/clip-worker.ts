@@ -145,8 +145,6 @@ const videoTrack = (request: ClipRequest) =>
       });
     }
 
-    ctx.imageSmoothingQuality = "high";
-
     const pixels = new Uint8Array(i420Size(request.width, request.height));
     const drawn = { key: "" };
 
