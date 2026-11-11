@@ -29,6 +29,7 @@ export interface RenderOptions {
   readonly layers?: boolean;
   readonly parts?: boolean;
   readonly lifted?: Part;
+  readonly uncovered?: Part;
   readonly window?: Box;
 }
 
@@ -69,22 +70,27 @@ type Handlings = ReadonlyMap<PlacedPart, Handling>;
 
 const NO_HANDLINGS: Handlings = new Map();
 
-const LIFT_RISE = 1.9;
+const LIFT_RISE = 1.5;
 
-const LIFT_SHIFT: Point = [-1.6, -2.9];
+const LIFT_SHIFT: Point = [-1.1, -2];
+
+const UNLIFTED: Handling = { faded: false, rise: 1, shift: [0, 0] };
+
+const LIFTED: Handling = { faded: false, rise: LIFT_RISE, shift: LIFT_SHIFT };
 
 const ASIDE_OPACITY = 0.3;
 
 const handlingsFor = (
   avatar: Avatar,
   expression: Expression,
-  lifted: PlacedPart
+  shown: PlacedPart,
+  own: Handling
 ): Handlings =>
   new Map<PlacedPart, Handling>([
-    ...Option.match(boxOfPart(avatar, lifted, expression), {
+    ...Option.match(boxOfPart(avatar, shown, expression), {
       onNone: () => [],
       onSome: (held) =>
-        coversOfPart(avatar, lifted, expression).flatMap((cover) =>
+        coversOfPart(avatar, shown, expression).flatMap((cover) =>
           Option.toArray(boxOfPart(avatar, cover, expression)).map(
             (box): readonly [PlacedPart, Handling] => [
               cover,
@@ -93,8 +99,11 @@ const handlingsFor = (
           )
         ),
     }),
-    [lifted, { faded: false, rise: LIFT_RISE, shift: LIFT_SHIFT }],
+    [shown, own],
   ]);
+
+const placed = (part: Part | undefined) =>
+  part === undefined ? undefined : Option.getOrUndefined(placeOfPart(part));
 
 const handled = (
   pieces: readonly Piece[],
@@ -117,7 +126,7 @@ const handled = (
 const opened = (handlings: Handlings) => (part: PlacedPart) => {
   const handling = handlings.get(part);
 
-  if (handling === undefined) {
+  if (handling === undefined || handling === UNLIFTED) {
     return `<g data-part="${part}">`;
   }
 
@@ -142,6 +151,7 @@ export const render = (
     parts = false,
     size,
     theme = "Light",
+    uncovered,
     window,
   }: RenderOptions
 ): string => {
@@ -155,13 +165,18 @@ export const render = (
 
   const folded = expression === "Folded";
 
-  const held =
-    lifted === undefined
-      ? undefined
-      : Option.getOrUndefined(placeOfPart(lifted));
+  const raisedPart = placed(lifted);
+  const held = raisedPart ?? placed(uncovered);
 
   const handlings =
-    held === undefined ? NO_HANDLINGS : handlingsFor(avatar, expression, held);
+    held === undefined
+      ? NO_HANDLINGS
+      : handlingsFor(
+          avatar,
+          expression,
+          held,
+          raisedPart === undefined ? UNLIFTED : LIFTED
+        );
 
   const open = opened(handlings);
 

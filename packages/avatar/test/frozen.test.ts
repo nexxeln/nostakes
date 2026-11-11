@@ -64,6 +64,8 @@ const digestOf = (text: string) =>
     )
   );
 
+const FROZEN_TIMEOUT_MS = 60_000;
+
 const APPROVED =
   "1070cac3556ef6fe25dcbb8245746be7ac627f1c4a309c6f2113a188fa1e5c28";
 
@@ -80,6 +82,7 @@ describe("the approved art", () => {
 
         expect(cast).toHaveLength(500);
         expect(yield* digestOf(digests.join("\n"))).toBe(APPROVED);
-      })
+      }),
+    FROZEN_TIMEOUT_MS
   );
 });

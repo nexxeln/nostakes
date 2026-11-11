@@ -261,6 +261,37 @@ describe("the parts of a face", () => {
   );
 
   it.prop(
+    "uncovers a part without lifting it, and changes nothing when nothing hides it",
+    { avatar: avatars },
+    ({ avatar }) => {
+      const look = { expression: "Resting", parts: true, size: 168 } as const;
+      const resting = render(avatar, look);
+
+      for (const part of PLACED_PARTS) {
+        const uncovered = render(avatar, { ...look, uncovered: part });
+        const covers = coversOfPart(avatar, part);
+
+        if (resting.includes(tagOf(part))) {
+          expect(groupOf(uncovered, part)).toBe(groupOf(resting, part));
+        }
+
+        if (covers.length === 0 && resting.includes(tagOf(part))) {
+          expect(uncovered).toBe(resting);
+        }
+
+        for (const cover of covers) {
+          expect(groupOf(uncovered, cover)).toMatch(SHIFT);
+        }
+
+        expect(
+          render(avatar, { ...look, lifted: part, uncovered: "mouth" })
+        ).toBe(render(avatar, { ...look, lifted: part }));
+      }
+    },
+    { arbitrary: { runs: 30 } }
+  );
+
+  it.prop(
     "lifts the card when the suit is asked for, since the suit has no sheet of its own",
     { avatar: avatars },
     ({ avatar }) => {
@@ -296,7 +327,7 @@ describe("the parts of a face", () => {
         expect(cropped).toContain('preserveAspectRatio="xMidYMid slice"');
         expect(cropped).not.toMatch(/^<svg[^>]* width=/u);
         expect(window.width / window.height).toBeCloseTo(1.5, 6);
-        expect(window.width).toBeLessThanOrEqual(104);
+        expect(window.width).toBeLessThanOrEqual(isPlaced(part) ? 104 : 156);
       }
     },
     { arbitrary: { runs: 20 } }
@@ -319,7 +350,8 @@ describe("the parts of a face", () => {
       }
 
       expect(closeUpOf(avatar, "species", 1).width).toBe(104);
-      expect(closeUpOf(avatar, "colour", 1).width).toBe(104);
+      expect(closeUpOf(avatar, "colour", 1.5).height).toBe(104);
+      expect(closeUpOf(avatar, "colour", 0.5).width).toBe(104);
       expect(closeUpOf(avatar, "suit", 1)).toStrictEqual(
         closeUpOf(avatar, "rank", 1)
       );

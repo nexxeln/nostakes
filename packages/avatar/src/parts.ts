@@ -143,6 +143,18 @@ const hides = (piece: Piece, point: Point): boolean =>
 
 const COVERED_SHARE = 0.2;
 
+const meets = (one: Box, other: Box): boolean =>
+  one.x < other.x + other.width &&
+  other.x < one.x + one.width &&
+  one.y < other.y + other.height &&
+  other.y < one.y + one.height;
+
+interface Above {
+  readonly piece: Piece;
+  readonly box: Box;
+  readonly at: number;
+}
+
 export const coversOfPart = (
   avatar: Avatar,
   part: PlacedPart,
@@ -150,25 +162,46 @@ export const coversOfPart = (
 ): readonly PlacedPart[] => {
   const pieces = stacked(avatar, expression, part);
 
-  const seen = pieces.flatMap((piece, index) =>
-    piece.part === part
-      ? pointsOn(piece).map((point) => ({ above: index, point }))
-      : []
+  const held = pieces.flatMap((piece, at) =>
+    piece.part === part ? [{ at, box: boxOfPiece(piece), piece }] : []
+  );
+
+  const above = pieces.flatMap((piece, at): readonly Above[] => {
+    if (
+      piece.kind !== "Cut" ||
+      piece.part === undefined ||
+      piece.part === part
+    ) {
+      return [];
+    }
+
+    const box = boxOfPiece(piece);
+
+    return held.some((under) => under.at < at && meets(under.box, box))
+      ? [{ at, box, piece }]
+      : [];
+  });
+
+  if (above.length === 0) {
+    return [];
+  }
+
+  const seen = held.flatMap(({ at, piece }) =>
+    pointsOn(piece).map((point) => ({ at, point }))
   );
 
   return PLACED_PARTS.filter((other) => {
-    if (other === part) {
-      return false;
-    }
+    const others = above.filter(({ piece }) => piece.part === other);
 
-    const hidden = seen.filter(({ above, point }) =>
-      pieces.some(
-        (piece, index) =>
-          index > above && piece.part === other && hides(piece, point)
-      )
+    const hidden = seen.filter(({ at, point }) =>
+      others.some((cover) => cover.at > at && hides(cover.piece, point))
     );
 
-    return seen.length > 0 && hidden.length / seen.length >= COVERED_SHARE;
+    return (
+      others.length > 0 &&
+      seen.length > 0 &&
+      hidden.length / seen.length >= COVERED_SHARE
+    );
   });
 };
 
@@ -231,7 +264,7 @@ const toward = (
 };
 
 const wholeFace = (aspect: number): Box => {
-  const width = WIDEST_VIEW;
+  const width = aspect >= 1 ? WIDEST_VIEW * aspect : WIDEST_VIEW;
   const height = width / aspect;
 
   return {
