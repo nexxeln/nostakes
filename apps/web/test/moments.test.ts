@@ -83,7 +83,12 @@ const momentAt = (
         street: "River",
       }),
     SameHand: () => Moments.SameHand({ ...shared, rank }),
-    SevenDeuce: () => Moments.SevenDeuce({ ...shared, showdown: true }),
+    SevenDeuce: () =>
+      Moments.SevenDeuce({
+        ...shared,
+        bounty: ChipsSchema.make(0),
+        showdown: true,
+      }),
     SplitRuns: () => Moments.SplitRuns({ ...shared, runs: 2 }),
     Suckout: () => Moments.Suckout({ ...shared, odds, street: "Turn" }),
   };
@@ -109,6 +114,20 @@ describe("what the table says about a moment", () => {
         /!/u
       );
     }
+  });
+});
+
+describe("what the table says about a seven-deuce", () => {
+  it("says what the table paid when the bounty was collected, and nothing about chips when none was", () => {
+    const { 1: write } = CAPTIONS.SevenDeuce;
+
+    expect([
+      write?.({ ...FACTS, bet: 1400 }).line,
+      write?.({ ...FACTS, bet: 0 }).line,
+    ]).toStrictEqual([
+      "Maya won with the worst hand in poker. The table paid 1,400.",
+      "The worst hand in poker, and Maya won with it.",
+    ]);
   });
 });
 

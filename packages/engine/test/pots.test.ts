@@ -55,6 +55,7 @@ describe("the fold-out", () => {
     ]);
     expect(stacksOf(walk.state).slice(0, 3)).toStrictEqual([200, 195, 205]);
     expect(lastHandOf(walk.state)).toStrictEqual({
+      bounty: Option.none(),
       hunted: false,
       players: [
         {

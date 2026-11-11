@@ -174,6 +174,10 @@ const onTable = (tally: NightTally, event: TableEvent, at: number): Step =>
     Match.tag("RulesChanged", ({ config }) =>
       rulesChanged(tally, { ...tally.settings, table: config })
     ),
+    Match.tag("BountyPaid", ({ payers }): Step => [
+      tally,
+      [measure("BountyPaid", { payers: payers.length })],
+    ]),
     Match.orElse(() => still(tally))
   );
 
@@ -287,6 +291,7 @@ export const abandonedNight = (tally: NightTally): Option.Option<Measure> =>
 
 export const NIGHT_KINDS: ReadonlySet<MeasureKind> = new Set<MeasureKind>([
   "BeaconOutage",
+  "BountyPaid",
   "FirstHand",
   "GameStarted",
   "HandFinished",

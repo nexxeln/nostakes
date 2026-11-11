@@ -344,6 +344,7 @@ describe("after a hand, on a fresh page", () => {
         lastHand: Option.some({
           awards: [],
           boards: [[]],
+          bounty: Option.none(),
           dealtIn: [
             { folded: true, player: PLAYER, seat: hero },
             { folded: false, player: stillIn, seat: other },

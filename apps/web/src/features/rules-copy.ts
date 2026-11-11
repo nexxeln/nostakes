@@ -414,6 +414,26 @@ export const RULES: readonly RuleCopy[] = [
     }
   ),
   rule(
+    "table.sevenDeuce._tag",
+    "Showdown",
+    "Seven-deuce bounty",
+    toggle("Bounty", "NoBounty"),
+    {
+      brief: (draft) =>
+        when(
+          draft["table.sevenDeuce._tag"] === "Bounty",
+          () => `7-2 bounty ${draft["table.sevenDeuce.amount"]}`
+        ),
+      help: "Win with seven-deuce and everyone dealt in pays you.",
+    }
+  ),
+  rule(
+    "table.sevenDeuce.amount",
+    "Showdown",
+    "Bounty from each",
+    stepper("", 1, bigBlindOf, 10)
+  ),
+  rule(
     "moments",
     "BetweenHands",
     "Table moments",
@@ -628,6 +648,7 @@ export const STANDARD = new Map<string, string>(
     shuffle: "Checked",
     sitOutAfterTimeouts: "1",
     "table.ante._tag": "NoAnte",
+    "table.sevenDeuce._tag": "NoBounty",
     topUps: "UpToMax",
   })
 );

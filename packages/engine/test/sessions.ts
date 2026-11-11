@@ -10,6 +10,7 @@ import {
   Events,
   PendingDecisions,
   Seats,
+  SevenDeuces,
   ShownCardsSchema,
   TableConfigSchema,
   TableStates,
@@ -23,6 +24,7 @@ import type {
   Command,
   Event,
   LegalActions,
+  SevenDeuce,
   ShowdownChoices,
   TableConfig,
   TableState,
@@ -45,6 +47,7 @@ export const SessionSchema = Schema.Struct({
   anteAmount: between(1, 12),
   anteKind: between(0, 2),
   bigBlindExtra: between(0, 12),
+  bounty: between(0, 60),
   button: Schema.Boolean,
   casinoBlinds: Schema.Boolean,
   fixedRuns: Schema.Boolean,
@@ -82,6 +85,13 @@ const anteOf = (kind: number, amount: number): Ante => {
     : Antes.NoAnte();
 };
 
+const BOUNTY_OFF_BELOW = 20;
+
+const bountyOf = (roll: number): SevenDeuce =>
+  roll < BOUNTY_OFF_BELOW
+    ? SevenDeuces.NoBounty()
+    : SevenDeuces.Bounty({ amount: chipCount(roll - BOUNTY_OFF_BELOW + 1) });
+
 export const configOf = (source: Session): TableConfig =>
   TableConfigSchema.make({
     allInHands: source.hiddenAllIns ? "Hidden" : "FaceUp",
@@ -92,6 +102,7 @@ export const configOf = (source: Session): TableConfig =>
     rabbitHunt: source.rabbitHunt,
     rabbitHunters: source.rabbitStillIn ? "StillIn" : "DealtIn",
     runCount: source.fixedRuns ? "Fixed" : "Vote",
+    sevenDeuce: bountyOf(source.bounty),
     showdown: source.interactive ? "Interactive" : "Automatic",
     showdownOrder: source.lastAggressorShows
       ? "LastAggressor"
@@ -114,6 +125,7 @@ const randomConfig = (random: SeededRandom): TableConfig => {
     rabbitHunt: random.chance(1, 2),
     rabbitHunters: random.chance(1, 3) ? "StillIn" : "DealtIn",
     runCount: random.chance(1, 4) ? "Fixed" : "Vote",
+    sevenDeuce: bountyOf(random.below(61)),
     showdown: random.chance(1, 2) ? "Interactive" : "Automatic",
     showdownOrder: random.chance(1, 2) ? "LastAggressor" : "RiverAggressor",
     smallBlind: chipCount(small),
@@ -135,6 +147,30 @@ export const shuffledDeck = (random: SeededRandom) => {
     cards[index] = cards[other] ?? 0;
     cards[other] = held;
   }
+
+  return decodeDeck(cards);
+};
+
+const SEVENS = [20, 21, 22, 23];
+
+const DEUCES = [0, 1, 2, 3];
+
+const swapped = (cards: number[], position: number, wanted: number) => {
+  const from = cards.indexOf(wanted);
+  const held = cards[position];
+
+  if (from !== -1 && held !== undefined) {
+    cards[position] = wanted;
+    cards[from] = held;
+  }
+};
+
+export const sevenDeuceDeck = (random: SeededRandom, dealtIn: number) => {
+  const cards = [...shuffledDeck(random)];
+  const place = random.below(Math.max(1, dealtIn));
+
+  swapped(cards, place, SEVENS[random.below(4)] ?? 20);
+  swapped(cards, dealtIn + place, DEUCES[random.below(4)] ?? 0);
 
   return decodeDeck(cards);
 };
@@ -371,8 +407,14 @@ export const commandFor = (state: TableState, intent: Intent): Command => {
   }
 
   if (intent.roll < 50) {
+    const playable = occupiedSeats(state).filter(
+      ({ occupant }) => !occupant.sittingOut && occupant.stack > 0
+    ).length;
+
     return Commands.StartHand({
-      deck: shuffledDeck(random),
+      deck: random.chance(1, 3)
+        ? sevenDeuceDeck(random, playable)
+        : shuffledDeck(random),
       posts: postingSeats(state, random),
       straddles: plannedStraddles(state, random).map((index) => seat(index)),
     });

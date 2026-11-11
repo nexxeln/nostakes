@@ -13,6 +13,7 @@ import {
   RunCountSchema,
   SeatIndexSchema,
   Seats,
+  SevenDeuces,
   ShowdownEntries,
   ShownCardsSchema,
   TableConfigSchema,
@@ -31,6 +32,7 @@ import type {
   PendingDecision,
   BlindDebt,
   Rejection,
+  SevenDeuce,
   TableConfig,
   TableState,
 } from "@nostakes/engine";
@@ -117,6 +119,11 @@ const randomConfig = (random: Random): TableConfig => {
     rabbitHunt: random.chance(50),
     rabbitHunters: random.chance(30) ? "StillIn" : "DealtIn",
     runCount: random.chance(25) ? "Fixed" : "Vote",
+    sevenDeuce: random.chance(50)
+      ? SevenDeuces.Bounty({
+          amount: chipCount(1 + random.below(bigBlind * 30)),
+        })
+      : SevenDeuces.NoBounty(),
     showdown: random.chance(50) ? "Interactive" : "Automatic",
     showdownOrder: random.chance(30) ? "LastAggressor" : "RiverAggressor",
     smallBlind: chipCount(smallBlind),
@@ -148,6 +155,32 @@ const shuffledDeck = (random: Random) => {
   }
 
   return DeckSchema.make(cards, { disableChecks: true });
+};
+
+const SEVENS = [20, 21, 22, 23];
+
+const DEUCES = [0, 1, 2, 3];
+
+const decodeDeck = Schema.decodeSync(DeckSchema);
+
+const sevenDeuceDeck = (random: Random, dealt: number) => {
+  const cards: number[] = [...shuffledDeck(random)];
+  const place = random.below(dealt);
+
+  const put = (position: number, wanted: number) => {
+    const from = cards.indexOf(wanted);
+    const held = cards[position];
+
+    if (held !== undefined && from !== -1) {
+      cards[position] = wanted;
+      cards[from] = held;
+    }
+  };
+
+  put(place, random.pick(SEVENS) ?? 20);
+  put(dealt + place, random.pick(DEUCES) ?? 0);
+
+  return decodeDeck(cards);
 };
 
 const occupied = (state: TableState) =>
@@ -527,6 +560,9 @@ const newCounts = () => ({
   boardsRunFour: 0,
   boardsRunThree: 0,
   boardsRunTwo: 0,
+  bounties: 0,
+  bountiesFromShortStacks: 0,
+  bountiesShownForTheTable: 0,
   buttonStraddles: 0,
   cappedCalls: 0,
   casinoHands: 0,
@@ -567,6 +603,88 @@ const newCounts = () => ({
 });
 
 type Counts = ReturnType<typeof newCounts>;
+
+const holdsSevenDeuce = (hand: readonly Event[], seat: number) =>
+  hand.some(
+    (event) =>
+      Events.$is("HoleCardsDealt")(event) &&
+      event.seat === seat &&
+      [0, 5].every((rank) =>
+        event.cards.some((card) => Math.floor(card / 4) === rank)
+      )
+  );
+
+const endedBeforeTheShow = (hand: readonly Event[]) => {
+  const last = hand.findLast((event) => !Events.$is("CardsShown")(event));
+
+  return last !== undefined && Events.$is("HandEnded")(last);
+};
+
+const bountyProblem = (
+  counts: Counts,
+  rule: SevenDeuce,
+  hand: readonly Event[],
+  before: TableState,
+  paid: Event
+): Option.Option<string> => {
+  if (!Events.$is("BountyPaid")(paid)) {
+    return Option.none();
+  }
+
+  const started = hand.find(Events.$is("HandStarted"));
+  const awards = hand.filter(Events.$is("PotAwarded"));
+
+  const contested = awards.filter((award) =>
+    award.eligible.includes(paid.seat)
+  );
+
+  const wonEverything =
+    contested.length > 0 &&
+    contested.every(
+      (award) =>
+        award.winners.length === 1 && award.winners[0]?.seat === paid.seat
+    );
+
+  if (
+    started === undefined ||
+    SevenDeuces.$is("NoBounty")(rule) ||
+    !endedBeforeTheShow(hand) ||
+    !holdsSevenDeuce(hand, paid.seat) ||
+    !wonEverything
+  ) {
+    return Option.some(`a bounty seat ${paid.seat} was not owed`);
+  }
+
+  const expected = started.dealtIn.flatMap((seat) => {
+    const occupant = before.seats[seat];
+
+    const amount =
+      seat !== paid.seat &&
+      occupant !== undefined &&
+      Seats.$is("Occupied")(occupant)
+        ? Math.min(rule.amount, occupant.stack)
+        : 0;
+
+    return amount > 0 ? [{ amount, seat }] : [];
+  });
+
+  counts.bounties += 1;
+  counts.bountiesShownForTheTable += Events.$is("CardsShown")(hand.at(-1))
+    ? 1
+    : 0;
+  counts.bountiesFromShortStacks += paid.payers.some(
+    (payer) => payer.amount < rule.amount
+  )
+    ? 1
+    : 0;
+
+  return JSON.stringify(expected) === JSON.stringify(paid.payers) &&
+    expected.length > 0
+    ? Option.none()
+    : Option.some(
+        `bounty paid ${JSON.stringify(paid.payers)}, owed ${JSON.stringify(expected)}`
+      );
+};
 
 interface Broken {
   readonly detail: string;
@@ -1125,6 +1243,7 @@ const simulate = (
   let lastChoiceByClock = false;
   const orbits = new Map<string, Orbit>();
   let rulesChanged = false;
+  let handRule: SevenDeuce = state.config.sevenDeuce;
 
   const violation = (detail: string): Result.Result<boolean, Broken> =>
     Result.fail({ detail, hand: hands, log });
@@ -1165,9 +1284,16 @@ const simulate = (
       state = evolve(state, event);
       bankroll += bankrollChange(event);
 
+      const unpaid = bountyProblem(counts, handRule, hand, before, event);
+
+      if (Option.isSome(unpaid)) {
+        return violation(unpaid.value);
+      }
+
       if (Events.$is("HandStarted")(event)) {
         countHand(counts, hand, seen);
         countAnte(counts, state.config);
+        handRule = state.config.sevenDeuce;
         hand = [];
         seen = { cappedCall: false, skippedDecision: false };
         hands += 1;
@@ -1292,7 +1418,9 @@ const simulate = (
 
     return apply(
       Commands.StartHand({
-        deck: shuffledDeck(random),
+        deck: random.chance(4)
+          ? sevenDeuceDeck(random, Math.max(1, dealtIn(state).length))
+          : shuffledDeck(random),
         posts: occupied(state)
           .filter(() => random.chance(50))
           .map((seat) => seatAt(seat.index)),

@@ -120,7 +120,10 @@ export const CAPTIONS: Readonly<
   },
   SevenDeuce: {
     1: (facts) => ({
-      line: `The worst hand in poker, and ${facts.who} won with it.`,
+      line:
+        facts.bet > 0
+          ? `${facts.who} won with the worst hand in poker. The table paid ${chipsText(facts.bet)}.`
+          : `The worst hand in poker, and ${facts.who} won with it.`,
       title: "Seven-deuce",
     }),
   },

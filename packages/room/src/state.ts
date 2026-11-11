@@ -111,9 +111,18 @@ export interface Award {
   }[];
 }
 
+export interface Bounty {
+  readonly payers: readonly {
+    readonly amount: Chips;
+    readonly seat: SeatIndex;
+  }[];
+  readonly seat: SeatIndex;
+}
+
 export interface HandRecord {
   readonly awards: readonly Award[];
   readonly boards: readonly (readonly Card[])[];
+  readonly bounty: Option.Option<Bounty>;
   readonly handNumber: number;
   readonly mucked: readonly SeatIndex[];
   readonly rabbit: readonly Card[];

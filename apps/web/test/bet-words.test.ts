@@ -149,3 +149,41 @@ describe("the word for a bet on the table", () => {
     { arbitrary: { runs: 50 } }
   );
 });
+
+describe("the words for a seven-deuce bounty on the table", () => {
+  it("tags what each seat pays and what the winner collects, after the cards are shown", () => {
+    const said = happeningsFrom(
+      0,
+      [
+        ...blinds,
+        table(Events.HandEnded({ handNumber: 4 })),
+        table(Events.CardsShown({ cards: [], seat: seat(2) })),
+        table(
+          Events.BountyPaid({
+            payers: [
+              { amount: chips(30), seat: seat(0) },
+              { amount: chips(7), seat: seat(1) },
+            ],
+            seat: seat(2),
+          })
+        ),
+      ].map((event, seq) => ({ event, seq }))
+    ).flatMap(({ happening }) =>
+      HappeningSchema.guards.Say(happening) ||
+      HappeningSchema.guards.Show(happening)
+        ? [
+            HappeningSchema.guards.Say(happening)
+              ? `${happening.seat}: ${happening.text}`
+              : `${happening.seat}: shows`,
+          ]
+        : []
+    );
+
+    expect(said).toStrictEqual([
+      "2: shows",
+      "0: Bounty −30",
+      "1: Bounty −7",
+      "2: Bounty +37",
+    ]);
+  });
+});

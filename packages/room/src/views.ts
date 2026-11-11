@@ -163,9 +163,15 @@ export const HandViewSchema = Schema.Struct({
   toShow: Schema.Option(SeatIndexSchema),
 });
 
+export const BountyViewSchema = Schema.Struct({
+  payers: Schema.Array(PotShareSchema),
+  seat: SeatIndexSchema,
+});
+
 export const LastHandViewSchema = Schema.Struct({
   awards: Schema.Array(AwardSchema),
   boards: Schema.Array(cards),
+  bounty: absentAs(Schema.Option(BountyViewSchema), Option.none()),
   dealtIn: absentAs(
     Schema.Array(
       Schema.Struct({
@@ -504,6 +510,7 @@ const lastHandView = (
         Option.map((record) => ({
           awards: record.awards,
           boards: record.boards,
+          bounty: record.bounty,
           dealtIn: lastHand.players.map(({ folded, player, seat }) => ({
             folded,
             player,

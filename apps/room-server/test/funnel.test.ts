@@ -189,6 +189,7 @@ describe("the stats report", () => {
       "  first hand after     median 1m 0s",
       "  hands per room       median 5",
       "  hands dealt          31: Checked 31",
+      "  7-2 bounties         0",
       "  abandoned            0",
       "  rules changed        turnSeconds 2, table.ante 1",
       "health, measured by the server",

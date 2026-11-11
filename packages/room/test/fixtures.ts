@@ -193,12 +193,7 @@ const SUITS_IN_ORDER = "cdhs";
 const cardNumber = (text: string) =>
   ORDER.indexOf(text.charAt(0)) * 4 + SUITS_IN_ORDER.indexOf(text.charAt(1));
 
-export const bytesForDeck = (leading: string) => {
-  const wanted = leading
-    .split(" ")
-    .filter((word) => word.length > 0)
-    .map(cardNumber);
-
+export const bytesForCards = (wanted: readonly number[]) => {
   const deck = [
     ...wanted,
     ...Array.from({ length: 52 }, (_, card) => card).filter(
@@ -219,4 +214,36 @@ export const bytesForDeck = (leading: string) => {
   }
 
   return bytes;
+};
+
+export const bytesForDeck = (leading: string) =>
+  bytesForCards(
+    leading
+      .split(" ")
+      .filter((word) => word.length > 0)
+      .map(cardNumber)
+  );
+
+const FIRST_SEVEN = 20;
+
+export const sevenDeuceBytes = (seed: number, dealt: number) => {
+  const seven = FIRST_SEVEN + (seed % 4);
+  const deuce = Math.trunc(seed / 4) % 4;
+  const place = Math.trunc(seed / 16) % Math.max(1, dealt);
+
+  const others = Array.from({ length: 52 }, (_, card) => card).filter(
+    (card) => card !== seven && card !== deuce
+  );
+
+  const rotated = [
+    ...others.slice(seed % others.length),
+    ...others.slice(0, seed % others.length),
+  ];
+
+  return bytesForCards([
+    ...rotated.slice(0, place),
+    seven,
+    ...rotated.slice(place, place + dealt - 1),
+    deuce,
+  ]);
 };

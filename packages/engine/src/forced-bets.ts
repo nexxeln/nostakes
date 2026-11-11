@@ -591,6 +591,7 @@ export const beginHand = (
     config: state.config,
     hand: {
       aggressor: Option.none(),
+      beaten: [],
       bigBlindSeat: event.bigBlindSeat,
       board: [],
       deadMoney: NO_CHIPS,
@@ -600,6 +601,7 @@ export const beginHand = (
       smallBlindSeat: event.smallBlindSeat,
       straddles: [],
       street: "Preflop",
+      wonAlone: [],
     },
     handNumber: event.handNumber,
     seats: seatsAfterDeal(state, event),

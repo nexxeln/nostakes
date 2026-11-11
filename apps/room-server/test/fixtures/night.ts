@@ -1,4 +1,4 @@
-import { Antes, ChipsSchema, SEAT_COUNT } from "@nostakes/engine";
+import { Antes, ChipsSchema, SEAT_COUNT, SevenDeuces } from "@nostakes/engine";
 import {
   ROOM_CODE_ALPHABET,
   ROOM_CODE_LENGTH,
@@ -170,6 +170,9 @@ const withTable = (
   table: Partial<EncodedSettings["table"]>
 ): EncodedSettings => ({ ...settings, table: { ...settings.table, ...table } });
 
+const paysBounty = (table: EncodedSettings["table"]) =>
+  table.sevenDeuce !== undefined && SevenDeuces.$is("Bounty")(table.sevenDeuce);
+
 export const RULES: readonly RuleChange[] = [
   {
     atHand: 0,
@@ -242,6 +245,18 @@ export const RULES: readonly RuleChange[] = [
       }),
     label: "all-in hands flip between face up and hidden",
   },
+  {
+    atHand: 0,
+    change: (settings) =>
+      withTable(settings, {
+        sevenDeuce: paysBounty(settings.table)
+          ? SevenDeuces.NoBounty()
+          : SevenDeuces.Bounty({
+              amount: ChipsSchema.make(settings.table.bigBlind * 5),
+            }),
+      }),
+    label: "the seven-deuce bounty flips between off and five big blinds",
+  },
 ];
 
 export type StrangerPlan = "None" | "Sits" | "Watches";
@@ -291,6 +306,9 @@ const tableFrom = (
   rabbitHunt: random.chance(50),
   rabbitHunters: random.chance(30) ? "StillIn" : "DealtIn",
   runCount: random.chance(25) ? "Fixed" : "Vote",
+  sevenDeuce: random.chance(50)
+    ? SevenDeuces.Bounty({ amount: ChipsSchema.make(small * 10) })
+    : SevenDeuces.NoBounty(),
   showdown: random.chance(80) ? "Interactive" : "Automatic",
   showdownOrder: random.chance(30) ? "LastAggressor" : "RiverAggressor",
   smallBlind: small,

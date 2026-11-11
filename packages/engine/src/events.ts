@@ -39,6 +39,10 @@ export const EventSchema = Schema.TaggedUnion({
     dead: Schema.optionalKey(Schema.Boolean),
     seat: SeatIndexSchema,
   },
+  BountyPaid: {
+    payers: Schema.Array(PotShareSchema),
+    seat: SeatIndexSchema,
+  },
   Called: {
     allIn: Schema.Boolean,
     amount: ChipsSchema,

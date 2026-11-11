@@ -182,6 +182,13 @@ REPLAY_ONLY = {
         "Brief rule 26, legality of after-hand shows, and with voluntaryShows BothCards that "
         "a show leaves no hole card hidden. PokerKit has no after-hand shows."
     ),
+    "seven-deuce-bounty": (
+        "The sevenDeuce bounty: a seat holding a seven and a deuce that wins, alone, every pot "
+        "it was in on every board is shown and paid by every other dealt-in seat, the amount or "
+        "all it holds. PokerKit has no bounty. The replay picks the seat from PokerKit's own "
+        "pots and winners, takes the payments from PokerKit's final stacks, and compares the "
+        "engine's payment, the show, and the final stacks with the payment added."
+    ),
     "showdown-must-table": (
         "Showdown brief rule 3, that a seat must table a hand that beats or ties the tabled "
         "hands of a pot another live seat contests. PokerKit lets any seat muck."
@@ -203,6 +210,9 @@ SETTING_CHOICES = {
 ANTE_FIELDS = {"BigBlindPays": {"_tag", "amount"}, "EveryPlayer": {"_tag", "amount"}, "NoAnte": {"_tag"}}
 
 
+BOUNTY_FIELDS = {"Bounty": {"_tag", "amount"}, "NoBounty": {"_tag"}}
+
+
 def known_setting(key, value):
     match key:
         case "bigBlind" | "maxRuns" | "smallBlind":
@@ -213,6 +223,8 @@ def known_setting(key, value):
             return isinstance(value, dict) and ANTE_FIELDS.get(value.get("_tag")) == set(value)
         case "straddle":
             return isinstance(value, dict) and set(value) == {"button", "underTheGun"}
+        case "sevenDeuce":
+            return isinstance(value, dict) and BOUNTY_FIELDS.get(value.get("_tag")) == set(value)
         case _:
             return value in SETTING_CHOICES.get(key, ())
 
@@ -1010,6 +1022,8 @@ class Hand:
         pokerkit_final = list(self.state.stacks)
         showdown = any(e["_tag"] in ("ShowdownReached", "ShowdownStarted") for e in events)
         if not showdown:
+            last = [self.order[i] for i, alive in enumerate(self.state.statuses) if alive]
+            pokerkit_final = self.with_bounty(pokerkit_final, last if len(last) == 1 else [])
             if engine_final != pokerkit_final:
                 self.differ("final-stacks", f"fold-out: engine {self.stacks_text(engine_final)}, pokerkit {self.stacks_text(pokerkit_final)}")
             return
@@ -1058,8 +1072,65 @@ class Hand:
             else:
                 self.differ("pokerkit-payout", f"pokerkit paid {dict(pokerkit_gain)}, its winners under the brief split {dict(expected_gain)}")
         adjusted = [pokerkit_final[i] + expected_gain[seat] - pokerkit_gain[seat] for i, seat in enumerate(self.order)]
+        unbeaten = [
+            seat
+            for seat in self.order
+            if any(seat in eligible for _, eligible in pokerkit_pots)
+            and all(self.winners(eligible, r) == [seat] for _, eligible in pokerkit_pots if seat in eligible for r in range(boards))
+        ]
+        adjusted = self.with_bounty(adjusted, unbeaten)
         if engine_final != adjusted:
             self.differ("final-stacks", f"engine {self.stacks_text(engine_final)}, pokerkit {self.stacks_text(adjusted)}")
+
+    def with_bounty(self, stacks, unbeaten):
+        rule = self.config.get("sevenDeuce", {"_tag": "NoBounty"})
+        events = list(self.events())
+        engine = [
+            {"seat": e["seat"], "payers": sorted((p["seat"], p["amount"]) for p in e["payers"])}
+            for e in events
+            if e["_tag"] == "BountyPaid"
+        ]
+        expected = []
+        if rule["_tag"] == "Bounty":
+            self.replay_checked.add("seven-deuce-bounty")
+            for seat in unbeaten:
+                if sorted(card // 4 for card in self.hole[self.index[seat]]) != [0, 5]:
+                    continue
+                payers = sorted(
+                    (other, min(rule["amount"], stacks[i]))
+                    for i, other in enumerate(self.order)
+                    if other != seat and stacks[i] > 0
+                )
+                if payers:
+                    expected.append({"seat": seat, "payers": payers})
+        if engine != expected:
+            self.differ("bounty", f"engine paid {engine}, pokerkit's winners and stacks owe {expected}")
+            return stacks
+        shown = defaultdict(set)
+        for event in events:
+            if event["_tag"] == "HandsTabled":
+                for hand in event["hands"]:
+                    shown[hand["seat"]].update(hand["cards"])
+            elif event["_tag"] == "ShowdownReached":
+                for entry in event["order"]:
+                    if entry["_tag"] == "Shown":
+                        shown[entry["seat"]].update(entry["cards"])
+            elif event["_tag"] in ("HandTabled", "CardsShown"):
+                shown[event["seat"]].update(event["cards"])
+        forced = [e["seat"] for e in events if e["_tag"] == "CardsShown"]
+        if not expected:
+            if forced:
+                self.differ("bounty-show", f"engine showed the cards of {forced} with no bounty owed")
+            return stacks
+        self.features.add("seven-deuce-bounty")
+        seat = expected[0]["seat"]
+        if shown[seat] != set(self.hole[self.index[seat]]) or any(other != seat for other in forced):
+            self.differ("bounty-show", f"seat {seat} was paid showing {sorted(shown[seat])}, and the engine showed cards of {forced}")
+        moves = Counter()
+        for other, amount in expected[0]["payers"]:
+            moves[other] -= amount
+            moves[seat] += amount
+        return [stacks[i] + moves[other] for i, other in enumerate(self.order)]
 
     def winners(self, eligible, board):
         key = (tuple(eligible), board)
@@ -1092,7 +1163,7 @@ class Hand:
                 for entry in event["order"]:
                     if entry["_tag"] == "Shown":
                         public[entry["seat"]].update(entry["cards"])
-            elif event["_tag"] == "HandTabled":
+            elif event["_tag"] in ("HandTabled", "CardsShown"):
                 public[event["seat"]].update(event["cards"])
         board = sum(len(e["cards"]) for e in events if e["_tag"] == "StreetDealt" and e["run"] == 1)
         ran_out = any(e["_tag"] == "RunsAgreed" for e in events) or any(e["_tag"] == "HandsTabled" for e in events)
@@ -1275,6 +1346,7 @@ def summarize(results, path, report):
         + ["short-all-in", "short-big-blind", "side-pots", "split-pots", "odd-chips"]
         + ["fold-out", "showdown", "mucks", "rejected-commands", "rabbit-hunt", "voluntary-show"]
         + ["interactive-showdown", "concession", "unshown-winner", "hidden-run-out", "casino-blinds"]
+        + ["seven-deuce-bounty"]
     )
     for feature in order + sorted(set(features) - set(order)):
         counts = features.get(feature, Counter())

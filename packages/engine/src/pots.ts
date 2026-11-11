@@ -1,5 +1,6 @@
 import { Option } from "effect";
 
+import { owedBounty } from "./bounty.js";
 import { Events } from "./events.js";
 import type { Event, EventOf } from "./events.js";
 import { SEAT_COUNT, chips, splitEvenly } from "./primitives.js";
@@ -151,9 +152,24 @@ export const foldOut = (state: InHand): readonly Event[] => {
   ];
 };
 
+const withOutcome = (hand: Hand, event: EventOf<"PotAwarded">): Hand => {
+  const [first, ...others] = event.winners;
+  const alone = first !== undefined && others.length === 0 ? [first.seat] : [];
+
+  return {
+    ...hand,
+    beaten: [
+      ...hand.beaten,
+      ...event.eligible.filter((seat) => !alone.includes(seat)),
+    ],
+    wonAlone: [...hand.wonAlone, ...alone],
+  };
+};
+
 export const awardPot = (state: TableState, event: EventOf<"PotAwarded">) =>
   whenInHand(state, (inHand) => {
-    let { hand, seats } = inHand;
+    let { seats } = inHand;
+    let hand = withOutcome(inHand.hand, event);
 
     for (const winner of event.winners) {
       hand = updatePlayer(hand, winner.seat, (player) => ({
@@ -182,6 +198,7 @@ export const endHand = (state: TableState) =>
         small: inHand.hand.smallBlindSeat,
       }),
       lastHand: Option.some({
+        bounty: owedBounty(inHand),
         hunted: false,
         players: inHand.hand.players.map((player) => ({
           folded: player.status === "Folded",

@@ -102,6 +102,7 @@ export const nightWinner = (view: ClosedView) => {
 const lastHandOf = (recapped: RecapMoment) => ({
   awards: [],
   boards: recapped.boards,
+  bounty: Option.none(),
   dealtIn: recapped.players.map(({ player, seat }) => ({
     folded: false,
     player,

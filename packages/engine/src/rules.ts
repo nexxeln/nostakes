@@ -26,6 +26,15 @@ export type Ante = typeof AnteSchema.Type;
 
 export const Antes = Data.taggedEnum<Ante>();
 
+export const SevenDeuceSchema = Schema.TaggedUnion({
+  Bounty: { amount: PositiveChipsSchema },
+  NoBounty: {},
+});
+
+export type SevenDeuce = typeof SevenDeuceSchema.Type;
+
+export const SevenDeuces = Data.taggedEnum<SevenDeuce>();
+
 export const StraddleRulesSchema = Schema.Struct({
   button: Schema.Boolean.annotate({
     description:
@@ -120,6 +129,11 @@ export const TableConfigSchema = Schema.Struct({
     description:
       "How many times the board runs when players are all in. Vote: every seat still in picks up to the most runs and the fewest picked wins. Fixed: no vote, the board always runs the most runs the deck allows.",
     title: "Runs when all in",
+  }),
+  sevenDeuce: setting(SevenDeuceSchema, SevenDeuces.NoBounty(), {
+    description:
+      "NoBounty, or a bounty for winning with a seven and a deuce of any suits. A seat that wins, alone, every pot it was in on every run of the board has that hand shown, and every other seat dealt into the hand pays it the amount, or all it holds when it holds less. The bounty is paid as the hand ends.",
+    title: "Seven-deuce bounty",
   }),
   showdown: setting(ShowdownRuleSchema, "Automatic", {
     description:

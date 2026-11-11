@@ -1,5 +1,12 @@
 import { describe, expect, it } from "@effect/vitest";
-import { Actions, Events, SeatIndexSchema } from "@nostakes/engine";
+import {
+  Actions,
+  CardSchema,
+  ChipsSchema,
+  Events,
+  SeatIndexSchema,
+  SevenDeuces,
+} from "@nostakes/engine";
 import { PlayerIdSchema } from "@nostakes/protocol";
 import {
   Actors,
@@ -83,6 +90,31 @@ const seatTwoPlayers = (room: ReturnType<typeof openPokerHost>) => {
   );
 };
 
+const bytesForDeck = (leading: readonly number[]) => {
+  const deck = [
+    ...leading,
+    ...Array.from({ length: 52 }, (_, card) => card).filter(
+      (card) => !leading.includes(card)
+    ),
+  ];
+
+  const cards = Array.from({ length: 52 }, (_, card) => card);
+  const bytes: number[] = [];
+
+  for (let top = 51; top > 0; top -= 1) {
+    const drawn = cards.indexOf(deck[top] ?? 0);
+    const held = cards[top] ?? 0;
+
+    bytes.push(drawn);
+    cards[top] = cards[drawn] ?? 0;
+    cards[drawn] = held;
+  }
+
+  return bytes;
+};
+
+const SEVEN_DEUCE_TO_THE_BIG_BLIND = bytesForDeck([22, 51, 0, 50]);
+
 const plainRoom = {
   avatar: "fox",
   name: "Ana",
@@ -100,7 +132,7 @@ describe("the poker room adapter", () => {
     const view = openView(welcomeView(room, ana, 1000));
 
     expect(encodeSettings(view.settings)).toBe(
-      '{"approval":{"chips":false,"joins":false,"seats":false},"betweenHandsSeconds":5,"buyIn":{"max":400,"min":40},"dealing":"Automatic","knockSeconds":300,"leavingMidHand":"ActedFor","locked":false,"moments":"All","pauseWhenAwaySeconds":120,"peeking":true,"runChoiceSeconds":15,"seats":9,"showdownSeconds":15,"shuffle":"Checked","sitOutAfterTimeouts":1,"table":{"allInHands":"FaceUp","ante":{"_tag":"NoAnte"},"bigBlind":2,"blindPosting":"HomeGame","maxRuns":1,"rabbitHunt":false,"rabbitHunters":"DealtIn","runCount":"Vote","showdown":"Interactive","showdownOrder":"RiverAggressor","smallBlind":1,"straddle":{"button":false,"underTheGun":0},"straddleSize":"Doubling","voluntaryShows":"EitherCard"},"timeBankRefill":{"_tag":"NoRefill"},"timeBankSeconds":60,"topUps":"UpToMax","turnSeconds":30}'
+      '{"approval":{"chips":false,"joins":false,"seats":false},"betweenHandsSeconds":5,"buyIn":{"max":400,"min":40},"dealing":"Automatic","knockSeconds":300,"leavingMidHand":"ActedFor","locked":false,"moments":"All","pauseWhenAwaySeconds":120,"peeking":true,"runChoiceSeconds":15,"seats":9,"showdownSeconds":15,"shuffle":"Checked","sitOutAfterTimeouts":1,"table":{"allInHands":"FaceUp","ante":{"_tag":"NoAnte"},"bigBlind":2,"blindPosting":"HomeGame","maxRuns":1,"rabbitHunt":false,"rabbitHunters":"DealtIn","runCount":"Vote","sevenDeuce":{"_tag":"NoBounty"},"showdown":"Interactive","showdownOrder":"RiverAggressor","smallBlind":1,"straddle":{"button":false,"underTheGun":0},"straddleSize":"Doubling","voluntaryShows":"EitherCard"},"timeBankRefill":{"_tag":"NoRefill"},"timeBankSeconds":60,"topUps":"UpToMax","turnSeconds":30}'
     );
   });
 
@@ -225,6 +257,72 @@ describe("the poker room adapter", () => {
       Option.some(1)
     );
     expect(view.holeCards).toHaveLength(2);
+  });
+
+  it("pays a seven-deuce bounty in the batch that ends the hand, and a watcher who catches up reads the show and the payment after the hand's end", () => {
+    const room = openPokerHost({
+      ...plainRoom,
+      settings: {
+        ...plainRoom.settings,
+        table: {
+          ...plainRoom.settings.table,
+          sevenDeuce: SevenDeuces.Bounty({ amount: ChipsSchema.make(30) }),
+        },
+      },
+    });
+
+    room.join(cy, 1000, "Cy");
+    seatTwoPlayers(room);
+    room.send(ana, "start", 1004, Commands.StartGame.make({}));
+
+    const before = room.host.snapshot().headSeq;
+
+    room.runDue(1004, (size) =>
+      Uint8Array.from({ length: size }, (_, index) =>
+        index < SEVEN_DEUCE_TO_THE_BIG_BLIND.length
+          ? (SEVEN_DEUCE_TO_THE_BIG_BLIND[index] ?? 0)
+          : 0
+      )
+    );
+    room.send(ana, "fold", 1006, Commands.Act.make({ action: Actions.Fold() }));
+
+    const missed = room.decodeFrame(
+      room.welcome(cy, Option.some(before), 1007)
+    );
+
+    const tableEvents =
+      room.host.codec.server.guards.Welcome(missed) &&
+      room.host.codec.catchUp.guards.Missed(missed.catchUp)
+        ? missed.catchUp.events.flatMap((event) =>
+            SeenEvents.$is("Table")(event) ? [event.event] : []
+          )
+        : [];
+
+    expect(tableEvents.slice(-3)).toEqual([
+      Events.HandEnded({ handNumber: 1 }),
+      Events.CardsShown({
+        cards: [CardSchema.make(22), CardSchema.make(0)],
+        seat: SeatIndexSchema.make(1),
+      }),
+      Events.BountyPaid({
+        payers: [
+          { amount: ChipsSchema.make(30), seat: SeatIndexSchema.make(0) },
+        ],
+        seat: SeatIndexSchema.make(1),
+      }),
+    ]);
+
+    const view = openView(welcomeView(room, cy, 1008));
+
+    expect(
+      view.seats
+        .map((seat) =>
+          Option.getOrUndefined(
+            seat.occupant.pipe(Option.map((occupant) => occupant.stack))
+          )
+        )
+        .slice(0, 2)
+    ).toEqual([9, 431]);
   });
 
   it("serves the settlement to a member of a closed room and refuses every command after it", () => {

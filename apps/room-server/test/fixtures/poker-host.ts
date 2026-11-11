@@ -111,7 +111,10 @@ export const openPokerHost = (request: OpenRequest) => {
       connections()
     );
 
-  const runDue = (at: number) =>
+  const runDue = (
+    at: number,
+    entropy: (size: number) => Uint8Array = (size) => shuffleBytesFor(at, size)
+  ) =>
     host.nextDeadline().pipe(
       Option.filter((deadline) => deadline.at <= at),
       Option.map(({ due }) =>
@@ -121,7 +124,7 @@ export const openPokerHost = (request: OpenRequest) => {
             command: pokerRoom.serverCommand(
               due,
               at,
-              shuffleBytesFor(at, pokerRoom.entropyFor(due)),
+              entropy(pokerRoom.entropyFor(due)),
               Option.none()
             ),
             grant: Option.none(),

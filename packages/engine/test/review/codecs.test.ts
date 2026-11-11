@@ -212,6 +212,7 @@ describe("JSON codecs for phase 2 storage and transport", () => {
         expect(tags(samples.flatMap((sample) => sample.events))).toStrictEqual([
           "AntePosted",
           "BlindPosted",
+          "BountyPaid",
           "Called",
           "CardsShown",
           "Checked",

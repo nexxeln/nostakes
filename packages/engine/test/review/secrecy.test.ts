@@ -20,6 +20,7 @@ const cardsCarried = (event: Event): readonly Card[] =>
   Events.$match(event, {
     AntePosted: () => [],
     BlindPosted: () => [],
+    BountyPaid: () => [],
     Called: () => [],
     CardsShown: ({ cards }) => cards,
     Checked: () => [],

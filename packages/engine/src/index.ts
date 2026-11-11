@@ -8,6 +8,8 @@ export {
   type RaiseRange,
 } from "./actions.js";
 
+export { isSevenDeuce } from "./bounty.js";
+
 export {
   PendingDecisions,
   legalActions,
@@ -121,6 +123,8 @@ export {
   RabbitHuntersSchema,
   RunCountRuleSchema,
   RunCountSchema,
+  SevenDeuceSchema,
+  SevenDeuces,
   ShowdownOrderSchema,
   ShowdownRuleSchema,
   StraddleRulesSchema,
@@ -133,6 +137,7 @@ export {
   type RabbitHunters,
   type RunCount,
   type RunCountRule,
+  type SevenDeuce,
   type ShowdownOrder,
   type ShowdownRule,
   type StraddleRules,

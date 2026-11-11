@@ -180,6 +180,7 @@ describe("a spectator at a showdown", () => {
           },
         ],
         boards: [cards("2c 7h 9d Jc 4s")],
+        bounty: Option.none(),
         dealtIn: [
           { folded: false, player: ann, seat: seat(0) },
           { folded: true, player: bob, seat: seat(1) },

@@ -11,6 +11,7 @@ import {
   Seats,
   ShowdownEntries,
   ShownCardsSchema,
+  SevenDeuces,
   TableConfigSchema,
   TableStates,
 } from "@nostakes/engine";
@@ -161,6 +162,9 @@ const tableConfig = (random: Random): TableConfig => {
     rabbitHunt: random.chance(50),
     rabbitHunters: random.chance(30) ? "StillIn" : "DealtIn",
     runCount: random.chance(25) ? "Fixed" : "Vote",
+    sevenDeuce: random.chance(50)
+      ? SevenDeuces.Bounty({ amount: chips(1 + random.below(bigBlind * 30)) })
+      : SevenDeuces.NoBounty(),
     showdown: random.chance(60) ? "Interactive" : "Automatic",
     showdownOrder: random.chance(30) ? "LastAggressor" : "RiverAggressor",
     smallBlind: chips(smallBlind),

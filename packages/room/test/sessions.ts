@@ -9,6 +9,7 @@ import {
   RunCountSchema,
   SeatIndexSchema,
   Seats,
+  SevenDeuces,
   ShownCardsSchema,
   TableConfigSchema,
   TableStates,
@@ -55,7 +56,7 @@ import type {
   TopUpRule,
 } from "../src/index.js";
 import { dealFromBeacon, outageAt, sealAt } from "./beacon.js";
-import { bytesFrom, drand } from "./fixtures.js";
+import { bytesFrom, drand, sevenDeuceBytes } from "./fixtures.js";
 import { seededRandom } from "./random.js";
 import type { SeededRandom } from "./random.js";
 
@@ -114,6 +115,9 @@ export const tableConfigFrom = (random: SeededRandom): TableConfig => {
     rabbitHunt: random.chance(1, 2),
     rabbitHunters: random.chance(1, 3) ? "StillIn" : "DealtIn",
     runCount: random.chance(1, 4) ? "Fixed" : "Vote",
+    sevenDeuce: random.chance(1, 2)
+      ? SevenDeuces.Bounty({ amount: chips(1 + random.below(small * 40)) })
+      : SevenDeuces.NoBounty(),
     showdown: random.chance(1, 2) ? "Interactive" : "Automatic",
     showdownOrder: random.chance(1, 3) ? "LastAggressor" : "RiverAggressor",
     smallBlind: chips(small),
@@ -121,6 +125,17 @@ export const tableConfigFrom = (random: SeededRandom): TableConfig => {
     straddleSize: random.chance(1, 3) ? "TwoBigBlinds" : "Doubling",
     voluntaryShows: random.chance(1, 3) ? "BothCards" : "EitherCard",
   });
+};
+
+const dealBytes = (state: Open, seed: number) => {
+  const playing = state.table.seats.filter(
+    (seat) => Seats.$is("Occupied")(seat) && !seat.sittingOut && seat.stack > 0
+  ).length;
+
+  return SevenDeuces.$is("Bounty")(state.table.config.sevenDeuce) &&
+    seed % 3 !== 0
+    ? sevenDeuceBytes(seed, playing)
+    : bytesFrom(seed);
 };
 
 const CLOCK_SECONDS = [0, 5, 30];
@@ -437,7 +452,7 @@ const playOrDeal = (
           ? RoomCommands.Deal({
               at: millis(when),
               by: server,
-              shuffleBytes: bytesFrom(seed),
+              shuffleBytes: dealBytes(state, seed),
             })
           : toDealIn(state, random, at);
       },
@@ -551,7 +566,7 @@ const serverCommand = (
         return RoomCommands.Deal({
           at: sent,
           by,
-          shuffleBytes: bytesFrom(random.below(1_000_000_000)),
+          shuffleBytes: dealBytes(state, random.below(1_000_000_000)),
         });
       }
 

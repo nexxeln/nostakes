@@ -38,6 +38,8 @@ import * as Hex from "effect/encoding/Hex";
 import { pokerRoom } from "../../src/poker-room.js";
 import type { MemberCommand } from "../../src/poker-room.js";
 import type { BotRecord, SocketRecord } from "./bot.js";
+import { NO_BOUNTY_WATCH, neverPaid, watchedBounty } from "./bounty-checks.js";
+import type { BountyWatch } from "./bounty-checks.js";
 import type { ClientBotRecord } from "./client-bot.js";
 import {
   addFairness,
@@ -105,6 +107,7 @@ export const COUNT_NAMES = [
   "approvals",
   "bankStarts",
   "bigBlindAnteHands",
+  "bounties",
   "catchUps",
   "catchUpsSkipped",
   "clientBots",
@@ -197,6 +200,7 @@ export const emptyCounts = (): NightCounts => ({
   approvals: 0,
   bankStarts: 0,
   bigBlindAnteHands: 0,
+  bounties: 0,
   catchUps: 0,
   catchUpsSkipped: 0,
   clientBots: 0,
@@ -385,6 +389,7 @@ interface Knowledge {
 }
 
 interface Ledger {
+  bounty: BountyWatch;
   quiet: boolean;
   lastTag: RoomEvent["_tag"];
   bought: number;
@@ -2048,6 +2053,7 @@ export const checkNight = (evidence: NightEvidence): NightVerdict => {
 
   const ledger: Ledger = {
     bought: 0,
+    bounty: NO_BOUNTY_WATCH,
     cashed: 0,
     deadline: 0,
     decks: new Set(),
@@ -2079,6 +2085,15 @@ export const checkNight = (evidence: NightEvidence): NightVerdict => {
 
     if (RoomEvents.$is("Table")(event)) {
       observeTable(checker, ledger, state, event.event);
+
+      const bounty = watchedBounty(ledger.bounty, state, event.event);
+
+      ledger.bounty = bounty.watch;
+      checker.counts.bounties += bounty.paid;
+
+      for (const problem of bounty.problems) {
+        report(checker, problem);
+      }
     }
 
     observeMoney(ledger, event);
@@ -2115,6 +2130,10 @@ export const checkNight = (evidence: NightEvidence): NightVerdict => {
     if (needed.has(seq)) {
       statesAfter.set(seq, state);
     }
+  }
+
+  for (const problem of neverPaid(ledger.bounty)) {
+    report(checker, problem);
   }
 
   traceCommands(checker, events, received.traces, statesAfter);

@@ -176,6 +176,7 @@ describe("the house rules copy", () => {
       "table.runCount",
       "runChoiceSeconds",
       "table.rabbitHunters",
+      "table.sevenDeuce.amount",
     ]);
   });
 

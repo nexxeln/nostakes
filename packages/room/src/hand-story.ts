@@ -31,6 +31,7 @@ export interface HandStory {
   readonly allIn: readonly SeatIndex[];
   readonly bigBlind: number;
   readonly boards: readonly (readonly Card[])[];
+  readonly bounty: number;
   readonly committed: readonly number[];
   readonly common: readonly Card[];
   readonly deadMoney: number;
@@ -50,6 +51,7 @@ const opening = (handNumber: number): HandStory => ({
   allIn: [],
   bigBlind: 0,
   boards: [[]],
+  bounty: 0,
   committed: Array.from({ length: SEAT_COUNT }, () => 0),
   common: [],
   deadMoney: 0,
@@ -174,6 +176,15 @@ const told = (story: HandStory, event: SeenTableEvent): HandStory =>
         bigBlind:
           blind === "Big" ? Math.max(story.bigBlind, amount) : story.bigBlind,
       }),
+      BountyPaid: ({ payers }) => {
+        let { bounty } = story;
+
+        for (const payer of payers) {
+          bounty += payer.amount;
+        }
+
+        return { ...story, bounty };
+      },
       Called: ({ allIn, amount, seat }) =>
         wagering(story, { added: amount, allIn, raise: false, seat }),
       CardsShown: ({ cards, seat }) => showing(story, seat, cards),

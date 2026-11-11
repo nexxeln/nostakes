@@ -108,6 +108,7 @@ export interface Straddle {
 
 export interface Hand {
   readonly aggressor: Option.Option<SeatIndex>;
+  readonly beaten: readonly SeatIndex[];
   readonly bigBlindSeat: SeatIndex;
   readonly board: readonly Card[];
   readonly deadMoney: Chips;
@@ -117,6 +118,7 @@ export interface Hand {
   readonly smallBlindSeat: SeatIndex;
   readonly straddles: readonly Straddle[];
   readonly street: Street;
+  readonly wonAlone: readonly SeatIndex[];
 }
 
 export interface LastHandPlayer {
@@ -127,7 +129,13 @@ export interface LastHandPlayer {
   readonly seat: SeatIndex;
 }
 
+export interface OwedBounty {
+  readonly amount: Chips;
+  readonly seat: SeatIndex;
+}
+
 export interface LastHand {
+  readonly bounty: Option.Option<OwedBounty>;
   readonly hunted: boolean;
   readonly players: readonly LastHandPlayer[];
   readonly undealt: readonly Card[];

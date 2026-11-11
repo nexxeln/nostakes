@@ -11,6 +11,7 @@ interface Layout {
 export const MEASURES = {
   AlarmRefused: { blobs: ["deadline"], doubles: [], from: "Server" },
   BeaconOutage: { blobs: [], doubles: [], from: "Server" },
+  BountyPaid: { blobs: [], doubles: ["payers"], from: "Server" },
   ClientError: {
     blobs: ["name", "message", "build", "screen"],
     doubles: [],

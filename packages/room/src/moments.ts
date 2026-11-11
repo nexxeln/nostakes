@@ -6,6 +6,7 @@ import {
   describe,
   evaluate,
   handCategory,
+  isSevenDeuce,
   rankOf,
   suitOf,
 } from "@nostakes/engine";
@@ -72,7 +73,7 @@ export const MomentSchema = Schema.TaggedUnion({
     street: StreetSchema,
   },
   SameHand: { ...shared, rank: HandRankSchema },
-  SevenDeuce: { ...shared, showdown: Schema.Boolean },
+  SevenDeuce: { ...shared, bounty: ChipsSchema, showdown: Schema.Boolean },
   SplitRuns: { ...shared, runs: Schema.Int },
   Suckout: { ...shared, odds: OddsSchema, street: StreetSchema },
 });
@@ -179,10 +180,6 @@ const SET_RANKED: ReadonlySet<HandCategory> = new Set([
 const QUEEN = 10;
 
 const ACE = 12;
-
-const SEVEN = 5;
-
-const DEUCE = 0;
 
 const FULL_BOARD = 5;
 
@@ -521,20 +518,18 @@ const sevenDeuces = (story: HandStory, pot: Chips): readonly Moment[] => {
   return [...winners].flatMap((seat) =>
     Option.match(shownHand(story, seat), {
       onNone: () => [],
-      onSome: (hole) => {
-        const ranks = hole.map((card) => rankOf(card)).toSorted(byNumber);
-
-        return ranks[0] === DEUCE && ranks[1] === SEVEN
+      onSome: (hole) =>
+        isSevenDeuce(hole)
           ? [
               Moments.SevenDeuce({
+                bounty: chipsOf(story.bounty),
                 pot,
                 seats: [seat],
                 showdown: story.showdown,
                 tier: 1,
               }),
             ]
-          : [];
-      },
+          : [],
     })
   );
 };

@@ -686,6 +686,7 @@ export const funnelLines = (funnel: Funnel) => [
     })
   ),
   line("hands dealt", listed(funnel.counts.get("HandFinished"))),
+  line("7-2 bounties", listed(funnel.counts.get("BountyPaid"))),
   line("abandoned", plural(funnel.abandoned)),
   line("rules changed", ruleKeys(funnel)),
 ];

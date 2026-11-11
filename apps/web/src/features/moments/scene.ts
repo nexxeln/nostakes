@@ -129,7 +129,7 @@ const factsFor = (
       Cooler: () => 0,
       HeroCall: ({ call }) => call,
       SameHand: () => 0,
-      SevenDeuce: () => 0,
+      SevenDeuce: ({ bounty }) => bounty,
       SplitRuns: () => 0,
       Suckout: () => 0,
     }),

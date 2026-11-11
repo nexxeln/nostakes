@@ -288,6 +288,7 @@ const tell = (telling: Telling, event: SeenTableEvent, at: number): Told =>
           post: blindPost(blind, dead),
           seat,
         }),
+      BountyPaid: () => NOTHING,
       Called: ({ allIn, amount, seat }) => [
         ReplaySteps.Acted({
           act: "Call",

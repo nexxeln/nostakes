@@ -11,6 +11,7 @@ import {
   RunCountSchema,
   SeatIndexSchema,
   Seats,
+  SevenDeuces,
   ShownCardsSchema,
   TableConfigSchema,
   TableStates,
@@ -97,6 +98,11 @@ const randomConfig = (random: Random): TableConfig => {
     rabbitHunt: random.chance(50),
     rabbitHunters: random.chance(30) ? "StillIn" : "DealtIn",
     runCount: random.chance(25) ? "Fixed" : "Vote",
+    sevenDeuce: random.chance(50)
+      ? SevenDeuces.Bounty({
+          amount: chipCount(1 + random.below(bigBlind * 30)),
+        })
+      : SevenDeuces.NoBounty(),
     showdown: random.chance(50) ? "Interactive" : "Automatic",
     showdownOrder: random.chance(30) ? "LastAggressor" : "RiverAggressor",
     smallBlind: chipCount(smallBlind),
@@ -128,6 +134,32 @@ const shuffledDeck = (random: Random) => {
   }
 
   return DeckSchema.make(cards, { disableChecks: true });
+};
+
+const SEVENS = [20, 21, 22, 23];
+
+const DEUCES = [0, 1, 2, 3];
+
+const decodeDeck = Schema.decodeSync(DeckSchema);
+
+const sevenDeuceDeck = (random: Random, dealt: number) => {
+  const cards: number[] = [...shuffledDeck(random)];
+  const place = random.below(dealt);
+
+  const put = (position: number, wanted: number) => {
+    const from = cards.indexOf(wanted);
+    const held = cards[position];
+
+    if (held !== undefined && from !== -1) {
+      cards[position] = wanted;
+      cards[from] = held;
+    }
+  };
+
+  put(place, random.pick(SEVENS) ?? 20);
+  put(dealt + place, random.pick(DEUCES) ?? 0);
+
+  return decodeDeck(cards);
 };
 
 const occupied = (state: TableState) =>
@@ -634,7 +666,10 @@ const exportHands = (seed: number, wanted: number) =>
 
     const startHand = (): HandRecord | null => {
       const straddles = plannedStraddles(state, random).map(seatAt);
-      const deck = shuffledDeck(random);
+
+      const deck = random.chance(6)
+        ? sevenDeuceDeck(random, Math.max(1, dealtIn(state).length))
+        : shuffledDeck(random);
 
       const before: TableSnapshot = {
         config: state.config,

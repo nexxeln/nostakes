@@ -63,6 +63,24 @@ const blindKind = (blind: "Small" | "Big", dead: boolean): PostKind => {
   return blind === "Small" ? "SmallBlind" : "BigBlind";
 };
 
+export const bountyHappenings = (
+  collector: number,
+  payers: readonly { readonly amount: number; readonly seat: number }[]
+): readonly Happening[] => {
+  let collected = 0;
+
+  for (const payer of payers) {
+    collected += payer.amount;
+  }
+
+  return [
+    ...payers.map(({ amount, seat }) =>
+      Happenings.Say.make({ seat, text: `Bounty −${amount}` })
+    ),
+    Happenings.Say.make({ seat: collector, text: `Bounty +${collected}` }),
+  ];
+};
+
 const tableHappenings = (
   event: SeenTableEvent,
   facing: number
@@ -79,6 +97,7 @@ const tableHappenings = (
           seat,
         }),
       ],
+      BountyPaid: ({ payers, seat }) => bountyHappenings(seat, payers),
       Called: ({ allIn, amount, seat }) => [
         Happenings.Call.make({ added: amount, allIn, seat }),
       ],

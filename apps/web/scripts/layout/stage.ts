@@ -3,8 +3,10 @@ import { codeFor, randomAvatar, render } from "@nostakes/avatar";
 import "../../src/client/tokens.css";
 import "../../src/client/app.css";
 import { defineTable } from "../../src/client/table/element.js";
-import { TABLE_TAG } from "../../src/features/table/snapshot.js";
+import { bountyHappenings } from "../../src/features/table/from-room.js";
+import { Happenings, TABLE_TAG } from "../../src/features/table/snapshot.js";
 import type {
+  Happening,
   SeatPost,
   SeatSnapshot,
   TableSnapshot,
@@ -330,8 +332,57 @@ const acting: TableSnapshot = {
   toAct: actor,
 };
 
+const BOUNTY = 20;
+
+const BOUNTY_POT = 26;
+
+const BOUNTY_WINNER = Math.min(2, players - 1);
+
+const BOUNTY_CARDS = ["7h", "2c"];
+
+const bountyPaid: TableSnapshot = {
+  ...afterHand([], false),
+  boards: [[]],
+  seats: mid.seats.map((seat) =>
+    seat.seat === BOUNTY_WINNER
+      ? {
+          ...seat,
+          bet: 0,
+          cardsHeld: 2,
+          shown: BOUNTY_CARDS,
+          stack: seat.stack + BOUNTY_POT + BOUNTY * (players - 1),
+          status: "In",
+        }
+      : {
+          ...seat,
+          bet: 0,
+          cardsHeld: 0,
+          shown: [],
+          stack: seat.stack - BOUNTY,
+          status: "Folded",
+        }
+  ),
+};
+
+const bountyTold: readonly Happening[] = [
+  Happenings.Show.make({
+    cards: BOUNTY_CARDS,
+    label: "Shows",
+    seat: BOUNTY_WINNER,
+  }),
+  ...bountyHappenings(
+    BOUNTY_WINNER,
+    bountyPaid.seats.flatMap(({ seat }) =>
+      seat === BOUNTY_WINNER ? [] : [{ amount: BOUNTY, seat }]
+    )
+  ),
+];
+
+const TOLD = new Map<string, readonly Happening[]>([["bounty", bountyTold]]);
+
 const SCENES = new Map<string, TableSnapshot>([
   ["acting", acting],
+  ["bounty", bountyPaid],
   ["after", afterHand([], false)],
   ["after-one", afterHand(["Kh"], false)],
   ["after-all", afterHand(HERO_CARDS, false)],
@@ -438,6 +489,17 @@ const mount = () => {
 
   if (definedLate) {
     defineTable();
+  }
+
+  const told = TOLD.get(params.get("scene") ?? "") ?? [];
+
+  if (told.length > 0) {
+    requestAnimationFrame(() => {
+      table.snapshot = {
+        ...snapshot,
+        events: told.map((happening, index) => ({ happening, id: index + 1 })),
+      };
+    });
   }
 
   document.documentElement.dataset.staged = "true";

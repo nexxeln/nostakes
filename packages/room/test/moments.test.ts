@@ -402,6 +402,7 @@ describe("the rest of the catalogue", () => {
       })
     ).toStrictEqual([
       Moments.SevenDeuce({
+        bounty: pot(0),
         pot: pot(20),
         seats: seats(0),
         showdown: true,

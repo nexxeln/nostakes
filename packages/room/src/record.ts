@@ -35,6 +35,10 @@ const updated = (record: HandRecord, event: Event): HandRecord =>
       mucked: [...record.mucked, seat],
     })),
     Match.tag("RabbitHunted", ({ cards }) => ({ ...record, rabbit: cards })),
+    Match.tag("BountyPaid", ({ payers, seat }) => ({
+      ...record,
+      bounty: Option.some({ payers, seat }),
+    })),
     Match.orElse(() => record)
   );
 
@@ -47,6 +51,7 @@ export const recorded = (
       Option.some({
         awards: [],
         boards: [[]],
+        bounty: Option.none(),
         handNumber,
         mucked: [],
         rabbit: [],

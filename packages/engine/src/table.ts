@@ -17,6 +17,7 @@ import {
   returnUncalled,
   streetIsOpen,
 } from "./betting.js";
+import { collectBounty, payBounty } from "./bounty.js";
 import { Commands } from "./commands.js";
 import type { Command } from "./commands.js";
 import { Events } from "./events.js";
@@ -128,6 +129,10 @@ const evolveEvent = Events.$match({
     (event) =>
     (state: TableState): TableState =>
       postBlind(state, event),
+  BountyPaid:
+    (event) =>
+    (state: TableState): TableState =>
+      payBounty(state, event),
   Called:
     (event) =>
     (state: TableState): TableState =>
@@ -279,7 +284,7 @@ const settle = (
 
 const automatic = (state: TableState): readonly Event[] => {
   if (!isInHand(state)) {
-    return [];
+    return collectBounty(state);
   }
 
   return Phases.$match(state.hand.phase, {

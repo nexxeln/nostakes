@@ -34,6 +34,7 @@ export const PublicHandStartedSchema = Schema.TaggedStruct("HandStarted", {
 export const SeenTableEventSchema = Schema.Union([
   cases.AntePosted,
   cases.BlindPosted,
+  cases.BountyPaid,
   cases.Called,
   cases.CardsShown,
   cases.Checked,
