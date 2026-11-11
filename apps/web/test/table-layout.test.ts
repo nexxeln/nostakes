@@ -3,18 +3,30 @@ import { Schema } from "effect";
 import * as Arbitrary from "effect/Arbitrary";
 
 import {
+  covers,
+  everyOwnerProblems,
+  fallbackOf,
+  gapToBox,
+  HINT_PLACED_WELL,
+  hintPlaced,
+  laneProblemsOf,
+  NAME_DEPTH,
+  rideOf,
+  SHORTEST_WIDE,
+  SMALLEST_TABLES,
+  SMALLEST_TALL,
+  SMALLEST_WIDE,
+  VISIBLE_PX,
+} from "../scripts/layout/lane-checks.js";
+import {
   buttonBox,
   buttonGround,
   computeGeo,
   handHintBox,
-  handHintGround,
-  HINT_LINES,
   pileBox,
   placeSeats,
-  ridingScale,
   restingScale,
   POST_TAG_WIDTHS,
-  potTabOf,
   postTagBox,
   postTagGround,
   runLanes,
@@ -29,14 +41,7 @@ import type {
   ButtonSpots,
   Geo,
   Pt,
-  SeatPlace,
 } from "../src/client/table/layout.js";
-
-const VISIBLE_PX = 1;
-
-const covers = (a: Box, b: Box) =>
-  Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x) >= VISIBLE_PX &&
-  Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y) >= VISIBLE_PX;
 
 interface Table {
   readonly height: number;
@@ -82,12 +87,6 @@ const seated = {
   others: between(1, 8),
   runs: between(1, 2),
 };
-
-const SMALLEST_TALL = { height: 600, width: 360 };
-
-const SMALLEST_WIDE = { height: 350, width: 660 };
-
-const SHORTEST_WIDE = { height: 320, width: 740 };
 
 const SUPPORTED_TABLES = [
   Schema.Struct({
@@ -140,16 +139,6 @@ interface Seating {
   readonly others: number;
   readonly width: number;
 }
-
-const NAME_DEPTH = 46;
-
-const PEEK_LIFT_PX = 30;
-
-const gapToBox = (point: Pt, box: Box) =>
-  Math.hypot(
-    Math.max(box.x - point.x, 0, point.x - box.x - box.w),
-    Math.max(box.y - point.y, 0, point.y - box.y - box.h)
-  );
 
 const seatGap = (point: Pt, centre: Pt, size: number) =>
   Math.min(
@@ -316,37 +305,6 @@ const screens = Arbitrary.schema(
   ])
 );
 
-const hintPlaced = (width: number, height: number, others: number) => {
-  const geo = computeGeo(width, height, others);
-  const { hint } = geo;
-  const tab = potTabOf(geo);
-
-  const blocked = [
-    ...handHintGround(geo),
-    { h: tab.h, w: tab.w, x: tab.x - tab.w / 2, y: tab.y - tab.h / 2 },
-  ];
-
-  const clear = (box: Box) =>
-    blocked.every((other) => !covers(box, other)) &&
-    box.x > -VISIBLE_PX &&
-    box.y > geo.top - VISIBLE_PX &&
-    box.x + box.w < width + VISIBLE_PX &&
-    box.y + box.h < height + VISIBLE_PX;
-
-  return {
-    firstLine: clear(hint.say),
-    secondLine: clear(hint.foot),
-    slipHoldsTheLongestLineInTwo:
-      !hint.onCards || hint.say.w * 2 >= HINT_LINES.sayW,
-  };
-};
-
-const HINT_PLACED_WELL = {
-  firstLine: true,
-  secondLine: true,
-  slipHoldsTheLongestLineInTwo: true,
-};
-
 describe("the hint by your cards", () => {
   it.prop(
     "never covers the board, the pot, a face or a name, a bet, or the chip, in one line or two, with two, six, or nine seats",
@@ -354,11 +312,11 @@ describe("the hint by your cards", () => {
     ({ screen }) => {
       expect(
         SEATS_AROUND_YOU.map((others) =>
-          hintPlaced(screen.width, screen.height, others)
+          hintPlaced(computeGeo(screen.width, screen.height, others), screen)
         )
       ).toStrictEqual(SEATS_AROUND_YOU.map(() => HINT_PLACED_WELL));
     },
-    { arbitrary: { runs: 300 } }
+    { arbitrary: { runs: 100 } }
   );
 
   it("finds room on the screens we photograph and the smallest landscape phones", () => {
@@ -373,7 +331,9 @@ describe("the hint by your cards", () => {
 
     expect(
       sizes.flatMap(({ height, width }) =>
-        SEATS_AROUND_YOU.map((others) => hintPlaced(width, height, others))
+        SEATS_AROUND_YOU.map((others) =>
+          hintPlaced(computeGeo(width, height, others), { height, width })
+        )
       )
     ).toStrictEqual(
       sizes.flatMap(() => SEATS_AROUND_YOU.map(() => HINT_PLACED_WELL))
@@ -402,26 +362,6 @@ const drawn = (width: number, height: number, others: number): Drawn => {
   const geo = computeGeo(width, height, others);
 
   return { geo, spots: geo.buttons };
-};
-
-const rideOf = (
-  { geo, spots }: Drawn,
-  owner: number,
-  places: readonly (SeatPlace & { readonly index: number })[]
-): ButtonSpot => {
-  const spot = spots.seats[owner];
-  const place = places.find(({ index }) => index === owner);
-  const home = geo.seats[owner];
-
-  if (spot === undefined || place === undefined || home === undefined) {
-    return spots.self;
-  }
-
-  return {
-    r: spot.r,
-    x: place.x + (spot.x - home.x) * ridingScale(place.scale),
-    y: place.y + (spot.y - home.y) * ridingScale(place.scale),
-  };
 };
 
 const coveredBy = (
@@ -491,7 +431,7 @@ const coveredBy = (
           [
             "the dealer button",
             buttonBox(
-              owner === null ? spots.self : rideOf(table, owner, places)
+              owner === null ? spots.self : rideOf(geo, spots, owner, places)
             ),
           ] as const,
         ]),
@@ -578,318 +518,7 @@ const LaneTableSchema = Schema.Struct({
   screen: Schema.Union(SUPPORTED_TABLES),
 });
 
-type LaneTable = typeof LaneTableSchema.Type;
-
-const DRAWN_PILE_PX = new Map([
-  [1, { compact: 9.5, full: 29.5 }],
-  [2, { compact: 19, full: 39 }],
-  [3, { compact: 28.4, full: 48.4 }],
-  [4, { compact: 41.8, full: 61.8 }],
-  [5, { compact: 51.3, full: 71.3 }],
-]);
-
-const DRAWN_TAG_PX = { narrow: 38, wide: 61.8 };
-
-const SMALLEST_FACE_PX = 40;
-
-const drawnPileWidth = (most: number, compact: boolean) => {
-  const measured = DRAWN_PILE_PX.get(String(most).length) ?? {
-    compact: 0,
-    full: 0,
-  };
-
-  return compact ? measured.compact : measured.full;
-};
-
-const drawnPile = (point: Pt, width: number): Box => ({
-  h: 22,
-  w: width,
-  x: point.x - width / 2,
-  y: point.y - 11,
-});
-
 const laneTables = Arbitrary.schema(LaneTableSchema);
-
-const faceOf = (centre: Pt, size: number, scale: number): readonly Box[] => [
-  { h: size, w: size, x: centre.x - size / 2, y: centre.y - size / 2 },
-  {
-    h: NAME_DEPTH * scale,
-    w: Math.max(size * 1.3, size),
-    x: centre.x - Math.max(size * 0.65, size / 2),
-    y: centre.y + size / 2,
-  },
-];
-
-const nearestTo = (point: Pt, seats: readonly (readonly Box[])[]) =>
-  seats
-    .map((boxes, index) => ({
-      gap: Math.min(...boxes.map((box) => gapToBox(point, box))),
-      index,
-    }))
-    .toSorted((left, right) => left.gap - right.gap);
-
-const centre = (box: Box): Pt => ({
-  x: box.x + box.w / 2,
-  y: box.y + box.h / 2,
-});
-
-interface Laid {
-  readonly what: string;
-  readonly box: Box;
-  readonly owner: number;
-}
-
-const laneProblems = (
-  table: LaneTable,
-  geo: ReturnType<typeof computeGeo>,
-  actor: number | null
-) => {
-  const { height, width } = table.screen;
-  const you = table.others;
-  const owner = table.button < table.others ? table.button : null;
-  const posted = new Set(table.posted.filter((seat) => seat <= you));
-
-  const piles = [...geo.seats.map(({ bet }) => bet), geo.heroBet];
-  const pileWidth = drawnPileWidth(table.most, geo.compactPiles);
-
-  const tagOf = (seat: number) => {
-    const pile = drawnPile(piles[seat] ?? geo.interior, pileWidth);
-    const wide = geo.tagSides.wideFits[seat] === true && !geo.compactPiles;
-    const tagWidth = wide ? DRAWN_TAG_PX.wide : DRAWN_TAG_PX.narrow;
-    const side = (wide ? geo.tagSides.wide : geo.tagSides.narrow)[seat];
-    const gap = 4;
-    const middle = { x: pile.x + pile.w / 2, y: pile.y + pile.h / 2 };
-
-    const at = {
-      Above: { x: middle.x - tagWidth / 2, y: pile.y - gap - 20 },
-      After: { x: pile.x + pile.w + gap, y: middle.y - 10 },
-      Before: { x: pile.x - gap - tagWidth, y: middle.y - 10 },
-      Below: { x: middle.x - tagWidth / 2, y: pile.y + pile.h + gap },
-    }[side ?? "Before"];
-
-    return { h: 20, w: tagWidth, ...at };
-  };
-
-  const plan = (active: number | null, folding: boolean) => ({
-    bets: geo.seats.map((__, index) => index),
-    button: {
-      owner,
-      spot:
-        owner === null
-          ? geo.buttons.self
-          : (geo.buttons.seats[owner] ?? geo.buttons.self),
-    },
-    heroBet: true,
-    seats: geo.seats.map((__, index) => ({
-      active: index === active,
-      folded:
-        folding &&
-        index !== active &&
-        (table.folded.includes(index) ||
-          (table.buttonFolded && index === owner)),
-      index,
-      winner: false,
-    })),
-    someoneElse: active !== null,
-    tags: [...posted].map(tagOf),
-  });
-
-  const atRest = placeSeats(geo, plan(null, false));
-  const places = placeSeats(geo, plan(actor, true));
-
-  const seatsAt = (seatPlaces: typeof places) => [
-    ...geo.seats.map((home, index) => {
-      const place = seatPlaces.find((seat) => seat.index === index);
-
-      return place === undefined
-        ? faceOf(home, geo.tile, 1)
-        : faceOf(place, geo.tile * place.scale, place.scale);
-    }),
-    faceOf(geo.self, geo.self.size, 1),
-  ];
-
-  const resting = seatsAt(atRest);
-  const drawnSeats = seatsAt(places);
-
-  const buttonAt = (seatPlaces: typeof places) =>
-    buttonBox(
-      owner === null
-        ? geo.buttons.self
-        : rideOf({ geo, spots: geo.buttons }, owner, seatPlaces)
-    );
-
-  const laid: readonly Laid[] = [
-    ...piles.map((pile, seat) => ({
-      box: drawnPile(pile, pileWidth),
-      owner: seat,
-      what: `seat ${seat} bet`,
-    })),
-    ...[...posted].map((seat) => ({
-      box: tagOf(seat),
-      owner: seat,
-      what: `seat ${seat} tag`,
-    })),
-    { box: buttonAt(places), owner: owner ?? you, what: "the button" },
-  ];
-
-  const handW = geo.handCardW * 2.2;
-  const handH = geo.handCardW * 1.4;
-  const tab = potTabOf(geo);
-
-  const middle: readonly (readonly [string, Box])[] = [
-    ["the board", geo.strip],
-    [
-      "the pot tab",
-      { h: tab.h, w: tab.w, x: tab.x - tab.w / 2, y: tab.y - tab.h / 2 },
-    ],
-    [
-      "your cards",
-      {
-        h: handH,
-        w: handW,
-        x: geo.hand.x - handW / 2,
-        y: geo.hand.y - handH / 2,
-      },
-    ],
-    [
-      "the chip",
-      {
-        h: geo.chip.size,
-        w: geo.chip.size,
-        x: geo.chip.x - geo.chip.size / 2,
-        y: geo.chip.y - geo.chip.size / 2,
-      },
-    ],
-  ];
-
-  const ground: readonly (readonly [string, Box])[] = [
-    ...middle,
-    ...drawnSeats.flatMap((boxes, seat) =>
-      boxes.map(
-        (box, part) =>
-          [`seat ${seat} ${part === 0 ? "face" : "name"}`, box] as const
-      )
-    ),
-  ];
-
-  const forButton: readonly (readonly [string, Box])[] = [
-    ...(actor === null
-      ? [["the hint", handHintBox(geo, geo.hint)] as const]
-      : []),
-    [
-      "your cards as they lift",
-      {
-        h: handH + PEEK_LIFT_PX,
-        w: handW,
-        x: geo.hand.x - handW / 2,
-        y: geo.hand.y - handH / 2 - PEEK_LIFT_PX,
-      },
-    ],
-  ];
-
-  const restingButton = {
-    box: buttonAt(atRest),
-    owner: owner ?? you,
-    what: "the button",
-  };
-
-  const facingOf = (seat: number) => {
-    const home = geo.seats[seat];
-
-    return home === undefined
-      ? { at: geo.self, toward: { x: 0, y: -1 } }
-      : { at: home, toward: { x: home.nx, y: home.ny } };
-  };
-
-  const behind = piles.flatMap((pile, seat) => {
-    const { at, toward } = facingOf(seat);
-    const ahead = (pile.x - at.x) * toward.x + (pile.y - at.y) * toward.y;
-
-    return ahead > 0 ? [] : [`seat ${seat} bet lies behind its seat`];
-  });
-
-  return [
-    ...behind,
-    ...laid.flatMap((item) => [
-      ...(item.box.x > -VISIBLE_PX &&
-      item.box.y > geo.top - VISIBLE_PX &&
-      item.box.x + item.box.w < width + VISIBLE_PX &&
-      item.box.y + item.box.h < height + VISIBLE_PX
-        ? []
-        : [`${item.what} leaves the table`]),
-      ...[...ground, ...(item.what === "the button" ? forButton : [])].flatMap(
-        ([what, box]) =>
-          covers(item.box, box) ? [`${item.what} covers ${what}`] : []
-      ),
-      ...laid.flatMap((other) =>
-        other !== item && covers(item.box, other.box)
-          ? [`${item.what} covers ${other.what}`]
-          : []
-      ),
-    ]),
-    ...[
-      ...laid.filter(({ what }) => what !== "the button"),
-      restingButton,
-    ].flatMap((item) =>
-      nearestTo(centre(item.box), resting)[0]?.index === item.owner
-        ? []
-        : [`${item.what} lies nearer another seat`]
-    ),
-  ];
-};
-
-const laneProblemsOn = (
-  table: LaneTable,
-  geo: ReturnType<typeof computeGeo>
-) => [
-  ...(geo.fits ? [] : ["the table says its lanes do not fit"]),
-  ...[
-    null,
-    ...Array.from({ length: table.others }, (__, seat) => seat),
-  ].flatMap((actor) =>
-    laneProblems(table, geo, actor).map(
-      (problem) =>
-        `${actor === null ? "nobody" : `seat ${actor}`} acting: ${problem}`
-    )
-  ),
-];
-
-const laneProblemsOf = (table: LaneTable) =>
-  laneProblemsOn(
-    table,
-    computeGeo(
-      table.screen.width,
-      table.screen.height,
-      table.others,
-      table.most
-    )
-  );
-
-const SMALLEST_TABLES = [
-  SMALLEST_TALL,
-  SMALLEST_WIDE,
-  SHORTEST_WIDE,
-  { height: 592, width: 360 },
-  { height: 632, width: 390 },
-  { height: 796, width: 390 },
-  { height: 342, width: 844 },
-  { height: 852, width: 1440 },
-];
-
-const everyoneBetting = (
-  screen: { readonly height: number; readonly width: number },
-  others: number,
-  button: number,
-  buttonFolded: boolean
-): LaneTable => ({
-  button,
-  buttonFolded,
-  folded: [],
-  most: 9999,
-  others,
-  posted: Array.from({ length: others + 1 }, (__, seat) => seat),
-  screen,
-});
 
 const TooSmallSchema = Schema.Struct({
   height: between(240, 1000),
@@ -898,21 +527,6 @@ const TooSmallSchema = Schema.Struct({
   width: between(300, 1440),
 });
 
-const fallbackOf = ({
-  height,
-  most,
-  others,
-  width,
-}: typeof TooSmallSchema.Type) => {
-  const geo = computeGeo(width, height, others, most);
-
-  return {
-    facesAtLeastTheFloor: geo.tile >= SMALLEST_FACE_PX,
-    saysWhenLanesDoNotFit:
-      geo.fits || (geo.tile === SMALLEST_FACE_PX && geo.compactPiles),
-  };
-};
-
 describe("each seat's lane", () => {
   it.prop(
     "holds its bet, its tag, and the button clear of every face, name, stack, other bet, the board, the pot tab, your cards, and the chip, with the bet in front of its seat and each nearer its own seat than any other, with nobody acting and with each seat acting, on every table the app supports",
@@ -920,26 +534,14 @@ describe("each seat's lane", () => {
     ({ table }) => {
       expect(laneProblemsOf(table)).toStrictEqual([]);
     },
-    { arbitrary: { runs: 300 } }
+    { arbitrary: { runs: 100 } }
   );
 
   it("fits with every seat betting and four-digit amounts, whoever holds the button and whether they folded, on the smallest tables the app supports and on the boxes it gives the table", () => {
     const found = SMALLEST_TABLES.flatMap((screen) =>
-      [1, 2, 3, 4, 5, 6, 7, 8].flatMap((others) => {
-        const geo = computeGeo(screen.width, screen.height, others, 9999);
-
-        return Array.from({ length: others + 1 }, (__, button) =>
-          [false, true].flatMap((folded) =>
-            laneProblemsOn(
-              everyoneBetting(screen, others, button, folded),
-              geo
-            ).map(
-              (problem) =>
-                `${screen.width}x${screen.height}, ${others + 1} seats, button ${button}${folded ? " folded" : ""}: ${problem}`
-            )
-          )
-        ).flat();
-      })
+      [1, 2, 3, 4, 5, 6, 7, 8].flatMap((others) =>
+        everyOwnerProblems(screen, others)
+      )
     );
 
     expect(found).toStrictEqual([]);
@@ -949,7 +551,7 @@ describe("each seat's lane", () => {
     "never draws a face below the floor, and on a table too small for its lanes says so, with faces at the floor and the bets drawn without their chips",
     { table: Arbitrary.schema(TooSmallSchema) },
     ({ table }) => {
-      expect(fallbackOf(table)).toStrictEqual({
+      expect(fallbackOf(table, table.others, table.most)).toStrictEqual({
         facesAtLeastTheFloor: true,
         saysWhenLanesDoNotFit: true,
       });

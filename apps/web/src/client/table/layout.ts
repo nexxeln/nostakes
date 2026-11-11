@@ -1126,8 +1126,15 @@ const gapTo = (point: Pt, box: Box) =>
     Math.max(box.y - point.y, 0, point.y - box.y - box.h)
   );
 
-const gapToSeat = (point: Pt, footprint: Footprint) =>
-  Math.min(...footprint.seat.map((box) => gapTo(point, box)));
+const gapToSeat = (point: Pt, footprint: Footprint) => {
+  let least = Number.POSITIVE_INFINITY;
+
+  for (const box of footprint.seat) {
+    least = Math.min(least, gapTo(point, box));
+  }
+
+  return least;
+};
 
 const LANE_OWNERSHIP = 2;
 
@@ -1549,6 +1556,8 @@ const around = (centre: Pt, reach: number, angle: number): Pt => ({
 
 const MIN_BUTTON_RADIUS = 11;
 
+const TIE_TOLERANCE = 1e-6;
+
 const onTheFelt = (
   geo: Geo,
   owner: Owner,
@@ -1566,6 +1575,16 @@ const onTheFelt = (
     owner.size / 2 + CAPTION_DEPTH
   );
 
+  const turns = Array.from({ length: BUTTON_ANGLES }, (__, step) => {
+    const turn = (step / BUTTON_ANGLES) * 2 * Math.PI;
+
+    return {
+      bending: Math.min(turn, 2 * Math.PI - turn) * owner.size * 0.35,
+      cos: Math.cos(facing + turn),
+      sin: Math.sin(facing + turn),
+    };
+  });
+
   let best: { readonly spot: ButtonSpot; readonly cost: number } | undefined;
 
   for (
@@ -1573,12 +1592,22 @@ const onTheFelt = (
     reach <= farthest && (best === undefined || reach - seatReach < best.cost);
     reach += BUTTON_STEP
   ) {
-    for (let step = 0; step < BUTTON_ANGLES; step += 1) {
-      const turn = (step / BUTTON_ANGLES) * 2 * Math.PI;
-      const spot = { ...around(centre, reach, facing + turn), r };
+    for (const { bending, cos, sin } of turns) {
+      if (
+        best !== undefined &&
+        reach - seatReach + bending - TIE_TOLERANCE >= best.cost
+      ) {
+        continue;
+      }
+
+      const spot = {
+        r,
+        x: centre.x + cos * reach,
+        y: centre.y + sin * reach,
+      };
+
       const own = gapToSeat(spot, owner.footprint);
-      const bend = Math.min(turn, 2 * Math.PI - turn);
-      const cost = own + bend * owner.size * 0.35;
+      const cost = own + bending;
 
       if (
         (best === undefined || cost < best.cost) &&
@@ -2404,12 +2433,12 @@ interface Laned {
 
 const firstFitting = (
   attempts: readonly Attempt[],
-  run: (attempt: Attempt) => Laned
+  run: (attempt: Attempt) => Laned | null
 ): { readonly attempt: Attempt; readonly result: Laned } | null => {
   for (const attempt of attempts) {
     const result = run(attempt);
 
-    if (result.clashes === 0) {
+    if (result !== null && result.clashes === 0) {
       return { attempt, result };
     }
   }
@@ -3030,12 +3059,12 @@ const remembered = <Key>(
   return now;
 };
 
-const lanesClearFor = (
+const laneClearFor = (
   geo: Geo,
   index: number,
   owners: readonly Footprint[],
   ground: LaneGround
-): readonly Lane[] => {
+) => {
   const seat = geo.seats[index];
   const own = owners[index];
 
@@ -3082,7 +3111,36 @@ const lanesClearFor = (
     );
   };
 
-  return seat === undefined ? [] : lanesAround(geo, seat).filter(clear);
+  return clear;
+};
+
+const lanesClearFor = (
+  geo: Geo,
+  index: number,
+  owners: readonly Footprint[],
+  ground: LaneGround,
+  candidates: readonly Lane[]
+): readonly Lane[] =>
+  candidates.filter(laneClearFor(geo, index, owners, ground));
+
+const lanesOfEverySeat = (geo: Geo): readonly (readonly Lane[])[] =>
+  geo.seats.map((seat) => lanesAround(geo, seat));
+
+const everySeatHasALane = (
+  geo: Geo,
+  candidates: readonly (readonly Lane[])[]
+) => {
+  const owners = ownersAt(geo, geo.seats);
+  const fixed = fixedGround(geo, geo.seats);
+
+  return geo.seats.every((__, index) =>
+    (candidates[index] ?? []).some(
+      laneClearFor(geo, index, owners, {
+        all: fixed,
+        button: [...fixedGround(geo, geo.seats, index), liftedHand(geo)],
+      })
+    )
+  );
 };
 
 const LANE_SEARCH = 4000;
@@ -3290,7 +3348,10 @@ interface Laid extends Arrangement {
   readonly hint: HandHint;
 }
 
-const lanesOf = (geo: Geo): Laid => {
+const lanesOf = (
+  geo: Geo,
+  candidates: readonly (readonly Lane[])[] = lanesOfEverySeat(geo)
+): Laid => {
   const owners = ownersAt(geo, geo.seats);
   const fixed = fixedGround(geo, geo.seats);
   const free = hintAmong(geo, hintFixedGround(geo));
@@ -3307,15 +3368,21 @@ const lanesOf = (geo: Geo): Laid => {
   const middle = [buttonBox(button), lines.say, lines.foot];
 
   const options = geo.seats.map((__, index) =>
-    lanesClearFor(geo, index, owners, {
-      all: [...fixed, ...middle],
-      button: [
-        ...fixedGround(geo, geo.seats, index),
-        ...middle,
-        hint,
-        liftedHand(geo),
-      ],
-    })
+    lanesClearFor(
+      geo,
+      index,
+      owners,
+      {
+        all: [...fixed, ...middle],
+        button: [
+          ...fixedGround(geo, geo.seats, index),
+          ...middle,
+          hint,
+          liftedHand(geo),
+        ],
+      },
+      candidates[index] ?? []
+    )
   );
 
   const lanes =
@@ -3503,11 +3570,18 @@ export const computeGeo = (
     };
   }
 
-  const laned = (cap: number, compact: boolean, round: number) => {
+  const restedAt = ({ cap, compact, round }: Attempt) => {
     const pileW = pileWidthFor(most, compact);
     const laneW = Math.max(pileW, pileWidthFor(DEFAULT_MOST, compact));
-    const rested = laidOut({ cap, laneW, pileW, round }, LANES_LIFT, settled);
-    const lanes = lanesOf(rested);
+
+    return laidOut({ cap, laneW, pileW, round }, LANES_LIFT, settled);
+  };
+
+  const laned = (
+    rested: Geo,
+    candidates: readonly (readonly Lane[])[] = lanesOfEverySeat(rested)
+  ): Laned => {
+    const lanes = lanesOf(rested, candidates);
     const geo = withPiles(rested, lanes);
 
     const hint = hintWith(
@@ -3531,27 +3605,47 @@ export const computeGeo = (
   const fitAmong = (caps: readonly number[], compact: boolean) =>
     firstFitting(
       caps.flatMap((cap) => rounds.map((round) => ({ cap, compact, round }))),
-      (attempt) => laned(attempt.cap, attempt.compact, attempt.round)
+      (attempt) => {
+        const rested = restedAt(attempt);
+
+        const candidates = lanesOfEverySeat(rested);
+
+        return everySeatHasALane(rested, candidates)
+          ? laned(rested, candidates)
+          : null;
+      }
     );
 
   const coarse = capsDown(today.tile, LANE_COARSE);
-  const first = coarse.findIndex((cap) => fitAmong([cap], false) !== null);
-  const above = coarse[first - 1];
-  const found = coarse[first];
+  let coarseFit: ReturnType<typeof fitAmong> = null;
+  let above = Number.POSITIVE_INFINITY;
 
-  const fitted = (found === undefined
+  for (const cap of coarse) {
+    coarseFit = fitAmong([cap], false);
+
+    if (coarseFit !== null) {
+      break;
+    }
+
+    above = cap;
+  }
+
+  const finer = (fit: NonNullable<typeof coarseFit>, from: number) =>
+    Number.isFinite(from)
+      ? fitAmong(
+          capsDown(from, LANE_STEP).filter(
+            (cap) => cap < from && cap > fit.attempt.cap
+          ),
+          false
+        )
+      : null;
+
+  const fitted = (coarseFit === null
     ? null
-    : ((above === undefined
-        ? null
-        : fitAmong(
-            capsDown(above, LANE_STEP).filter(
-              (cap) => cap < above && cap > found
-            ),
-            false
-          )) ?? fitAmong([found], false))) ??
+    : (finer(coarseFit, above) ?? coarseFit)) ??
     fitAmong([FACE_FLOOR], true) ?? {
       attempt: { cap: FACE_FLOOR, compact: true, round: 0 },
-      result: laned(FACE_FLOOR, true, 0),
+      result: laned(restedAt({ cap: FACE_FLOOR, compact: true, round: 0 })),
     };
 
   const { geo, hint, lanes } = fitted.result;
