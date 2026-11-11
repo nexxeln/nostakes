@@ -1,8 +1,6 @@
 import { Effect, Option, Schema } from "effect";
 
-import type { Deck, Theme } from "../../features/model.js";
 import { clipFrames, CLIP_FPS } from "../../features/moments/clip-plan.js";
-import { pictureSvg } from "../../features/moments/picture.js";
 import type { MomentPicture } from "../../features/moments/picture.js";
 import {
   FAMILIES,
@@ -147,11 +145,6 @@ const idleFor = (pace: ClipPace): Effect.Effect<void> =>
 export const slotFor = (pace: ClipPace): Effect.Effect<void> =>
   "requestIdleCallback" in globalThis ? idleFor(pace) : afterPaint;
 
-interface Look {
-  readonly deck: Deck;
-  readonly theme: Theme;
-}
-
 const stingOf = (
   picture: MomentPicture,
   seconds: number,
@@ -215,11 +208,11 @@ export interface ClipOrder {
   readonly frame: KeptFrame;
   readonly slot: Effect.Effect<void>;
   readonly support: ClipSupport;
+  readonly svg: string;
 }
 
 export const clipFile = (
   picture: MomentPicture,
-  look: Look,
   order: ClipOrder
 ): Effect.Effect<File, ClipUnavailable> =>
   Effect.gen(function* clip() {
@@ -228,12 +221,7 @@ export const clipFile = (
     const { slot } = order;
 
     const atlas = yield* atlasOf(
-      pictureSvg(picture, {
-        deck: look.deck,
-        fonts: "",
-        frame,
-        theme: look.theme,
-      }),
+      order.svg,
       { boxes: order.boxes, fonts: EMBEDDED_FONTS, size },
       slot
     );

@@ -1,11 +1,10 @@
-import { Effect, Exit, Fiber, Option } from "effect";
+import { Effect, Option } from "effect";
 
-import type { Deck, Theme } from "../../features/model.js";
 import type { MomentPicture } from "../../features/moments/picture.js";
 import { offer } from "../pictures/keeper.js";
 import type { PartBox } from "./clip-measure.js";
 import { clipFile, clipSupport, slotFor } from "./clip.js";
-import type { ClipPace, ClipSupport, ClipUnavailable } from "./clip.js";
+import type { ClipPace, ClipSupport } from "./clip.js";
 
 export type ClipState =
   | "Asked"
@@ -16,9 +15,9 @@ export type ClipState =
   | "Unavailable"
   | "Waiting";
 
-interface Look {
-  readonly deck: Deck;
-  readonly theme: Theme;
+export interface ClipArt {
+  readonly boxes: readonly PartBox[];
+  readonly svg: string;
 }
 
 const activationLasts = () =>
@@ -26,25 +25,22 @@ const activationLasts = () =>
 
 export class Clipper {
   readonly #picture: MomentPicture;
-  readonly #look: Look;
-  readonly #boxes: readonly PartBox[];
+  readonly #art: ClipArt;
   readonly #changed: (state: ClipState) => void;
   #support: ClipSupport | null = null;
   #state: ClipState = "Checking";
   #pace: ClipPace = "Quiet";
   #file: File | null = null;
-  #making: Fiber.Fiber<File, ClipUnavailable> | null = null;
+  #making: AbortController | null = null;
   #dropped = false;
 
   constructor(
     picture: MomentPicture,
-    look: Look,
-    boxes: readonly PartBox[],
+    art: ClipArt,
     changed: (state: ClipState) => void
   ) {
     this.#picture = picture;
-    this.#look = look;
-    this.#boxes = boxes;
+    this.#art = art;
     this.#changed = changed;
   }
 
@@ -94,7 +90,7 @@ export class Clipper {
 
     if (making !== null) {
       this.#making = null;
-      Effect.runFork(Fiber.interrupt(making));
+      making.abort();
 
       if (this.#state === "Making" || this.#state === "Asked") {
         this.#become("Waiting");
@@ -146,35 +142,50 @@ export class Clipper {
       this.#become("Making");
     }
 
-    const making = Effect.runFork(
-      clipFile(this.#picture, this.#look, {
-        boxes: this.#boxes,
+    const making = new AbortController();
+
+    this.#making = making;
+    Effect.runFork(
+      clipFile(this.#picture, {
+        boxes: this.#art.boxes,
         frame: "Chat",
         slot: Effect.suspend(() => slotFor(this.#pace)),
         support,
-      })
+        svg: this.#art.svg,
+      }).pipe(
+        Effect.match({
+          onFailure: () => {
+            this.#finished(making, null);
+          },
+          onSuccess: (file) => {
+            this.#finished(making, file);
+          },
+        })
+      ),
+      { signal: making.signal }
     );
+  }
 
-    this.#making = making;
-    making.addObserver((exit) => {
-      if (this.#making !== making) {
-        return;
-      }
+  #finished(making: AbortController, file: File | null) {
+    if (this.#making !== making) {
+      return;
+    }
 
-      this.#making = null;
+    this.#making = null;
 
-      if (Exit.isSuccess(exit)) {
-        this.#file = exit.value;
+    if (file === null) {
+      this.#become("Unavailable");
 
-        if (this.#state === "Asked" && activationLasts()) {
-          Effect.runFork(offer(exit.value));
-          this.#become("Ready");
-        } else {
-          this.#become(this.#state === "Asked" ? "Share" : "Ready");
-        }
-      } else {
-        this.#become("Unavailable");
-      }
-    });
+      return;
+    }
+
+    this.#file = file;
+
+    if (this.#state === "Asked" && activationLasts()) {
+      Effect.runFork(offer(file));
+      this.#become("Ready");
+    } else {
+      this.#become(this.#state === "Asked" ? "Share" : "Ready");
+    }
   }
 }

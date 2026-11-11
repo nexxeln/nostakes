@@ -293,8 +293,15 @@ class NostakesMoment extends HTMLElement {
                 () =>
                   new Made(
                     scene.picture,
-                    { deck: scene.deck, theme: scene.theme },
-                    boxes,
+                    {
+                      boxes,
+                      svg: pictureSvg(scene.picture, {
+                        deck: scene.deck,
+                        fonts: "",
+                        frame: "Chat",
+                        theme: scene.theme,
+                      }),
+                    },
                     (state) => {
                       this.#showClip(state);
                     }

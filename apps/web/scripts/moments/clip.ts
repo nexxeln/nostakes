@@ -129,11 +129,13 @@ const program = Effect.gen(function* stageClip() {
   const during = tableStandIn();
   const started = yield* Clock.currentTimeMillis;
 
-  const clip = yield* clipFile(
-    picture,
-    { deck, theme },
-    { boxes, frame, slot: timedSlot(), support: support.value }
-  );
+  const clip = yield* clipFile(picture, {
+    boxes,
+    frame,
+    slot: timedSlot(),
+    support: support.value,
+    svg: pictureSvg(picture, { deck, fonts: "", frame, theme }),
+  });
 
   const finished = yield* Clock.currentTimeMillis;
 
