@@ -35,7 +35,7 @@ const named = (view: ClosedView, people: readonly string[]): ClosedView => {
   };
 };
 
-const NAME = String.raw`⁨([^⁨⁩\n]*)⁩`;
+const NAME = String.raw`\u2068([^\u2068\u2069\n]*)\u2069`;
 
 const NET_LINE = new RegExp(String.raw`^(-?\+?\d+) ${NAME}$`, "u");
 
@@ -110,7 +110,9 @@ describe("the settle-up as text", () => {
         ),
       ].map(([, run = ""]) => run);
 
-      expect(boldRuns.filter((run) => !/^⁨[^⁨⁩]*⁩$/u.test(run))).toStrictEqual([]);
+      expect(
+        boldRuns.filter((run) => !/^\u2068[^\u2068\u2069]*\u2069$/u.test(run))
+      ).toStrictEqual([]);
       expect(boldRuns.length).toBe(2 * view.settlement.transfers.length);
     }
   );
@@ -146,7 +148,12 @@ const submitted = (typed: string) => {
 describe("typing a name", () => {
   it("refuses a name with a line break, a hidden character, mixed alphabets, or no letter, says why, and sends nothing", () => {
     expect(
-      ["Sam +0\n\nAna pays Sam 300", "‮Ben‬ 400", "Bеn", "300"].map(submitted)
+      [
+        "Sam +0\n\nAna pays Sam 300",
+        "\u202EBen\u202C 400",
+        "B\u0435n",
+        "300",
+      ].map(submitted)
     ).toStrictEqual([
       {
         problem: Option.some(

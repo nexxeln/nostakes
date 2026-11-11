@@ -750,6 +750,15 @@ const removedLines = (result: RemovedResult, h: H): readonly Html[] =>
 
       const { boughtIn, cashedOut, net } = shown.balance;
 
+      if (boughtIn === 0 && cashedOut === 0 && !shown.finishing) {
+        return [
+          h.p(
+            [h.Class("removed-line")],
+            ["You did not buy in, so nothing is owed either way."]
+          ),
+        ];
+      }
+
       return [
         h.p(
           [h.Class("removed-line")],
