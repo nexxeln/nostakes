@@ -140,7 +140,7 @@ const PURE_MODULES = [
   { sideEffects: false, test: /[\\/]node_modules[\\/].*@noble[\\/]/u },
 ];
 
-export const READING_PAGES = ["privacy.html", "terms.html"];
+export const READING_PAGES = ["privacy.html", "terms.html", "learn.html"];
 
 export default defineConfig({
   build: {
