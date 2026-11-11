@@ -89,8 +89,9 @@ import { forgetExpired, heard, reacted } from "./signals.js";
 import {
   KEPT_CLOCK_SAMPLES,
   KEPT_EVENTS,
+  betFacedIn,
   clockSampleOf,
-  happeningsOf,
+  happeningsFrom,
 } from "./table/from-room.js";
 import type { Hint, TableIntent } from "./table/snapshot.js";
 import { roomPath } from "./wire.js";
@@ -584,7 +585,10 @@ const remember = (
   room: InRoom,
   applied: readonly { readonly event: SeenEvent; readonly seq: number }[]
 ): InRoom => {
-  const fresh = applied.flatMap(({ event, seq }) => happeningsOf(seq, event));
+  const fresh = happeningsFrom(
+    betFacedIn(room.shown.pipe(Option.map(({ view }) => view))),
+    applied
+  );
 
   return fresh.length === 0
     ? room

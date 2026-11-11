@@ -1,8 +1,8 @@
 import { cardText, handCategory } from "@nostakes/engine";
 import type { Card, HandCategory, HandRank } from "@nostakes/engine";
 import type { PlayerId } from "@nostakes/protocol";
-import { SeenEvents } from "@nostakes/room";
-import type { SeenEvent, SeenTableEvent } from "@nostakes/room";
+import { RoomViews, SeenEvents } from "@nostakes/room";
+import type { RoomView, SeenEvent, SeenTableEvent } from "@nostakes/room";
 import { Match, Option } from "effect";
 
 import type { InRoom } from "../model.js";
@@ -63,7 +63,10 @@ const blindKind = (blind: "Small" | "Big", dead: boolean): PostKind => {
   return blind === "Small" ? "SmallBlind" : "BigBlind";
 };
 
-const tableHappenings = (event: SeenTableEvent): readonly Happening[] =>
+const tableHappenings = (
+  event: SeenTableEvent,
+  facing: number
+): readonly Happening[] =>
   Match.value(event).pipe(
     Match.tagsExhaustive({
       AntePosted: ({ amount, seat }) => [
@@ -112,7 +115,7 @@ const tableHappenings = (event: SeenTableEvent): readonly Happening[] =>
         ),
       RabbitHunted: () => [],
       RaisedTo: ({ added, allIn, seat, to }) => [
-        Happenings.Bet.make({ added, allIn, seat, to }),
+        Happenings.Bet.make({ added, allIn, raise: facing > 0, seat, to }),
       ],
       RulesChanged: () => [],
       RunsAgreed: () => [],
@@ -147,14 +150,67 @@ const tableHappenings = (event: SeenTableEvent): readonly Happening[] =>
 
 export const happeningsOf = (
   seq: number,
-  event: SeenEvent
+  event: SeenEvent,
+  facing = 0
 ): readonly TableEvent[] =>
   SeenEvents.$is("Table")(event)
-    ? tableHappenings(event.event).map((happening, index) => ({
+    ? tableHappenings(event.event, facing).map((happening, index) => ({
         happening,
         id: seq * HAPPENINGS_PER_EVENT + index,
       }))
     : [];
+
+type HandOf = Option.Option.Value<OpenView["hand"]>;
+
+export const betToFace = (hand: HandOf) =>
+  Math.max(
+    0,
+    ...hand.players.map(({ committedThisStreet }) => committedThisStreet)
+  );
+
+export const betFacedIn = (view: Option.Option<RoomView>) =>
+  Option.match(view, {
+    onNone: () => 0,
+    onSome: (seen) =>
+      RoomViews.$match(seen, {
+        Closed: () => 0,
+        Open: ({ hand }) =>
+          Option.match(hand, { onNone: () => 0, onSome: betToFace }),
+      }),
+  });
+
+const betAfter = (facing: number, event: SeenEvent): number => {
+  if (!SeenEvents.$is("Table")(event)) {
+    return facing;
+  }
+
+  return Match.value(event.event).pipe(
+    Match.tags({
+      BlindPosted: ({ amount, dead }) =>
+        dead === true ? facing : Math.max(facing, amount),
+      HandStarted: () => 0,
+      RaisedTo: ({ to }) => Math.max(facing, to),
+      StraddlePosted: ({ amount }) => Math.max(facing, amount),
+      StreetDealt: () => 0,
+    }),
+    Match.orElse(() => facing)
+  );
+};
+
+export const happeningsFrom = (
+  facingFirst: number,
+  applied: readonly { readonly event: SeenEvent; readonly seq: number }[]
+): readonly TableEvent[] => {
+  const happenings: TableEvent[] = [];
+  let facing = facingFirst;
+
+  for (const { event, seq } of applied) {
+    happenings.push(...happeningsOf(seq, event, facing));
+    facing = betAfter(facing, event);
+  }
+
+  return happenings;
+};
 
 const lastHandOf = (view: OpenView, player: PlayerId, seat: number) =>
   view.lastHand.pipe(
@@ -387,8 +443,7 @@ const clockOf = (view: OpenView, room: InRoom): ActionClock | null => {
 const legalOfView = (view: OpenView): HeroLegal | null => {
   const nobodyBet = Option.match(view.hand, {
     onNone: () => true,
-    onSome: ({ players }) =>
-      players.every(({ committedThisStreet }) => committedThisStreet === 0),
+    onSome: (hand) => betToFace(hand) === 0,
   });
 
   const betting = view.legal.pipe(

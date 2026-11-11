@@ -201,6 +201,7 @@ const beatsAfterRaise = (raisedTo: number): readonly Beat[] => {
         Happenings.Bet.make({
           added: raisedTo,
           allIn: false,
+          raise: true,
           seat: 0,
           to: raisedTo,
         }),

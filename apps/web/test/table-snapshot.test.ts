@@ -552,3 +552,35 @@ describe("the blinds on the table", () => {
     { arbitrary: { runs: 100 } }
   );
 });
+
+describe("the chip's raise word", () => {
+  it.prop(
+    "says bet only on a street where nobody has put chips in, so the big blind's option, a straddle, and a post to come in read as a raise",
+    { hand: hands, view: views },
+    ({ hand, view: table }) => {
+      const view = {
+        ...table,
+        hand: Option.some(hand),
+        legal: Option.some({
+          call: Option.none(),
+          canCheck: true,
+          raise: Option.some({
+            maxTo: ChipsSchema.make(400),
+            minTo: ChipsSchema.make(4),
+          }),
+          seat: SeatIndexSchema.make(0),
+        }),
+      };
+
+      const nobodyIn = hand.players.every(
+        ({ committedThisStreet }) => committedThisStreet === 0
+      );
+
+      expect(
+        tableSnapshot(roomWith(view, true, false), view, [], []).legal?.raise
+          ?.isBet
+      ).toBe(nobodyIn);
+    },
+    { arbitrary: { runs: 100 } }
+  );
+});

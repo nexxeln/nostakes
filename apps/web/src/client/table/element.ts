@@ -2612,8 +2612,8 @@ export class NostakesTable extends HTMLElement {
     }
 
     HappeningSchema.match(happening, {
-      Bet: ({ added, allIn, seat, to }) => {
-        this.#onBet(seat, to, added, allIn);
+      Bet: ({ added, allIn, raise, seat, to }) => {
+        this.#onBet(seat, to, added, allIn, raise);
       },
       Call: ({ added, allIn, seat }) => {
         this.#betFlight(seat, added, allIn ? 7 : 3);
@@ -2666,15 +2666,14 @@ export class NostakesTable extends HTMLElement {
     });
   }
 
-  #onBet(seat: number, to: number, added: number, allIn: boolean) {
-    const facing = Math.max(
-      0,
-      ...[...this.#piles.entries()].flatMap(([other, pile]) =>
-        other === seat ? [] : [pile.shown]
-      )
-    );
-
-    const word = facing > 0 ? "Raise to" : "Bet";
+  #onBet(
+    seat: number,
+    to: number,
+    added: number,
+    allIn: boolean,
+    raise: boolean
+  ) {
+    const word = raise ? "Raise to" : "Bet";
 
     const text = allIn
       ? `All in ${formatChips(to)}`

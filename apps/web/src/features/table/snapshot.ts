@@ -70,6 +70,7 @@ export const HappeningSchema = Schema.TaggedUnion({
   Bet: {
     added: Schema.Int,
     allIn: Schema.Boolean,
+    raise: Schema.Boolean,
     seat: Schema.Int,
     to: Schema.Int,
   },
