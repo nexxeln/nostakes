@@ -76,6 +76,7 @@ export type { Actor, RoomCode } from "./identity.js";
 export {
   NAME_MAX_LENGTH,
   NameProblemSchema,
+  lookAlikes,
   nameKey,
   nameProblem,
   sameName,

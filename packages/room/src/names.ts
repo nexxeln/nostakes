@@ -133,5 +133,79 @@ export const nameKey = (name: string) =>
     .normalize("NFKC")
     .replaceAll(/\p{Zs}+/gu, " ");
 
+const LOOK_ALIKES = new Map([
+  ["I", "l"],
+  ["\u0391", "A"],
+  ["\u0392", "B"],
+  ["\u0395", "E"],
+  ["\u0396", "Z"],
+  ["\u0397", "H"],
+  ["\u0399", "l"],
+  ["\u039A", "K"],
+  ["\u039C", "M"],
+  ["\u039D", "N"],
+  ["\u039F", "O"],
+  ["\u03A1", "P"],
+  ["\u03A4", "T"],
+  ["\u03A5", "Y"],
+  ["\u03A7", "X"],
+  ["\u03B1", "a"],
+  ["\u03BD", "v"],
+  ["\u03BF", "o"],
+  ["\u03C1", "p"],
+  ["\u0405", "S"],
+  ["\u0406", "l"],
+  ["\u0408", "J"],
+  ["\u0410", "A"],
+  ["\u0412", "B"],
+  ["\u0415", "E"],
+  ["\u041A", "K"],
+  ["\u041C", "M"],
+  ["\u041D", "H"],
+  ["\u041E", "O"],
+  ["\u0420", "P"],
+  ["\u0421", "C"],
+  ["\u0422", "T"],
+  ["\u0423", "Y"],
+  ["\u0425", "X"],
+  ["\u0430", "a"],
+  ["\u0435", "e"],
+  ["\u043E", "o"],
+  ["\u0440", "p"],
+  ["\u0441", "c"],
+  ["\u0443", "y"],
+  ["\u0445", "x"],
+  ["\u0455", "s"],
+  ["\u0456", "i"],
+  ["\u0458", "j"],
+  ["\u04AE", "Y"],
+  ["\u04BB", "h"],
+  ["\u04C0", "l"],
+  ["\u04CF", "l"],
+  ["\u0501", "d"],
+  ["\u051A", "Q"],
+  ["\u051B", "q"],
+  ["\u051C", "W"],
+  ["\u051D", "w"],
+]);
+
+const LOOK_ALIKE_LETTERS = new RegExp(
+  `[${[...LOOK_ALIKES.keys()].join("")}]`,
+  "gu"
+);
+
+export const nameSkeleton = (name: string) =>
+  name
+    .normalize("NFKD")
+    .replaceAll(/\p{Default_Ignorable_Code_Point}/gu, "")
+    .replaceAll(
+      LOOK_ALIKE_LETTERS,
+      (letter) => LOOK_ALIKES.get(letter) ?? letter
+    )
+    .normalize("NFKC")
+    .replaceAll(/\p{Zs}+/gu, " ");
+
 export const sameName = (one: string, other: string) =>
-  nameKey(one) === nameKey(other);
+  nameKey(one) === nameKey(other) || nameSkeleton(one) === nameSkeleton(other);
+
+export const lookAlikes = LOOK_ALIKES;

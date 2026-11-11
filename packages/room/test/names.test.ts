@@ -8,6 +8,7 @@ import {
   NameTaken,
   RoomCommands,
   RoomStates,
+  lookAlikes,
   nameKey,
   nameProblem,
   sameName,
@@ -18,6 +19,7 @@ import {
   as,
   bob,
   cat,
+  dan,
   ms,
   openedBy,
   rejection,
@@ -185,6 +187,39 @@ describe("a player's name", () => {
     ).toStrictEqual([false, false, false]);
   });
 
+  it("compares names as they read in the app's fonts, so Latin, Greek, and Cyrillic look-alikes and a capital I against a small l clash, while names that read differently do not", () => {
+    expect(
+      [
+        ["\u0410\u0412\u0421", "ABC"],
+        ["\u0391\u0392\u0395", "ABE"],
+        ["\u041E\u0441\u0430", "Oca"],
+        ["\u0420\u0430\u0445", "Pax"],
+        ["Bill", "BiII"],
+        ["Ian", "lan"],
+        ["\u0415\u0441\u0445\u0435\u0440", "Ecxep"],
+      ].map(([one = "", other = ""]) => sameName(one, other))
+    ).toStrictEqual(Array.from({ length: 7 }, () => true));
+    expect(
+      [
+        ["Ian", "Lan"],
+        ["Ana", "Anna"],
+        ["Jos\u00E9", "Jose"],
+        ["\u0412\u0430\u0441\u044F", "Bob"],
+      ].map(([one = "", other = ""]) => sameName(one, other))
+    ).toStrictEqual(Array.from({ length: 4 }, () => false));
+  });
+
+  it("maps only Greek and Cyrillic letters and the capital I, each to one plain Latin letter, and only letters that are whole before decomposition", () => {
+    expect(
+      [...lookAlikes].filter(
+        ([from, to]) =>
+          !/^[A-Za-z]$/u.test(to) ||
+          from.normalize("NFKD") !== from ||
+          !/^(?:\p{Script=Greek}|\p{Script=Cyrillic}|I)$/u.test(from)
+      )
+    ).toStrictEqual([]);
+  });
+
   it.prop(
     "gives every name the same key however its case is written",
     { name: names },
@@ -223,6 +258,14 @@ describe("names in a room", () => {
       new NameTaken({ wanted: "Sa\u200Dm" }),
       new NameTaken({ wanted: "SAM" }),
     ]);
+  });
+
+  it("refuses a name in another script that reads the same as one already here", () => {
+    const abc = run(sams, join(cat, "ABC", 20)).state;
+
+    expect(rejection(abc, join(dan, "\u0410\u0412\u0421", 30))).toStrictEqual(
+      new NameTaken({ wanted: "\u0410\u0412\u0421" })
+    );
   });
 
   it("lets two Sams in as Sam and Sam K, and lets a player rename to their own name in another case", () => {

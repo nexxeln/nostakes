@@ -5,7 +5,7 @@ import { Option } from "effect";
 
 import { MOST_PEOPLE } from "./members.js";
 import { chipsOnTable, allEntries } from "./money.js";
-import { nameKey } from "./names.js";
+import { sameName } from "./names.js";
 import { sameTableRules } from "./rules.js";
 import { seatsTakenFrom } from "./seats.js";
 import {
@@ -50,6 +50,15 @@ const seatedPlayers = (state: Open) =>
 
 const isSeated = (state: Open, player: PlayerId) =>
   Option.isSome(seatOf(state, player));
+
+const clashingNames = (state: Open) =>
+  namedPeople(state)
+    .filter(({ name, player }) =>
+      namedPeople(state).some(
+        (other) => other.player !== player && sameName(other.name, name)
+      )
+    )
+    .map(({ player }) => player);
 
 const peopleViolations = (state: Open) => [
   ...check(
@@ -100,19 +109,8 @@ const peopleViolations = (state: Open) => [
     "RemovedAreDistinct",
     () => state.removed.map((member) => member.player).join(",")
   ),
-  ...check(
-    !hasDuplicates(namedPeople(state).map(({ name }) => nameKey(name))),
-    "NamesAreDistinct",
-    () =>
-      namedPeople(state)
-        .filter(({ name, player }) =>
-          namedPeople(state).some(
-            (other) =>
-              other.player !== player && nameKey(other.name) === nameKey(name)
-          )
-        )
-        .map(({ player }) => player)
-        .join(",")
+  ...check(clashingNames(state).length === 0, "NamesAreDistinct", () =>
+    clashingNames(state).join(",")
   ),
 ];
 
