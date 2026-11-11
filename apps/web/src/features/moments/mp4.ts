@@ -1,3 +1,5 @@
+import { sequenceOf } from "./sps.js";
+
 export interface Sample {
   readonly bytes: Uint8Array;
   readonly duration: number;
@@ -293,6 +295,23 @@ const tkhd = (
     u32(look.height * 0x1_00_00)
   );
 
+const FULL_RANGE_FLAG = 128;
+
+const colr = (avcC: Uint8Array) => {
+  const colour = sequenceOf(avcC)?.colour;
+
+  return colour === null || colour === undefined
+    ? new Uint8Array(0)
+    : box(
+        "colr",
+        ascii("nclx"),
+        u16(colour.primaries),
+        u16(colour.transfer),
+        u16(colour.matrix),
+        u8(colour.fullRange ? FULL_RANGE_FLAG : 0)
+      );
+};
+
 const avc1 = (video: VideoTrack) =>
   box(
     "avc1",
@@ -308,7 +327,8 @@ const avc1 = (video: VideoTrack) =>
     zeros(32),
     u16(0x00_18),
     u16(0xff_ff),
-    box("avcC", video.avcC)
+    box("avcC", video.avcC),
+    colr(video.avcC)
   );
 
 const descriptor = (tag: number, ...parts: readonly Uint8Array[]) => {

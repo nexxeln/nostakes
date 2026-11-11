@@ -9,6 +9,15 @@ import { createServer } from "vite";
 import type { ViteDevServer } from "vite";
 
 import { mutedBrowser } from "./local-site.ts";
+import {
+  declaredColour,
+  declaredText,
+  ffmpegSwatches,
+  swatchesOf,
+  swatchProblems,
+  swatchText,
+} from "./moments/clip-colour.ts";
+import type { Picture, Swatches } from "./moments/clip-colour.ts";
 import { SHARE_STUB } from "./share-stub.ts";
 
 const WEB = new URL("..", import.meta.url).pathname;
@@ -104,6 +113,12 @@ const CLIP_TOOLS = `
     }
     return { far: far / (one.length / 4), mean: total / (one.length / 4) };
   };
+  window.__rgba = (which) => {
+    const bytes = window[which];
+    let binary = "";
+    for (let at = 0; at < bytes.length; at += 32768) binary += String.fromCharCode(...bytes.subarray(at, at + 32768));
+    return btoa(binary);
+  };
   window.__judge = async (clipIndex, stillIndex, title) => {
     const video = document.createElement("video");
     video.muted = true;
@@ -140,7 +155,9 @@ const CLIP_TOOLS = `
     await Promise.race([ended, new Promise((resolve, reject) => setTimeout(() => reject(new Error("the clip never reached its end")), 20000))]);
     const last = new OffscreenCanvas(width, height).getContext("2d");
     last.drawImage(video, 0, 0);
-    const closing = lightGaps(last.getImageData(0, 0, width, height).data, still.getImageData(0, 0, width, height).data);
+    window.__lastFrame = last.getImageData(0, 0, width, height).data;
+    window.__stillFrame = still.getImageData(0, 0, width, height).data;
+    const closing = lightGaps(window.__lastFrame, window.__stillFrame);
     return JSON.stringify({ currentTime: video.currentTime, duration: video.duration, ended: video.ended, far: closing.far, height, mean: closing.mean, shown: shown.count, titleFar: opening.far, width });
   };
 })();
@@ -475,6 +492,85 @@ const fileOf = (page: Page, index: number) =>
     page.evaluate<string>(`window.__bytes(${index})`)
   ).pipe(Effect.map((text) => Uint8Array.from(Buffer.from(text, "base64"))));
 
+const pictureOf = (
+  page: Page,
+  which: string,
+  size: { readonly height: number; readonly width: number }
+) =>
+  attempt(`read the ${which} pixels`, () =>
+    page.evaluate<string>(`window.__rgba(${JSON.stringify(which)})`)
+  ).pipe(
+    Effect.map((text): Picture => ({
+      channels: 4,
+      height: size.height,
+      pixels: Uint8Array.from(Buffer.from(text, "base64")),
+      width: size.width,
+    }))
+  );
+
+const coloursOf = (
+  page: Page,
+  bytes: Uint8Array,
+  clip: {
+    readonly expected: Expected;
+    readonly height: number;
+    readonly path: string;
+    readonly width: number;
+  }
+) =>
+  Effect.gen(function* checkColours() {
+    const declared = declaredColour(bytes);
+
+    const size = { height: clip.height, width: clip.width };
+    const still = yield* pictureOf(page, "__stillFrame", size);
+
+    const shown = swatchesOf(
+      still,
+      yield* pictureOf(page, "__lastFrame", size)
+    );
+
+    const frames = atomsOf(bytes).tracks[0]?.samples ?? 0;
+
+    const viaFfmpeg: Option.Option<{
+      readonly honours: Swatches;
+      readonly ignores: Swatches;
+    }> = yield* ffmpegSwatches(clip.path, still, {
+      frames,
+      fullRange: declared.stream?.fullRange ?? false,
+      ...size,
+    });
+
+    const problems = [
+      ...(declared.stream?.fullRange === false
+        ? []
+        : [
+            `the stream declares ${declaredText(declared.stream)}, not limited range`,
+          ]),
+      ...(JSON.stringify(declared.colr) === JSON.stringify(declared.stream)
+        ? []
+        : [
+            `the colr box says ${declaredText(declared.colr)} while the stream says ${declaredText(declared.stream)}`,
+          ]),
+      ...swatchProblems("in this browser", shown),
+      ...Option.toArray(viaFfmpeg).flatMap(({ honours, ignores }) => [
+        ...swatchProblems("in a player that honours the flags", honours),
+        ...swatchProblems("in a player that ignores them", ignores),
+      ]),
+    ];
+
+    return {
+      line: `declares ${declaredText(declared.stream)}, colr ${declared.colr === null ? "none" : "the same"}; shows ${swatchText(shown)}${Option.match(
+        viaFfmpeg,
+        {
+          onNone: () => "",
+          onSome: ({ honours, ignores }) =>
+            `; ffmpeg honouring the flags ${swatchText(honours)}; ignoring them ${swatchText(ignores)}`,
+        }
+      )}`,
+      problems,
+    };
+  });
+
 const judged = (
   page: Page,
   settings: Settings,
@@ -501,6 +597,7 @@ const judged = (
     yield* fs.writeFile(path, bytes);
 
     const probe = yield* probed(path);
+    const { height, width } = SIZES[expected.frame];
 
     const played = yield* read(
       page,
@@ -517,12 +614,24 @@ const judged = (
       )
     );
 
+    const colours = yield* coloursOf(page, bytes, {
+      expected,
+      height,
+      path,
+      width,
+    });
+
     return {
       bytes: bytes.length,
+      colours: colours.line,
       path,
       played: played.found,
       probed: Option.isSome(probe),
-      problems: [...fileProblems(bytes, expected, probe), ...played.problems],
+      problems: [
+        ...fileProblems(bytes, expected, probe),
+        ...played.problems,
+        ...colours.problems,
+      ],
     };
   }).pipe(Effect.scoped);
 
@@ -692,7 +801,7 @@ const liveClip = (
 
     return {
       label,
-      line: `${label}: ${verdict.bytes} bytes, ready ${readyMs} ms after the moment left, ${after.late - before.late} late frames of ${after.frames - before.frames}, title on frame 0 off by ${((verdict.played?.titleFar ?? 1) * 100).toFixed(1)}%, last frame mean difference ${verdict.played?.mean.toFixed(2) ?? "?"} with ${((verdict.played?.far ?? 0) * 100).toFixed(2)}% far off${verdict.probed ? "" : ", no ffprobe"}${sound ? ", with sound" : ", silent"}`,
+      line: `${label}: ${verdict.bytes} bytes, ready ${readyMs} ms after the moment left, ${after.late - before.late} late frames of ${after.frames - before.frames}, title on frame 0 off by ${((verdict.played?.titleFar ?? 1) * 100).toFixed(1)}%, last frame mean difference ${verdict.played?.mean.toFixed(2) ?? "?"} with ${((verdict.played?.far ?? 0) * 100).toFixed(2)}% far off${verdict.probed ? "" : ", no ffprobe"}${sound ? ", with sound" : ", silent"}; ${verdict.colours}`,
       problems: [
         ...tapProblems,
         ...verdict.problems.map((problem) => `${label}: ${problem}`),

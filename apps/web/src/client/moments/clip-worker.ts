@@ -6,7 +6,16 @@ import {
   placementOf,
   poseOf,
 } from "../../features/moments/clip-plan.js";
-import type { Layer, Motion } from "../../features/moments/clip-plan.js";
+import type {
+  Layer,
+  Motion,
+  Placement,
+} from "../../features/moments/clip-plan.js";
+import {
+  i420Size,
+  LIMITED_BT709,
+  writeI420,
+} from "../../features/moments/i420.js";
 import { aacConfig, mp4Of } from "../../features/moments/mp4.js";
 import type { AudioTrack, Sample } from "../../features/moments/mp4.js";
 import {
@@ -32,17 +41,26 @@ const MICROS = 1_000_000;
 
 const QUEUE_DEPTH = 3;
 
+const placementsAt = (
+  layers: readonly Layer[],
+  motion: Motion,
+  ms: number
+): readonly Placement[] =>
+  layers.map((layer) => placementOf(layer, poseOf(layer, ms, motion)));
+
 const draw = (
   ctx: OffscreenCanvasRenderingContext2D,
   bands: readonly ImageBitmap[],
   layers: readonly Layer[],
-  motion: Motion,
-  ms: number
+  placements: readonly Placement[]
 ) => {
-  for (const layer of layers) {
-    const placed = placementOf(layer, poseOf(layer, ms, motion));
-
+  for (const [index, layer] of layers.entries()) {
+    const placed = placements[index];
     const source = bands[layer.band];
+
+    if (placed === undefined) {
+      continue;
+    }
 
     if (placed.alpha > 0 && source !== undefined) {
       ctx.globalAlpha = placed.alpha;
@@ -168,7 +186,7 @@ const videoTrack = (request: ClipRequest) =>
     });
 
     const canvas = new OffscreenCanvas(request.width, request.height);
-    const ctx = canvas.getContext("2d");
+    const ctx = canvas.getContext("2d", { willReadFrequently: true });
 
     if (ctx === null) {
       return yield* new ClipFailed({
@@ -179,20 +197,38 @@ const videoTrack = (request: ClipRequest) =>
 
     ctx.imageSmoothingQuality = "high";
 
+    const pixels = new Uint8Array(i420Size(request.width, request.height));
+    const drawn = { key: "" };
+
     for (let frame = 0; frame < request.frames; frame += 1) {
       yield* Effect.try({
         catch: failedAt(`draw and encode frame ${frame}`),
         try: () => {
-          draw(
-            ctx,
-            request.bands,
+          const placements = placementsAt(
             request.layers,
             request.motion,
             frameMs(frame)
           );
 
-          const image = new VideoFrame(canvas, {
+          const key = JSON.stringify(placements);
+
+          if (key !== drawn.key) {
+            draw(ctx, request.bands, request.layers, placements);
+            writeI420(
+              ctx.getImageData(0, 0, request.width, request.height).data,
+              request.width,
+              request.height,
+              pixels
+            );
+            drawn.key = key;
+          }
+
+          const image = new VideoFrame(pixels, {
+            codedHeight: request.height,
+            codedWidth: request.width,
+            colorSpace: LIMITED_BT709,
             duration: Math.round(MICROS / CLIP_FPS),
+            format: "I420",
             timestamp: Math.round(frameMs(frame) * 1000),
           });
 

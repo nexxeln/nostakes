@@ -218,6 +218,41 @@ const movieOf = (plan: Plan): Movie => ({
 const seconds = (samples: readonly Sample[], timescale: number) =>
   samples.reduce((total, sample) => total + sample.duration, 0) / timescale;
 
+const colrOf = (avcC: Uint8Array) => {
+  const bytes = mp4Of({
+    audio: null,
+    video: {
+      ...movieOf({
+        audio: null,
+        video: [{ duration: 1000, size: 4, sync: true }],
+      }).video,
+      avcC,
+    },
+  });
+
+  const moov = boxesIn(bytes, 0, bytes.length).find(
+    (each) => each.type === "moov"
+  );
+
+  if (moov === undefined) {
+    return null;
+  }
+
+  const stsd = child(bytes, moov, ["trak", "mdia", "minf", "stbl", "stsd"]);
+  const [avc1] = boxesIn(bytes, fullBody(stsd) + 4, stsd.end);
+
+  const found =
+    avc1 === undefined
+      ? undefined
+      : boxesIn(bytes, avc1.body + 78, avc1.end).find(
+          (each) => each.type === "colr"
+        );
+
+  return found === undefined
+    ? null
+    : [...bytes.subarray(found.body, found.end)];
+};
+
 describe("the clip's MP4 file", () => {
   it.prop(
     "puts the movie header before the media, so a player can start before the file has arrived",
@@ -299,6 +334,22 @@ describe("the clip's MP4 file", () => {
       );
     }
   );
+
+  it("declares the colour the H.264 stream declares, in a colr box beside the avcC", () => {
+    const limited = Uint8Array.from(
+      "01640c28ffe1001467640c28ac18d0088055f2cd35010d010784423501000468ce3c80fdf8f800"
+        .match(/../gu)
+        ?.map((pair) => Number.parseInt(pair, 16)) ?? []
+    );
+
+    expect({
+      declared: colrOf(limited),
+      undeclared: colrOf(Uint8Array.of(1, 0x64, 0, 0x28, 0xff, 0xe1)),
+    }).toStrictEqual({
+      declared: [0x6e, 0x63, 0x6c, 0x78, 0, 1, 0, 13, 0, 1, 0],
+      undeclared: null,
+    });
+  });
 
   it("describes AAC-LC at the sound's rate and channels in the two bytes a decoder reads", () => {
     expect([
