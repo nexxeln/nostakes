@@ -130,6 +130,7 @@ export interface NightControl {
   readonly quiet: Set<PlayerId>;
   readonly seats: number;
   readonly intruders: Map<PlayerId, number>;
+  readonly regulars: Map<PlayerId, number>;
   door: Option.Option<boolean>;
 }
 
@@ -531,6 +532,29 @@ export const plannerFor = (setup: PlannerSetup) => {
     );
   };
 
+  const regularIntent = (open: OpenView): Option.Option<Intent> =>
+    Option.fromUndefinedOr(
+      [...control.regulars].find(
+        ([regular, atHand]) =>
+          handNumberOf(open) >= atHand &&
+          open.members.some(({ player }) => player === regular) &&
+          open.hand.pipe(
+            Option.exists(({ players }) =>
+              players.some(
+                ({ committedTotal, player, status }) =>
+                  player === regular &&
+                  status === "Active" &&
+                  committedTotal > 0
+              )
+            )
+          )
+      )
+    ).pipe(
+      Option.flatMap(([regular]) =>
+        intent(Commands.RemoveMember.make({ player: regular }))
+      )
+    );
+
   const hostIntent = (open: OpenView): Option.Option<Intent> => {
     const [seatRequest] = open.requests.seats;
     const [chipRequest] = open.requests.chips;
@@ -863,6 +887,15 @@ export const plannerFor = (setup: PlannerSetup) => {
 
   const choose = (open: OpenView): Option.Option<Intent> => {
     const me = seatOf(open, pass.player);
+
+    const regularOut =
+      open.host === pass.player && !control.closing
+        ? regularIntent(open)
+        : Option.none();
+
+    if (Option.isSome(regularOut)) {
+      return regularOut;
+    }
 
     if (
       control.closing &&

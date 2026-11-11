@@ -1,4 +1,4 @@
-import { Antes, ChipsSchema } from "@nostakes/engine";
+import { Antes, ChipsSchema, SEAT_COUNT } from "@nostakes/engine";
 import {
   ROOM_CODE_ALPHABET,
   ROOM_CODE_LENGTH,
@@ -55,6 +55,13 @@ import { createPokerRoom, joinPokerRoom } from "./poker-http.js";
 import { pokerCodec, wallClock } from "./poker-socket.js";
 import type { Arrival } from "./poker-socket.js";
 import {
+  REGULAR_NAME,
+  joinRegular,
+  playRegular,
+  regularProblems,
+} from "./regular.js";
+import type { RegularRecord } from "./regular.js";
+import {
   inspect,
   jamRoom,
   queueCodes,
@@ -87,6 +94,7 @@ export interface NightPlan {
   readonly devices: readonly string[];
   readonly intruderAtHand: Option.Option<number>;
   readonly intruderSits: boolean;
+  readonly regularAtHand: Option.Option<number>;
 }
 
 export interface PlayedNight {
@@ -96,6 +104,7 @@ export interface PlayedNight {
   readonly durationMs: number;
   readonly analytics: NightAnalytics;
   readonly intruder: Option.Option<IntruderRecord>;
+  readonly regular: Option.Option<RegularRecord>;
 }
 
 export interface NightResult {
@@ -250,6 +259,7 @@ export interface NightRecipe {
   readonly clientPercent: number;
   readonly tableRules: TableRules;
   readonly stranger?: StrangerPlan;
+  readonly regular?: boolean;
 }
 
 const clientIndices = (random: Random, bots: number, percent: number) => {
@@ -324,6 +334,12 @@ const strangerOf = (recipe: NightRecipe, seed: number) => ({
     recipe.stranger === undefined
       ? randomSource(seed * 13 + 7).chance(70)
       : recipe.stranger === "Sits",
+  regularAtHand:
+    recipe.ending !== "Halted" &&
+    recipe.hands >= 6 &&
+    (recipe.regular ?? randomSource(seed * 13 + 9).chance(30))
+      ? Option.some(Math.max(2, Math.floor(recipe.hands / 3)))
+      : Option.none(),
 });
 
 export const planNight = (
@@ -429,6 +445,8 @@ export const planNight = (
     ? { ...settings, dealing: "Host" as const }
     : settings;
 
+  const visitors = strangerOf(recipe, seed);
+
   return {
     ...plan,
     clients,
@@ -438,9 +456,11 @@ export const planNight = (
     ),
     ending: recipe.ending,
 
-    ...strangerOf(recipe, seed),
+    ...visitors,
     limitMs: plan.limitMs + recipe.hands * slowRulesAllowanceMs(played),
-    settings: played,
+    settings: Option.isSome(visitors.regularAtHand)
+      ? { ...played, seats: SEAT_COUNT }
+      : played,
   };
 };
 
@@ -618,6 +638,7 @@ export const playNight = (base: string, opened: OpenedNight) =>
       head: 0,
       intruders: new Map(),
       quiet: new Set(),
+      regulars: new Map(),
       ruleChanges: plan.ruleChanges,
       rulesApplied: 0,
       seats: plan.players + plan.lateJoiners,
@@ -931,6 +952,22 @@ export const playNight = (base: string, opened: OpenedNight) =>
     const loops = opened.passes.map((pass, index) => launch(pass, index));
 
     let intruder = Option.none<IntruderRecord>();
+    let regular = Option.none<RegularRecord>();
+
+    const regularPlays = Option.match(plan.regularAtHand, {
+      onNone: () => Effect.void,
+      onSome: (atHand) =>
+        joinRegular(base, plan.code).pipe(
+          Effect.flatMap((pass) =>
+            playRegular(base, pass, control, atHand, control.seats, note)
+          ),
+          Effect.tap((record) =>
+            Effect.sync(() => {
+              regular = Option.some(record);
+            })
+          )
+        ),
+    });
 
     const intruding = Option.match(plan.intruderAtHand, {
       onNone: () => Effect.void,
@@ -1000,7 +1037,7 @@ export const playNight = (base: string, opened: OpenedNight) =>
       )
     );
 
-    yield* Effect.all([supervise, intruding, ...loops, ...late], {
+    yield* Effect.all([supervise, intruding, regularPlays, ...loops, ...late], {
       concurrency: "unbounded",
     }).pipe(
       Effect.ensuring(
@@ -1044,6 +1081,7 @@ export const playNight = (base: string, opened: OpenedNight) =>
           ...plan.devices.map((_, index) => `bot${index}`),
           INTRUDER_NAME,
           KNOCKER_NAME,
+          REGULAR_NAME,
         ],
       },
       durationMs: wallClock() - started,
@@ -1066,6 +1104,7 @@ export const playNight = (base: string, opened: OpenedNight) =>
       },
       intruder,
       plan,
+      regular,
     };
 
     return played;
@@ -1116,6 +1155,14 @@ export const judgeNight = (played: PlayedNight): NightResult => {
       ...checked.problems,
       ...checkAnalytics(played.events, played.analytics),
       ...keptDecoded(played.evidence.bots, played.evidence.clients),
+      ...Option.match(played.regular, {
+        onNone: () => [],
+        onSome: (record) =>
+          regularProblems(
+            record,
+            played.events.map((text) => pokerCodec.decodeEvent(text))
+          ),
+      }),
       ...Option.match(played.intruder, {
         onNone: () => [],
         onSome: (record) =>

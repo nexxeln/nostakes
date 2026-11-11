@@ -75,6 +75,7 @@ const CHECKED_HANDS_PER_ROOM = 2;
 const CHECKED_HANDS = 2 * CHECKED_HANDS_PER_ROOM;
 
 interface SmallRoom {
+  readonly regular?: boolean;
   readonly stranger?: StrangerPlan;
   readonly ending: NightEnding;
   readonly players: number;
@@ -106,7 +107,14 @@ const ROOMS: readonly SmallRoom[] = [
     shuffle: "Plain",
     stranger: "Sits",
   },
-  { ending: "AsItComes", hands: 9, players: 2, restarts: 1, shuffle: "Plain" },
+  {
+    ending: "AsItComes",
+    hands: 9,
+    players: 2,
+    regular: true,
+    restarts: 1,
+    shuffle: "Plain",
+  },
   {
     ending: "AsItComes",
     hands: 9,
@@ -151,7 +159,10 @@ test(
     const base = yield* Effect.fromNullishOr(url).pipe(Effect.orDie);
 
     const plans = ROOMS.map(
-      ({ ending, hands, players, restarts, shuffle, stranger }, index) =>
+      (
+        { ending, hands, players, regular, restarts, shuffle, stranger },
+        index
+      ) =>
         planNight(
           SEED + index,
           {
@@ -161,6 +172,7 @@ test(
             handBudgetMs: 4000,
             hands,
             players,
+            regular: regular ?? false,
             restarts,
             rotation: index * 2,
             shuffle,
@@ -281,6 +293,14 @@ test(
         )
       ).length
     ).toBeGreaterThanOrEqual(1);
+    expect(
+      played.flatMap((night) =>
+        Option.toArray(night.regular).map(({ handsDealt, removedVia }) => ({
+          handsDealt: handsDealt > 1,
+          removed: Option.isSome(removedVia),
+        }))
+      )
+    ).toStrictEqual([{ handsDealt: true, removed: true }]);
     expect(total((counts) => counts.peekDeliveries)).toBeGreaterThan(0);
     expect(total((counts) => counts.reactionDeliveries)).toBeGreaterThan(0);
     expect(total((counts) => counts.peeksWithoutCards)).toBeGreaterThan(0);

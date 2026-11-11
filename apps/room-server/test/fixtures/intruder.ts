@@ -46,7 +46,7 @@ type Greeting = "Welcomed" | "Removed" | "Other";
 const greeted = (socket: PokerSocket) =>
   socket.arrivals.some(({ message }) => guards.Welcome(message));
 
-const closingOf = (socket: PokerSocket) =>
+export const closingOf = (socket: PokerSocket) =>
   Option.fromUndefinedOr(
     socket.arrivals.find(({ message }) => guards.Closing(message))
   ).pipe(
@@ -55,7 +55,7 @@ const closingOf = (socket: PokerSocket) =>
     )
   );
 
-const hello = (base: string, pass: RoomPass, label: string) =>
+export const hello = (base: string, pass: RoomPass, label: string) =>
   Effect.gen(function* openAndGreet() {
     const socket = yield* openSocket(base, pass.code, label);
 
@@ -106,7 +106,7 @@ const freeSeat = (socket: PokerSocket) =>
     )
   );
 
-const rangesOf = (sockets: readonly PokerSocket[]) =>
+export const rangesOf = (sockets: readonly PokerSocket[]) =>
   sockets.flatMap(({ arrivals }) =>
     arrivals.flatMap(({ message }) =>
       guards.Events(message) ? [{ from: message.from, to: message.to }] : []
@@ -138,6 +138,36 @@ const stillFinishing = (standings: { readonly body: Schema.Json }) =>
     decodeRemoved(standings.body),
     ({ removed }) => removed.finishing
   );
+
+export const comeBackAndRead = (
+  base: string,
+  pass: RoomPass,
+  sockets: readonly PokerSocket[],
+  label: string
+) =>
+  Effect.gen(function* comeBack() {
+    const back = yield* hello(base, pass, `${label} comes back`);
+
+    let standings = yield* readStandings(base, pass);
+    const asked = performance.now();
+
+    while (
+      stillFinishing(standings) &&
+      performance.now() - asked < FINISHING_WAIT_MS
+    ) {
+      yield* Effect.sleep(Duration.millis(250));
+      standings = yield* readStandings(base, pass);
+    }
+
+    for (const socket of [...sockets, back.socket]) {
+      yield* socket.disconnect;
+    }
+
+    return {
+      cameBack: Option.getOrElse(closingOf(back.socket), () => back.greeting),
+      standings: Option.some(standings),
+    };
+  });
 
 export const intrude = (
   base: string,
@@ -218,29 +248,11 @@ export const intrude = (
       `the stranger was removed (${removedVia.value}) and tries to come back`
     );
 
-    const back = yield* hello(base, pass, `${INTRUDER_NAME} comes back`);
-
-    let standings = yield* readStandings(base, pass);
-    const asked = performance.now();
-
-    while (
-      stillFinishing(standings) &&
-      performance.now() - asked < FINISHING_WAIT_MS
-    ) {
-      yield* Effect.sleep(Duration.millis(250));
-      standings = yield* readStandings(base, pass);
-    }
-
-    for (const socket of [...sockets, back.socket]) {
-      yield* socket.disconnect;
-    }
-
     return {
-      cameBack: Option.getOrElse(closingOf(back.socket), () => back.greeting),
+      ...(yield* comeBackAndRead(base, pass, sockets, INTRUDER_NAME)),
       player: pass.player,
       ranges: rangesOf(sockets),
       removedVia,
-      standings: Option.some(standings),
     };
   });
 
@@ -297,16 +309,19 @@ const doorProblems = (
       ];
 };
 
-const removalProblems = (
-  record: IntruderRecord,
-  events: readonly RoomEvent[]
+export type RemovalRecord = Omit<IntruderRecord, "knocked">;
+
+export const removalProblems = (
+  record: RemovalRecord,
+  events: readonly RoomEvent[],
+  who = "stranger"
 ): readonly string[] => {
   const at = removedAt(events, record.player);
 
   if (at === -1) {
     return Option.isSome(record.removedVia)
       ? [
-          `the stranger's socket was closed as removed, but the log never removed ${record.player}`,
+          `the ${who}'s socket was closed as removed, but the log never removed ${record.player}`,
         ]
       : [];
   }
@@ -342,26 +357,26 @@ const removalProblems = (
     ...(Option.isSome(record.removedVia)
       ? []
       : [
-          `the log removed the stranger at ${seq}, but no socket of theirs was closed as Removed`,
+          `the log removed the ${who} at ${seq}, but no socket of theirs was closed as Removed`,
         ]),
     ...(record.cameBack === "Removed"
       ? []
       : [
-          `the removed stranger's pass came back and got ${record.cameBack}, not Removed`,
+          `the removed ${who}'s pass came back and got ${record.cameBack}, not Removed`,
         ]),
     ...record.ranges
       .filter(({ to }) => to >= seq)
       .map(
         ({ from, to }) =>
-          `the removed stranger received events ${from}..${to}, past the batch at ${seq} that removed them`
+          `the removed ${who} received events ${from}..${to}, past the batch at ${seq} that removed them`
       ),
     ...(JSON.stringify(Option.getOrUndefined(read)) === JSON.stringify(row)
       ? []
       : [
-          `the removed stranger read ${JSON.stringify(Option.getOrUndefined(record.standings))} as their result, not their line ${JSON.stringify(row)} from the log`,
+          `the removed ${who} read ${JSON.stringify(Option.getOrUndefined(record.standings))} as their result, not their line ${JSON.stringify(row)} from the log`,
         ]),
     ...later.map(
-      (event) => `the removed stranger caused ${event._tag} after removal`
+      (event) => `the removed ${who} caused ${event._tag} after removal`
     ),
   ];
 };
