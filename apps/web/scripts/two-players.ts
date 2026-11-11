@@ -399,11 +399,24 @@ const hasNothing = (hole: readonly string[], board: readonly string[]) =>
 
 const passes = (page: Page, step: string) =>
   Effect.gen(function* tapAndWait() {
+    const before = yield* cardsOn(page);
+
     yield* attempt(step, () => page.locator(`${CHIP}.live`).click());
     yield* attempt(`${step}, and the turn moves on`, () =>
-      page
-        .locator(`${CHIP}.live`)
-        .waitFor({ state: "detached", timeout: 15_000 })
+      page.waitForFunction(
+        (board) => {
+          const root =
+            globalThis.document.querySelector("nostakes-table")?.shadowRoot;
+
+          return (
+            root?.querySelector(".chipctl.live") === null ||
+            (root?.querySelectorAll(".slot .card:not(.rabbit) .face").length ??
+              0) > board
+          );
+        },
+        before.board.length,
+        { timeout: 15_000 }
+      )
     );
   });
 
