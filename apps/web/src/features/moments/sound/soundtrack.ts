@@ -8,6 +8,7 @@ import {
   held,
   hertz,
   laid,
+  leaned,
   mastered,
   ramp,
   ridden,
@@ -127,6 +128,7 @@ interface Palette {
   readonly aftermath: (arrangement: Arrangement) => void;
   readonly bed: (arrangement: Arrangement) => void;
   readonly hit: (arrangement: Arrangement, at: number) => void;
+  readonly lean: number;
   readonly pause: (arrangement: Arrangement, from: number, to: number) => void;
   readonly room: { readonly damp: number; readonly size: number };
   readonly small: SmallLook;
@@ -138,7 +140,7 @@ interface Palette {
 
 const BROADCAST_BEAT = 60 / 96;
 
-const BROADCAST_BASS = [38, 38, 41, 38, 38, 38, 33, 36];
+const BROADCAST_BASS = [50, 50, 53, 50, 50, 50, 45, 48];
 
 const bassNote = (midi: number, seconds: number, cutoff: number): Mono =>
   contoured(
@@ -160,6 +162,9 @@ const bassNote = (midi: number, seconds: number, cutoff: number): Mono =>
 const broadcastBed = ({ desk, times }: Arrangement) => {
   const grid = gridOf(0, times.build, BROADCAST_BEAT);
 
+  put(desk, "Bed", thump(84, 36, 0.6), { at: 0, gain: 0.5, wet: 0.3 });
+  put(desk, "Bed", bell(hertz(69), 1.6), { at: 0, gain: 0.12, wet: 0.8 });
+
   for (const [index, at] of grid.beats.entries()) {
     const level = tensionAt(times, at);
 
@@ -174,7 +179,7 @@ const broadcastBed = ({ desk, times }: Arrangement) => {
         desk,
         "Bed",
         bassNote(
-          BROADCAST_BASS[(index * 2 + half) % BROADCAST_BASS.length] ?? 38,
+          BROADCAST_BASS[(index * 2 + half) % BROADCAST_BASS.length] ?? 50,
           grid.beat * 0.46,
           260 + 1500 * level
         ),
@@ -351,7 +356,7 @@ const broadcastAftermath = ({ desk, times }: Arrangement) => {
       put(desk, "Bed", kick(desk.chance, 1), { at, gain: 0.5, wet: 0.06 });
     }
 
-    put(desk, "Bed", bassNote(38, grid.beat * 0.4, 500), { at, gain: 0.3 });
+    put(desk, "Bed", bassNote(50, grid.beat * 0.4, 500), { at, gain: 0.3 });
     put(desk, "Bed", tick(desk.chance, 6500, 0.014, 3), {
       at: at + grid.beat / 2,
       gain: 0.07,
@@ -475,6 +480,7 @@ const BROADCAST: Palette = {
   aftermath: broadcastAftermath,
   bed: broadcastBed,
   hit: broadcastHit,
+  lean: 0.5,
   pause: broadcastPause,
   room: { damp: 0.35, size: 0.86 },
   small: { card: 3200, chipHigh: 5200, chipLow: 2600, knock: 200 },
@@ -632,6 +638,15 @@ const paperBed = ({ desk, times }: Arrangement) => {
   const climb =
     times.pause === null ? grid.beats.length : grid.beats.length - 2;
 
+  for (const [index, midi] of [48, 55, 64, 72].entries()) {
+    put(desk, "Bed", string(midi, 1.2, desk.chance, 0.7), {
+      at: index * 0.02,
+      gain: 0.3,
+      pan: -0.3 + index * 0.2,
+      wet: 0.5,
+    });
+  }
+
   for (const [index, at] of grid.beats.entries()) {
     const pulse = { at, beat: grid.beat, index, level: tensionAt(times, at) };
 
@@ -657,7 +672,7 @@ const paperPause = ({ desk }: Arrangement, from: number, to: number) => {
   for (let at = from + 0.35; at < to - 0.3; at += 0.5) {
     put(desk, "Fx", woodblock(desk.chance, high ? 1500 : 1150), {
       at,
-      gain: 0.07,
+      gain: 0.04,
       pan: high ? -0.2 : 0.2,
       wet: 0.5,
     });
@@ -880,6 +895,7 @@ const PAPER: Palette = {
   aftermath: paperAftermath,
   bed: paperBed,
   hit: paperHit,
+  lean: 0,
   pause: paperPause,
   room: { damp: 0.5, size: 0.7 },
   small: { card: 2600, chipHigh: 5600, chipLow: 3000, knock: 320 },
@@ -969,6 +985,13 @@ const roomBed = ({ desk, times }: Arrangement) => {
 
   const climb =
     times.pause === null ? grid.beats.length : grid.beats.length - 4;
+
+  put(desk, "Bed", ride(desk.chance, 0.9), {
+    at: 0,
+    gain: 0.22,
+    pan: 0.4,
+    wet: 0.4,
+  });
 
   for (const [index, at] of grid.beats.entries()) {
     const level = tensionAt(times, at);
@@ -1251,6 +1274,7 @@ const BACK_ROOM: Palette = {
   aftermath: roomAftermath,
   bed: roomBed,
   hit: roomHit,
+  lean: 0,
   pause: roomPause,
   room: { damp: 0.6, size: 0.62 },
   small: { card: 2200, chipHigh: 3600, chipLow: 1900, knock: 230 },
@@ -1352,6 +1376,8 @@ const bedLevel = (times: Times) => (at: number) => {
 
 const TAIL = 0.4;
 
+const LEAN_BELOW = 170;
+
 export const soundtrackOf = (sheet: ScoreSheet, name: PaletteName): Stereo => {
   const palette = LOOKS[name];
   const times = timesOf(sheet);
@@ -1386,6 +1412,7 @@ export const soundtrackOf = (sheet: ScoreSheet, name: PaletteName): Stereo => {
 
   added(mix, desk.bed, 1);
   added(mix, roomOf(desk.send, palette.room), palette.wet);
+  leaned(mix, LEAN_BELOW, palette.lean);
   ridden(mix, (at) => Math.min(1, Math.max(0, (seconds - at) / TAIL)));
 
   return mastered(mix, { ceiling: PEAK_CEILING, loudness: LOUDNESS_TARGET });

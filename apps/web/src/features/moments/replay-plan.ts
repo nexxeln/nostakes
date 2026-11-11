@@ -874,15 +874,7 @@ const swungCard = (
   });
 };
 
-const dealtStreet = (
-  walk: Walk,
-  told: Told,
-  street: StreetStep,
-  following: readonly OddsStep[],
-  last: boolean
-) => {
-  const board = walk.boards[street.run - 1] ?? [];
-  const first = FIRST_SLOT[street.street];
+const beforeStreet = (walk: Walk, told: Told, street: StreetStep) => {
   const waiting = walk.odds;
 
   const outs =
@@ -894,7 +886,6 @@ const dealtStreet = (
     outs !== null && outs === walk.asked ? REPLAY_WORDS.lastCard : outs;
 
   walk.asked = outs ?? walk.asked;
-
   flushFolds(walk, told);
 
   if (walk.boards.length > 1 && !walk.announced.has(street.run)) {
@@ -915,6 +906,22 @@ const dealtStreet = (
       show.apply();
     });
   }
+};
+
+const dealtStreet = (
+  walk: Walk,
+  told: Told,
+  street: StreetStep,
+  following: readonly OddsStep[],
+  last: boolean
+) => {
+  const board = walk.boards[street.run - 1] ?? [];
+  const first = FIRST_SLOT[street.street];
+
+  const endsOnACard =
+    told.decisive.kind === "Card" || told.decisive.kind === "None";
+
+  beforeStreet(walk, told, street);
 
   for (const [index, card] of street.cards.entries()) {
     const counted = following[index] ?? null;
@@ -950,7 +957,7 @@ const dealtStreet = (
             show.cue("Bar", 240);
           }
 
-          if (ends && told.decisive.kind !== "Call") {
+          if (ends && endsOnACard) {
             show.mark("Result", 240);
           }
         }

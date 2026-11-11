@@ -527,7 +527,21 @@ export const limited = (mix: Stereo, ceiling: number) => {
   }
 };
 
-const MASTER_PASSES = 2;
+export const leaned = (mix: Stereo, below: number, amount: number) => {
+  if (amount <= 0) {
+    return;
+  }
+
+  for (const channel of [mix.left, mix.right]) {
+    const lows = filtered(Float32Array.from(channel), "Low", steady(below));
+
+    for (let index = 0; index < channel.length; index += 1) {
+      channel[index] = (channel[index] ?? 0) - (lows[index] ?? 0) * amount;
+    }
+  }
+};
+
+const MASTER_PASSES = 3;
 
 export const mastered = (
   mix: Stereo,

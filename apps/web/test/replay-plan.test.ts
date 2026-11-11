@@ -46,7 +46,7 @@ const handSeed = Arbitrary.schema(
   Schema.Int.check(Schema.isBetween({ maximum: 2_000_000_000, minimum: 1 }))
 );
 
-const HANDS = { arbitrary: { runs: 40 }, timeout: 120_000 };
+const HANDS = { arbitrary: { runs: 150 }, timeout: 120_000 };
 
 const LONGEST_MS = 30_000;
 
@@ -302,6 +302,25 @@ const everyDevice = (events: readonly Event[]) => [
 ];
 
 describe("a moment's hand replay", () => {
+  it("scores a bluff's result after its pause, not at the river card before it", () => {
+    const seed = 1_936_103_431;
+
+    const plan = planFor(
+      feedFor(generatedHand(seed), Audiences.Spectator()),
+      seed
+    );
+
+    expect(
+      plan.pipe(
+        Option.map(
+          ({ sheet }) =>
+            (sheet.pauseMs ?? 0) <= (sheet.hitMs ?? 0) &&
+            (sheet.hitMs ?? 0) <= sheet.resultMs
+        )
+      )
+    ).toStrictEqual(Option.some(true));
+  });
+
   it.prop(
     "starts every seat with the stack it had before the hand, read back from the stack after it",
     { seed: handSeed },

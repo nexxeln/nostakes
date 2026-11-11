@@ -80,9 +80,14 @@ const BAR_RADIUS = 14;
 
 const barOf = (
   palette: Palette,
+  theme: Theme,
   art: Extract<SpriteArt, { kind: "Bar" }>
 ): SpriteMarkup => {
-  const fills = { Lead: RED, Other: palette.ink, Track: palette.face };
+  const fills = {
+    Lead: RED,
+    Other: palette.ink,
+    Track: theme === "Light" ? palette.face : palette.page,
+  };
 
   return {
     box: boxAround(art.x, art.y, art.width + 4, art.height + 4),
@@ -123,7 +128,7 @@ const pillOf = (
         x: number(x),
         y: number(y),
       }),
-      `<text x="${art.x}" y="${number(art.y + art.size * 0.36)}" text-anchor="middle" font-family="DM Sans, Figtree, sans-serif" font-weight="800" font-size="${art.size}" fill="${red ? ON_RED : palette.ink}">${escaped(art.text)}</text>`,
+      `<text x="${art.x}" y="${number(art.y + art.size * 0.36)}" text-anchor="middle" font-family="DM Sans, Figtree, sans-serif" font-weight="800" font-size="${art.size}" fill="${red ? ON_RED : palette.cardInk}">${escaped(art.text)}</text>`,
     ].join(""),
   };
 };
@@ -202,7 +207,7 @@ export const spriteMarkup = (
 ): SpriteMarkup =>
   Match.value(art).pipe(
     Match.discriminatorsExhaustive("kind")({
-      Bar: (bar) => barOf(palette, bar),
+      Bar: (bar) => barOf(palette, theme, bar),
       Caption: (caption) => captionOf(palette, caption),
       Card: (card) => cardOf(palette, card),
       Face: (face) => faceOf(palette, theme, face),
