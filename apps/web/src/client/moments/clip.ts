@@ -11,10 +11,17 @@ import {
   CLIP_STAGING,
   poseOf,
   stingStartMs,
+  tagPose,
 } from "../../features/moments/clip-plan.js";
-import type { Layer, Motion } from "../../features/moments/clip-plan.js";
+import type { Layer } from "../../features/moments/clip-plan.js";
 import { frameTime, sampledKeys } from "../../features/moments/film.js";
-import type { Film, FilmRate, Mix, Shot } from "../../features/moments/film.js";
+import type {
+  Film,
+  FilmRate,
+  Mix,
+  Pose,
+  Shot,
+} from "../../features/moments/film.js";
 import type { MomentPicture } from "../../features/moments/picture.js";
 import { spriteMarkup } from "../../features/moments/replay-art.js";
 import { replayPlan } from "../../features/moments/replay-plan.js";
@@ -29,6 +36,7 @@ import {
   shiftedScore,
 } from "../../features/moments/score.js";
 import type { SoundStep } from "../../features/moments/score.js";
+import type { PaletteName } from "../../features/moments/sound/sheet.js";
 import { FRAME_SIZES, paletteFor } from "../../features/pictures/paper.js";
 import type { KeptFrame } from "../../features/pictures/paper.js";
 import { cardParts, ClipUnavailable, failedAt } from "./clip-layers.js";
@@ -37,6 +45,7 @@ import type { PartBox } from "./clip-measure.js";
 import { CLIP_AUDIO_CODEC } from "./clip-wire.js";
 import { clipWorker, filmFile, filmOn } from "./film-file.js";
 import type { ClipSupport, ClipTooSlow, ClipWorker } from "./film-file.js";
+import { mixedOffThread } from "./soundtrack.js";
 import { renderScore } from "./synth.js";
 
 export { ClipUnavailable } from "./clip-layers.js";
@@ -50,9 +59,6 @@ export type { ClipSupport, FilmMade, FilmOrder } from "./film-file.js";
 const VIDEO_CODECS = ["avc1.640028", "avc1.4D4028", "avc1.42E028"];
 
 const VIDEO_BITRATE = 3_000_000;
-
-const startsTheReplay = (role: string) =>
-  role === BASE_ROLE || CLIP_STAGING.landed.has(role);
 
 const SOUND_RATE = 48_000;
 
@@ -220,18 +226,14 @@ export const cardShots = (
   timing: {
     readonly fps: FilmRate;
     readonly frames: number;
-    readonly from: (role: string) => number;
-    readonly motion: Motion;
+    readonly pose: (part: CardPart, ms: number) => Pose;
   }
 ): readonly Shot[] =>
   parts.map((part) => ({
     art: part.art,
     box: part.cell,
-    keys: sampledKeys(
-      (ms) => poseOf(layerOf(part, timing.from(part.role)), ms, timing.motion),
-      timing.frames,
-      timing.fps
-    ),
+    keys: sampledKeys((ms) => timing.pose(part, ms), timing.frames, timing.fps),
+    pinned: part.role === BASE_ROLE,
     pivot: part.centre,
   }));
 
@@ -261,8 +263,7 @@ export const cardFilm = (
     const shots = cardShots(parts, {
       fps: CLIP_FPS,
       frames,
-      from: () => 0,
-      motion,
+      pose: (part, ms) => poseOf(layerOf(part, 0), ms, motion),
     });
 
     return {
@@ -294,8 +295,11 @@ export const clipFile = (
     Effect.map((made) => made.file)
   );
 
+export const CLIP_PALETTE: PaletteName = "Paper";
+
 export interface ReplayOrder extends ClipOrder {
-  readonly lead: SeatIndex;
+  readonly palette?: PaletteName;
+  readonly principals: readonly SeatIndex[];
   readonly record: readonly SeenTableEvent[];
   readonly seats: readonly ReplaySeat[];
 }
@@ -341,14 +345,19 @@ const spriteShots = (
     return shots;
   });
 
-const UNDER_SPRITES = new Set([BASE_ROLE, "felt"]);
+const UNDER_SPRITES = new Set([BASE_ROLE, "felt", "mark"]);
 
-export const replayFilm = (
+export interface ReplayStory {
+  readonly film: Film;
+  readonly plan: ReplayPlan;
+}
+
+export const replayStory = (
   worker: ClipWorker,
   picture: MomentPicture,
   look: { readonly deck: Deck; readonly theme: Theme },
   order: ReplayOrder
-): Effect.Effect<Film, ClipUnavailable | ClipTooSlow> =>
+): Effect.Effect<ReplayStory, ClipUnavailable | ClipTooSlow> =>
   Effect.gen(function* replayClip() {
     const { frame, slot, support } = order;
     const size = FRAME_SIZES[frame];
@@ -371,18 +380,26 @@ export const replayFilm = (
       )
     );
 
-    const plan = replayPlan(replay, { lead: order.lead, seats: order.seats });
+    const told = replayPlan(replay, {
+      frame,
+      kind: picture.kind,
+      principals: order.principals,
+      seats: order.seats,
+      tier: picture.tier,
+    });
+
+    const frames = Math.ceil((told.length * CLIP_FPS) / 1000);
+    const length = frameTime(frames, CLIP_FPS);
+    const plan = { ...told, sheet: { ...told.sheet, lengthMs: length } };
     const parts = yield* cardParts(order.svg, order.boxes, size);
-    const motion = motionOf(picture);
-    const frames = Math.ceil((plan.length * CLIP_FPS) / 1000);
+    const tag = { cardAt: plan.cardAt, motion: motionOf(picture) };
 
     yield* slot;
 
     const card = cardShots(parts, {
       fps: CLIP_FPS,
       frames,
-      from: (role) => (startsTheReplay(role) ? 0 : plan.cardAt),
-      motion,
+      pose: (part, ms) => tagPose(part, ms, tag),
     });
 
     const under = card.filter((_, index) =>
@@ -396,29 +413,32 @@ export const replayFilm = (
     const sprites = yield* spriteShots(plan, look, slot);
 
     const sound = support.sound
-      ? yield* mixOf(
-          [
-            ...plan.cues,
-            ...shiftedScore(
-              momentScore(picture.kind, picture.tier),
-              (plan.cardAt + stingStartMs(motion.family, CLIP_STAGING)) / 1000
-            ),
-          ],
-          frames / CLIP_FPS,
-          slot
-        )
+      ? yield* mixedOffThread(plan.sheet, order.palette ?? CLIP_PALETTE)
       : null;
 
     return {
-      camera: [],
-      fps: CLIP_FPS,
-      height: size.height,
-      length: frameTime(frames, CLIP_FPS),
-      shots: [...under, ...sprites, ...over],
-      sound,
-      width: size.width,
+      film: {
+        camera: plan.camera,
+        fps: CLIP_FPS,
+        height: size.height,
+        length,
+        shots: [...under, ...sprites, ...over],
+        sound,
+        width: size.width,
+      },
+      plan,
     };
   });
+
+export const replayFilm = (
+  worker: ClipWorker,
+  picture: MomentPicture,
+  look: { readonly deck: Deck; readonly theme: Theme },
+  order: ReplayOrder
+): Effect.Effect<Film, ClipUnavailable | ClipTooSlow> =>
+  replayStory(worker, picture, look, order).pipe(
+    Effect.map((story) => story.film)
+  );
 
 export const replayFile = (
   picture: MomentPicture,

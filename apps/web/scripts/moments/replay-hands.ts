@@ -178,7 +178,7 @@ export const REPLAY_HANDS = {
     ],
   },
   RunItTwice: {
-    deck: "Ad As 2c Ah 2s 7c 9h 4d 2d 3c 4h 5d Kh Qs",
+    deck: "Ad As 2c Ah 2s 7c 9h 4d 2d 3c 8h Jd Kh Qs",
     maxRuns: 2,
     moves: [act(0, raises(1500)), act(1, calls), chooses(0, 2), chooses(1, 2)],
     players: [

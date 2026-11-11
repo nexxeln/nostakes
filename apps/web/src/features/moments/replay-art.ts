@@ -14,7 +14,7 @@ import {
 import type { Palette } from "../pictures/paper.js";
 import { textWidth } from "../pictures/text-fit.js";
 import type { Box } from "./clip-plan.js";
-import type { SpriteArt } from "./replay-plan.js";
+import type { SpriteArt } from "./replay-stage.js";
 
 export interface SpriteMarkup {
   readonly box: Box;
@@ -22,12 +22,6 @@ export interface SpriteMarkup {
 }
 
 const MARGIN = 10;
-
-const PILL_HEIGHT = 52;
-
-const PILL_FONT = 30;
-
-const BUTTON_RADIUS = 22;
 
 const boxAround = (
   x: number,
@@ -46,10 +40,64 @@ const labelOf = (
   art: Extract<SpriteArt, { kind: "Label" }>
 ): SpriteMarkup => {
   const width = textWidth(art.text, art.size) + art.size;
+  const heavy = art.weight === "Heavy";
 
   return {
     box: boxAround(art.x - width / 2, art.y - art.size, width, art.size * 1.4),
-    markup: `<text x="${art.x}" y="${art.y}" text-anchor="middle" font-family="Figtree, sans-serif" font-weight="${art.tone === "Ink" ? 700 : 600}" font-size="${art.size}" fill="${art.tone === "Ink" ? palette.ink : palette.muted}">${escaped(art.text)}</text>`,
+    markup: `<text x="${art.x}" y="${art.y}" text-anchor="middle" font-family="${heavy ? "DM Sans, " : ""}Figtree, sans-serif" font-weight="${heavy ? 800 : 700}" font-size="${art.size}"${heavy ? ` letter-spacing="${number(-art.size * 0.03)}"` : ""} fill="${art.tone === "Ink" ? palette.ink : palette.muted}">${escaped(art.text)}</text>`,
+  };
+};
+
+const LINE_GAP = 1.14;
+
+const captionOf = (
+  palette: Palette,
+  art: Extract<SpriteArt, { kind: "Caption" }>
+): SpriteMarkup => {
+  const width = Math.max(
+    ...art.lines.map((line) => textWidth(line, art.size) + art.size)
+  );
+
+  const step = art.size * LINE_GAP;
+
+  return {
+    box: boxAround(
+      art.x - width / 2,
+      art.y - art.size,
+      width,
+      step * art.lines.length + art.size * 0.3
+    ),
+    markup: art.lines
+      .map(
+        (line, index) =>
+          `<text x="${art.x}" y="${number(art.y + index * step)}" text-anchor="middle" font-family="DM Sans, Figtree, sans-serif" font-weight="800" font-size="${art.size}" letter-spacing="${number(-art.size * 0.035)}" fill="${palette.ink}">${escaped(line)}</text>`
+      )
+      .join(""),
+  };
+};
+
+const BAR_RADIUS = 14;
+
+const barOf = (
+  palette: Palette,
+  art: Extract<SpriteArt, { kind: "Bar" }>
+): SpriteMarkup => {
+  const fills = { Lead: RED, Other: palette.ink, Track: palette.face };
+
+  return {
+    box: boxAround(art.x, art.y, art.width + 4, art.height + 4),
+    markup:
+      art.tone === "Track"
+        ? sheet(palette, {
+            fill: fills.Track,
+            height: art.height,
+            lift: 3,
+            radius: BAR_RADIUS,
+            width: art.width,
+            x: art.x,
+            y: art.y,
+          })
+        : `<rect x="${art.x}" y="${art.y}" width="${art.width}" height="${art.height}" rx="${BAR_RADIUS}" fill="${fills[art.tone]}"/>`,
   };
 };
 
@@ -57,24 +105,25 @@ const pillOf = (
   palette: Palette,
   art: Extract<SpriteArt, { kind: "Pill" }>
 ): SpriteMarkup => {
-  const width = textWidth(art.text, PILL_FONT) + PILL_FONT * 1.2;
+  const height = Math.round(art.size * 1.74);
+  const width = textWidth(art.text, art.size) + art.size * 1.2;
   const x = art.x - width / 2;
-  const y = art.y - PILL_HEIGHT / 2;
+  const y = art.y - height / 2;
   const red = art.tone === "Red";
 
   return {
-    box: boxAround(x, y, width + 4, PILL_HEIGHT + 4),
+    box: boxAround(x, y, width + 4, height + 4),
     markup: [
       sheet(palette, {
         fill: red ? RED : palette.face,
-        height: PILL_HEIGHT,
+        height,
         lift: 3,
-        radius: 14,
+        radius: Math.round(art.size * 0.46),
         width: number(width),
         x: number(x),
         y: number(y),
       }),
-      `<text x="${art.x}" y="${number(art.y + PILL_FONT * 0.36)}" text-anchor="middle" font-family="DM Sans, Figtree, sans-serif" font-weight="800" font-size="${PILL_FONT}" fill="${red ? ON_RED : palette.ink}">${escaped(art.text)}</text>`,
+      `<text x="${art.x}" y="${number(art.y + art.size * 0.36)}" text-anchor="middle" font-family="DM Sans, Figtree, sans-serif" font-weight="800" font-size="${art.size}" fill="${red ? ON_RED : palette.ink}">${escaped(art.text)}</text>`,
     ].join(""),
   };
 };
@@ -132,23 +181,6 @@ const cardOf = (
   };
 };
 
-const buttonOf = (
-  palette: Palette,
-  art: Extract<SpriteArt, { kind: "Button" }>
-): SpriteMarkup => ({
-  box: boxAround(
-    art.x - BUTTON_RADIUS,
-    art.y - BUTTON_RADIUS,
-    BUTTON_RADIUS * 2 + 4,
-    BUTTON_RADIUS * 2 + 4
-  ),
-  markup: [
-    `<circle cx="${art.x + 1.6}" cy="${art.y + 2.4}" r="${BUTTON_RADIUS}" fill="${palette.shadow}"/>`,
-    `<circle cx="${art.x}" cy="${art.y}" r="${BUTTON_RADIUS}" fill="${palette.face}"/>`,
-    `<text x="${art.x}" y="${art.y + 8}" text-anchor="middle" font-family="DM Sans, Figtree, sans-serif" font-weight="800" font-size="22" fill="${palette.ink}">D</text>`,
-  ].join(""),
-});
-
 const faceOf = (
   palette: Palette,
   theme: Theme,
@@ -170,7 +202,8 @@ export const spriteMarkup = (
 ): SpriteMarkup =>
   Match.value(art).pipe(
     Match.discriminatorsExhaustive("kind")({
-      Button: (button) => buttonOf(palette, button),
+      Bar: (bar) => barOf(palette, bar),
+      Caption: (caption) => captionOf(palette, caption),
       Card: (card) => cardOf(palette, card),
       Face: (face) => faceOf(palette, theme, face),
       Label: (label) => labelOf(palette, label),

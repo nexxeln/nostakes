@@ -1,16 +1,31 @@
 import type { Expression } from "@nostakes/avatar";
-import { cardText } from "@nostakes/engine";
+import { cardText, evaluate, rankOf } from "@nostakes/engine";
 import type { Card, SeatIndex } from "@nostakes/engine";
 import { ReplaySteps } from "@nostakes/room";
-import type { Replay, ReplayStep } from "@nostakes/room";
-import { Match } from "effect";
+import type { MomentKind, Replay, ReplayStep, Tier } from "@nostakes/room";
 
+import { FRAME_SIZES } from "../pictures/paper.js";
+import type { KeptFrame } from "../pictures/paper.js";
 import type { MomentHand } from "./element.js";
+import { handName, startingHandName } from "./hand-names.js";
+import { STAGE, captionLines, layoutOf } from "./replay-shots.js";
+import type { Cast, Chances, Person, Shot } from "./replay-shots.js";
+import { SLAM_MS, cleared, sent, staged, stagerOf } from "./replay-stage.js";
+import type { Key, ReplaySprite } from "./replay-stage.js";
 import { REPLAY_WORDS, shortName } from "./replay-words.js";
-import { chips, flip } from "./score.js";
-import type { SoundStep } from "./score.js";
+import { FAMILIES } from "./score.js";
+import type { Family } from "./score.js";
+import type {
+  Outcome,
+  ScoreSheet,
+  SmallCue,
+  SmallSound,
+} from "./sound/sheet.js";
 import { REST } from "./timeline.js";
-import type { Pose } from "./timeline.js";
+
+export { poseAtKeys } from "./replay-stage.js";
+
+export type { Key, ReplaySprite, SpriteArt } from "./replay-stage.js";
 
 export interface ReplaySeat {
   readonly avatar: string;
@@ -31,1115 +46,1049 @@ export const replaySeatsOf = (hand: MomentHand): readonly ReplaySeat[] =>
     };
   });
 
-export type SpriteArt =
-  | {
-      readonly avatar: string;
-      readonly expression: Expression;
-      readonly kind: "Face";
-      readonly name: string;
-      readonly size: number;
-      readonly x: number;
-      readonly y: number;
-    }
-  | {
-      readonly kind: "Label";
-      readonly size: number;
-      readonly text: string;
-      readonly tone: "Ink" | "Muted";
-      readonly x: number;
-      readonly y: number;
-    }
-  | {
-      readonly card: string;
-      readonly kind: "Card";
-      readonly turn: number;
-      readonly width: number;
-      readonly x: number;
-      readonly y: number;
-    }
-  | {
-      readonly kind: "Pill";
-      readonly text: string;
-      readonly tone: "Paper" | "Red";
-      readonly x: number;
-      readonly y: number;
-    }
-  | { readonly kind: "Button"; readonly x: number; readonly y: number };
-
-export interface Key {
-  readonly at: number;
-  readonly pose: Pose;
+export interface ReplayFacts {
+  readonly frame: KeptFrame;
+  readonly kind: MomentKind;
+  readonly principals: readonly SeatIndex[];
+  readonly seats: readonly ReplaySeat[];
+  readonly tanked?: readonly SeatIndex[];
+  readonly tier: Tier;
 }
 
-export interface ReplaySprite {
-  readonly art: SpriteArt;
-  readonly keys: readonly Key[];
-  readonly shownAt: number;
+export type Section = "Build" | "Hook" | "Pause" | "Payoff" | "Tag";
+
+export interface PlannedBeat {
+  readonly at: number;
+  readonly hold: number;
+  readonly section: Section;
 }
 
 export interface ReplayPlan {
+  readonly beats: readonly PlannedBeat[];
+  readonly camera: readonly Key[];
   readonly cardAt: number;
-  readonly timeline: readonly { readonly at: number; readonly ms: number }[];
-  readonly cues: readonly SoundStep[];
   readonly length: number;
+  readonly sections: readonly { readonly at: number; readonly name: Section }[];
+  readonly sheet: ScoreSheet;
   readonly sprites: readonly ReplaySprite[];
-  readonly tableMs: number;
+  readonly timeline: readonly { readonly at: number; readonly ms: number }[];
 }
 
-export const TABLE_LEAST_MS = 4400;
+export const TAG_MS = 2400;
 
-export const TABLE_MOST_MS = 11_400;
+export const SHORTEST_MS = 12_000;
 
-export const CARD_MS = 3600;
+export const LONGEST_MS = 25_000;
 
-const CENTRE = { x: 540, y: 800 };
+const HOOK_MS = 1900;
 
-const REACH = { x: 395, y: 320 };
+const PAUSE_MS = 1900;
 
-const POT = { x: 540, y: 690 };
+const BREATH_MS = 400;
 
-const CAPTION = { x: 540, y: 352 };
+const HIT_MS = 1700;
 
-const BOARD_TOP = 740;
+const PAYOFF_MS = 1800;
 
-const HIDDEN: Pose = { ...REST, opacity: 0 };
+const LOOSEST = 1.45;
 
-interface Spot {
-  readonly inner: number;
-  readonly seat: SeatIndex;
-  readonly size: number;
-  readonly x: number;
-  readonly y: number;
-}
+const TIGHTEST = 0.35;
 
-const FACE_SIZES = [220, 220, 220, 190, 160, 136, 136, 112, 112, 112];
+const SWING_POINTS = 20;
 
-const faceSize = (count: number) => FACE_SIZES[count] ?? 112;
+const CLIMB_POINTS = 8;
 
-export const spotsOf = (
-  seats: readonly SeatIndex[],
-  lead: SeatIndex
-): readonly Spot[] => {
-  const ordered = seats.toSorted((one, other) => one - other);
-  const start = Math.max(0, ordered.indexOf(lead));
-  const turned = [...ordered.slice(start), ...ordered.slice(0, start)];
-  const size = faceSize(turned.length);
+const NO_IDEA_PERCENT = 12;
 
-  return turned.map((seat, index) => {
-    const angle = ((90 + (index * 360) / turned.length) * Math.PI) / 180;
-    const x = Math.round(CENTRE.x + REACH.x * Math.cos(angle));
-    const y = Math.round(CENTRE.y + REACH.y * Math.sin(angle));
+const SURE_PERCENT = 85;
 
-    return { inner: x <= CENTRE.x ? 1 : -1, seat, size, x, y };
-  });
-};
+const MOST_LOUD = 3;
 
-const holeWidth = (spot: Spot) => Math.round(spot.size * 0.44);
+const HOLE_CARDS = 2;
 
-const holeCentre = (spot: Spot) =>
-  spot.x + spot.inner * (spot.size / 2 + holeWidth(spot) * 0.62);
+const FLOP_CARDS = 3;
 
-const holePlace = (spot: Spot, index: number) => {
-  const width = holeWidth(spot);
-  const centre = holeCentre(spot);
-
-  return {
-    turn: index === 0 ? -7 : 6,
-    width,
-    x: Math.round(centre - width * 0.8 + index * width * 0.62),
-    y: Math.round(spot.y + spot.size * 0.12 - width * 0.7),
-  };
-};
-
-const betPlace = (spot: Spot) => ({
-  x: Math.round(spot.x + spot.inner * (spot.size / 2 + 56)),
-  y: Math.round(spot.y - spot.size * 0.32),
-});
-
-const oddsPlace = (spot: Spot) => ({
-  x: Math.round(holeCentre(spot)),
-  y: Math.round(spot.y + spot.size * 0.12 - holeWidth(spot) * 0.7 - 34),
-});
-
-const nameBaseline = (spot: Spot) => spot.y + spot.size / 2 + 34;
-
-const stackBaseline = (spot: Spot) => nameBaseline(spot) + 28;
-
-const buttonPlace = (spot: Spot) => ({
-  x: Math.round(spot.x - spot.inner * (spot.size / 2 + 30)),
-  y: Math.round(spot.y + spot.size / 2 - 24),
-});
-
-const boardWidth = (runs: number) => (runs > 1 ? 76 : 96);
-
-const BOARD_GAP = 8;
-
-const boardPlace = (runs: number, run: number, slot: number) => {
-  const width = boardWidth(runs);
-  const span = width * 5 + BOARD_GAP * 4;
-
-  return {
-    turn: 0,
-    width,
-    x: Math.round(CENTRE.x - span / 2 + slot * (width + BOARD_GAP)),
-    y: Math.round(BOARD_TOP + (run - 1) * (width * 1.4 + 10)),
-  };
-};
-
-type Beat =
-  | { readonly kind: "Act"; readonly step: ActedStep; readonly quiet: boolean }
-  | { readonly kind: "Award"; readonly step: AwardedStep }
-  | { readonly kind: "Deal" }
-  | { readonly kind: "Folds"; readonly seats: readonly SeatIndex[] }
-  | { readonly kind: "Gather"; readonly pot: number }
-  | { readonly kind: "Intro" }
-  | { readonly kind: "Muck"; readonly seat: SeatIndex }
-  | { readonly kind: "Odds"; readonly step: OddsStep }
-  | { readonly kind: "Posts"; readonly steps: readonly PostedStep[] }
-  | {
-      readonly kind: "Return";
-      readonly amount: number;
-      readonly seat: SeatIndex;
-    }
-  | { readonly kind: "Runs"; readonly runs: number }
-  | {
-      readonly kind: "Shown";
-      readonly pace: "Slow" | "Steady";
-      readonly step: ShownStep;
-    }
-  | {
-      readonly kind: "Street";
-      readonly runout: boolean;
-      readonly step: StreetStep;
-    };
+const FULL_BOARD = 5;
 
 type StepOf<Tag extends ReplayStep["_tag"]> = Extract<
   ReplayStep,
   { _tag: Tag }
 >;
 
-type ActedStep = StepOf<"Acted">;
-
-type AwardedStep = StepOf<"Awarded">;
-
 type OddsStep = StepOf<"Odds">;
 
-type PostedStep = StepOf<"Posted">;
-
-type ShownStep = StepOf<"Shown">;
+type ActedStep = StepOf<"Acted">;
 
 type StreetStep = StepOf<"StreetDealt">;
 
-const shouts = (step: ActedStep) => step.allIn || step.act !== "Call";
+type AwardedStep = StepOf<"Awarded">;
 
-const actionBeats = (
-  acted: readonly ActedStep[],
-  keep: number
-): readonly Beat[] => {
-  const loud = acted.filter(
-    (step) => step.act !== "Fold" && step.act !== "Check"
-  );
+interface DraftSeat {
+  bet: number;
+  cards: readonly string[];
+  expression: Expression;
+  folded: boolean;
+  loud: boolean;
+  stack: number | null;
+}
 
-  const kept = new Set(loud.slice(-keep));
-  const beats: Beat[] = [];
-  let folds: SeatIndex[] = [];
+interface Draft {
+  boards: string[][];
+  caption: readonly string[];
+  facing: number;
+  focus: SeatIndex;
+  odds: Chances | null;
+  pot: number;
+  readonly seats: Map<SeatIndex, DraftSeat>;
+  shot: Shot;
+  slammed: string;
+}
 
-  const flush = () => {
-    if (folds.length > 0) {
-      beats.push({ kind: "Folds", seats: folds });
-      folds = [];
-    }
-  };
+type Mark = "Hit" | "Pause" | "Result";
 
-  for (const step of acted) {
-    if (step.act === "Fold") {
-      folds = [...folds, step.seat];
-    } else if (step.act !== "Check") {
-      flush();
-      beats.push({
-        kind: "Act",
-        quiet: !kept.has(step) && !step.allIn,
-        step,
-      });
+interface Show {
+  readonly apply: (offset?: number) => void;
+  readonly cue: (kind: SmallSound, offset: number, seat?: SeatIndex) => void;
+  readonly cut: (shot: Shot, focus?: SeatIndex) => void;
+  readonly draft: Draft;
+  readonly fly: (name: string, by: { x: number; y: number }) => void;
+  readonly mark: (what: Mark, offset?: number) => void;
+  readonly punch: () => void;
+  readonly push: (to: number) => void;
+  readonly seat: (seat: SeatIndex) => DraftSeat;
+  readonly seen: (record: number, offset: number) => void;
+  readonly shake: (strength: number) => void;
+}
+
+interface Beat {
+  readonly firm: boolean;
+  readonly hold: number;
+  readonly play: (show: Show) => void;
+  readonly section: Section;
+}
+
+interface Swing {
+  readonly gainer: SeatIndex;
+  readonly step: OddsStep;
+  readonly victim: SeatIndex;
+}
+
+type Decisive =
+  | { readonly kind: "Call"; readonly step: ActedStep }
+  | { readonly kind: "Card"; readonly swing: Swing }
+  | { readonly kind: "Fold"; readonly step: ActedStep }
+  | { readonly kind: "None" };
+
+interface Told {
+  readonly cast: Cast;
+  readonly decisive: Decisive;
+  readonly lead: SeatIndex;
+  readonly loud: ReadonlySet<ActedStep>;
+  readonly names: ReadonlyMap<SeatIndex, string>;
+  readonly other: SeatIndex | null;
+  readonly tabled: ReadonlyMap<SeatIndex, readonly Card[]>;
+  readonly winners: ReadonlyMap<number, readonly SeatIndex[]>;
+}
+
+const percentOf = (step: OddsStep, seat: SeatIndex | null) =>
+  step.chances.find((chance) => chance.seat === seat)?.percent;
+
+const chancesOf = (step: OddsStep | null, told: Told): Chances | null => {
+  if (step === null) {
+    return null;
+  }
+
+  const lead = percentOf(step, told.lead);
+  const other = percentOf(step, told.other);
+
+  return lead === undefined || other === undefined ? null : { lead, other };
+};
+
+const winnersOf = (replay: Replay) => {
+  const winners = new Map<number, SeatIndex[]>();
+
+  for (const step of replay.steps) {
+    if (ReplaySteps.$is("Awarded")(step)) {
+      winners.set(step.run, [
+        ...new Set([
+          ...(winners.get(step.run) ?? []),
+          ...step.shares.map((share) => share.seat),
+        ]),
+      ]);
     }
   }
 
-  flush();
-
-  return beats;
+  return winners;
 };
 
-interface Telling {
-  river: boolean;
-  tabled: boolean;
-}
+const swingOf = (
+  replay: Replay,
+  lead: SeatIndex,
+  other: SeatIndex | null,
+  winners: ReadonlyMap<number, readonly SeatIndex[]>
+): Swing | null => {
+  const before = new Map<number, OddsStep>();
+  let shared: OddsStep | null = null;
+  let best: { readonly gain: number; readonly swing: Swing } | null = null;
 
-const onlyBeat = (beat: Beat): readonly Beat[] => [beat];
-
-const NO_BEATS: readonly Beat[] = [];
-
-const stepBeats = (step: ReplayStep, telling: Telling): readonly Beat[] =>
-  ReplaySteps.$match(step, {
-    Acted: () => NO_BEATS,
-    Awarded: (each) => onlyBeat({ kind: "Award", step: each }),
-    Dealt: () => onlyBeat({ kind: "Deal" }),
-    Gathered: ({ pot }) => onlyBeat({ kind: "Gather", pot }),
-    Mucked: ({ seat }) => onlyBeat({ kind: "Muck", seat }),
-    Odds: (each) => onlyBeat({ kind: "Odds", step: each }),
-    Posted: () => NO_BEATS,
-    Returned: ({ amount, seat }) => onlyBeat({ amount, kind: "Return", seat }),
-    Runs: ({ runs }) =>
-      runs > 1 ? onlyBeat({ kind: "Runs", runs }) : NO_BEATS,
-    Shown: (each) =>
-      onlyBeat({
-        kind: "Shown",
-        pace: telling.river || !telling.tabled ? "Slow" : "Steady",
-        step: each,
-      }),
-    StreetDealt: (each) =>
-      onlyBeat({ kind: "Street", runout: telling.tabled, step: each }),
-  });
-
-const beatsOf = (replay: Replay, keep: number): readonly Beat[] => {
-  const beats: Beat[] = [{ kind: "Intro" }];
-  const posts = replay.steps.filter((step) => ReplaySteps.$is("Posted")(step));
-  const acted: ActedStep[] = [];
-  const telling: Telling = { river: false, tabled: false };
-
-  if (posts.length > 0) {
-    beats.push({ kind: "Posts", steps: posts });
+  if (other === null) {
+    return null;
   }
 
   for (const step of replay.steps) {
-    if (ReplaySteps.$is("Acted")(step)) {
-      acted.push(step);
-    } else if (!ReplaySteps.$is("Posted")(step)) {
-      beats.push(
-        ...actionBeats(acted.splice(0), keep),
-        ...stepBeats(step, telling)
-      );
-      telling.tabled ||= ReplaySteps.$is("Shown")(step);
-      telling.river ||=
-        ReplaySteps.$is("StreetDealt")(step) && step.street === "River";
-    }
-  }
-
-  beats.push(...actionBeats(acted, keep));
-
-  return beats;
-};
-
-const NOT_IN_RECORD = -1;
-
-const recordIndexOf = (beat: Beat): number =>
-  Match.value(beat).pipe(
-    Match.discriminatorsExhaustive("kind")({
-      Act: ({ step }) => step.at,
-      Award: ({ step }) => step.at,
-      Deal: () => NOT_IN_RECORD,
-      Folds: () => NOT_IN_RECORD,
-      Gather: () => NOT_IN_RECORD,
-      Intro: () => NOT_IN_RECORD,
-      Muck: () => NOT_IN_RECORD,
-      Odds: ({ step }) => step.at,
-      Posts: ({ steps }) => steps[0]?.at ?? NOT_IN_RECORD,
-      Return: () => NOT_IN_RECORD,
-      Runs: () => NOT_IN_RECORD,
-      Shown: ({ step }) => step.at,
-      Street: ({ step }) => step.at,
-    })
-  );
-
-const actHold = (beat: Extract<Beat, { kind: "Act" }>) => {
-  if (beat.quiet) {
-    return 0;
-  }
-
-  return shouts(beat.step) ? 800 : 550;
-};
-
-const extraCards = (step: StreetStep) => Math.max(0, step.cards.length - 1);
-
-const holdOf = (beat: Beat): number =>
-  Match.value(beat).pipe(
-    Match.discriminatorsExhaustive("kind")({
-      Act: actHold,
-      Award: () => 1000,
-      Deal: () => 600,
-      Folds: () => 380,
-      Gather: () => 400,
-      Intro: () => 500,
-      Muck: () => 300,
-      Odds: () => 500,
-      Posts: () => 500,
-      Return: () => 300,
-      Runs: () => 600,
-      Shown: ({ pace }) => (pace === "Slow" ? 1000 : 600),
-      Street: ({ runout, step }) =>
-        runout ? 950 + extraCards(step) * 220 : 600 + extraCards(step) * 140,
-    })
-  );
-
-const firm = (beat: Beat) =>
-  beat.kind === "Shown" || beat.kind === "Odds" || beat.kind === "Award";
-
-interface Pace {
-  readonly firm: number;
-  readonly loose: number;
-}
-
-const lengthOf = (beats: readonly Beat[], pace: Pace) =>
-  beats.reduce(
-    (total, beat) =>
-      total + holdOf(beat) * (firm(beat) ? pace.firm : pace.loose),
-    0
-  );
-
-export const paceOf = (beat: Beat, pace: Pace) =>
-  holdOf(beat) * (firm(beat) ? pace.firm : pace.loose);
-
-const MOST_KEPT = 3;
-
-const SHORTEST_LOOSE = 0.62;
-
-const SHORTEST_FIRM = 0.5;
-
-const LONGEST_STRETCH = 1.5;
-
-interface Paced {
-  readonly beats: readonly Beat[];
-  readonly pace: Pace;
-}
-
-const fitted = (beats: readonly Beat[]): Pace => {
-  const firmMs = lengthOf(beats, { firm: 1, loose: 0 });
-  const looseMs = Math.max(1, lengthOf(beats, { firm: 0, loose: 1 }));
-  const natural = firmMs + looseMs;
-
-  if (natural < TABLE_LEAST_MS) {
-    const loose = Math.min(
-      LONGEST_STRETCH,
-      (TABLE_LEAST_MS - firmMs) / looseMs
-    );
-
-    return { firm: 1, loose };
-  }
-
-  if (natural <= TABLE_MOST_MS) {
-    return { firm: 1, loose: 1 };
-  }
-
-  const loose = Math.max(SHORTEST_LOOSE, (TABLE_MOST_MS - firmMs) / looseMs);
-
-  if (firmMs + looseMs * loose <= TABLE_MOST_MS) {
-    return { firm: 1, loose };
-  }
-
-  const firmPace = Math.max(
-    SHORTEST_FIRM,
-    (TABLE_MOST_MS - looseMs * loose) / Math.max(1, firmMs)
-  );
-
-  const squeezed = firmMs * firmPace + looseMs * loose;
-  const last = Math.min(1, TABLE_MOST_MS / squeezed);
-
-  return { firm: firmPace * last, loose: loose * last };
-};
-
-export const pacedBeats = (replay: Replay): Paced => {
-  let keep = MOST_KEPT;
-  let beats = beatsOf(replay, keep);
-
-  while (lengthOf(beats, { firm: 1, loose: 1 }) > TABLE_MOST_MS && keep > 1) {
-    keep -= 1;
-    beats = beatsOf(replay, keep);
-  }
-
-  return { beats, pace: fitted(beats) };
-};
-
-interface Slot {
-  readonly art: SpriteArt;
-  readonly index: number;
-}
-
-interface Builder {
-  readonly cues: SoundStep[];
-  readonly slots: Map<string, Slot>;
-  readonly sprites: { art: SpriteArt; keys: Key[]; shownAt: number }[];
-}
-
-const FADE_MS = 140;
-
-const lastPose = (keys: readonly Key[]) => keys.at(-1)?.pose ?? HIDDEN;
-
-const lastAt = (keys: readonly Key[]) => keys.at(-1)?.at ?? 0;
-
-type Entrance = "Deal" | "Drop" | "Fade" | "Flip" | "Present" | "Stamp";
-
-const entranceKeys = (
-  entrance: Entrance,
-  at: number,
-  from: { readonly x: number; readonly y: number }
-): readonly Key[] =>
-  Match.value(entrance).pipe(
-    Match.withReturnType<readonly Key[]>(),
-    Match.when("Deal", () => [
-      { at, pose: { ...HIDDEN, dx: from.x, dy: from.y, scale: 0.6 } },
-      {
-        at: at + 60,
-        pose: { ...REST, dx: from.x * 0.8, dy: from.y * 0.8, scale: 0.7 },
-      },
-      { at: at + 300, pose: REST },
-    ]),
-    Match.when("Drop", () => [
-      { at, pose: { ...HIDDEN, dy: -36 } },
-      { at: at + 240, pose: REST },
-    ]),
-    Match.when("Fade", () => [
-      { at, pose: HIDDEN },
-      { at: at + FADE_MS, pose: REST },
-    ]),
-    Match.when("Flip", () => [
-      { at, pose: { ...REST, squeeze: 0.02 } },
-      { at: at + 170, pose: REST },
-    ]),
-    Match.when("Present", () => [{ at: 0, pose: REST }]),
-    Match.when("Stamp", () => [
-      { at, pose: { ...HIDDEN, scale: 1.35 } },
-      { at: at + 60, pose: { ...REST, scale: 1.3 } },
-      { at: at + 260, pose: REST },
-    ]),
-    Match.exhaustive
-  );
-
-const settleKeys = (keys: Key[], at: number) => {
-  const when = Math.max(at, lastAt(keys));
-
-  keys.push({ at: when, pose: lastPose(keys) });
-
-  return when;
-};
-
-const hide = (builder: Builder, name: string, at: number, ms = FADE_MS) => {
-  const slot = builder.slots.get(name);
-  const sprite = slot === undefined ? undefined : builder.sprites[slot.index];
-
-  if (sprite === undefined) {
-    return;
-  }
-
-  const when = settleKeys(sprite.keys, at);
-
-  sprite.keys.push({
-    at: when + ms,
-    pose: { ...lastPose(sprite.keys), opacity: 0 },
-  });
-  builder.slots.delete(name);
-};
-
-const show = (
-  builder: Builder,
-  name: string,
-  art: SpriteArt,
-  timing: {
-    readonly at: number;
-    readonly entrance: Entrance;
-    readonly from?: { readonly x: number; readonly y: number };
-  }
-) => {
-  const current = builder.slots.get(name);
-
-  if (
-    current !== undefined &&
-    JSON.stringify(current.art) === JSON.stringify(art)
-  ) {
-    return;
-  }
-
-  hide(builder, name, timing.at);
-
-  const keys = [
-    ...entranceKeys(timing.entrance, timing.at, timing.from ?? { x: 0, y: 0 }),
-  ];
-
-  builder.sprites.push({
-    art,
-    keys,
-    shownAt: timing.entrance === "Present" ? 0 : timing.at,
-  });
-  builder.slots.set(name, { art, index: builder.sprites.length - 1 });
-};
-
-const glide = (
-  builder: Builder,
-  name: string,
-  motion: {
-    readonly at: number;
-    readonly by: { readonly x: number; readonly y: number };
-    readonly ms: number;
-  }
-) => {
-  const slot = builder.slots.get(name);
-  const sprite = slot === undefined ? undefined : builder.sprites[slot.index];
-
-  if (sprite === undefined) {
-    return;
-  }
-
-  const when = settleKeys(sprite.keys, motion.at);
-
-  sprite.keys.push({
-    at: when + motion.ms,
-    pose: {
-      ...lastPose(sprite.keys),
-      dx: motion.by.x,
-      dy: motion.by.y,
-      opacity: 0,
-      scale: 0.8,
-    },
-  });
-  builder.slots.delete(name);
-};
-
-interface Table {
-  readonly bets: Map<SeatIndex, number>;
-  readonly expressions: Map<SeatIndex, Expression>;
-  readonly folded: Set<SeatIndex>;
-  readonly runs: number;
-  readonly seats: ReadonlyMap<SeatIndex, ReplaySeat>;
-  readonly spots: ReadonlyMap<SeatIndex, Spot>;
-  readonly stacks: Map<SeatIndex, number>;
-}
-
-const nameOf = (table: Table, seat: SeatIndex) =>
-  table.seats.get(seat)?.name ?? "Someone";
-
-const LABEL_NAME = 28;
-
-const LABEL_STACK = 24;
-
-const faceArtOf = (
-  table: Table,
-  spot: Spot,
-  expression: Expression
-): SpriteArt => ({
-  avatar: table.seats.get(spot.seat)?.avatar ?? "",
-  expression,
-  kind: "Face",
-  name: shortName(nameOf(table, spot.seat)),
-  size: spot.size,
-  x: spot.x - spot.size / 2,
-  y: spot.y - spot.size / 2,
-});
-
-const setFace = (
-  builder: Builder,
-  table: Table,
-  seat: SeatIndex,
-  expression: Expression,
-  at: number
-) => {
-  const spot = table.spots.get(seat);
-
-  if (spot === undefined || table.expressions.get(seat) === expression) {
-    return;
-  }
-
-  table.expressions.set(seat, expression);
-  show(builder, `face:${seat}`, faceArtOf(table, spot, expression), {
-    at,
-    entrance: at === 0 ? "Present" : "Fade",
-  });
-};
-
-const setStack = (
-  builder: Builder,
-  table: Table,
-  seat: SeatIndex,
-  at: number
-) => {
-  const spot = table.spots.get(seat);
-
-  if (spot === undefined || !table.stacks.has(seat)) {
-    return;
-  }
-
-  show(
-    builder,
-    `stack:${seat}`,
-    {
-      kind: "Label",
-      size: LABEL_STACK,
-      text:
-        (table.stacks.get(seat) ?? 0) === 0
-          ? REPLAY_WORDS.allInStack
-          : REPLAY_WORDS.stack(table.stacks.get(seat) ?? 0),
-      tone: "Muted",
-      x: spot.x,
-      y: stackBaseline(spot),
-    },
-    { at, entrance: at === 0 ? "Present" : "Fade" }
-  );
-};
-
-const setBet = (
-  builder: Builder,
-  table: Table,
-  seat: SeatIndex,
-  at: number,
-  red: boolean
-) => {
-  const spot = table.spots.get(seat);
-  const amount = table.bets.get(seat) ?? 0;
-
-  if (spot === undefined) {
-    return;
-  }
-
-  if (amount === 0) {
-    hide(builder, `bet:${seat}`, at);
-
-    return;
-  }
-
-  show(
-    builder,
-    `bet:${seat}`,
-    {
-      kind: "Pill",
-      text: REPLAY_WORDS.stack(amount),
-      tone: red ? "Red" : "Paper",
-      ...betPlace(spot),
-    },
-    { at, entrance: "Stamp" }
-  );
-};
-
-const caption = (builder: Builder, text: string, at: number) => {
-  show(
-    builder,
-    "caption",
-    {
-      kind: "Label",
-      size: 34,
-      text,
-      tone: "Muted",
-      x: CAPTION.x,
-      y: CAPTION.y,
-    },
-    { at, entrance: "Fade" }
-  );
-};
-
-const potArt = (amount: number): SpriteArt => ({
-  kind: "Pill",
-  text: REPLAY_WORDS.pot(amount),
-  tone: "Red",
-  ...POT,
-});
-
-const commit = (table: Table, seat: SeatIndex, amount: number) => {
-  table.stacks.set(seat, Math.max(0, (table.stacks.get(seat) ?? 0) - amount));
-};
-
-const holeKeys = (seat: SeatIndex, index: number) => `hole:${seat}:${index}`;
-
-const flipHole = (
-  builder: Builder,
-  table: Table,
-  seat: SeatIndex,
-  cards: readonly Card[],
-  at: number
-) => {
-  const spot = table.spots.get(seat);
-
-  if (spot === undefined) {
-    return;
-  }
-
-  for (const [index, card] of cards.entries()) {
-    const name = holeKeys(seat, index);
-
-    const face: SpriteArt = {
-      card: cardText(card),
-      kind: "Card",
-      ...holePlace(spot, index),
-    };
-
-    const current = builder.slots.get(name);
-
-    if (
-      current !== undefined &&
-      JSON.stringify(current.art) === JSON.stringify(face)
-    ) {
+    if (!ReplaySteps.$is("Odds")(step)) {
       continue;
     }
 
-    const back =
-      current === undefined ? undefined : builder.sprites[current.index];
+    const earlier = before.get(step.run) ?? shared;
+    const won = winners.get(step.run) ?? [];
 
-    if (back !== undefined) {
-      const when = settleKeys(back.keys, at + index * 90);
+    if (earlier !== null && step.board.length > earlier.board.length) {
+      for (const [gainer, victim] of [
+        [lead, other],
+        [other, lead],
+      ] as const) {
+        const gain =
+          (percentOf(step, gainer) ?? 0) - (percentOf(earlier, gainer) ?? 0);
 
-      back.keys.push(
-        { at: when + 140, pose: { ...lastPose(back.keys), squeeze: 0.02 } },
-        { at: when + 141, pose: HIDDEN }
-      );
-      builder.slots.delete(name);
-    }
-
-    show(builder, name, face, { at: at + index * 90 + 140, entrance: "Flip" });
-  }
-};
-
-const dealHole = (builder: Builder, table: Table, at: number) => {
-  let delay = 0;
-
-  for (const spot of table.spots.values()) {
-    for (const index of [0, 1]) {
-      show(
-        builder,
-        holeKeys(spot.seat, index),
-        { card: "", kind: "Card", ...holePlace(spot, index) },
-        {
-          at: at + delay,
-          entrance: "Deal",
-          from: { x: CENTRE.x - spot.x, y: CENTRE.y - spot.y },
+        if (
+          gain >= SWING_POINTS &&
+          won.includes(gainer) &&
+          !won.includes(victim) &&
+          (best === null || gain >= best.gain)
+        ) {
+          best = { gain, swing: { gainer, step, victim } };
         }
-      );
-      delay += 22;
+      }
+    }
+
+    before.set(step.run, step);
+
+    if (before.size === 1) {
+      shared = step;
     }
   }
+
+  return best?.swing ?? null;
 };
 
-const foldHole = (
-  builder: Builder,
-  table: Table,
-  seat: SeatIndex,
-  at: number
-) => {
-  const spot = table.spots.get(seat);
+const lastActed = (
+  replay: Replay,
+  wanted: (step: ActedStep) => boolean
+): ActedStep | undefined =>
+  replay.steps.filter(ReplaySteps.$is("Acted")).findLast(wanted);
 
-  if (spot === undefined) {
+const decisiveOf = (
+  replay: Replay,
+  facts: ReplayFacts,
+  lead: SeatIndex,
+  swing: Swing | null
+): Decisive => {
+  const showdown = replay.steps.some(
+    (step) => ReplaySteps.$is("Odds")(step) && step.board.length === FULL_BOARD
+  );
+
+  if (facts.kind === "HeroCall") {
+    const call = lastActed(
+      replay,
+      (step) => step.act === "Call" && step.seat === lead
+    );
+
+    if (call !== undefined) {
+      return { kind: "Call", step: call };
+    }
+  }
+
+  if (facts.kind === "Bluff" || (facts.kind === "SevenDeuce" && !showdown)) {
+    const fold = lastActed(replay, (step) => step.act === "Fold");
+
+    if (fold !== undefined) {
+      return { kind: "Fold", step: fold };
+    }
+  }
+
+  return swing === null ? { kind: "None" } : { kind: "Card", swing };
+};
+
+const otherOf = (replay: Replay, facts: ReplayFacts, lead: SeatIndex) => {
+  const [, named] = facts.principals;
+
+  if (named !== undefined && named !== lead) {
+    return named;
+  }
+
+  const folded = replay.steps
+    .filter(ReplaySteps.$is("Acted"))
+    .filter((step) => step.act === "Fold")
+    .map((step) => step.seat);
+
+  const still = replay.dealtIn.filter(
+    (seat) => seat !== lead && !folded.includes(seat)
+  );
+
+  return (
+    still.find((seat) => replay.tabled.some((each) => each.seat === seat)) ??
+    still[0] ??
+    folded.findLast((seat) => seat !== lead) ??
+    null
+  );
+};
+
+const loudOf = (replay: Replay): ReadonlySet<ActedStep> => {
+  const wagers = replay.steps
+    .filter(ReplaySteps.$is("Acted"))
+    .filter((step) => step.act !== "Fold" && step.act !== "Check");
+
+  return new Set([
+    ...wagers.slice(-MOST_LOUD),
+    ...wagers.filter((step) => step.allIn),
+  ]);
+};
+
+const toldOf = (replay: Replay, facts: ReplayFacts): Told => {
+  const lead = facts.principals[0] ?? replay.dealtIn[0] ?? replay.button;
+  const other = otherOf(replay, facts, lead);
+  const winners = winnersOf(replay);
+
+  const person = (seat: SeatIndex): Person => {
+    const found = facts.seats.find((each) => each.seat === seat);
+
+    return {
+      avatar: found?.avatar ?? "",
+      name: shortName(found?.name ?? "Someone"),
+      seat,
+    };
+  };
+
+  return {
+    cast: {
+      lead: person(lead),
+      other: other === null ? null : person(other),
+      rest: replay.dealtIn
+        .filter((seat) => seat !== lead && seat !== other)
+        .map(person),
+      top: (FRAME_SIZES[facts.frame].height - STAGE.height) / 2,
+    },
+    decisive: decisiveOf(
+      replay,
+      facts,
+      lead,
+      swingOf(replay, lead, other, winners)
+    ),
+    lead,
+    loud: loudOf(replay),
+    names: new Map(facts.seats.map((seat) => [seat.seat, seat.name] as const)),
+    other,
+    tabled: new Map(replay.tabled.map((each) => [each.seat, each.cards])),
+    winners,
+  };
+};
+
+const nameOf = (told: Told, seat: SeatIndex) =>
+  told.names.get(seat) ?? "Someone";
+
+const holeOf = (told: Told, seat: SeatIndex): readonly string[] => {
+  const shown = (told.tabled.get(seat) ?? []).map(cardText);
+
+  return [
+    ...shown,
+    ...Array.from({ length: HOLE_CARDS - shown.length }, () => ""),
+  ];
+};
+
+const fullHole = (told: Told, seat: SeatIndex | null) => {
+  const cards = seat === null ? [] : (told.tabled.get(seat) ?? []);
+
+  return cards.length === HOLE_CARDS ? cards : null;
+};
+
+const heldBy = (hole: readonly Card[], board: readonly Card[]) =>
+  board.length >= FLOP_CARDS
+    ? handName(evaluate([...hole, ...board]))
+    : startingHandName(hole);
+
+const madeBy = (hole: readonly Card[], board: readonly Card[]) => {
+  const last = board.at(-1);
+
+  if (last === undefined) {
+    return "";
+  }
+
+  if (board.length >= FLOP_CARDS) {
+    return handName(evaluate([...hole, ...board]));
+  }
+
+  const alike = [...hole, ...board].filter(
+    (card) => rankOf(card) === rankOf(last)
+  ).length;
+
+  return alike >= 2 && hole.some((card) => rankOf(card) === rankOf(last))
+    ? REPLAY_WORDS.twoOfThem(rankOf(last), alike)
+    : "";
+};
+
+const hookOf = (facts: ReplayFacts, told: Told, dealt: OddsStep | null) => {
+  const lead = nameOf(told, told.lead);
+  const other = told.other === null ? "" : nameOf(told, told.other);
+  const hole = fullHole(told, told.lead);
+  const start = hole === null ? "" : startingHandName(hole);
+
+  if (facts.kind === "SevenDeuce") {
+    return REPLAY_WORDS.hookSevenDeuce(lead);
+  }
+
+  if (facts.kind === "SameHand" && told.other !== null && start.length > 0) {
+    return REPLAY_WORDS.hookSame(lead, other, start);
+  }
+
+  const chances = chancesOf(dealt, told);
+
+  if (chances !== null && told.other !== null) {
+    const about = chances.lead >= chances.other ? told.lead : told.other;
+
+    return REPLAY_WORDS.hookOdds(
+      nameOf(told, about),
+      Math.max(chances.lead, chances.other)
+    );
+  }
+
+  if (
+    told.other !== null &&
+    fullHole(told, told.other) === null &&
+    hole !== null
+  ) {
+    return REPLAY_WORDS.hookSeen(lead, other);
+  }
+
+  return start.length > 0
+    ? REPLAY_WORDS.hookHolds(lead, start)
+    : REPLAY_WORDS.lastCard;
+};
+
+const unseenOfRank =
+  (step: OddsStep) =>
+  (rank: number): number =>
+    4 -
+    [...step.board, ...step.chances.flatMap((chance) => chance.cards)].filter(
+      (card) => rankOf(card) === rank
+    ).length;
+
+const outsLine = (told: Told, step: OddsStep) => {
+  const outs = step.outs.find(
+    (each) => each.seat === told.lead || each.seat === told.other
+  );
+
+  if (outs === undefined) {
+    return null;
+  }
+
+  if (outs.cards.length === 0) {
+    return step.board.length === FULL_BOARD - 1
+      ? REPLAY_WORDS.dead(nameOf(told, outs.seat))
+      : null;
+  }
+
+  return REPLAY_WORDS.needs(
+    nameOf(told, outs.seat),
+    outs.cards,
+    unseenOfRank(step)
+  );
+};
+
+const actLine = (
+  told: Told,
+  step: ActedStep,
+  odds: Chances | null,
+  stackBefore: number | null
+) => {
+  const name = nameOf(told, step.seat);
+
+  const mine = (() => {
+    if (odds === null) {
+      return null;
+    }
+
+    if (step.seat === told.lead) {
+      return odds.lead;
+    }
+
+    return step.seat === told.other ? odds.other : null;
+  })();
+
+  if (step.act === "Call") {
+    if (mine !== null && mine >= SURE_PERCENT) {
+      return REPLAY_WORDS.callAhead(name);
+    }
+
+    return step.allIn ? REPLAY_WORDS.callAllIn(name) : REPLAY_WORDS.call(name);
+  }
+
+  if (mine !== null && mine <= NO_IDEA_PERCENT) {
+    return REPLAY_WORDS.noIdea(name, step.to, step.allIn);
+  }
+
+  if (step.allIn) {
+    return REPLAY_WORDS.allIn(
+      name,
+      step.to,
+      stackBefore !== null && stackBefore === step.added
+    );
+  }
+
+  return step.act === "Raise"
+    ? REPLAY_WORDS.raise(name, step.to)
+    : REPLAY_WORDS.bet(name, step.to);
+};
+
+interface Walk {
+  readonly announced: Set<number>;
+  asked: string;
+  readonly beats: Beat[];
+  readonly bets: Map<SeatIndex, number>;
+  readonly boards: Card[][];
+  folds: SeatIndex[];
+  odds: OddsStep | null;
+  pot: number;
+  shared: OddsStep | null;
+  readonly stacks: Map<SeatIndex, number>;
+}
+
+const add = (
+  walk: Walk,
+  beat: {
+    readonly firm?: boolean;
+    readonly hold: number;
+    readonly section: Section;
+  },
+  play: (show: Show) => void
+) => {
+  walk.beats.push({
+    firm: beat.firm ?? false,
+    hold: beat.hold,
+    play,
+    section: beat.section,
+  });
+};
+
+const quietly = (walk: Walk, play: (show: Show) => void) => {
+  add(walk, { firm: true, hold: 0, section: "Build" }, play);
+};
+
+const flushFolds = (walk: Walk, told: Told) => {
+  const seats = walk.folds;
+  const [only] = seats;
+
+  if (only === undefined) {
     return;
   }
 
-  for (const index of [0, 1]) {
-    glide(builder, holeKeys(seat, index), {
-      at,
-      by: { x: (CENTRE.x - spot.x) * 0.3, y: (CENTRE.y - spot.y) * 0.3 },
-      ms: 300,
-    });
-  }
-};
+  walk.folds = [];
+  add(walk, { hold: 640, section: "Build" }, (show) => {
+    show.cut("TwoShot");
 
-type BeatOf<Kind extends Beat["kind"]> = Extract<Beat, { kind: Kind }>;
+    for (const seat of seats) {
+      const draft = show.seat(seat);
 
-const NO_CUES: readonly SoundStep[] = [];
-
-interface Stage {
-  readonly at: number;
-  readonly builder: Builder;
-  readonly table: Table;
-}
-
-const introBeat = ({ builder, table }: Stage) => {
-  for (const spot of table.spots.values()) {
-    setFace(builder, table, spot.seat, "Resting", 0);
-    show(
-      builder,
-      `name:${spot.seat}`,
-      {
-        kind: "Label",
-        size: LABEL_NAME,
-        text: shortName(nameOf(table, spot.seat)),
-        tone: "Ink",
-        x: spot.x,
-        y: nameBaseline(spot),
-      },
-      { at: 0, entrance: "Present" }
-    );
-    setStack(builder, table, spot.seat, 0);
-  }
-
-  return NO_CUES;
-};
-
-const postsBeat = ({ at, builder, table }: Stage, beat: BeatOf<"Posts">) => {
-  let antes = 0;
-
-  for (const step of beat.steps) {
-    commit(table, step.seat, step.amount);
-
-    if (step.post === "Ante" || step.post === "Dead") {
-      antes += step.amount;
-    } else {
-      table.bets.set(step.seat, (table.bets.get(step.seat) ?? 0) + step.amount);
-      setBet(builder, table, step.seat, at, false);
+      draft.folded = true;
+      draft.cards = [];
+      draft.expression = "Folded";
+      draft.bet = 0;
     }
 
-    setStack(builder, table, step.seat, at);
-  }
-
-  if (antes > 0) {
-    show(builder, "pot", potArt(antes), { at, entrance: "Stamp" });
-  }
-
-  return chips(at / 1000, 4, 0.5, Math.round(at));
+    show.draft.caption = captionLines(
+      seats.length === 1
+        ? REPLAY_WORDS.fold(nameOf(told, only))
+        : REPLAY_WORDS.folds(seats.length)
+    );
+    show.apply();
+    show.cue("Fold", 0, only);
+  });
 };
 
-const dealBeat = ({ at, builder, table }: Stage) => {
-  dealHole(builder, table, at);
+const facingOf = (walk: Walk, seat: SeatIndex) =>
+  Math.max(0, ...walk.bets.values()) - (walk.bets.get(seat) ?? 0);
 
-  for (const spot of table.spots.values()) {
-    setFace(builder, table, spot.seat, "LookingDown", at + 320);
-    setFace(builder, table, spot.seat, "Resting", at + 680);
+const wagered = (walk: Walk, told: Told, step: ActedStep) => {
+  const decisive = told.decisive.kind === "Call" && told.decisive.step === step;
+
+  const stackBefore = walk.stacks.get(step.seat) ?? null;
+  const facing = facingOf(walk, step.seat);
+  const line = actLine(told, step, chancesOf(walk.odds, told), stackBefore);
+  const hole = fullHole(told, step.seat);
+  const [board = []] = walk.boards;
+  const holding = hole === null ? "" : heldBy(hole, [...board]);
+
+  walk.bets.set(step.seat, step.to);
+
+  if (stackBefore !== null) {
+    walk.stacks.set(step.seat, Math.max(0, stackBefore - step.added));
   }
 
-  return [...flip(at / 1000), ...flip((at + 260) / 1000)];
-};
+  const change = (show: Show) => {
+    const draft = show.seat(step.seat);
 
-const actCaption = (step: ActedStep, name: string) => {
-  if (step.allIn) {
-    return step.act === "Call"
-      ? REPLAY_WORDS.callsAllIn(name)
-      : REPLAY_WORDS.allIn(name, step.to);
+    draft.bet = step.to;
+    draft.loud = step.allIn || step.act !== "Call";
+    draft.stack =
+      draft.stack === null ? null : Math.max(0, draft.stack - step.added);
+  };
+
+  if (!told.loud.has(step) && !decisive) {
+    quietly(walk, change);
+
+    return;
   }
 
-  return Match.value(step.act).pipe(
-    Match.when("Call", () => REPLAY_WORDS.call(name)),
-    Match.when("Raise", () => REPLAY_WORDS.raise(name, step.to)),
-    Match.orElse(() => REPLAY_WORDS.bet(name, step.to))
+  flushFolds(walk, told);
+
+  if (decisive) {
+    add(walk, { firm: true, hold: PAUSE_MS, section: "Pause" }, (show) => {
+      show.cut("CloseUp", step.seat);
+      show.seat(step.seat).expression = "Thinking";
+      show.draft.facing = facing;
+      show.draft.caption = captionLines(
+        holding.length > 0
+          ? REPLAY_WORDS.pauseHero(facing, holding)
+          : REPLAY_WORDS.lastCard
+      );
+      show.apply();
+      show.push(1.08);
+      show.mark("Pause");
+    });
+  }
+
+  add(
+    walk,
+    {
+      firm: decisive,
+      hold: step.allIn || decisive ? 1200 : 950,
+      section: decisive ? "Payoff" : "Build",
+    },
+    (show) => {
+      show.cut("TwoShot");
+      show.draft.facing = 0;
+      change(show);
+
+      if (step.act !== "Call") {
+        for (const seat of [told.lead, told.other]) {
+          if (seat !== null && seat !== step.seat && !show.seat(seat).folded) {
+            show.seat(seat).expression = "Thinking";
+          }
+        }
+      }
+
+      show.seat(step.seat).expression = "Resting";
+      show.draft.caption = captionLines(line);
+      show.apply();
+      show.cue(step.allIn ? "AllIn" : "Chips", 0, step.seat);
+
+      if (decisive) {
+        show.mark("Hit");
+        show.shake(0.6);
+      } else if (step.allIn) {
+        show.punch();
+      }
+    }
   );
 };
 
-const actBeat = ({ at, builder, table }: Stage, beat: BeatOf<"Act">) => {
-  const { step } = beat;
+const foldedOut = (
+  walk: Walk,
+  told: Told,
+  step: ActedStep,
+  facts: ReplayFacts
+) => {
+  const facing = facingOf(walk, step.seat);
+  const tanked = facts.tanked?.includes(step.seat) ?? false;
+  const hole = fullHole(told, told.lead);
+  const [board = []] = walk.boards;
+  const holding = hole === null ? "" : heldBy(hole, [...board]);
 
-  commit(table, step.seat, step.added);
-  table.bets.set(step.seat, step.to);
-  setStack(builder, table, step.seat, at);
-  setBet(builder, table, step.seat, at, step.allIn || step.act === "Raise");
+  const pot =
+    walk.pot + [...walk.bets.values()].reduce((sum, bet) => sum + bet, 0);
 
-  if (beat.quiet) {
-    return NO_CUES;
-  }
+  flushFolds(walk, told);
+  add(walk, { firm: true, hold: PAUSE_MS + 200, section: "Pause" }, (show) => {
+    show.cut("CloseUp", step.seat);
+    show.seat(step.seat).expression = "Thinking";
+    show.draft.facing = facing;
+    show.draft.caption = captionLines(
+      tanked
+        ? REPLAY_WORDS.tank(nameOf(told, step.seat))
+        : REPLAY_WORDS.pauseCall(
+            nameOf(told, step.seat),
+            nameOf(told, told.lead)
+          )
+    );
+    show.apply();
+    show.push(1.08);
+    show.mark("Pause");
+  });
+  add(walk, { firm: true, hold: 1000, section: "Payoff" }, (show) => {
+    const draft = show.seat(step.seat);
 
-  if (shouts(step)) {
-    setFace(builder, table, step.seat, "Thinking", at);
-  }
-
-  caption(builder, actCaption(step, nameOf(table, step.seat)), at);
-
-  return chips(at / 1000, step.allIn ? 9 : 5, 0.6, Math.round(at));
+    draft.folded = true;
+    draft.expression = "Folded";
+    draft.bet = 0;
+    show.draft.facing = 0;
+    show.draft.caption = captionLines(
+      REPLAY_WORDS.fold(nameOf(told, step.seat))
+    );
+    show.fly("close:hole:0", { x: -260, y: 120 });
+    show.fly("close:hole:1", { x: -260, y: 120 });
+    draft.cards = [];
+    show.apply();
+    show.cue("Fold", 0, step.seat);
+  });
+  add(walk, { firm: true, hold: HIT_MS, section: "Payoff" }, (show) => {
+    show.cut("CloseUp", told.lead);
+    show.seat(told.lead).expression = "Happy";
+    show.draft.caption = captionLines(
+      hole === null
+        ? REPLAY_WORDS.takes(nameOf(told, told.lead), pot)
+        : REPLAY_WORDS.nothing(startingHandName(hole), holding)
+    );
+    show.apply();
+    show.mark("Hit");
+    show.mark("Result", 650);
+    show.shake(1);
+  });
 };
 
-const foldsBeat = ({ at, builder, table }: Stage, beat: BeatOf<"Folds">) => {
-  for (const seat of beat.seats) {
-    table.folded.add(seat);
-    foldHole(builder, table, seat, at);
-    setFace(builder, table, seat, "Folded", at);
+const acted = (walk: Walk, told: Told, step: ActedStep, facts: ReplayFacts) => {
+  if (step.act === "Check") {
+    return;
   }
 
-  return NO_CUES;
+  if (step.act !== "Fold") {
+    wagered(walk, told, step);
+
+    return;
+  }
+
+  if (told.decisive.kind === "Fold" && told.decisive.step === step) {
+    foldedOut(walk, told, step, facts);
+  } else {
+    walk.folds = [...walk.folds, step.seat];
+  }
 };
 
-const gatherBeat = ({ at, builder, table }: Stage, beat: BeatOf<"Gather">) => {
-  for (const [seat, amount] of table.bets) {
-    const spot = table.spots.get(seat);
+const FIRST_SLOT = { Flop: 0, Preflop: 0, River: 4, Showdown: 4, Turn: 3 };
 
-    if (spot !== undefined && amount > 0) {
-      const place = betPlace(spot);
+const cardHold = (street: StreetStep["street"], counted: boolean) => {
+  if (street === "Flop") {
+    return counted ? 820 : 300;
+  }
 
-      glide(builder, `bet:${seat}`, {
-        at,
-        by: { x: POT.x - place.x, y: POT.y - place.y },
-        ms: 320,
+  return counted ? 1150 : 760;
+};
+
+const cardLine = (
+  told: Told,
+  street: StreetStep,
+  index: number,
+  moved: { readonly after: Chances | null; readonly before: Chances | null }
+) => {
+  if (moved.after !== null && moved.before !== null && told.other !== null) {
+    const lead = moved.after.lead - moved.before.lead;
+    const other = moved.after.other - moved.before.other;
+
+    if (lead >= CLIMB_POINTS && moved.after.lead < 100) {
+      return REPLAY_WORDS.climbs(nameOf(told, told.lead), moved.after.lead);
+    }
+
+    if (other >= CLIMB_POINTS && moved.after.other < 100) {
+      return REPLAY_WORDS.climbs(nameOf(told, told.other), moved.after.other);
+    }
+
+    return null;
+  }
+
+  return index === 0 &&
+    (street.street === "Flop" ||
+      street.street === "Turn" ||
+      street.street === "River")
+    ? REPLAY_WORDS.street(street.street)
+    : null;
+};
+
+const swungCard = (
+  walk: Walk,
+  told: Told,
+  swing: Swing,
+  dealt: {
+    readonly card: Card;
+    readonly ends: boolean;
+    readonly name: string;
+    readonly record: number;
+    readonly run: number;
+  }
+) => {
+  const before = chancesOf(walk.odds, told);
+  const after = chancesOf(swing.step, told);
+  const outs = walk.odds?.outs.find((each) => each.seat === swing.gainer);
+  const hole = fullHole(told, swing.gainer);
+  const made = hole === null ? "" : madeBy(hole, swing.step.board);
+  const victimPercent = percentOf(walk.odds ?? swing.step, swing.victim) ?? 0;
+
+  add(walk, { firm: true, hold: PAUSE_MS, section: "Pause" }, (show) => {
+    show.cut("CloseUp", swing.victim);
+    show.draft.caption = captionLines(
+      outs !== undefined && outs.cards.length > 0
+        ? REPLAY_WORDS.pauseCards(nameOf(told, swing.victim), outs.cards.length)
+        : REPLAY_WORDS.pauseStill(nameOf(told, swing.victim), victimPercent)
+    );
+    show.apply();
+    show.push(1.08);
+    show.mark("Pause");
+  });
+  add(walk, { firm: true, hold: BREATH_MS, section: "Payoff" }, (show) => {
+    show.cut("Board");
+    show.draft.odds = before;
+    show.draft.caption = [];
+    show.apply();
+  });
+  add(walk, { firm: true, hold: HIT_MS, section: "Payoff" }, (show) => {
+    show.draft.boards[dealt.run - 1]?.push(cardText(dealt.card));
+    show.draft.slammed = dealt.name;
+    show.apply(-SLAM_MS);
+    show.seen(dealt.record, -SLAM_MS);
+    show.mark("Hit");
+
+    if (dealt.ends) {
+      show.mark("Result", 700);
+    }
+
+    show.shake(1);
+    show.draft.odds = after;
+    show.seat(swing.victim).expression = "Gutted";
+    show.seat(swing.gainer).expression = "Happy";
+    show.apply(260);
+    show.cue("Bar", 260);
+    show.draft.caption = captionLines(
+      made.length > 0
+        ? REPLAY_WORDS.hand(made)
+        : REPLAY_WORDS.ahead(nameOf(told, swing.gainer))
+    );
+    show.apply(620);
+  });
+};
+
+const dealtStreet = (
+  walk: Walk,
+  told: Told,
+  street: StreetStep,
+  following: readonly OddsStep[],
+  last: boolean
+) => {
+  const board = walk.boards[street.run - 1] ?? [];
+  const first = FIRST_SLOT[street.street];
+  const waiting = walk.odds;
+
+  const outs =
+    waiting !== null && waiting.run === street.run
+      ? outsLine(told, waiting)
+      : null;
+
+  const needs =
+    outs !== null && outs === walk.asked ? REPLAY_WORDS.lastCard : outs;
+
+  walk.asked = outs ?? walk.asked;
+
+  flushFolds(walk, told);
+
+  if (walk.boards.length > 1 && !walk.announced.has(street.run)) {
+    const before = chancesOf(walk.shared, told);
+
+    walk.announced.add(street.run);
+    walk.odds = walk.shared;
+    add(walk, { hold: 800, section: "Build" }, (show) => {
+      show.cut("Board");
+      show.draft.odds = before;
+      show.draft.caption = captionLines(REPLAY_WORDS.board(street.run));
+      show.apply();
+    });
+  } else if (needs !== null) {
+    add(walk, { hold: 1400, section: "Build" }, (show) => {
+      show.cut("Board");
+      show.draft.caption = captionLines(needs);
+      show.apply();
+    });
+  }
+
+  for (const [index, card] of street.cards.entries()) {
+    const counted = following[index] ?? null;
+    const before = chancesOf(walk.odds, told);
+    const after = chancesOf(counted, told);
+    const name = `board:${street.run - 1}:${first + index}`;
+    const ends = last && index === street.cards.length - 1;
+
+    const swing =
+      told.decisive.kind === "Card" && told.decisive.swing.step === counted
+        ? told.decisive.swing
+        : null;
+
+    board.push(card);
+
+    if (swing === null) {
+      const line = cardLine(told, street, index, { after, before });
+
+      add(
+        walk,
+        { hold: cardHold(street.street, after !== null), section: "Build" },
+        (show) => {
+          show.cut("Board");
+          show.draft.boards[street.run - 1]?.push(cardText(card));
+          show.draft.caption = line === null ? [] : captionLines(line);
+          show.apply();
+          show.seen(street.at, 0);
+          show.cue("Card", 0);
+
+          if (after !== null) {
+            show.draft.odds = after;
+            show.apply(240);
+            show.cue("Bar", 240);
+          }
+
+          if (ends && told.decisive.kind !== "Call") {
+            show.mark("Result", 240);
+          }
+        }
+      );
+    } else {
+      swungCard(walk, told, swing, {
+        card,
+        ends,
+        name,
+        record: street.at,
+        run: street.run,
       });
     }
+
+    walk.odds = counted ?? walk.odds;
   }
 
-  table.bets.clear();
-  show(builder, "pot", potArt(beat.pot), { at: at + 300, entrance: "Stamp" });
+  if (walk.boards.length > 1 && board.length === FULL_BOARD) {
+    const won = told.winners.get(street.run) ?? [];
+    const [winner] = won;
 
-  return chips((at + 200) / 1000, 6, 0.45, Math.round(at));
-};
-
-const firstSlotOf = (street: StreetStep["street"]) =>
-  Match.value(street).pipe(
-    Match.when("Flop", () => 0),
-    Match.when("Turn", () => 3),
-    Match.orElse(() => 4)
-  );
-
-const streetBeat = ({ at, builder, table }: Stage, beat: BeatOf<"Street">) => {
-  const { cards, run, street } = beat.step;
-  const first = firstSlotOf(street);
-  const gap = beat.runout ? 260 : 160;
-
-  for (const [index, card] of cards.entries()) {
-    show(
-      builder,
-      `board:${run}:${first + index}`,
-      {
-        card: cardText(card),
-        kind: "Card",
-        ...boardPlace(table.runs, run, first + index),
-      },
-      { at: at + index * gap, entrance: "Drop" }
-    );
-  }
-
-  return cards.flatMap((_, index) => flip((at + index * gap) / 1000));
-};
-
-const shownBeat = ({ at, builder, table }: Stage, beat: BeatOf<"Shown">) => {
-  flipHole(builder, table, beat.step.seat, beat.step.cards, at);
-
-  return flip((at + 140) / 1000);
-};
-
-const oddsBeat = ({ at, builder, table }: Stage, beat: BeatOf<"Odds">) => {
-  for (const chance of beat.step.chances) {
-    const spot = table.spots.get(chance.seat);
-
-    if (spot !== undefined) {
-      show(
-        builder,
-        `odds:${chance.seat}`,
-        {
-          kind: "Pill",
-          text: REPLAY_WORDS.odds(chance.percent),
-          tone: "Paper",
-          ...oddsPlace(spot),
-        },
-        { at, entrance: "Stamp" }
+    add(walk, { hold: 950, section: "Build" }, (show) => {
+      show.draft.caption = captionLines(
+        won.length === 1 && winner !== undefined
+          ? REPLAY_WORDS.boardTo(street.run, nameOf(told, winner))
+          : REPLAY_WORDS.boardSplit(street.run)
       );
-    }
-  }
-
-  return NO_CUES;
-};
-
-const returnBeat = ({ at, builder, table }: Stage, beat: BeatOf<"Return">) => {
-  table.stacks.set(beat.seat, (table.stacks.get(beat.seat) ?? 0) + beat.amount);
-  table.bets.set(
-    beat.seat,
-    Math.max(0, (table.bets.get(beat.seat) ?? 0) - beat.amount)
-  );
-  setBet(builder, table, beat.seat, at, false);
-  setStack(builder, table, beat.seat, at);
-
-  return NO_CUES;
-};
-
-const awardCaption = (table: Table, step: AwardedStep, total: number) => {
-  const [first] = step.shares;
-
-  return step.shares.length > 1 || first === undefined
-    ? REPLAY_WORDS.split(total)
-    : REPLAY_WORDS.wins(nameOf(table, first.seat), first.amount);
-};
-
-const awardBeat = ({ at, builder, table }: Stage, beat: BeatOf<"Award">) => {
-  const { shares } = beat.step;
-  const [first] = shares;
-  const total = shares.reduce((sum, share) => sum + share.amount, 0);
-  const spot = first === undefined ? undefined : table.spots.get(first.seat);
-
-  for (const seat of table.spots.keys()) {
-    hide(builder, `odds:${seat}`, at);
-  }
-
-  show(builder, "pot", potArt(total), { at, entrance: "Fade" });
-
-  if (spot !== undefined) {
-    glide(builder, "pot", {
-      at,
-      by: { x: spot.x - POT.x, y: spot.y - POT.y },
-      ms: 420,
+      show.apply();
     });
   }
+};
 
-  for (const share of shares) {
-    table.stacks.set(
-      share.seat,
-      (table.stacks.get(share.seat) ?? 0) + share.amount
-    );
-    setStack(builder, table, share.seat, at + 420);
-    setFace(builder, table, share.seat, "Happy", at + 300);
-  }
+const awardLine = (
+  told: Told,
+  facts: ReplayFacts,
+  awards: readonly AwardedStep[]
+) => {
+  const totals = new Map<SeatIndex, number>();
 
-  for (const seat of table.spots.keys()) {
-    if (
-      !table.folded.has(seat) &&
-      !shares.some((share) => share.seat === seat)
-    ) {
-      setFace(builder, table, seat, "Gutted", at + 300);
+  for (const award of awards) {
+    for (const share of award.shares) {
+      totals.set(share.seat, (totals.get(share.seat) ?? 0) + share.amount);
     }
   }
 
-  caption(builder, awardCaption(table, beat.step, total), at + 200);
-
-  return chips((at + 300) / 1000, 12, 0.8, Math.round(at));
-};
-
-const muckBeat = ({ at, builder, table }: Stage, seat: SeatIndex) => {
-  foldHole(builder, table, seat, at);
-
-  return NO_CUES;
-};
-
-const runsBeat = ({ at, builder }: Stage, runs: number) => {
-  caption(builder, REPLAY_WORDS.runs(runs), at);
-
-  return NO_CUES;
-};
-
-const beatAt = (stage: Stage, beat: Beat): readonly SoundStep[] =>
-  Match.value(beat).pipe(
-    Match.discriminatorsExhaustive("kind")({
-      Act: (each) => actBeat(stage, each),
-      Award: (each) => awardBeat(stage, each),
-      Deal: () => dealBeat(stage),
-      Folds: (each) => foldsBeat(stage, each),
-      Gather: (each) => gatherBeat(stage, each),
-      Intro: () => introBeat(stage),
-      Muck: ({ seat }) => muckBeat(stage, seat),
-      Odds: (each) => oddsBeat(stage, each),
-      Posts: (each) => postsBeat(stage, each),
-      Return: (each) => returnBeat(stage, each),
-      Runs: ({ runs }) => runsBeat(stage, runs),
-      Shown: (each) => shownBeat(stage, each),
-      Street: (each) => streetBeat(stage, each),
-    })
+  const [first, second] = [...totals.entries()].toSorted(
+    ([, one], [, other]) => other - one
   );
 
-export const replayPlan = (
-  replay: Replay,
-  facts: {
-    readonly lead: SeatIndex;
-    readonly seats: readonly ReplaySeat[];
+  if (first === undefined) {
+    return { line: REPLAY_WORDS.lastCard, totals };
   }
-): ReplayPlan => {
-  const { beats, pace } = pacedBeats(replay);
-  const spots = spotsOf(replay.dealtIn, facts.lead);
 
-  const runs = Math.max(
-    1,
-    ...replay.steps.flatMap((step) =>
-      ReplaySteps.$is("StreetDealt")(step) ? [step.run] : []
-    )
-  );
+  if (second !== undefined) {
+    return { line: REPLAY_WORDS.split(first[1]), totals };
+  }
 
-  const table: Table = {
+  return {
+    line:
+      facts.kind === "HeroCall" && first[0] === told.lead
+        ? REPLAY_WORDS.right(nameOf(told, told.lead))
+        : REPLAY_WORDS.takes(nameOf(told, first[0]), first[1]),
+    totals,
+  };
+};
+
+const FACE_CENTRES = { left: 236, right: 844, y: 458 };
+
+const POT_CENTRE = { x: 540, y: 1222 };
+
+const paidOut = (
+  walk: Walk,
+  told: Told,
+  facts: ReplayFacts,
+  awards: readonly AwardedStep[]
+) => {
+  const { line, totals } = awardLine(told, facts, awards);
+  const pot = [...totals.values()].reduce((sum, amount) => sum + amount, 0);
+  const winners = [...totals.keys()];
+  const [winner] = winners;
+
+  flushFolds(walk, told);
+  add(walk, { firm: true, hold: PAYOFF_MS, section: "Payoff" }, (show) => {
+    show.cut("TwoShot");
+    show.draft.pot = pot;
+
+    if (show.draft.boards.length > 1) {
+      show.draft.odds = null;
+    }
+
+    for (const [seat, draft] of show.draft.seats) {
+      draft.bet = 0;
+
+      if (winners.includes(seat)) {
+        draft.expression = "Happy";
+      } else if (!draft.folded && (seat === told.lead || seat === told.other)) {
+        draft.expression = "Gutted";
+      }
+    }
+
+    show.draft.caption = captionLines(line);
+    show.apply();
+    show.mark("Result");
+
+    if (winners.length === 1 && winner !== undefined) {
+      const x = winner === told.lead ? FACE_CENTRES.left : FACE_CENTRES.right;
+
+      show.fly("pot", {
+        x:
+          (winner === told.lead || winner === told.other ? x : 540) -
+          POT_CENTRE.x,
+        y: FACE_CENTRES.y - POT_CENTRE.y,
+      });
+      show.draft.pot = 0;
+    }
+
+    for (const [seat, amount] of totals) {
+      const draft = show.seat(seat);
+
+      draft.stack = draft.stack === null ? null : draft.stack + amount;
+    }
+
+    show.apply(460);
+    show.cue("Chips", 300, winner);
+  });
+};
+
+const openingOf = (replay: Replay, facts: ReplayFacts, told: Told): Walk => {
+  const walk: Walk = {
+    announced: new Set(),
+    asked: "",
+    beats: [],
     bets: new Map(),
-    expressions: new Map(),
-    folded: new Set(),
-    runs,
-    seats: new Map(facts.seats.map((seat) => [seat.seat, seat])),
-    spots: new Map(spots.map((spot) => [spot.seat, spot])),
+    boards: [[]],
+    folds: [],
+    odds: null,
+    pot: 0,
+    shared: null,
     stacks: new Map(
       facts.seats.flatMap((seat) =>
         seat.stack === null ? [] : [[seat.seat, seat.stack] as const]
@@ -1147,67 +1096,371 @@ export const replayPlan = (
     ),
   };
 
-  const builder: Builder = { cues: [], slots: new Map(), sprites: [] };
-  const button = table.spots.get(replay.button);
+  const posts = replay.steps.filter(ReplaySteps.$is("Posted"));
 
-  if (button !== undefined) {
-    show(
-      builder,
-      "button",
-      { kind: "Button", ...buttonPlace(button) },
-      { at: 0, entrance: "Present" }
-    );
+  for (const post of posts) {
+    const stack = walk.stacks.get(post.seat);
+
+    if (stack !== undefined) {
+      walk.stacks.set(post.seat, Math.max(0, stack - post.amount));
+    }
+
+    if (post.post === "Ante" || post.post === "Dead") {
+      walk.pot += post.amount;
+    } else {
+      walk.bets.set(post.seat, (walk.bets.get(post.seat) ?? 0) + post.amount);
+    }
   }
 
-  let at = 0;
-  const timeline: { at: number; ms: number }[] = [];
+  const dealt =
+    replay.steps
+      .filter(ReplaySteps.$is("Odds"))
+      .find((step) => step.board.length === 0) ?? null;
 
-  for (const beat of beats) {
-    timeline.push({ at: recordIndexOf(beat), ms: at });
-    builder.cues.push(...beatAt({ at, builder, table }, beat));
-    at += paceOf(beat, pace);
-  }
-
-  const cardAt = Math.round(at);
-
-  for (const name of builder.slots.keys()) {
-    hide(builder, name, cardAt, 300);
-  }
-
-  return {
-    cardAt,
-    cues: builder.cues,
-    length: cardAt + CARD_MS,
-    sprites: builder.sprites,
-    tableMs: cardAt,
-    timeline: timeline.filter((entry) => entry.at >= 0),
+  const opening = {
+    bets: new Map(walk.bets),
+    odds: chancesOf(dealt, told),
+    pot: walk.pot,
+    stacks: new Map(walk.stacks),
   };
+
+  const line = hookOf(facts, told, dealt);
+
+  walk.odds = dealt;
+  add(walk, { firm: true, hold: HOOK_MS, section: "Hook" }, (show) => {
+    for (const seat of replay.dealtIn) {
+      show.draft.seats.set(seat, {
+        bet: opening.bets.get(seat) ?? 0,
+        cards: holeOf(told, seat),
+        expression: "Resting",
+        folded: false,
+        loud: false,
+        stack: opening.stacks.get(seat) ?? null,
+      });
+    }
+
+    show.draft.pot = opening.pot;
+    show.draft.odds = opening.odds;
+    show.draft.caption = captionLines(line);
+    show.cut("TwoShot");
+    show.apply();
+    show.push(1.035);
+  });
+
+  return walk;
 };
 
-export const poseAtKeys = (keys: readonly Key[], ms: number): Pose => {
-  const [first] = keys;
+const gathered = (walk: Walk, pot: number) => {
+  walk.bets.clear();
+  walk.pot = pot;
+  quietly(walk, (show) => {
+    for (const draft of show.draft.seats.values()) {
+      draft.bet = 0;
+      draft.loud = false;
+    }
 
-  if (first === undefined || ms < first.at) {
-    return HIDDEN;
+    show.draft.pot = pot;
+  });
+};
+
+const returned = (walk: Walk, step: StepOf<"Returned">) => {
+  walk.bets.set(
+    step.seat,
+    Math.max(0, (walk.bets.get(step.seat) ?? 0) - step.amount)
+  );
+  walk.stacks.set(step.seat, (walk.stacks.get(step.seat) ?? 0) + step.amount);
+  quietly(walk, (show) => {
+    const draft = show.seat(step.seat);
+
+    draft.bet = Math.max(0, draft.bet - step.amount);
+    draft.stack = draft.stack === null ? null : draft.stack + step.amount;
+  });
+};
+
+const ranTwice = (walk: Walk, told: Told, runs: number) => {
+  const [shared = []] = walk.boards;
+
+  walk.shared = walk.odds;
+
+  for (let run = walk.boards.length; run < runs; run += 1) {
+    walk.boards.push([...shared]);
   }
 
-  const next = keys.findIndex((key) => key.at > ms);
-
-  if (next === -1) {
-    return lastPose(keys);
+  if (runs < 2) {
+    return;
   }
 
-  const from = keys[next - 1] ?? first;
-  const to = keys[next] ?? from;
-  const amount = 1 - (1 - (ms - from.at) / Math.max(1, to.at - from.at)) ** 3;
-  const mix = (one: number, other: number) => one + (other - one) * amount;
+  flushFolds(walk, told);
+  add(walk, { hold: 1000, section: "Build" }, (show) => {
+    const [board = []] = show.draft.boards;
+
+    show.cut("TwoShot");
+    show.draft.boards = Array.from({ length: runs }, () => [...board]);
+    show.draft.caption = captionLines(REPLAY_WORDS.runs(runs));
+    show.apply();
+  });
+};
+
+const beatsOf = (replay: Replay, facts: ReplayFacts, told: Told) => {
+  const walk = openingOf(replay, facts, told);
+  const awards: AwardedStep[] = [];
+  const counted = new Set<OddsStep>();
+  const streets = replay.steps.filter(ReplaySteps.$is("StreetDealt"));
+
+  for (const [index, step] of replay.steps.entries()) {
+    ReplaySteps.$match(step, {
+      Acted: (each) => {
+        acted(walk, told, each, facts);
+      },
+      Awarded: (each) => {
+        awards.push(each);
+      },
+      Dealt: () => 0,
+      Gathered: ({ pot }) => {
+        gathered(walk, pot);
+      },
+      Mucked: ({ seat }) => {
+        quietly(walk, (show) => {
+          if (!told.tabled.has(seat)) {
+            show.seat(seat).cards = [];
+          }
+        });
+      },
+      Odds: (each) => {
+        if (!counted.has(each)) {
+          walk.odds = each;
+          quietly(walk, (show) => {
+            show.draft.odds = chancesOf(each, told);
+          });
+        }
+      },
+      Posted: () => 0,
+      Returned: (each) => {
+        returned(walk, each);
+      },
+      Runs: ({ runs }) => {
+        ranTwice(walk, told, runs);
+      },
+      Shown: () => 0,
+      StreetDealt: (each) => {
+        const following: OddsStep[] = [];
+
+        for (const next of replay.steps.slice(index + 1)) {
+          if (!ReplaySteps.$is("Odds")(next) || next.at !== each.at) {
+            break;
+          }
+
+          following.push(next);
+          counted.add(next);
+        }
+
+        dealtStreet(walk, told, each, following, each === streets.at(-1));
+      },
+    });
+  }
+
+  paidOut(walk, told, facts, awards);
+
+  return walk.beats;
+};
+
+const pacedOf = (beats: readonly Beat[]) => {
+  const firm = beats
+    .filter((beat) => beat.firm)
+    .reduce((total, beat) => total + beat.hold, 0);
+
+  const loose = Math.max(
+    1,
+    beats
+      .filter((beat) => !beat.firm)
+      .reduce((total, beat) => total + beat.hold, 0)
+  );
+
+  const natural = firm + loose + TAG_MS;
+
+  if (natural > LONGEST_MS) {
+    return Math.max(TIGHTEST, (LONGEST_MS - TAG_MS - firm) / loose);
+  }
+
+  return natural < SHORTEST_MS
+    ? Math.min(LOOSEST, (SHORTEST_MS - TAG_MS - firm) / loose)
+    : 1;
+};
+
+const OUTCOMES: Readonly<Record<Family, Outcome>> = {
+  Celebration: "Win",
+  Groan: "Loss",
+  Relief: "Split",
+  Reveal: "Win",
+};
+
+export const BEAT_GRID_MS = 100;
+
+const SHAKES = [16, -13, 9, -6, 3, 0];
+
+const SHAKE_STEP = 34;
+
+const PUNCH = 1.045;
+
+export const replayPlan = (replay: Replay, facts: ReplayFacts): ReplayPlan => {
+  const told = toldOf(replay, facts);
+  const beats = beatsOf(replay, facts, told);
+  const pace = pacedOf(beats);
+  const stager = stagerOf();
+  const camera: Key[] = [{ at: 0, pose: REST }];
+  const cues: SmallCue[] = [];
+  const marks = new Map<Mark, number>();
+  const sections: { at: number; name: Section }[] = [];
+  const planned: PlannedBeat[] = [];
+  const timeline: { at: number; ms: number }[] = [];
+
+  const draft: Draft = {
+    boards: [[]],
+    caption: [],
+    facing: 0,
+    focus: told.lead,
+    odds: null,
+    pot: 0,
+    seats: new Map(),
+    shot: "TwoShot",
+    slammed: "",
+  };
+
+  const clock = { at: 0, cutting: true };
+
+  const rested = (when: number) => {
+    const last = camera.at(-1);
+
+    if (last !== undefined && last.pose.scale !== 1) {
+      camera.push({ at: Math.max(last.at, when - 1), pose: last.pose });
+    }
+
+    camera.push({ at: when, pose: REST });
+  };
+
+  for (const beat of beats) {
+    const start = clock.at;
+
+    const hold =
+      Math.round((beat.hold * (beat.firm ? 1 : pace)) / BEAT_GRID_MS) *
+      BEAT_GRID_MS;
+
+    if (hold > 0 && sections.at(-1)?.name !== beat.section) {
+      sections.push({ at: start, name: beat.section });
+    }
+
+    if (hold > 0) {
+      planned.push({ at: start, hold, section: beat.section });
+    }
+
+    beat.play({
+      apply: (offset = 0) => {
+        staged(
+          stager,
+          layoutOf(draft, told.cast),
+          start + offset,
+          clock.cutting
+        );
+        clock.cutting = false;
+      },
+      cue: (kind, offset, seat) => {
+        const pan =
+          (seat === told.lead && -0.4) || (seat === told.other && 0.4) || 0;
+
+        cues.push({ atMs: start + offset, kind, pan });
+      },
+      cut: (shot, focus) => {
+        if (
+          draft.shot !== shot ||
+          (focus !== undefined && draft.focus !== focus)
+        ) {
+          clock.cutting = true;
+          rested(start);
+        }
+
+        draft.shot = shot;
+        draft.focus = focus ?? draft.focus;
+      },
+      draft,
+      fly: (name, by) => {
+        sent(stager, name, { at: start, by, ms: 420 });
+      },
+      mark: (what, offset = 0) => {
+        if (!marks.has(what)) {
+          marks.set(what, start + offset);
+        }
+      },
+      punch: () => {
+        camera.push(
+          { at: start, pose: { ...REST, scale: PUNCH } },
+          { at: start + 280, pose: REST }
+        );
+      },
+      push: (to) => {
+        rested(start);
+        camera.push({ at: start + hold - 1, pose: { ...REST, scale: to } });
+      },
+      seat: (seat) => {
+        const found = draft.seats.get(seat) ?? {
+          bet: 0,
+          cards: [],
+          expression: "Resting",
+          folded: false,
+          loud: false,
+          stack: null,
+        };
+
+        draft.seats.set(seat, found);
+
+        return found;
+      },
+      seen: (record, offset) => {
+        timeline.push({ at: record, ms: start + offset });
+      },
+      shake: (strength) => {
+        rested(start);
+        camera.push(
+          ...SHAKES.map((dx, index) => ({
+            at: start + (index + 1) * SHAKE_STEP,
+            pose: {
+              ...REST,
+              dx: dx * strength,
+              dy: (index % 2 === 0 ? -5 : 4) * strength * (dx === 0 ? 0 : 1),
+            },
+          }))
+        );
+      },
+    });
+    draft.slammed = "";
+    clock.at += hold;
+  }
+
+  const cardAt = clock.at;
+
+  cleared(stager, cardAt - 110, 110);
+  rested(cardAt);
+  sections.push({ at: cardAt, name: "Tag" });
+
+  const hit = marks.get("Hit") ?? null;
+  const pause = marks.get("Pause") ?? null;
 
   return {
-    dx: mix(from.pose.dx, to.pose.dx),
-    dy: mix(from.pose.dy, to.pose.dy),
-    opacity: mix(from.pose.opacity, to.pose.opacity),
-    scale: mix(from.pose.scale, to.pose.scale),
-    squeeze: mix(from.pose.squeeze, to.pose.squeeze),
-    turn: mix(from.pose.turn, to.pose.turn),
+    beats: [...planned, { at: cardAt, hold: TAG_MS, section: "Tag" }],
+    camera: camera.toSorted((one, other) => one.at - other.at),
+    cardAt,
+    length: cardAt + TAG_MS,
+    sections,
+    sheet: {
+      cues: cues.toSorted((one, other) => one.atMs - other.atMs),
+      hitMs: pause === null ? null : hit,
+      lengthMs: cardAt + TAG_MS,
+      outcome: OUTCOMES[FAMILIES[facts.kind]],
+      pauseMs: hit === null ? null : pause,
+      resultMs: Math.min(cardAt, marks.get("Result") ?? cardAt),
+      seed: replay.handNumber,
+      tagMs: cardAt,
+    },
+    sprites: stager.sprites,
+    timeline,
   };
 };

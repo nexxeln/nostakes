@@ -33,7 +33,11 @@ import type { Audience, SeenTableEvent } from "@nostakes/room";
 import { Match, Option, Result, Schema } from "effect";
 import * as Arbitrary from "effect/Arbitrary";
 
-import { poseAtKeys, replayPlan } from "../src/features/moments/replay-plan.js";
+import {
+  BEAT_GRID_MS,
+  poseAtKeys,
+  replayPlan,
+} from "../src/features/moments/replay-plan.js";
 import type { ReplayPlan } from "../src/features/moments/replay-plan.js";
 import { startingStacks } from "../src/features/moments/watch.js";
 import type { SeatStack } from "../src/features/moments/watch.js";
@@ -44,9 +48,9 @@ const handSeed = Arbitrary.schema(
 
 const HANDS = { arbitrary: { runs: 40 }, timeout: 120_000 };
 
-const LONGEST_MS = 15_000;
+const LONGEST_MS = 30_000;
 
-const SHORTEST_MS = 8000;
+const SHORTEST_MS = 6000;
 
 const chipCount = (amount: number) => ChipsSchema.make(amount);
 
@@ -236,33 +240,49 @@ const evenChances = ({
 }: {
   readonly holes: readonly unknown[];
 }): readonly number[] =>
-  holes.map(() => Math.floor(100 / Math.max(1, holes.length)));
+  holes.map((_, index) => (index === 0 ? 100 - (holes.length - 1) * 11 : 11));
 
-const planFor = (feed: readonly SeenTableEvent[]) =>
+const KINDS = ["BadBeat", "Bluff", "HeroCall", "BigHand", "SplitRuns"] as const;
+
+const planFor = (feed: readonly SeenTableEvent[], seed: number) =>
   replayOf(feed, evenChances).pipe(
     Option.map((replay) =>
       replayPlan(replay, {
-        lead: replay.dealtIn[0] ?? replay.button,
+        frame: seed % 2 === 0 ? "Story" : "Chat",
+        kind: KINDS[seed % KINDS.length] ?? "BigHand",
+        principals: replay.dealtIn.slice(0, 2),
         seats: replay.dealtIn.map((seat) => ({
           avatar: "",
           name: `Player ${seat}`,
           seat,
           stack: 1000,
         })),
+        tier: 2,
       })
     )
   );
 
-const earlyCards = (plan: ReplayPlan, spectator: readonly SeenTableEvent[]) =>
-  plan.sprites.flatMap((sprite) => {
-    if (sprite.art.kind !== "Card" || sprite.art.card.length === 0) {
-      return [];
-    }
+const faceUp = (plan: ReplayPlan) =>
+  plan.sprites.flatMap((sprite) =>
+    sprite.art.kind === "Card" && sprite.art.card.length > 0
+      ? [{ card: sprite.art.card, shownAt: sprite.shownAt }]
+      : []
+  );
 
-    const { card } = sprite.art;
+const neverShown = (plan: ReplayPlan, spectator: readonly SeenTableEvent[]) => {
+  const shown = new Set(
+    spectator.flatMap(revealedIn).map((card) => cardText(card))
+  );
 
-    const index = spectator.findIndex((event) =>
-      revealedIn(event).some((shown) => cardText(shown) === card)
+  return faceUp(plan).filter(({ card }) => !shown.has(card));
+};
+
+const boardTooSoon = (plan: ReplayPlan, spectator: readonly SeenTableEvent[]) =>
+  faceUp(plan).flatMap(({ card, shownAt }) => {
+    const index = spectator.findIndex(
+      (event) =>
+        Events.$is("StreetDealt")(event) &&
+        event.cards.some((dealt) => cardText(dealt) === card)
     );
 
     const allowed = Math.min(
@@ -271,10 +291,15 @@ const earlyCards = (plan: ReplayPlan, spectator: readonly SeenTableEvent[]) =>
         .map((entry) => entry.ms)
     );
 
-    return index === -1 || sprite.shownAt < allowed
-      ? [{ allowed, card, index, shownAt: sprite.shownAt }]
-      : [];
+    return index === -1 || shownAt >= allowed
+      ? []
+      : [{ allowed, card, index, shownAt }];
   });
+
+const everyDevice = (events: readonly Event[]) => [
+  Audiences.Spectator(),
+  ...audiencesOf(events),
+];
 
 describe("a moment's hand replay", () => {
   it.prop(
@@ -291,41 +316,108 @@ describe("a moment's hand replay", () => {
   );
 
   it.prop(
-    "turns no card face up before the table saw it, on any device",
+    "turns face up, at any time, no card the table was not shown by the end of the hand, on any device",
     { seed: handSeed },
     ({ seed }) => {
       const events = generatedHand(seed);
       const spectator = feedFor(events, Audiences.Spectator());
 
-      const early = [Audiences.Spectator(), ...audiencesOf(events)].flatMap(
-        (audience) =>
-          Option.match(planFor(feedFor(events, audience)), {
+      expect(
+        everyDevice(events).flatMap((audience) =>
+          Option.match(planFor(feedFor(events, audience), seed), {
             onNone: () => [],
-            onSome: (plan) => earlyCards(plan, spectator),
+            onSome: (plan) => neverShown(plan, spectator),
           })
-      );
-
-      expect(early).toStrictEqual([]);
+        )
+      ).toStrictEqual([]);
     },
     HANDS
   );
 
   it.prop(
-    "plays any hand in 8 to 15 seconds and leaves the table empty for the moment card",
+    "shows no board card before the beat that deals its street",
     { seed: handSeed },
     ({ seed }) => {
-      const plan = planFor(feedFor(generatedHand(seed), Audiences.Spectator()));
+      const spectator = feedFor(generatedHand(seed), Audiences.Spectator());
+
+      expect(
+        Option.match(planFor(spectator, seed), {
+          onNone: () => [],
+          onSome: (plan) => boardTooSoon(plan, spectator),
+        })
+      ).toStrictEqual([]);
+    },
+    HANDS
+  );
+
+  it.prop(
+    "plays any hand in 6 to 30 seconds, every beat on a frame, and leaves the table empty for the moment card",
+    { seed: handSeed },
+    ({ seed }) => {
+      const plan = planFor(
+        feedFor(generatedHand(seed), Audiences.Spectator()),
+        seed
+      );
 
       expect(
         plan.pipe(
           Option.map((found) => ({
             fits: found.length >= SHORTEST_MS && found.length <= LONGEST_MS,
             leftOnTable: found.sprites.filter(
-              (sprite) => poseAtKeys(sprite.keys, found.length - 1).opacity > 0
+              (sprite) => poseAtKeys(sprite.keys, found.cardAt + 1).opacity > 0
             ).length,
+            offTheGrid: found.beats.filter(
+              (beat) => beat.at % BEAT_GRID_MS !== 0
+            ).length,
+            restsForTheCard:
+              poseAtKeys(found.camera, found.cardAt).scale === 1 &&
+              poseAtKeys(found.camera, found.cardAt).dx === 0,
           }))
         )
-      ).toStrictEqual(Option.some({ fits: true, leftOnTable: 0 }));
+      ).toStrictEqual(
+        Option.some({
+          fits: true,
+          leftOnTable: 0,
+          offTheGrid: 0,
+          restsForTheCard: true,
+        })
+      );
+    },
+    HANDS
+  );
+
+  it.prop(
+    "scores the edit in order: the pause, then the hit on a beat, then the result, then the card",
+    { seed: handSeed },
+    ({ seed }) => {
+      const plan = planFor(
+        feedFor(generatedHand(seed), Audiences.Spectator()),
+        seed
+      );
+
+      expect(
+        plan.pipe(
+          Option.map(({ cardAt, sheet }) => {
+            const pause = sheet.pauseMs ?? 0;
+            const hit = sheet.hitMs ?? pause;
+
+            return {
+              both: (sheet.pauseMs === null) === (sheet.hitMs === null),
+              cues: sheet.cues.every(
+                (cue) => cue.atMs >= 0 && cue.atMs <= cardAt
+              ),
+              onBeat: hit % BEAT_GRID_MS === 0,
+              ordered:
+                pause <= hit &&
+                hit <= sheet.resultMs &&
+                sheet.resultMs <= sheet.tagMs &&
+                sheet.tagMs === cardAt,
+            };
+          })
+        )
+      ).toStrictEqual(
+        Option.some({ both: true, cues: true, onBeat: true, ordered: true })
+      );
     },
     HANDS
   );
@@ -337,12 +429,12 @@ describe("a moment's hand replay", () => {
       const events = generatedHand(seed);
 
       const spectator = JSON.stringify(
-        planFor(feedFor(events, Audiences.Spectator()))
+        planFor(feedFor(events, Audiences.Spectator()), seed)
       );
 
       expect(
         audiencesOf(events).map((audience) =>
-          JSON.stringify(planFor(feedFor(events, audience)))
+          JSON.stringify(planFor(feedFor(events, audience), seed))
         )
       ).toStrictEqual(audiencesOf(events).map(() => spectator));
     },

@@ -1,4 +1,3 @@
-import { Events } from "@nostakes/engine";
 import { Effect, Option, Schema } from "effect";
 
 import type { Deck, Theme } from "../../features/model.js";
@@ -30,23 +29,14 @@ export interface ClipArt {
   readonly svg: string;
 }
 
-const replayOrderOf = (story: SceneStory | null) => {
-  if (story === null) {
-    return null;
-  }
-
-  const [first] = story.hand.record;
-
-  const lead =
-    story.seats[0] ??
-    (first !== undefined && Events.$is("HandStarted")(first)
-      ? first.button
-      : undefined);
-
-  return lead === undefined
+const replayOrderOf = (story: SceneStory | null) =>
+  story === null
     ? null
-    : { lead, record: story.hand.record, seats: replaySeatsOf(story.hand) };
-};
+    : {
+        principals: story.seats,
+        record: story.hand.record,
+        seats: replaySeatsOf(story.hand),
+      };
 
 export const REPLAY_TIER = 2;
 

@@ -345,15 +345,35 @@ const probed = (path: string) =>
     return Option.some({ decodes: decodes.trim(), report });
   });
 
+interface Told {
+  readonly channels: number;
+  readonly longest: number;
+  readonly mostBytes: number;
+  readonly opensOnTitle: boolean;
+  readonly shortest: number;
+}
+
 interface Expected {
   readonly frame: Frame;
-  readonly seconds: { readonly longest: number; readonly shortest: number };
+  readonly seconds: Told;
   readonly sound: boolean;
 }
 
-const SHORT_CLIP = { longest: LONGEST_SECONDS, shortest: SHORTEST_SECONDS };
+const SHORT_CLIP: Told = {
+  channels: 1,
+  longest: LONGEST_SECONDS,
+  mostBytes: MOST_BYTES,
+  opensOnTitle: true,
+  shortest: SHORTEST_SECONDS,
+};
 
-const REPLAY = { longest: 15.2, shortest: 7.9 };
+const REPLAY: Told = {
+  channels: 2,
+  longest: 25.2,
+  mostBytes: 6_000_000,
+  opensOnTitle: false,
+  shortest: 11.9,
+};
 
 type Probed = typeof ProbeSchema.Type;
 
@@ -394,7 +414,7 @@ const atomProblems = (bytes: Uint8Array, expected: Expected) => {
     );
   }
 
-  if (bytes.length > MOST_BYTES) {
+  if (bytes.length > expected.seconds.mostBytes) {
     problems.push(`the clip is ${bytes.length} bytes`);
   }
 
@@ -424,7 +444,7 @@ const soundReadWell = (report: Probed, expected: Expected) => {
     (sound?.codec_name === "aac" &&
       sound.profile === "LC" &&
       sound.sample_rate === "48000" &&
-      sound.channels === 1)
+      sound.channels === expected.seconds.channels)
     ? []
     : [`ffprobe reads the sound as ${JSON.stringify(sound)}`];
 };
@@ -448,9 +468,12 @@ const fileProblems = (
   ];
 };
 
-const playbackProblems = (judged: typeof JudgedSchema.Type, frame: Frame) => {
+const playbackProblems = (
+  judged: typeof JudgedSchema.Type,
+  expected: Expected
+) => {
   const problems: string[] = [];
-  const { height, width } = SIZES[frame];
+  const { height, width } = SIZES[expected.frame];
 
   if (!judged.ended || judged.currentTime < judged.duration - 1 / FPS) {
     problems.push(
@@ -462,7 +485,7 @@ const playbackProblems = (judged: typeof JudgedSchema.Type, frame: Frame) => {
     problems.push(`the video plays at ${judged.width}x${judged.height}`);
   }
 
-  if (judged.titleFar > TITLE_FAR) {
+  if (expected.seconds.opensOnTitle && judged.titleFar > TITLE_FAR) {
     problems.push(
       `the first frame does not open on the title: ${(judged.titleFar * 100).toFixed(1)}% of the title's pixels differ from the still`
     );
@@ -626,7 +649,7 @@ const judged = (
     ).pipe(
       Effect.map((found) => ({
         found,
-        problems: playbackProblems(found, expected.frame),
+        problems: playbackProblems(found, expected),
       })),
       Effect.catchTag("ClipCheckFailed", (failed) =>
         Effect.succeed({ found: null, problems: [failed.detail] })

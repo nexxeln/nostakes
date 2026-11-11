@@ -21,6 +21,7 @@
     "moments": "node scripts/moment-pictures.ts",
     "keep": "node scripts/keep-pictures.ts",
     "clips": "node scripts/keep-clips.ts",
+    "reels": "node scripts/clip-reels.ts",
     "night": "node scripts/night-pictures.ts"
   },
   "dependencies": {

@@ -37,6 +37,10 @@ const one = (rank: number) => ONE[rank] ?? "card";
 
 const many = (rank: number) => MANY[rank] ?? "cards";
 
+export const rankWord = one;
+
+export const ranksWord = many;
+
 export const handName = (rank: HandRank): string => {
   const { category, ranks } = describe(rank);
   const [first = 0, second = 0] = ranks;

@@ -69,6 +69,29 @@ export const CLIP_STAGING: Staging = {
   spread: CLIP_SPREAD,
 };
 
+export const TAG_STAGING: Staging = { landed: new Set(["mark"]), spread: 1 };
+
+const UNDER_THE_REPLAY = new Set([BASE_ROLE, "felt", "mark"]);
+
+export const tagPose = (
+  part: { readonly index: number; readonly role: string },
+  ms: number,
+  tag: { readonly cardAt: number; readonly motion: Motion }
+): Pose => {
+  if (ms < tag.cardAt) {
+    return UNDER_THE_REPLAY.has(part.role) ? REST : { ...REST, opacity: 0 };
+  }
+
+  return partPose(
+    part.role,
+    part.index,
+    ms - tag.cardAt,
+    tag.motion.family,
+    tag.motion.tier,
+    TAG_STAGING
+  );
+};
+
 export const potLandsAt = (staging: Staging) =>
   POT_STARTS * staging.spread + POT_LANDS_AFTER;
 

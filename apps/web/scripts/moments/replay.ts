@@ -17,6 +17,8 @@ const theme = params.get("theme") === "Dark" ? "Dark" : "Light";
 
 const deck = "TwoColour" as const;
 
+const frame = params.get("frame") === "Chat" ? "Chat" : "Story";
+
 const TILE = Number(params.get("tile") ?? "6");
 
 const SCALE = Number(params.get("scale") ?? "0.25");
@@ -65,13 +67,13 @@ const program = Effect.gen(function* storyboard() {
     {
       boxes,
       budgetMs: null,
-      frame: "Chat",
-      lead: seats[0] ?? replay.value.dealtIn[0] ?? replay.value.button,
+      frame,
+      principals: seats,
       record: hand.record,
       seats: replaySeatsOf(hand),
       slot: Effect.void,
       support: { codec: "", sound: false },
-      svg: pictureSvg(picture, { deck, fonts: "", frame: "Chat", theme }),
+      svg: pictureSvg(picture, { deck, fonts: "", frame, theme }),
     }
   );
 
