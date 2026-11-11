@@ -7,6 +7,7 @@ import {
   CommandIdSchema,
   HttpRefusalSchema,
   PROTOCOL_VERSION,
+  StandingsRequestSchema,
 } from "@nostakes/protocol";
 import type { PlayerId, RoomPass } from "@nostakes/protocol";
 import {
@@ -253,6 +254,82 @@ test(
       ],
       second: anaPass.code,
     });
+  }).pipe(Effect.provide(FetchHttpClient.layer)),
+  { timeout: 60_000 }
+);
+
+test(
+  "a removed member's sockets close as Removed, their pass is refused at the next Hello, and the standings route shows them their own line and nobody else's",
+  Effect.gen(function* removal() {
+    const { url } = yield* deployed;
+    const base = yield* Effect.fromNullishOr(url).pipe(Effect.orDie);
+
+    const anaPass = yield* createPokerRoom(base, {
+      avatar: "fox",
+      name: "Ana",
+    });
+
+    const benPass = yield* joinPokerRoom(base, anaPass.code, {
+      avatar: "owl",
+      name: "Ben",
+    });
+
+    const ana = yield* greet(base, anaPass, "ana");
+    const ben = yield* greet(base, benPass, "ben");
+
+    const removed = yield* ask(
+      ana.socket,
+      "remove-ben",
+      Commands.RemoveMember.make({ player: benPass.player })
+    );
+
+    const closing = yield* awaitArrival(ben.socket, "removed", guards.Closing);
+
+    const again = yield* openSocket(base, benPass.code, "ben again");
+
+    yield* again.send(
+      pokerCodec.client.cases.Hello.make({
+        after: Option.none(),
+        token: benPass.token,
+      })
+    );
+
+    const refused = yield* awaitArrival(again, "refusal", guards.Closing);
+
+    const standingsOf = (token: RoomPass["token"]) =>
+      postJson(
+        new URL(`/rooms/${anaPass.code}/standings`, base),
+        Schema.encodeSync(StandingsRequestSchema)({ token })
+      ).pipe(
+        Effect.orDie,
+        Effect.flatMap((response) =>
+          response.json.pipe(
+            Effect.orDie,
+            Effect.map((body) => `${response.status} ${JSON.stringify(body)}`)
+          )
+        )
+      );
+
+    expect({
+      closing: closing.reason,
+      refused: refused.reason,
+      reply: removed.result._tag,
+      standings: [
+        yield* standingsOf(benPass.token),
+        yield* standingsOf(anaPass.token),
+      ],
+    }).toEqual({
+      closing: "Removed",
+      refused: "Removed",
+      reply: "Accepted",
+      standings: [
+        `200 {"removed":{"balance":{"boughtIn":0,"cashedOut":0,"net":0,"player":"${benPass.player}"},"code":"${anaPass.code}","finishing":false,"people":[{"avatar":"owl","name":"Ben","player":"${benPass.player}"}],"player":"${benPass.player}","transfers":{"_tag":"None"}}}`,
+        '409 {"refusal":"RoomOpen"}',
+      ],
+    });
+
+    yield* ana.socket.disconnect;
+    yield* again.disconnect;
   }).pipe(Effect.provide(FetchHttpClient.layer)),
   { timeout: 60_000 }
 );

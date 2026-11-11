@@ -43,6 +43,7 @@ import {
   ReloadPage,
   SaveLearned,
   SaveProfile,
+  ReadOwnResult,
   RememberRoom,
   SaveSound,
   SendToRoom,
@@ -56,7 +57,12 @@ import type { RoomConnection } from "../client/connection.js";
 import { haltedText } from "./halted.js";
 import { Messages, ReplyOutcomes } from "./message.js";
 import type { Message, ReplyOutcome } from "./message.js";
-import { FairMarks, HaltedStandings, Screens } from "./model.js";
+import {
+  FairMarks,
+  HaltedStandings,
+  RemovedResults,
+  Screens,
+} from "./model.js";
 import type { Flags, InRoom, Link, Model, RulesSheet } from "./model.js";
 import { NO_MOMENTS, watchedMoments } from "./moments/watch.js";
 import { enteredName, nameRefusal } from "./names.js";
@@ -128,6 +134,7 @@ const freshRoom = (code: InRoom["code"], player: InRoom["player"]): InRoom => ({
   picked: Option.none(),
   player,
   reactions: [],
+  removed: Option.none(),
   resumed: Option.none(),
   rules: Option.none(),
   shown: Option.none(),
@@ -279,9 +286,63 @@ const haltedRefusal = (room: InRoom) =>
       phase === "Refused" && Option.contains(refusal, "RoomHalted")
   );
 
+const removedRefusal = (room: InRoom) =>
+  Option.isNone(room.removed) &&
+  Option.exists(
+    room.link,
+    ({ phase, refusal }) =>
+      phase === "Refused" && Option.contains(refusal, "Removed")
+  );
+
+const markedRemoved = (model: Model, code: string): Return =>
+  Option.match(
+    Option.fromUndefinedOr(
+      model.rooms.find(({ record }) => record.code === code)
+    ),
+    {
+      onNone: () => ({ model }),
+      onSome: (known) => {
+        const record = { ...known.record, removed: true };
+
+        return {
+          commands: [RememberRoom({ record })],
+          model: {
+            ...model,
+            rooms: model.rooms.map((room) =>
+              room.record.code === code ? { ...room, record } : room
+            ),
+          },
+        };
+      },
+    }
+  );
+
+const askForOwnResult = (step: Return): Return =>
+  Option.match(roomOf(step.model).pipe(Option.filter(removedRefusal)), {
+    onNone: () => step,
+    onSome: (room) => {
+      const marked = markedRemoved(
+        withRoom(step.model, {
+          ...room,
+          removed: Option.some(RemovedResults.Asking()),
+        }),
+        room.code
+      );
+
+      return {
+        commands: [
+          ...(step.commands ?? []),
+          ...(marked.commands ?? []),
+          ReadOwnResult({ code: room.code }),
+        ],
+        model: marked.model,
+      };
+    },
+  });
+
 const askForStandings = (step: Return): Return =>
   Option.match(roomOf(step.model).pipe(Option.filter(haltedRefusal)), {
-    onNone: () => step,
+    onNone: () => askForOwnResult(step),
     onSome: (room) => ({
       commands: [...(step.commands ?? []), ReadStandings({ code: room.code })],
       model: withRoom(step.model, {
@@ -765,6 +826,11 @@ export const update = (model: Model, message: Message): Return =>
     ClickedCancelFace: () => ({
       model: { ...model, faceDraft: Option.none() },
     }),
+    ClickedCheckResult: () =>
+      inRoom(model, (room) => ({
+        commands: [ReadOwnResult({ code: room.code })],
+        model,
+      })),
     ClickedConfirm: ({ confirm }) =>
       editRoom(model, (room) => ({
         ...room,
@@ -825,14 +891,20 @@ export const update = (model: Model, message: Message): Return =>
     ClickedFairness: () =>
       editRoom(model, (room) => ({ ...room, fairnessOpen: true })),
     ClickedHome: () =>
-      inRoom(model, (room) => ({
-        commands: [ShowPath({ path: "/" }), ForgetRoom({ code: room.code })],
-        model: {
-          ...withoutRoom(model, room.code),
-          faceDraft: Option.none(),
-          screen: Screens.Home({ busy: false, problem: Option.none() }),
-        },
-      })),
+      inRoom(model, (room) => {
+        const keepsResult = Option.isSome(room.removed);
+
+        return {
+          commands: keepsResult
+            ? [ShowPath({ path: "/" })]
+            : [ShowPath({ path: "/" }), ForgetRoom({ code: room.code })],
+          model: {
+            ...(keepsResult ? model : withoutRoom(model, room.code)),
+            faceDraft: Option.none(),
+            screen: Screens.Home({ busy: false, problem: Option.none() }),
+          },
+        };
+      }),
     ClickedHouseRules: () =>
       editRoom(model, (room) => ({
         ...room,
@@ -970,6 +1042,11 @@ export const update = (model: Model, message: Message): Return =>
           })
         )
       ),
+    GotOwnResult: ({ result }) =>
+      editRoom(model, (room) => ({
+        ...room,
+        removed: Option.some(RemovedResults.Shown({ result })),
+      })),
     GotReply: ({ key, outcome }) =>
       editRoom(model, (room) => settle(room, key, outcome)),
     GotStandings: ({ view }) =>
@@ -1048,6 +1125,11 @@ export const update = (model: Model, message: Message): Return =>
           }
         : kept;
     },
+    MissedOwnResult: ({ reason }) =>
+      editRoom(model, (room) => ({
+        ...room,
+        removed: Option.some(RemovedResults.Missing({ reason })),
+      })),
     MissedStandings: ({ reason }) =>
       editRoom(model, (room) => ({
         ...room,

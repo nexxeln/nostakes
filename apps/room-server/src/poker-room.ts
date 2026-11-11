@@ -12,6 +12,7 @@ import {
   RoomRejectionSchema,
   RoomSettingsSchema,
   RoomSignalSchema,
+  RemovedViewSchema,
   RoomViewSchema,
   SealedDealSources,
   SeenEventSchema,
@@ -21,10 +22,13 @@ import {
   decide,
   evolve,
   invariants,
+  isRemoved,
   millis,
   nextDeadline,
   openRoom,
   redact,
+  removedStandings,
+  removedView,
   replay,
   signalAllowed,
   stallCommand,
@@ -41,6 +45,7 @@ import type {
   RoomEvent,
   RoomRejection,
   RoomSettings,
+  RemovedView,
   RoomSignal,
   RoomState,
   RoomView,
@@ -119,6 +124,7 @@ export interface PokerTypes {
   readonly OpenRequest: OpenRequest;
   readonly JoinRequest: JoinRequest;
   readonly Signal: RoomSignal;
+  readonly Revoked: RemovedView;
 }
 
 export class LogNotOpened extends Schema.TaggedError<
@@ -182,6 +188,11 @@ export const pokerRoomOn = (chain: DrandChain): HostedRoom<PokerTypes> => ({
     }),
   redact: (event, audience) => Option.some(redact(event, audience)),
   replay: replayLog,
+  revoked: isRemoved,
+  revokedView: (state, player, at, halted) =>
+    halted
+      ? removedStandings(state, player, millis(at))
+      : removedView(state, player),
   schemas: {
     event: Schema.toCodecJson(RoomEventSchema),
     joinRequest: Schema.toCodecJson(JoinRequestSchema),
@@ -189,6 +200,7 @@ export const pokerRoomOn = (chain: DrandChain): HostedRoom<PokerTypes> => ({
     openRequest: Schema.toCodecJson(OpenRequestSchema),
     redacted: Schema.toCodecJson(SeenEventSchema),
     rejection: Schema.toCodecJson(RoomRejectionSchema),
+    revoked: Schema.toCodecJson(RemovedViewSchema),
     signal: Schema.toCodecJson(RoomSignalSchema),
     view: Schema.toCodecJson(RoomViewSchema),
   },

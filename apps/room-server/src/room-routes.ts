@@ -2,6 +2,7 @@ import type { RpcCallError } from "@alchemy.run/cloudflare";
 import {
   haltedStandings,
   joinRefused,
+  revokedStandings,
   RoomCodeSchema,
   RoomPassSchema,
   StandingsRequestSchema,
@@ -105,6 +106,10 @@ const standingsBody = HttpServerResponse.schemaJson(
 const pass = HttpServerResponse.schemaJson(RoomPassSchema);
 
 const joinRefusedBody = HttpServerResponse.schemaJson(joinRefused(Schema.Json));
+
+const removedBody = HttpServerResponse.schemaJson(
+  revokedStandings(Schema.Json)
+);
 
 const created = (code: RoomCode, player: string, token: string) =>
   Schema.decodeEffect(RoomPassSchema)({ code, player, token }).pipe(
@@ -305,6 +310,8 @@ export const roomRoutes = <R>(
         NotAuthorized: () => refuse("NotAuthorized"),
         NotFound: () => refuse("NotFound"),
         NotHalted: () => refuse("RoomOpen"),
+        Removed: ({ view }) =>
+          removedBody({ removed: view }).pipe(Effect.orDie),
       });
     }).pipe(Effect.catchTag("RoomCallFailed", unavailable));
 

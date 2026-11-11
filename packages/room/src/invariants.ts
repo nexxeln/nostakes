@@ -80,6 +80,19 @@ const peopleViolations = (state: Open) => [
     "DepartedAreDistinct",
     () => state.departed.map((member) => member.player).join(",")
   ),
+  ...state.removed.flatMap(({ player }) =>
+    check(
+      !isMember(state, player) &&
+        !state.departed.some((member) => member.player === player),
+      "RemovedAreGone",
+      () => `${player} was removed but is still a member or departed`
+    )
+  ),
+  ...check(
+    !hasDuplicates(state.removed.map((member) => member.player)),
+    "RemovedAreDistinct",
+    () => state.removed.map((member) => member.player).join(",")
+  ),
   ...check(
     !hasDuplicates(namedPeople(state).map(({ name }) => nameKey(name))),
     "NamesAreDistinct",

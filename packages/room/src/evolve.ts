@@ -63,6 +63,7 @@ export const opened = (event: RoomEventOf<"RoomOpened">): Open =>
     proof: Option.none(),
     queued: EMPTY_QUEUE,
     record: Option.none(),
+    removed: [],
     requests: { chips: [], seats: [] },
     sealed: Option.none(),
     sealedDeals: { fromBeacon: 0, withoutBeacon: 0 },
@@ -415,6 +416,25 @@ const evolveOpen = (state: Open, event: RoomEvent): RoomState =>
         ),
       },
     }),
+    MemberRemoved: ({ player }) => ({
+      ...state,
+      departed: state.departed.filter((member) => member.player !== player),
+      members: state.members.filter((member) => member.player !== player),
+      removed: [
+        ...state.removed,
+        ...[...state.members, ...state.departed].filter(
+          (member) => member.player === player
+        ),
+      ],
+      requests: {
+        chips: state.requests.chips.filter(
+          (request) => request.player !== player
+        ),
+        seats: state.requests.seats.filter(
+          (request) => request.player !== player
+        ),
+      },
+    }),
     NextHandCalled: (): Open => ({ ...state, dealCalled: true }),
     PostingChosen: ({ player, post }) => ({
       ...state,
@@ -436,6 +456,7 @@ const evolveOpen = (state: Open, event: RoomEvent): RoomState =>
         members: state.members,
         now: at,
         recap: NO_RECAP,
+        removed: state.removed,
         settlement,
       }),
     RoomOpened: (opening) => opened(opening),

@@ -2,6 +2,7 @@ import { AvatarSchema } from "@nostakes/avatar";
 import { PlayerIdSchema, RoomCodeSchema } from "@nostakes/protocol";
 import {
   MemberCommandSchema,
+  RemovedViewSchema,
   RoomRejectionSchema,
   RoomSignalSchema,
   RoomViewSchema,
@@ -50,6 +51,7 @@ export const Messages = defineMessageUnion({
   ChoseTheme: { theme: ThemeSchema },
   ClickedAddChips: {},
   ClickedCancelFace: {},
+  ClickedCheckResult: {},
   ClickedConfirm: { confirm: ConfirmSchema },
   ClickedCopyLink: {},
   ClickedCopyProof: { hand: Schema.Int },
@@ -81,6 +83,7 @@ export const Messages = defineMessageUnion({
   FailedConnection: { problem: Schema.String },
   FailedEntry: { problem: Schema.String },
   GotLink: { link: LinkSchema },
+  GotOwnResult: { result: RemovedViewSchema },
   GotReply: { key: Schema.Int, outcome: ReplyOutcomes },
   GotStandings: { view: RoomViewSchema },
   GotTableIntent: { intent: TableIntentSchema },
@@ -98,6 +101,7 @@ export const Messages = defineMessageUnion({
     signal: RoomSignalSchema,
   },
   JudgedHand: { hand: Schema.Int, mark: FairMarks },
+  MissedOwnResult: { reason: Schema.String },
   MissedStandings: { reason: Schema.String },
   PickedAvatar: { avatar: AvatarSchema },
   ReleasedConnection: {},

@@ -53,6 +53,7 @@ export const RoomCommandSchema = Schema.TaggedUnion({
   QuietTable: envelope,
   RabbitHunt: envelope,
   RemoveFromSeat: naming,
+  RemoveMember: naming,
   RequestChips: { ...envelope, amount: ChipAmountSchema },
   RequestSeat: { ...envelope, buyIn: ChipAmountSchema, seat: SeatIndexSchema },
   RunQueue: envelope,

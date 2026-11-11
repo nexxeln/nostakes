@@ -125,6 +125,7 @@ export const roomEventFields = {
     player: PlayerIdSchema,
   },
   MemberLeft: { at, player: PlayerIdSchema },
+  MemberRemoved: { at, player: PlayerIdSchema },
   NextHandCalled: { at },
   PostingChosen: { at, player: PlayerIdSchema, post: Schema.Boolean },
   ProfileChanged: {

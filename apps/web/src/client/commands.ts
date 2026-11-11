@@ -3,6 +3,7 @@ import {
   haltedStandings,
   HttpRefusalSchema,
   joinRefused,
+  revokedStandings,
   RoomCodeSchema,
   RoomPassSchema,
   StandingsRequestSchema,
@@ -11,6 +12,7 @@ import type { UnavailableReason } from "@nostakes/protocol";
 import {
   JoinRequestSchema,
   MemberCommandSchema,
+  RemovedViewSchema,
   RoomRejectionSchema,
   RoomSignalSchema,
   RoomViewSchema,
@@ -176,7 +178,9 @@ export const SendToRoom = Command.define("SendToRoom", {
 
 const standingsBody = haltedStandings(Schema.toCodecJson(RoomViewSchema));
 
-const askedStandings = (code: string) =>
+const ownResultBody = revokedStandings(Schema.toCodecJson(RemovedViewSchema));
+
+const askedStandings = <Body extends Schema.Top>(code: string, body: Body) =>
   storedPass(code).pipe(
     Effect.mapError(() => "this device no longer holds a pass for the room"),
     Effect.flatMap((pass) =>
@@ -192,7 +196,7 @@ const askedStandings = (code: string) =>
       )
     ),
     Effect.flatMap((json) =>
-      Schema.decodeUnknownEffect(standingsBody)(json).pipe(
+      Schema.decodeUnknownEffect(body)(json).pipe(
         Effect.mapError(() =>
           Option.match(Schema.decodeUnknownOption(HttpRefusalSchema)(json), {
             onNone: () => "the room server sent nonsense",
@@ -207,13 +211,25 @@ const askedStandings = (code: string) =>
 export const ReadStandings = Command.define("ReadStandings", {
   args: { code: RoomCodeSchema },
   execute: ({ code }) =>
-    askedStandings(code).pipe(
+    askedStandings(code, standingsBody).pipe(
       Effect.match({
         onFailure: (reason) => Messages.MissedStandings({ reason }),
         onSuccess: ({ view }) => Messages.GotStandings({ view }),
       })
     ),
   messages: [Messages.GotStandings, Messages.MissedStandings],
+});
+
+export const ReadOwnResult = Command.define("ReadOwnResult", {
+  args: { code: RoomCodeSchema },
+  execute: ({ code }) =>
+    askedStandings(code, ownResultBody).pipe(
+      Effect.match({
+        onFailure: (reason) => Messages.MissedOwnResult({ reason }),
+        onSuccess: ({ removed }) => Messages.GotOwnResult({ result: removed }),
+      })
+    ),
+  messages: [Messages.GotOwnResult, Messages.MissedOwnResult],
 });
 
 export const SignalRoom = Command.define("SignalRoom", {

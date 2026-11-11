@@ -34,6 +34,13 @@ import { timeline } from "./client-wire.js";
 import type { Timeline } from "./client-wire.js";
 import { haltMidHand } from "./halt-night.js";
 import { HeldArrival, KEPT_DECODED } from "./held-arrival.js";
+import {
+  INTRUDER_NAME,
+  intrude,
+  intruderProblems,
+  joinIntruder,
+} from "./intruder.js";
+import type { IntruderRecord } from "./intruder.js";
 import { checkNight } from "./night-checks.js";
 import type {
   HaltEvidence,
@@ -42,7 +49,7 @@ import type {
   NightVerdict,
 } from "./night-checks.js";
 import { createPokerRoom, joinPokerRoom } from "./poker-http.js";
-import { wallClock } from "./poker-socket.js";
+import { pokerCodec, wallClock } from "./poker-socket.js";
 import type { Arrival } from "./poker-socket.js";
 import {
   inspect,
@@ -75,6 +82,7 @@ export interface NightPlan {
   readonly clients: readonly number[];
   readonly limitMs: number;
   readonly devices: readonly string[];
+  readonly intruderAtHand: Option.Option<number>;
 }
 
 export interface PlayedNight {
@@ -83,6 +91,7 @@ export interface PlayedNight {
   readonly events: readonly string[];
   readonly durationMs: number;
   readonly analytics: NightAnalytics;
+  readonly intruder: Option.Option<IntruderRecord>;
 }
 
 export interface NightResult {
@@ -234,6 +243,7 @@ export interface NightRecipe {
   readonly silences: number;
   readonly clientPercent: number;
   readonly tableRules: TableRules;
+  readonly stranger?: boolean;
 }
 
 const clientIndices = (random: Random, bots: number, percent: number) => {
@@ -406,6 +416,12 @@ export const planNight = (
       (_, index) => deviceFor(seed, index)
     ),
     ending: recipe.ending,
+    intruderAtHand:
+      recipe.ending !== "Halted" &&
+      recipe.hands >= 6 &&
+      (recipe.stranger ?? randomSource(seed * 13 + 5).chance(50))
+        ? Option.some(Math.max(2, Math.floor(recipe.hands / 3)))
+        : Option.none(),
     limitMs: plan.limitMs + recipe.hands * slowRulesAllowanceMs(played),
     settings: played,
   };
@@ -582,6 +598,7 @@ export const playNight = (base: string, opened: OpenedNight) =>
     const control: NightControl = {
       closing: false,
       head: 0,
+      intruders: new Map(),
       quiet: new Set(),
       ruleChanges: plan.ruleChanges,
       rulesApplied: 0,
@@ -891,6 +908,28 @@ export const playNight = (base: string, opened: OpenedNight) =>
 
     const loops = opened.passes.map((pass, index) => launch(pass, index));
 
+    let intruder = Option.none<IntruderRecord>();
+
+    const intruding = Option.match(plan.intruderAtHand, {
+      onNone: () => Effect.void,
+      onSome: (atHand) =>
+        Effect.gen(function* letAStrangerIn() {
+          while (handsNow() < atHand && !control.closing && !control.stop) {
+            yield* Effect.sleep(Duration.millis(100));
+          }
+
+          if (control.closing || control.stop) {
+            return;
+          }
+
+          const pass = yield* joinIntruder(base, plan.code);
+
+          intruder = Option.some(
+            yield* intrude(base, pass, control, () => handsNow() + 1, note)
+          );
+        }),
+    });
+
     const late = Array.from({ length: plan.lateJoiners }, (_, offset) =>
       lateJoiner(
         plan.players + plan.spectators + offset,
@@ -898,7 +937,7 @@ export const playNight = (base: string, opened: OpenedNight) =>
       )
     );
 
-    yield* Effect.all([supervise, ...loops, ...late], {
+    yield* Effect.all([supervise, intruding, ...loops, ...late], {
       concurrency: "unbounded",
     }).pipe(
       Effect.ensuring(
@@ -940,6 +979,7 @@ export const playNight = (base: string, opened: OpenedNight) =>
           plan.code,
           ...plan.devices,
           ...plan.devices.map((_, index) => `bot${index}`),
+          INTRUDER_NAME,
         ],
       },
       durationMs: wallClock() - started,
@@ -960,6 +1000,7 @@ export const playNight = (base: string, opened: OpenedNight) =>
         seqs: inspection.seqs,
         voteRestarts,
       },
+      intruder,
       plan,
     };
 
@@ -1011,6 +1052,14 @@ export const judgeNight = (played: PlayedNight): NightResult => {
       ...checked.problems,
       ...checkAnalytics(played.events, played.analytics),
       ...keptDecoded(played.evidence.bots, played.evidence.clients),
+      ...Option.match(played.intruder, {
+        onNone: () => [],
+        onSome: (record) =>
+          intruderProblems(
+            record,
+            played.events.map((text) => pokerCodec.decodeEvent(text))
+          ),
+      }),
     ],
   };
 

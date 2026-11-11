@@ -27,6 +27,7 @@ export const MemberCommandSchema = Schema.TaggedUnion({
   PauseGame: {},
   RabbitHunt: {},
   RemoveFromSeat: { player: cases.RemoveFromSeat.fields.player },
+  RemoveMember: { player: cases.RemoveMember.fields.player },
   RequestChips: { amount: cases.RequestChips.fields.amount },
   RequestSeat: {
     buyIn: cases.RequestSeat.fields.buyIn,

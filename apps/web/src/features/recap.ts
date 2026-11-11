@@ -10,7 +10,7 @@ import { pictureOf } from "./moments/scene.js";
 import type { MomentPicture } from "./moments/schema.js";
 import { isolated } from "./names.js";
 import { netText } from "./pictures/settle-up.js";
-import { nameOf } from "./room.js";
+import { nameOf, peopleOf } from "./room.js";
 import type { ClosedView } from "./room.js";
 
 export const RecapFaceSchema = Schema.Struct({
@@ -72,7 +72,7 @@ export const handsLine = (recap: NightRecap) => {
   return length.length === 0 ? hands : `${hands} in ${length}`;
 };
 
-const people = (view: ClosedView) => [...view.members, ...view.departed];
+const people = (view: ClosedView) => peopleOf(view);
 
 const avatarOf = (view: ClosedView, player: PlayerId) =>
   people(view).find((person) => person.player === player)?.avatar ?? "";

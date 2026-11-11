@@ -616,6 +616,7 @@ export const healthLines = (funnel: Funnel) => [
     `${plural(weight(funnel, "TableStalled"))} / ${plural(weight(funnel, "StallCleared"))}`
   ),
   line("beacon outages", plural(weight(funnel, "BeaconOutage"))),
+  line("members removed", plural(weight(funnel, "MemberRemoved"))),
   line("refused alarms", listed(funnel.counts.get("AlarmRefused"))),
   line("rate limited", listed(funnel.counts.get("RateLimited"))),
   line("server faults", listed(funnel.counts.get("ServerFault"))),

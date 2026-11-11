@@ -259,6 +259,50 @@ describe("the poker room adapter", () => {
     ).toBe("RoomIsClosed");
   });
 
+  it("closes a removed member's sockets as Removed without sending them the batch that removed them, and gives them only their own line", () => {
+    const room = openPokerHost(plainRoom);
+
+    seatTwoPlayers(room);
+
+    const anaSees = room.watch(ana);
+    const benSees = room.watch(ben);
+
+    const removed = room.send(
+      ana,
+      "remove-ben",
+      1010,
+      Commands.RemoveMember.make({ player: ben })
+    );
+
+    const anaGot = anaSees.frames.map((frame) => room.decodeFrame(frame));
+
+    expect({
+      anaSawRemoval: anaGot.some(
+        (frame) =>
+          room.host.codec.server.guards.Events(frame) &&
+          frame.events.some(({ _tag }) => _tag === "MemberRemoved")
+      ),
+      benFrames: benSees.frames.length,
+      closed: room.closed,
+      line: pokerRoom.revokedView(room.host.snapshot().state, ben, 1011, false)
+        .balance,
+      reply: removed.reply._tag,
+      revoked: room.host.revoked(ben),
+    }).toStrictEqual({
+      anaSawRemoval: true,
+      benFrames: 0,
+      closed: [{ player: ben, reason: "Removed" }],
+      line: {
+        boughtIn: DEFAULT_SETTINGS.buyIn.max,
+        cashedOut: DEFAULT_SETTINGS.buyIn.max,
+        net: 0,
+        player: ben,
+      },
+      reply: "Accepted",
+      revoked: true,
+    });
+  });
+
   it("replays a stored log to the live state, and refuses a log that does not open the room", () => {
     const room = openPokerHost({ avatar: "fox", name: "Ana" });
 

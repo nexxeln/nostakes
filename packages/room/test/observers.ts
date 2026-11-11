@@ -215,6 +215,7 @@ const HOSTING = new Set<RoomCommand["_tag"]>([
   "DenySeat",
   "PauseGame",
   "RemoveFromSeat",
+  "RemoveMember",
   "StartGame",
   "TransferHost",
 ]);
@@ -236,6 +237,7 @@ const HOSTING_EVENTS = new Set<RoomEvent["_tag"]>([
   "CloseQueued",
   "GamePaused",
   "GameStarted",
+  "MemberRemoved",
   "NextHandCalled",
   "RulesQueued",
   "SeatApproved",

@@ -13,6 +13,7 @@ export const CLOSE_VERDICTS: Readonly<Record<CloseReason, CloseVerdict>> = {
   NotFound: "Refuse",
   OpenedElsewhere: "Refuse",
   ProtocolViolation: "Refuse",
+  Removed: "Refuse",
   RoomHalted: "Refuse",
   ServerOutdated: "Retry",
   TooManyFrames: "Retry",

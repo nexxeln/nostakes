@@ -57,9 +57,20 @@ export const openPokerHost = (request: OpenRequest) => {
 
   const viewers: RecordingViewer[] = [];
 
+  const closed: { readonly player: PlayerId; readonly reason: string }[] = [];
+
   const connections = (): Connections => ({
     closeAll: () => {
       viewers.length = 0;
+    },
+    closePlayer: (player, reason) => {
+      closed.push({ player, reason });
+
+      for (const [index, viewer] of [...viewers.entries()].toReversed()) {
+        if (viewer.player === player) {
+          viewers.splice(index, 1);
+        }
+      }
     },
     socketDeadline: Option.none(),
     viewers,
@@ -136,6 +147,7 @@ export const openPokerHost = (request: OpenRequest) => {
   ) => Result.getOrThrow(host.welcome(player, after, at, connections()));
 
   return {
+    closed,
     connections,
     decodeFrame,
     host,

@@ -9,12 +9,22 @@ import { leaveSeat } from "./money.js";
 import { sameName } from "./names.js";
 import {
   AlreadyAMember,
+  AlreadyRemoved,
   AlreadyTheHost,
   HostStillHere,
   NameTaken,
   NotAMember,
+  RemovedFromRoom,
+  RemovingYourself,
 } from "./rejection.js";
-import { SEATS, isMember, namedPeople, occupantAt, seatOf } from "./state.js";
+import {
+  SEATS,
+  isMember,
+  isRemoved,
+  namedPeople,
+  occupantAt,
+  seatOf,
+} from "./state.js";
 import type { Open } from "./state.js";
 import { secondsAfter } from "./time.js";
 import type { Millis } from "./time.js";
@@ -56,6 +66,10 @@ export const joinRoom = (
 ): Decision => {
   if (isMember(state, player)) {
     return Result.fail(new AlreadyAMember({ player }));
+  }
+
+  if (isRemoved(state, player)) {
+    return Result.fail(new RemovedFromRoom({ player }));
   }
 
   if (nameHeldByAnother(state, player, command.name)) {
@@ -152,4 +166,32 @@ export const transferHost = (
     : Result.succeed([
         RoomEvents.HostChanged({ at: command.at, host: command.to }),
       ]);
+};
+
+export const removeMember = (
+  state: Open,
+  host: PlayerId,
+  command: RoomCommandOf<"RemoveMember">
+): Decision => {
+  const { at, player } = command;
+
+  if (player === host) {
+    return Result.fail(new RemovingYourself({ player }));
+  }
+
+  if (isRemoved(state, player)) {
+    return Result.fail(new AlreadyRemoved({ player }));
+  }
+
+  if (
+    !isMember(state, player) &&
+    !state.departed.some((member) => member.player === player)
+  ) {
+    return Result.fail(new NotAMember({ player }));
+  }
+
+  return Result.map(standIfSeated(state, player, at), (stood) => [
+    ...stood,
+    RoomEvents.MemberRemoved({ at, player }),
+  ]);
 };

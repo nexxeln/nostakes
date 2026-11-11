@@ -160,6 +160,7 @@ export const knownRooms = Effect.gen(function* readKnownRooms() {
         code,
         left: false,
         others: [],
+        removed: false,
         seenAt: 0,
       },
     }))

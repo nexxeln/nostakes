@@ -162,6 +162,8 @@ export const rejectionText = (
         `${voice.subject(player)} ${voice.isYou(player) ? "are" : "is"} already in this room.`,
       AlreadyLeaving: ({ player }) =>
         `${voice.subject(player)} already ${voice.isYou(player) ? "stand" : "stands"} up when this hand ends.`,
+      AlreadyRemoved: ({ player }) =>
+        `${voice.subject(player)} ${voice.isYou(player) ? "were" : "was"} already removed from this room.`,
       AlreadySeated: ({ player, seat }) =>
         `${voice.subject(player)} already ${voice.isYou(player) ? "sit" : "sits"} in ${seatLabel(seat)}.`,
       AlreadyTheHost: ({ player }) =>
@@ -206,6 +208,10 @@ export const rejectionText = (
       NothingSealed: () => DEALER_BUSY,
       QueueNotDue: () => DEALER_BUSY,
       QuietNotDue: () => DEALER_BUSY,
+      RemovedFromRoom: () =>
+        "The host removed you from this room, so this pass cannot join it again.",
+      RemovingYourself: () =>
+        "You cannot remove yourself. Leave the room instead, and someone else becomes host.",
       RoomIsClosed: () => "This room is closed.",
       SaltSecretSize: () => DEALER_BUSY,
       SealNotDue: () => DEALER_BUSY,

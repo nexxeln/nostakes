@@ -42,6 +42,7 @@ export const StandingsOutcomeSchema = Schema.TaggedUnion({
   NotAuthorized: {},
   NotFound: {},
   NotHalted: {},
+  Removed: { view: Schema.Json },
 });
 
 export type StandingsOutcome = typeof StandingsOutcomeSchema.Type;

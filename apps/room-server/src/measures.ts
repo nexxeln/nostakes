@@ -16,6 +16,7 @@ export const MEASURES = {
   GameStarted: { blobs: [], doubles: ["sinceOpenMs"] },
   HandFinished: { blobs: ["deal", "ending"], doubles: ["hand", "players"] },
   MemberJoined: { blobs: ["device"], doubles: ["members"] },
+  MemberRemoved: { blobs: [], doubles: ["members"] },
   NightAbandoned: {
     blobs: ["rules"],
     doubles: ["hands", "players", "durationMs"],

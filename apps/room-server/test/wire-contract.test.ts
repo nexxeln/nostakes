@@ -3,6 +3,7 @@ import {
   haltedStandings,
   HttpRefusalSchema,
   joinRefused,
+  revokedStandings,
   PROTOCOL_VERSION,
   RoomPassSchema,
   StandingsRequestSchema,
@@ -84,7 +85,10 @@ const wire = {
   }),
   standings: Schema.Struct({
     request: StandingsRequestSchema,
-    response: haltedStandings(schemas.view),
+    response: Schema.Union([
+      haltedStandings(schemas.view),
+      revokedStandings(schemas.revoked),
+    ]),
   }),
   view: schemas.view,
 } satisfies Record<keyof WireParts, Schema.Top>;

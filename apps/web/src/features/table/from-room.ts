@@ -7,7 +7,7 @@ import { Match, Option } from "effect";
 
 import type { InRoom } from "../model.js";
 import { entryOf, entryWords, waitingNote } from "../posting.js";
-import { isActing, isLive, isYou } from "../room.js";
+import { isActing, isLive, isYou, peopleOf } from "../room.js";
 import type { OpenView } from "../room.js";
 import { isPeeking } from "../signals.js";
 import { HappeningSchema, Happenings } from "./snapshot.js";
@@ -306,7 +306,7 @@ const occupiedSeat = (
   const mine = isYou(view, occupant.player);
   const here = presence.includes(occupant.player);
 
-  const member = [...view.members, ...view.departed].find(
+  const member = peopleOf(view).find(
     ({ player }) => player === occupant.player
   );
 

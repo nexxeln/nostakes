@@ -385,38 +385,6 @@ export const roomObject = <T extends RoomTypes, Tally>(
                 )
           );
 
-        const connectionsOf = (
-          room: RoomHost<T>,
-          except: Option.Option<cf.WebSocket>
-        ): Connections => ({
-          closeAll: (reason) => {
-            for (const socket of sockets()) {
-              attach(socket, AttachmentSchema.cases.Closed.make({ reason }));
-              closeWith(socket, reason);
-              note(measure("SocketClosed", { reason }));
-            }
-          },
-          socketDeadline: Arr.head(
-            Arr.sort(
-              [
-                ...pendingSince(except).map(
-                  ({ acceptedAt }) => acceptedAt + HELLO_TIMEOUT_MS
-                ),
-                ...liveSockets(except).map(
-                  ({ heardAt }) => heardAt + SOCKET_SILENCE_LIMIT_MS
-                ),
-              ],
-              byNumber
-            )
-          ),
-          viewers: liveSockets(except).map(({ player, socket }) => ({
-            player,
-            send: (frame) => {
-              send(socket, frame);
-            },
-          })),
-        });
-
         const connectedPlayers = (except: Option.Option<cf.WebSocket>) =>
           Arr.dedupe(liveSockets(except).map(({ player }) => player));
 
@@ -498,10 +466,6 @@ export const roomObject = <T extends RoomTypes, Tally>(
           signature: Option.none(),
         };
 
-        const armAlarm = (room: RoomHost<T>) => {
-          room.armAlarm(connectionsOf(room, Option.none()).socketDeadline);
-        };
-
         const keepRejections = (socket: cf.WebSocket) => {
           for (const { player, rejected } of Option.toArray(
             attachmentOf(socket).pipe(
@@ -537,6 +501,49 @@ export const roomObject = <T extends RoomTypes, Tally>(
               announcePresence(room, Option.none());
             }
           }
+        };
+
+        const connectionsOf = (
+          room: RoomHost<T>,
+          except: Option.Option<cf.WebSocket>
+        ): Connections => ({
+          closeAll: (reason) => {
+            for (const socket of sockets()) {
+              attach(socket, AttachmentSchema.cases.Closed.make({ reason }));
+              closeWith(socket, reason);
+              note(measure("SocketClosed", { reason }));
+            }
+          },
+          closePlayer: (player, reason) => {
+            for (const live of liveSockets(except)) {
+              if (live.player === player) {
+                closeSocket(live.socket, reason);
+              }
+            }
+          },
+          socketDeadline: Arr.head(
+            Arr.sort(
+              [
+                ...pendingSince(except).map(
+                  ({ acceptedAt }) => acceptedAt + HELLO_TIMEOUT_MS
+                ),
+                ...liveSockets(except).map(
+                  ({ heardAt }) => heardAt + SOCKET_SILENCE_LIMIT_MS
+                ),
+              ],
+              byNumber
+            )
+          ),
+          viewers: liveSockets(except).map(({ player, socket }) => ({
+            player,
+            send: (frame) => {
+              send(socket, frame);
+            },
+          })),
+        });
+
+        const armAlarm = (room: RoomHost<T>) => {
+          room.armAlarm(connectionsOf(room, Option.none()).socketDeadline);
         };
 
         const attend = (except: Option.Option<cf.WebSocket>) =>
@@ -603,6 +610,12 @@ export const roomObject = <T extends RoomTypes, Tally>(
 
           if (Option.isNone(player)) {
             closeSocket(socket, "NotAuthorized");
+
+            return;
+          }
+
+          if (room.revoked(player.value)) {
+            closeSocket(socket, "Removed");
 
             return;
           }
@@ -1276,6 +1289,10 @@ export const roomObject = <T extends RoomTypes, Tally>(
               NotAuthorized: () =>
                 StandingsOutcomeSchema.cases.NotAuthorized.make({}),
               NotHalted: () => StandingsOutcomeSchema.cases.NotHalted.make({}),
+              Removed: ({ revoked }) =>
+                StandingsOutcomeSchema.cases.Removed.make({
+                  view: Schema.encodeSync(core.schemas.revoked)(revoked),
+                }),
             });
           }).pipe(
             Effect.flatMap(Schema.encodeEffect(StandingsOutcomeSchema)),

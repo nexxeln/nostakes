@@ -566,9 +566,21 @@ const memberTools = (
             })
           ),
         ],
-        ["Remove from seat"]
+        ["Stand them up"]
       )
     : h.empty,
+  h.button(
+    [
+      h.Type("button"),
+      h.Class("button quiet danger-text"),
+      h.OnClick(
+        Messages.ClickedConfirm({
+          confirm: Commands.RemoveMember.make({ player }),
+        })
+      ),
+    ],
+    ["Remove from the room"]
+  ),
 ];
 
 export const pickedPlayer = (
@@ -591,6 +603,22 @@ export const playerSheet = (
   player: PlayerId,
   h: H
 ): Html => sheet(h, nameOf(view, player), memberTools(room, view, player, h));
+
+const removalText = (view: OpenView, player: PlayerId) => {
+  const name = nameOf(view, player);
+
+  const inHand = Option.exists(view.hand, ({ players }) =>
+    players.some((seated) => seated.player === player)
+  );
+
+  if (inHand) {
+    return `${name}'s pass stops working. Their seat plays out this hand, then their chips are counted for the settle-up.`;
+  }
+
+  return Option.isSome(occupantOf(view, player))
+    ? `${name}'s pass stops working. Their chips are counted for the settle-up.`
+    : `${name}'s pass stops working.`;
+};
 
 const ENDINGS: Readonly<Record<OpenView["closing"], string>> = {
   AfterHand:
@@ -616,9 +644,15 @@ const confirmText = (view: OpenView, confirm: Confirm) =>
         title: "Leave the room?",
       }),
       RemoveFromSeat: ({ player }) => ({
-        action: "Remove from seat",
-        body: `${nameOf(view, player)} stands up with their chips.`,
-        pending: "Removing from seat",
+        action: "Stand them up",
+        body: `${nameOf(view, player)} stands up with their chips and stays in the room.`,
+        pending: "Standing them up",
+        title: `Stand ${nameOf(view, player)} up?`,
+      }),
+      RemoveMember: ({ player }) => ({
+        action: "Remove",
+        body: removalText(view, player),
+        pending: "Removing",
         title: `Remove ${nameOf(view, player)}?`,
       }),
     })

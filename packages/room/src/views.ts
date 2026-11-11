@@ -14,7 +14,7 @@ import {
   pendingDecisions,
 } from "@nostakes/engine";
 import type { Card, Hand, PlayerId, SeatIndex } from "@nostakes/engine";
-import { balances } from "@nostakes/ledger";
+import { NetSchema, balances } from "@nostakes/ledger";
 import { DeckOpeningSchema } from "@nostakes/shuffle";
 import { Data, Effect, Option, Schema } from "effect";
 
@@ -28,14 +28,20 @@ import { recapField } from "./recap.js";
 import { Audiences } from "./redaction.js";
 import type { Audience } from "./redaction.js";
 import { ChipAmountSchema, RoomSettingsSchema } from "./settings.js";
-import { BalanceSchema, SettlementSchema } from "./settlement.js";
+import {
+  BalanceSchema,
+  SettlementSchema,
+  TransferSchema,
+} from "./settlement.js";
 import {
   DecisionClocks,
   ProofDeals,
   RoomStates,
   SEATS,
   isMember,
+  namedPeople,
   occupantAt,
+  removedInTheSettlement,
   seatOf,
 } from "./state.js";
 import type { Closed, Member, Open, RoomState, Sealed } from "./state.js";
@@ -242,6 +248,8 @@ const attendanceField = absentAs(
 
 const departedField = absentAs(Schema.Array(MemberViewSchema), []);
 
+const removedField = absentAs(Schema.Array(MemberViewSchema), []);
+
 export const StallViewSchema = Schema.Struct({ since: MillisSchema });
 
 export const HostAwayViewSchema = Schema.Struct({
@@ -262,6 +270,7 @@ export const RoomViewSchema = Schema.TaggedUnion({
     departed: departedField,
     members: Schema.Array(MemberViewSchema),
     recap: recapField,
+    removed: removedField,
     settlement: SettlementSchema,
     you: youField,
   },
@@ -289,6 +298,7 @@ export const RoomViewSchema = Schema.TaggedUnion({
       leaving: Schema.Array(PlayerIdSchema),
       rules: Schema.Option(TableConfigSchema),
     }),
+    removed: removedField,
     requests: Schema.Struct({
       chips: Schema.Array(
         Schema.Struct({ amount: ChipAmountSchema, player: PlayerIdSchema })
@@ -310,6 +320,17 @@ export const RoomViewSchema = Schema.TaggedUnion({
 });
 
 export type RoomView = typeof RoomViewSchema.Type;
+
+export const RemovedViewSchema = Schema.Struct({
+  balance: BalanceSchema,
+  code: RoomCodeSchema,
+  finishing: Schema.Boolean,
+  people: Schema.Array(MemberViewSchema),
+  player: PlayerIdSchema,
+  transfers: Schema.Option(Schema.Array(TransferSchema)),
+});
+
+export type RemovedView = typeof RemovedViewSchema.Type;
 
 type FairnessDeal = typeof DealtViewSchema.Type.deal;
 
@@ -609,6 +630,7 @@ const openView = (state: Open, audience: Audience, at: Millis): RoomView => {
     legal: legalFor(state, viewer),
     members: membersView(state),
     queued: state.queued,
+    removed: profilesOf(removedInTheSettlement(state)),
     requests: state.requests,
     seats: seatsView(state),
     settings: state.settings,
@@ -634,6 +656,7 @@ export const viewFor = (
         departed: profilesOf(closed.departed),
         members: membersView(closed),
         recap: closed.recap,
+        removed: profilesOf(removedInTheSettlement(closed)),
         settlement: closed.settlement,
         you: Audiences.$match(audience, {
           Seated: ({ player }) => Option.some(player),
@@ -643,3 +666,64 @@ export const viewFor = (
       }),
     Open: (open) => openView(open, audience, at),
   });
+
+const nothingYet = (player: PlayerId) => ({
+  boughtIn: 0,
+  cashedOut: 0,
+  net: NetSchema.make(0),
+  player,
+});
+
+const profileOf = (state: Open | Closed, player: PlayerId) =>
+  [...state.removed, ...namedPeople(state)].find(
+    (person) => person.player === player
+  );
+
+export const removedView = (
+  state: RoomState,
+  player: PlayerId
+): RemovedView => {
+  const done = RoomStates.$match(state, {
+    Closed: (closed) => ({
+      balance: closed.settlement.balances.find(
+        (balance) => balance.player === player
+      ),
+      finishing: false,
+      transfers: Option.some(
+        closed.settlement.transfers.filter(
+          ({ from, to }) => from === player || to === player
+        )
+      ),
+    }),
+    Open: (open) => ({
+      balance: balances(allEntries(open.entries)).find(
+        (balance) => balance.player === player
+      ),
+      finishing: Option.isSome(seatOf(open, player)),
+      transfers: Option.none(),
+    }),
+  });
+
+  const counterparts = Option.getOrElse(done.transfers, () => []).flatMap(
+    ({ from, to }) => [from, to]
+  );
+
+  const shown = [player, ...counterparts].filter(
+    (person, index, all) => all.indexOf(person) === index
+  );
+
+  return {
+    balance: done.balance ?? nothingYet(player),
+    code: state.code,
+    finishing: done.finishing,
+    people: profilesOf(
+      shown.flatMap((person) => {
+        const profile = profileOf(state, person);
+
+        return profile === undefined ? [] : [profile];
+      })
+    ),
+    player,
+    transfers: done.transfers,
+  };
+};

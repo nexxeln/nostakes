@@ -5,7 +5,7 @@ import { Schema } from "effect";
 
 import { chipsText } from "../moments/captions.js";
 import { isolated } from "../names.js";
-import { nameOf } from "../room.js";
+import { nameOf, peopleOf } from "../room.js";
 import type { ClosedView } from "../room.js";
 import {
   RED,
@@ -47,8 +47,7 @@ type CardPlayer = SettleUpCard["players"][number];
 type CardTransfer = SettleUpCard["transfers"][number];
 
 const avatarOf = (view: ClosedView, player: PlayerId) =>
-  [...view.members, ...view.departed].find((member) => member.player === player)
-    ?.avatar ?? "";
+  peopleOf(view).find((member) => member.player === player)?.avatar ?? "";
 
 export const expressionFor = (net: number, lowest: number): Expression => {
   if (net > 0) {

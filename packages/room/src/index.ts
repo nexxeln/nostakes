@@ -42,6 +42,8 @@ export type {
 
 export { attendanceCommand, quietDueAt, seatedPlayers } from "./attendance.js";
 
+export { isRemoved } from "./state.js";
+
 export { stallCommand } from "./stalls.js";
 
 export { ClosingSchema } from "./closing.js";
@@ -85,6 +87,7 @@ export {
   ActionNotOnSeat,
   AlreadyAMember,
   AlreadyLeaving,
+  AlreadyRemoved,
   AlreadySeated,
   AlreadyTheHost,
   BeaconRejected,
@@ -109,6 +112,8 @@ export {
   NothingSealed,
   QueueNotDue,
   QuietNotDue,
+  RemovedFromRoom,
+  RemovingYourself,
   RoomIsClosed,
   RoomRejectionSchema,
   SaltSecretSize,
@@ -297,6 +302,7 @@ export {
   HostAwayViewSchema,
   LastHandViewSchema,
   PublicHandStartedSchema,
+  RemovedViewSchema,
   RoomViewSchema,
   RoomViews,
   SealViewSchema,
@@ -307,9 +313,16 @@ export {
   StallViewSchema,
   audienceOf,
   redact,
+  removedView,
   viewFor,
 } from "./views.js";
 
-export type { Audience, RoomView, SeenEvent, SeenTableEvent } from "./views.js";
+export type {
+  Audience,
+  RemovedView,
+  RoomView,
+  SeenEvent,
+  SeenTableEvent,
+} from "./views.js";
 
-export { standingsOf, standingsView } from "./standings.js";
+export { removedStandings, standingsOf, standingsView } from "./standings.js";

@@ -86,6 +86,10 @@ const whoWasThere = (others: readonly string[]) => {
 };
 
 const roomState = (record: RoomRecord) => {
+  if (record.removed) {
+    return "Removed";
+  }
+
   if (record.closed) {
     return "Settled";
   }
@@ -125,7 +129,7 @@ const yourRooms = (model: Model, h: H): Html =>
                         h.span(
                           [
                             h.Class(
-                              record.closed || record.left
+                              record.closed || record.left || record.removed
                                 ? "tag"
                                 : "tag is-open"
                             ),

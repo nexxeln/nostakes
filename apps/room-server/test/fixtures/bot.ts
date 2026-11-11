@@ -114,6 +114,7 @@ export interface NightControl {
   silencesTaken: number;
   readonly quiet: Set<PlayerId>;
   readonly seats: number;
+  readonly intruders: Map<PlayerId, number>;
 }
 
 export interface SocketRecord {
@@ -513,6 +514,24 @@ export const plannerFor = (setup: PlannerSetup) => {
           : Commands.DenyChips.make({ player: chipRequest.player }),
         random.below(150)
       );
+    }
+
+    const intruder = [...control.intruders].find(([stranger, atHand]) => {
+      const inRoom = [...open.members, ...open.departed].some(
+        ({ player }) => player === stranger
+      );
+
+      const dealtIn = open.hand.pipe(
+        Option.exists(({ players }) =>
+          players.some(({ player }) => player === stranger)
+        )
+      );
+
+      return inRoom && (dealtIn || handNumberOf(open) >= atHand);
+    });
+
+    if (intruder !== undefined) {
+      return intent(Commands.RemoveMember.make({ player: intruder[0] }));
     }
 
     const change = control.ruleChanges[control.rulesApplied];

@@ -55,6 +55,7 @@ const roomWith = (
   picked: Option.none(),
   player: PLAYER,
   reactions: [],
+  removed: Option.none(),
   resumed: Option.none(),
   rules: Option.none(),
   shown: Option.some({ receivedAt: 0, seq: 1, view }),

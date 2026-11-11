@@ -48,6 +48,7 @@ const STANDINGS = RoomViewSchema.cases.Closed.make({
     { avatar: "fox", name: "Ana", player: ANA },
     { avatar: "owl", name: "Ben", player: BEN },
   ],
+  removed: [],
   settlement: Schema.decodeSync(SettlementSchema)({
     balances: [
       { boughtIn: 200, cashedOut: 199, net: -1, player: ANA },

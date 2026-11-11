@@ -52,6 +52,7 @@ export interface Connections {
   readonly viewers: readonly Viewer[];
   readonly socketDeadline: Option.Option<number>;
   readonly closeAll: (reason: CloseReason) => void;
+  readonly closePlayer: (player: PlayerId, reason: CloseReason) => void;
 }
 
 export type Origin = Data.TaggedEnum<{
@@ -104,14 +105,15 @@ export interface MemberAnswer<T extends RoomTypes> {
   }>;
 }
 
-export type Standings<View> = Data.TaggedEnum<{
+export type Standings<View, Revoked> = Data.TaggedEnum<{
   Halted: { readonly view: View; readonly reason: string };
   NotHalted: { readonly headSeq: number };
   NotAuthorized: { readonly halted: boolean };
+  Removed: { readonly revoked: Revoked };
 }>;
 
-interface StandingsDefinition extends Data.TaggedEnum.WithGenerics<1> {
-  readonly taggedEnum: Standings<this["A"]>;
+interface StandingsDefinition extends Data.TaggedEnum.WithGenerics<2> {
+  readonly taggedEnum: Standings<this["A"], this["B"]>;
 }
 
 export const StandingsAnswers = Data.taggedEnum<StandingsDefinition>();
@@ -429,7 +431,7 @@ export const hostRoom = <T extends RoomTypes>(
     const problems: string[] = [];
 
     for (const { player } of viewers) {
-      if (frames.has(player)) {
+      if (frames.has(player) || core.revoked(next, player)) {
         continue;
       }
 
@@ -651,6 +653,14 @@ export const hostRoom = <T extends RoomTypes>(
 
       if (frame !== undefined && events.length > 0) {
         viewer.send(frame);
+      }
+    }
+
+    for (const player of Arr.dedupe(
+      connections.viewers.map((viewer) => viewer.player)
+    )) {
+      if (core.revoked(next, player)) {
+        connections.closePlayer(player, "Removed");
       }
     }
 
@@ -982,23 +992,44 @@ export const hostRoom = <T extends RoomTypes>(
           }))
         );
 
-  const standings = (hash: Uint8Array, at: number): Standings<T["View"]> =>
-    Option.match(current.halted, {
+  const standings = (
+    hash: Uint8Array,
+    at: number
+  ): Standings<T["View"], T["Revoked"]> => {
+    const player = matchCredential(current.credentials, hash);
+
+    const removed = player.pipe(
+      Option.filter((known) => core.revoked(current.state, known))
+    );
+
+    if (Option.isSome(removed)) {
+      return StandingsAnswers.Removed({
+        revoked: core.revokedView(
+          current.state,
+          removed.value,
+          at,
+          Option.isSome(current.halted)
+        ),
+      });
+    }
+
+    return Option.match(current.halted, {
       onNone: () => StandingsAnswers.NotHalted({ headSeq: current.headSeq }),
       onSome: (reason) =>
-        Option.match(matchCredential(current.credentials, hash), {
+        Option.match(player, {
           onNone: () => StandingsAnswers.NotAuthorized({ halted: true }),
-          onSome: (player) =>
+          onSome: (known) =>
             StandingsAnswers.Halted({
               reason,
               view: core.haltedView(
                 current.state,
-                core.audienceOf(current.state, player),
+                core.audienceOf(current.state, known),
                 at
               ),
             }),
         }),
     });
+  };
 
   return {
     answerDeadline,
@@ -1013,6 +1044,7 @@ export const hostRoom = <T extends RoomTypes>(
     keepReplies,
     nextDeadline,
     noteAttendance,
+    revoked: (player: PlayerId) => core.revoked(current.state, player),
     snapshot: () => current,
     standings,
     welcome,

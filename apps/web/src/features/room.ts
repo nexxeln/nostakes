@@ -24,9 +24,14 @@ export const connectionTarget = (model: Model): Option.Option<SavedPass> =>
 export const isYou = (view: RoomView, player: PlayerId) =>
   Option.contains(view.you, player);
 
+export const peopleOf = (view: RoomView) => [
+  ...view.members,
+  ...view.departed,
+  ...view.removed,
+];
+
 export const nameOf = (view: RoomView, player: PlayerId) =>
-  [...view.members, ...view.departed].find((member) => member.player === player)
-    ?.name ?? "Someone";
+  peopleOf(view).find((member) => member.player === player)?.name ?? "Someone";
 
 export const hasLeft = (view: RoomView) =>
   view.departed.some(({ player }) => isYou(view, player));
@@ -38,6 +43,7 @@ export const recordOf = (view: RoomView, seenAt: number): RoomRecord => ({
   others: view.members
     .filter(({ player }) => !isYou(view, player))
     .map(({ name }) => name),
+  removed: false,
   seenAt,
 });
 
@@ -46,6 +52,7 @@ const RECORD_REFRESH_MS = 5 * 60 * 1000;
 export const recordChanged = (before: RoomRecord, after: RoomRecord) =>
   before.closed !== after.closed ||
   before.left !== after.left ||
+  before.removed !== after.removed ||
   before.others.join("\n") !== after.others.join("\n") ||
   after.seenAt - before.seenAt >= RECORD_REFRESH_MS;
 

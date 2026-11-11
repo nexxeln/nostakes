@@ -174,6 +174,7 @@ export type RoomState = Data.TaggedEnum<{
     readonly members: readonly Member[];
     readonly now: Millis;
     readonly recap: NightRecap;
+    readonly removed: readonly Member[];
     readonly settlement: Settlement;
   };
   Open: {
@@ -195,6 +196,7 @@ export type RoomState = Data.TaggedEnum<{
     readonly proof: Option.Option<Proof>;
     readonly queued: Queue;
     readonly record: Option.Option<HandRecord>;
+    readonly removed: readonly Member[];
     readonly requests: Requests;
     readonly sealed: Option.Option<Sealed>;
     readonly sealedDeals: SealedDeals;
@@ -229,9 +231,16 @@ export const memberOf = (state: Open | Closed, player: PlayerId) =>
 export const isMember = (state: Open | Closed, player: PlayerId) =>
   state.members.some((member) => member.player === player);
 
-export const namedPeople = (state: Open): readonly Member[] => [
+export const isRemoved = (state: Open | Closed, player: PlayerId) =>
+  state.removed.some((removed) => removed.player === player);
+
+export const removedInTheSettlement = (state: Open | Closed) =>
+  state.removed.filter(({ player }) => state.entries.has(player));
+
+export const namedPeople = (state: Open | Closed): readonly Member[] => [
   ...state.members,
   ...state.departed,
+  ...removedInTheSettlement(state),
 ];
 
 export const SEATS: readonly SeatIndex[] = Array.from(

@@ -22,15 +22,28 @@ import {
 } from "./menu-view.js";
 import { Messages } from "./message.js";
 import type { Message } from "./message.js";
-import { FairMarks, HaltedStandings, pageTheme } from "./model.js";
-import type { HaltedStanding, InRoom, Model } from "./model.js";
+import {
+  FairMarks,
+  HaltedStandings,
+  RemovedResults,
+  pageTheme,
+} from "./model.js";
+import type { HaltedStanding, InRoom, Model, RemovedResult } from "./model.js";
 import { momentElement } from "./moments/element.js";
 import { handEnded } from "./moments/watch.js";
 import { updateLine } from "./page-update.js";
 import { KeepPictureSchema, keepElement } from "./pictures/keep.js";
 import { settleUpCardOf } from "./pictures/settle-up.js";
 import { handsLine, recapCardOf, recapLines } from "./recap.js";
-import { hasLeft, isLive, isYou, nameOf, openViewOf, viewOf } from "./room.js";
+import {
+  hasLeft,
+  isLive,
+  isYou,
+  nameOf,
+  openViewOf,
+  peopleOf,
+  viewOf,
+} from "./room.js";
 import type { ClosedView, OpenView } from "./room.js";
 import { rulesSheet } from "./rules-view.js";
 import { sheet } from "./sheet.js";
@@ -77,6 +90,10 @@ const connectionLine = (room: InRoom, h: H): Html =>
 
       if (phase === "Refused" && Option.contains(refusal, "OpenedElsewhere")) {
         return openedElsewhereLine(h);
+      }
+
+      if (phase === "Refused" && Option.contains(refusal, "Removed")) {
+        return h.empty;
       }
 
       if (phase === "Refused") {
@@ -464,7 +481,7 @@ const tableView = (
                 callouts: view.settings.moments,
                 deck: model.deck,
                 lastHand,
-                people: [...view.members, ...view.departed],
+                people: peopleOf(view),
                 record: room.moments.record,
                 theme: pageTheme(model),
               })),
@@ -713,6 +730,88 @@ const haltedStandingsView = (room: InRoom, view: ClosedView, h: H): Html =>
     ]
   );
 
+export const REMOVED_LINE = "The host removed you from this room.";
+
+const removedLines = (result: RemovedResult, h: H): readonly Html[] =>
+  RemovedResults.match(result, {
+    Asking: () => [h.p([h.Class("muted")], ["Reading your result…"])],
+    Missing: ({ reason }) => [
+      h.p([h.Class("problem")], [`Your result could not be read: ${reason}.`]),
+    ],
+    Shown: ({ result: shown }) => {
+      const name = (player: PlayerId) =>
+        h.bdi(
+          [],
+          [
+            shown.people.find((person) => person.player === player)?.name ??
+              "Someone",
+          ]
+        );
+
+      const { boughtIn, cashedOut, net } = shown.balance;
+
+      return [
+        h.p(
+          [h.Class("removed-line")],
+          [
+            `You bought in ${boughtIn} and left with ${cashedOut}. `,
+            h.span(
+              [h.Class(net >= 0 ? "net is-up" : "net is-down")],
+              [netText(net)]
+            ),
+          ]
+        ),
+        shown.finishing
+          ? h.p(
+              [h.Class("muted")],
+              ["Your seat plays out this hand first, so this can still change."]
+            )
+          : h.empty,
+        Option.match(shown.transfers, {
+          onNone: () =>
+            h.p(
+              [h.Class("muted")],
+              ["Who pays whom shows once the night ends."]
+            ),
+          onSome: (transfers) =>
+            h.ul(
+              [h.Class("transfers")],
+              transfers.length === 0
+                ? [h.li([], ["You are square."])]
+                : transfers.map(({ amount, from, to }) =>
+                    h.li(
+                      [h.Key(`pay-${from}-${to}`)],
+                      from === shown.player
+                        ? [`You pay ${amount} to `, name(to)]
+                        : [name(from), ` pays ${amount} to you`]
+                    )
+                  )
+            ),
+        }),
+      ];
+    },
+  });
+
+const removedView = (result: RemovedResult, h: H): Html =>
+  h.section(
+    [h.Class("card-panel settlement")],
+    [
+      h.h2([h.Class("sheet-title")], [REMOVED_LINE]),
+      ...removedLines(result, h),
+      RemovedResults.guards.Asking(result)
+        ? h.empty
+        : h.button(
+            [
+              h.Type("button"),
+              h.Class("button quiet"),
+              h.OnClick(Messages.ClickedCheckResult()),
+            ],
+            ["Check again"]
+          ),
+      homeButton("Back home", h),
+    ]
+  );
+
 const haltedView = (room: InRoom, standing: HaltedStanding, h: H): Html =>
   HaltedStandings.match(standing, {
     Asking: () =>
@@ -768,22 +867,26 @@ export const roomView = (model: Model, room: InRoom, h: H): Html => {
     [
       header(model, room, open, h),
       noticeLine(model, room, h),
-      Option.isSome(room.halted)
-        ? haltedView(room, room.halted.value, h)
-        : Option.match(view, {
-            onNone: () =>
-              refused
-                ? refusedView(room, h)
-                : h.p([h.Class("muted opening")], ["Opening the room…"]),
-            onSome: (current) =>
-              RoomViews.$match(current, {
-                Closed: (closed) => closedRoomView(model, room, closed, h),
-                Open: (live) =>
-                  hasLeft(live)
-                    ? leftRoomView(live, h)
-                    : openRoomView(model, room, live, presence, h),
+      Option.match(room.removed, {
+        onNone: () =>
+          Option.isSome(room.halted)
+            ? haltedView(room, room.halted.value, h)
+            : Option.match(view, {
+                onNone: () =>
+                  refused
+                    ? refusedView(room, h)
+                    : h.p([h.Class("muted opening")], ["Opening the room…"]),
+                onSome: (current) =>
+                  RoomViews.$match(current, {
+                    Closed: (closed) => closedRoomView(model, room, closed, h),
+                    Open: (live) =>
+                      hasLeft(live)
+                        ? leftRoomView(live, h)
+                        : openRoomView(model, room, live, presence, h),
+                  }),
               }),
-          }),
+        onSome: (removed) => removedView(removed, h),
+      }),
     ]
   );
 };

@@ -9,9 +9,10 @@ import {
 import {
   MemberCommandSchema,
   ReactionSchema,
+  RemovedViewSchema,
   RoomViewSchema,
 } from "@nostakes/room";
-import { Option, Schema } from "effect";
+import { Effect, Option, Schema } from "effect";
 import { defineTaggedUnion } from "foldkit/schema";
 
 import { MomentWatchSchema } from "./moments/watch.js";
@@ -119,6 +120,7 @@ export const ConfirmSchema = Schema.Union([
   MemberCommandSchema.cases.CloseRoom,
   MemberCommandSchema.cases.LeaveRoom,
   MemberCommandSchema.cases.RemoveFromSeat,
+  MemberCommandSchema.cases.RemoveMember,
 ]);
 
 export type Confirm = typeof ConfirmSchema.Type;
@@ -168,6 +170,14 @@ export const HaltedStandings = defineTaggedUnion({
 
 export type HaltedStanding = typeof HaltedStandings.Type;
 
+export const RemovedResults = defineTaggedUnion({
+  Asking: {},
+  Missing: { reason: Schema.String },
+  Shown: { result: RemovedViewSchema },
+});
+
+export type RemovedResult = typeof RemovedResults.Type;
+
 export const InRoomSchema = Schema.Struct({
   addingChips: Schema.Boolean,
   clockSamples: Schema.Array(Schema.Int),
@@ -199,6 +209,7 @@ export const InRoomSchema = Schema.Struct({
       until: Schema.Int,
     })
   ),
+  removed: Schema.Option(RemovedResults),
   resumed: Schema.Option(
     Schema.Struct({ player: PlayerIdSchema, receivedAt: Schema.Int })
   ),
@@ -229,6 +240,9 @@ export const RoomRecordSchema = Schema.Struct({
   code: RoomCodeSchema,
   left: Schema.Boolean,
   others: Schema.Array(Schema.String),
+  removed: Schema.Boolean.pipe(
+    Schema.withDecodingDefaultTypeKey(Effect.succeed(false))
+  ),
   seenAt: Schema.Int,
 });
 

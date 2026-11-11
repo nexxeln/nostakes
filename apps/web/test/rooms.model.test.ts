@@ -40,7 +40,7 @@ const known = (
   others: readonly string[]
 ): KnownRoom => ({
   player: PLAYER,
-  record: { closed: false, code, left: false, others, seenAt },
+  record: { closed: false, code, left: false, others, removed: false, seenAt },
 });
 
 const seated = (table: OpenView): OpenView => ({
@@ -92,6 +92,7 @@ describe("the rooms this device can go back to", () => {
             others: watched.members
               .filter(({ player }) => player !== PLAYER)
               .map(({ name }) => name),
+            removed: false,
             seenAt: 1000,
           },
         },

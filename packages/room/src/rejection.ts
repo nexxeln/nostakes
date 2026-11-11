@@ -4,6 +4,7 @@ import { Schema } from "effect";
 import { ActionNotOnSeat } from "./rejections/action-not-on-seat.js";
 import { AlreadyAMember } from "./rejections/already-a-member.js";
 import { AlreadyLeaving } from "./rejections/already-leaving.js";
+import { AlreadyRemoved } from "./rejections/already-removed.js";
 import { AlreadySeated } from "./rejections/already-seated.js";
 import { AlreadyTheHost } from "./rejections/already-the-host.js";
 import { BeaconRejected } from "./rejections/beacon-rejected.js";
@@ -28,6 +29,8 @@ import { NotTheHost } from "./rejections/not-the-host.js";
 import { NothingSealed } from "./rejections/nothing-sealed.js";
 import { QueueNotDue } from "./rejections/queue-not-due.js";
 import { QuietNotDue } from "./rejections/quiet-not-due.js";
+import { RemovedFromRoom } from "./rejections/removed-from-room.js";
+import { RemovingYourself } from "./rejections/removing-yourself.js";
 import { RoomIsClosed } from "./rejections/room-is-closed.js";
 import { SaltSecretSize } from "./rejections/salt-secret-size.js";
 import { SealNotDue } from "./rejections/seal-not-due.js";
@@ -86,6 +89,9 @@ export const RoomRejectionSchema = Schema.Union([
   SealedSeatsMoved,
   QueueNotDue,
   QuietNotDue,
+  AlreadyRemoved,
+  RemovedFromRoom,
+  RemovingYourself,
 ]);
 
 export type RoomRejection = typeof RoomRejectionSchema.Type;
@@ -171,5 +177,11 @@ export { SealedSeatsMoved } from "./rejections/sealed-seats-moved.js";
 export { QueueNotDue } from "./rejections/queue-not-due.js";
 
 export { QuietNotDue } from "./rejections/quiet-not-due.js";
+
+export { RemovingYourself } from "./rejections/removing-yourself.js";
+
+export { RemovedFromRoom } from "./rejections/removed-from-room.js";
+
+export { AlreadyRemoved } from "./rejections/already-removed.js";
 
 export { Unbalanced } from "@nostakes/ledger";

@@ -176,6 +176,7 @@ describe("the stats report", () => {
       "  quiet / resumed      0 / 0",
       "  stalled / cleared    0 / 0",
       "  beacon outages       0",
+      "  members removed      0",
       "  refused alarms       0",
       "  rate limited         0",
       "  server faults        0",

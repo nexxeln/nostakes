@@ -74,6 +74,7 @@ const CHECKED_HANDS_PER_ROOM = 2;
 const CHECKED_HANDS = 2 * CHECKED_HANDS_PER_ROOM;
 
 interface SmallRoom {
+  readonly stranger?: boolean;
   readonly ending: NightEnding;
   readonly players: number;
   readonly shuffle: Shuffle;
@@ -96,9 +97,23 @@ const ROOMS: readonly SmallRoom[] = [
     restarts: 0,
     shuffle: "Checked",
   },
-  { ending: "MidHand", hands: 9, players: 5, restarts: 1, shuffle: "Plain" },
+  {
+    ending: "MidHand",
+    hands: 9,
+    players: 5,
+    restarts: 1,
+    shuffle: "Plain",
+    stranger: true,
+  },
   { ending: "AsItComes", hands: 9, players: 2, restarts: 1, shuffle: "Plain" },
-  { ending: "AsItComes", hands: 9, players: 4, restarts: 1, shuffle: "Plain" },
+  {
+    ending: "AsItComes",
+    hands: 9,
+    players: 4,
+    restarts: 1,
+    shuffle: "Plain",
+    stranger: true,
+  },
   { ending: "Halted", hands: 3, players: 3, restarts: 0, shuffle: "Plain" },
 ];
 
@@ -135,7 +150,7 @@ test(
     const base = yield* Effect.fromNullishOr(url).pipe(Effect.orDie);
 
     const plans = ROOMS.map(
-      ({ ending, hands, players, restarts, shuffle }, index) =>
+      ({ ending, hands, players, restarts, shuffle, stranger }, index) =>
         planNight(
           SEED + index,
           {
@@ -149,6 +164,7 @@ test(
             rotation: index * 2,
             shuffle,
             silences: 1,
+            stranger: stranger ?? false,
             tableRules: {},
             turnSeconds: 1,
           },
@@ -238,6 +254,13 @@ test(
     expect(total((counts) => counts.clientEchoes)).toBeGreaterThanOrEqual(1);
     expect(total((counts) => counts.clientUnexpectedRefusals)).toBe(0);
     expect(total((counts) => counts.signalDeliveries)).toBeGreaterThan(0);
+    expect(
+      played.filter((night) =>
+        Option.exists(night.intruder, ({ removedVia }) =>
+          Option.isSome(removedVia)
+        )
+      ).length
+    ).toBeGreaterThanOrEqual(1);
     expect(total((counts) => counts.peekDeliveries)).toBeGreaterThan(0);
     expect(total((counts) => counts.reactionDeliveries)).toBeGreaterThan(0);
     expect(total((counts) => counts.peeksWithoutCards)).toBeGreaterThan(0);

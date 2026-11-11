@@ -579,6 +579,18 @@ const membership = (
     });
   }
 
+  if (roll === 9 && random.chance(1, 2)) {
+    const people = [...state.members, ...state.departed].map(
+      ({ player }) => player
+    );
+
+    return RoomCommands.RemoveMember({
+      at: millis(at),
+      by: hostOrNot(state, random),
+      player: Option.getOrElse(pickFrom(random, people), () => state.host),
+    });
+  }
+
   return RoomCommands.TransferHost({
     at: millis(at),
     by: hostOrNot(state, random),
@@ -763,6 +775,7 @@ const junk = (state: Open, random: SeededRandom, at: number): RoomCommand => {
     RoomCommands.StartGame({ at: when, by }),
     RoomCommands.DealNextHand({ at: when, by }),
     RoomCommands.RemoveFromSeat({ at: when, by, player }),
+    RoomCommands.RemoveMember({ at: when, by, player }),
     RoomCommands.TransferHost({ at: when, by, to: player }),
     RoomCommands.Deal({ at: when, by, shuffleBytes: bytesFrom(1) }),
   ];

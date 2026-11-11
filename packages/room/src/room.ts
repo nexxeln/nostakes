@@ -26,6 +26,7 @@ import {
   claimHost,
   joinRoom,
   leaveRoom,
+  removeMember,
   setProfile,
   transferHost,
 } from "./members.js";
@@ -152,6 +153,8 @@ const decideOpen = (state: Open, command: RoomCommand): Decision =>
       byMember(state, hunt, (player) => play(state, player, hunt)),
     RemoveFromSeat: (remove) =>
       byHost(state, remove, () => leaveSeat(state, remove.player, remove.at)),
+    RemoveMember: (remove) =>
+      byHost(state, remove, (host) => removeMember(state, host, remove)),
     RequestChips: (request) =>
       byMember(state, request, (player) =>
         requestChips(state, player, request)

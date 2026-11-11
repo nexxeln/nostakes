@@ -190,6 +190,7 @@ export interface ToyTypes {
   readonly OpenRequest: Profile;
   readonly JoinRequest: Profile;
   readonly Signal: ToySignal;
+  readonly Revoked: ToyView;
 }
 
 const emptyRoom: ToyState = {
@@ -581,6 +582,9 @@ export const toyRoom: HostedRoom<ToyTypes> = {
   ],
   redact,
   replay,
+  revoked: () => false,
+  revokedView: (state, player, at) =>
+    viewFor(state, audienceOf(state, player), at),
   schemas: {
     event: ToyEventSchema,
     joinRequest: ProfileSchema,
@@ -588,6 +592,7 @@ export const toyRoom: HostedRoom<ToyTypes> = {
     openRequest: ProfileSchema,
     redacted: ToyRedactedSchema,
     rejection: ToyRefusal,
+    revoked: ToyViewSchema,
     signal: ToySignalSchema,
     view: ToyViewSchema,
   },

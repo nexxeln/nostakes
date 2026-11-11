@@ -3,9 +3,12 @@ import type { PlayerId } from "@nostakes/engine";
 import { Option, Result } from "effect";
 
 import {
+  Actors,
+  RoomCommands,
   RoomEvents,
   RoomStates,
   audienceOf,
+  decide,
   evolveWithoutRecap,
   invariants,
   nextDeadline,
@@ -37,8 +40,102 @@ import {
 } from "./observers.js";
 import type { Knowledge } from "./observers.js";
 import { POOL, playSession, session } from "./sessions.js";
+import type { Step } from "./sessions.js";
 
 const CHECKED_ROOMS_TIMEOUT_MS = 120_000;
+
+const removalProblems = (step: Step): readonly string[] => {
+  const { before, command } = step;
+
+  if (
+    !RoomCommands.$is("RemoveMember")(command) ||
+    Result.isFailure(step.decision) ||
+    !isOpen(before)
+  ) {
+    return [];
+  }
+
+  const { player } = command;
+
+  const asLeft = decide(
+    before,
+    RoomCommands.LeaveRoom({ at: command.at, by: Actors.Member({ player }) })
+  );
+
+  const expected = Result.isSuccess(asLeft)
+    ? asLeft.success.map((event) =>
+        RoomEvents.$is("MemberLeft")(event) && event.player === player
+          ? RoomEvents.MemberRemoved({ at: event.at, player })
+          : event
+      )
+    : [RoomEvents.MemberRemoved({ at: command.at, player })];
+
+  const aboutThem = step.events.filter(
+    (event) =>
+      "player" in event &&
+      event.player === player &&
+      !RoomEvents.$is("MemberRemoved")(event)
+  );
+
+  const removedThem = step.events.some(
+    (event) => RoomEvents.$is("MemberRemoved")(event) && event.player === player
+  );
+
+  const same = Result.isSuccess(asLeft)
+    ? JSON.stringify(step.events) === JSON.stringify(expected)
+    : aboutThem.length === 0 && removedThem;
+
+  return same
+    ? []
+    : [
+        `removing ${player} caused ${step.events.map(({ _tag }) => _tag).join(",")}, not ${expected.map(({ _tag }) => _tag).join(",")}`,
+      ];
+};
+
+const lineProblems = (
+  step: Step,
+  lines: Map<PlayerId, string>
+): readonly string[] => {
+  const { after } = step;
+
+  if (inHand(after)) {
+    return [];
+  }
+
+  const settled = settlement(after);
+
+  return after.removed.flatMap((removed) => {
+    const row = Result.isSuccess(settled)
+      ? settled.success.balances.find(
+          (balance) => balance.player === removed.player
+        )
+      : undefined;
+
+    const seated =
+      isOpen(after) &&
+      after.table.seats.some(
+        (seat) => "player" in seat && seat.player === removed.player
+      );
+
+    const text = JSON.stringify(row ?? null);
+    const earlier = lines.get(removed.player);
+
+    if (!seated && earlier === undefined) {
+      lines.set(removed.player, text);
+    }
+
+    return [
+      ...(!seated && earlier !== undefined && earlier !== text
+        ? [
+            `${removed.player}'s line went from ${earlier} to ${text} after ${step.command._tag}`,
+          ]
+        : []),
+      ...(after.entries.has(removed.player) && row === undefined
+        ? [`${removed.player} dropped out of the settlement`]
+        : []),
+    ];
+  });
+};
 
 describe("generated rooms", () => {
   it.prop(
@@ -311,5 +408,19 @@ describe("generated rooms", () => {
       expect(broken).toStrictEqual([]);
     },
     { timeout: CHECKED_ROOMS_TIMEOUT_MS }
+  );
+  it.prop(
+    "removal moves no chip: removing a member causes exactly the batch their own LeaveRoom would have caused at that moment, with MemberRemoved for MemberLeft, removing someone who already left causes nothing about their seat or money, and once their seat is gone every later settlement keeps their line unchanged",
+    { source: session },
+    ({ source }) => {
+      const lines = new Map<PlayerId, string>();
+      const broken: string[] = [];
+
+      for (const step of playSession(source).steps) {
+        broken.push(...removalProblems(step), ...lineProblems(step, lines));
+      }
+
+      expect(broken).toStrictEqual([]);
+    }
   );
 });

@@ -209,6 +209,11 @@ const onRoom = (
     Match.tag("MemberLeft", () =>
       still({ ...tally, members: Math.max(0, tally.members - 1) })
     ),
+    Match.tag("MemberRemoved", (): Step => {
+      const members = Math.max(0, tally.members - 1);
+
+      return [{ ...tally, members }, [measure("MemberRemoved", { members })]];
+    }),
     Match.tag("GameStarted", ({ at }): Step => [
       tally,
       [measure("GameStarted", { sinceOpenMs: sinceOpen(tally, at) })],
@@ -286,6 +291,7 @@ export const NIGHT_KINDS: ReadonlySet<MeasureKind> = new Set<MeasureKind>([
   "GameStarted",
   "HandFinished",
   "MemberJoined",
+  "MemberRemoved",
   "NightAbandoned",
   "NightSettled",
   "RoomOpened",
