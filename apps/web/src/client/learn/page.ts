@@ -273,6 +273,9 @@ const startLesson = (lesson: HTMLElement) => {
     chip: stage.chip,
     hand: stage.hand,
     onGesture: act,
+    onMiss: () => {
+      panels.coach?.again();
+    },
     onPeek: (looking) => {
       const beat = here(LESSON, session.walk);
 

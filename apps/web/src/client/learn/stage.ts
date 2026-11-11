@@ -20,7 +20,7 @@ const FRIENDS: readonly Friend[] = ["bo", "mara", "jonas"];
 
 const FACE_PX = 112;
 
-const STEP_MS = 520;
+const STEP_MS = 440;
 
 const TALK_GAP_MS = 900;
 
@@ -419,6 +419,7 @@ export const openStage = (
     timeline.finish();
     hush();
     showChip(view.beat);
+    lesson.dataset.arriving = String(view.arriving.length);
 
     const tables: Table[] = [];
 
@@ -440,6 +441,7 @@ export const openStage = (
         at: view.arriving.length * STEP_MS,
         run: () => {
           showBeat(view);
+          delete lesson.dataset.arriving;
         },
       },
     ]);

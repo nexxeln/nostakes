@@ -20,6 +20,7 @@ export interface Hands {
   readonly chip: HTMLElement;
   readonly hand: HTMLElement;
   readonly onGesture: (gesture: Gesture) => void;
+  readonly onMiss: () => void;
   readonly onPeek: (looking: boolean) => void;
   readonly scene: HTMLElement;
 }
@@ -48,6 +49,7 @@ export const openGestures = ({
   chip,
   hand,
   onGesture,
+  onMiss,
   onPeek,
   scene,
 }: Hands) => {
@@ -114,8 +116,12 @@ export const openGestures = ({
 
     onPeek(looking);
 
-    if (!looking && asked().peek && at - live.peekedAt >= PEEK_COUNTS_MS) {
-      onGesture("Peek");
+    if (!looking && asked().peek) {
+      if (at - live.peekedAt >= PEEK_COUNTS_MS) {
+        onGesture("Peek");
+      } else {
+        onMiss();
+      }
     }
   };
 
