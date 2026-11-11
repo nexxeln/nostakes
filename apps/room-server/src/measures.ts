@@ -1,45 +1,62 @@
 import { Option, Schema } from "effect";
 
+export type MeasureSource = "Server" | "Page";
+
 interface Layout {
+  readonly from: MeasureSource;
   readonly blobs: readonly string[];
   readonly doubles: readonly string[];
 }
 
 export const MEASURES = {
-  AlarmRefused: { blobs: ["deadline"], doubles: [] },
-  BeaconOutage: { blobs: [], doubles: [] },
-  ClientError: { blobs: ["name", "message", "build", "screen"], doubles: [] },
-  ClientReconnects: { blobs: ["build"], doubles: ["reconnects"] },
-  DeckCheckFailed: { blobs: ["build"], doubles: [] },
-  FirstHand: { blobs: [], doubles: ["sinceOpenMs", "players"] },
-  ForcedReload: { blobs: ["reason", "build"], doubles: [] },
-  GameStarted: { blobs: [], doubles: ["sinceOpenMs"] },
-  HandFinished: { blobs: ["deal", "ending"], doubles: ["hand", "players"] },
-  MemberJoined: { blobs: ["device"], doubles: ["members"] },
-  MemberRemoved: { blobs: [], doubles: ["members"] },
+  AlarmRefused: { blobs: ["deadline"], doubles: [], from: "Server" },
+  BeaconOutage: { blobs: [], doubles: [], from: "Server" },
+  ClientError: {
+    blobs: ["name", "message", "build", "screen"],
+    doubles: [],
+    from: "Page",
+  },
+  ClientReconnects: { blobs: ["build"], doubles: ["reconnects"], from: "Page" },
+  DeckCheckFailed: { blobs: ["build"], doubles: [], from: "Page" },
+  FirstHand: { blobs: [], doubles: ["sinceOpenMs", "players"], from: "Server" },
+  ForcedReload: { blobs: ["reason", "build"], doubles: [], from: "Page" },
+  GameStarted: { blobs: [], doubles: ["sinceOpenMs"], from: "Server" },
+  HandFinished: {
+    blobs: ["deal", "ending"],
+    doubles: ["hand", "players"],
+    from: "Server",
+  },
+  MemberJoined: { blobs: ["device"], doubles: ["members"], from: "Server" },
+  MemberRemoved: { blobs: [], doubles: ["members"], from: "Server" },
   NightAbandoned: {
     blobs: ["rules"],
     doubles: ["hands", "players", "durationMs"],
+    from: "Server",
   },
   NightSettled: {
     blobs: ["rules"],
     doubles: ["hands", "players", "durationMs", "transfers"],
+    from: "Server",
   },
-  PageVisit: { blobs: ["page"], doubles: [] },
-  RateLimited: { blobs: ["action"], doubles: [] },
-  RoomOpened: { blobs: ["rules"], doubles: [] },
-  RulesChanged: { blobs: ["rules"], doubles: [] },
-  SeatTaken: { blobs: [], doubles: ["seated", "players"] },
-  ServerFault: { blobs: ["fault"], doubles: [] },
-  SocketClosed: { blobs: ["reason"], doubles: [] },
-  SocketResumed: { blobs: [], doubles: [] },
-  StallCleared: { blobs: [], doubles: [] },
-  TableQuiet: { blobs: [], doubles: [] },
-  TableResumed: { blobs: [], doubles: ["quietMs"] },
-  TableStalled: { blobs: ["deadline"], doubles: [] },
+  PageVisit: { blobs: ["page"], doubles: [], from: "Server" },
+  RateLimited: { blobs: ["action"], doubles: [], from: "Server" },
+  RoomOpened: { blobs: ["rules"], doubles: [], from: "Server" },
+  RulesChanged: { blobs: ["rules"], doubles: [], from: "Server" },
+  SeatTaken: { blobs: [], doubles: ["seated", "players"], from: "Server" },
+  ServerFault: { blobs: ["fault"], doubles: [], from: "Server" },
+  SocketClosed: { blobs: ["reason"], doubles: [], from: "Server" },
+  SocketResumed: { blobs: [], doubles: [], from: "Server" },
+  StallCleared: { blobs: [], doubles: [], from: "Server" },
+  TableQuiet: { blobs: [], doubles: [], from: "Server" },
+  TableResumed: { blobs: [], doubles: ["quietMs"], from: "Server" },
+  TableStalled: { blobs: ["deadline"], doubles: [], from: "Server" },
 } as const satisfies Record<string, Layout>;
 
 export type MeasureKind = keyof typeof MEASURES;
+
+export type MeasuredBy<From extends MeasureSource> = {
+  [K in MeasureKind]: (typeof MEASURES)[K]["from"] extends From ? K : never;
+}[MeasureKind];
 
 export const MEASURE_KINDS = Object.keys(MEASURES).filter(
   (kind): kind is MeasureKind => kind in MEASURES

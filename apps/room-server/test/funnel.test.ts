@@ -1,13 +1,16 @@
 import { describe, expect, it } from "@effect/vitest";
 import { Duration } from "effect";
+import * as Arbitrary from "effect/Arbitrary";
 
 import {
   funnelLines,
   funnelOf,
   groupPoints,
   healthLines,
+  reportedLines,
 } from "../scripts/funnel.ts";
-import { measure, pointOf, SITE_SCOPE } from "../src/measures.js";
+import { ClientReportSchema, reportMeasure } from "../src/client-reports.js";
+import { MEASURES, measure, pointOf, SITE_SCOPE } from "../src/measures.js";
 import type { Measure, StampedPoint } from "../src/measures.js";
 
 const HOUR = Duration.toMillis(Duration.hours(1));
@@ -154,7 +157,11 @@ describe("the stats report", () => {
   it("prints the same short plain lines for the same data", () => {
     const funnel = funnelOf(groupPoints(points, period), period);
 
-    expect([...funnelLines(funnel), ...healthLines(funnel)]).toEqual([
+    expect([
+      ...funnelLines(funnel),
+      ...healthLines(funnel),
+      ...reportedLines(funnel),
+    ]).toEqual([
       "funnel",
       "  visits               3 (home 2, invite 1)",
       "  rooms created        4",
@@ -169,8 +176,8 @@ describe("the stats report", () => {
       "  hands dealt          31: Checked 31",
       "  abandoned            0",
       "  rules changed        turnSeconds 2, table.ante 1",
-      "health",
-      "  reconnects           0 (clients reported 0)",
+      "health, measured by the server",
+      "  reconnects           0",
       "  sockets closed       3: ClosedByClient 2, ClientOutdated 1",
       "  outdated clients     1",
       "  quiet / resumed      0 / 0",
@@ -180,9 +187,63 @@ describe("the stats report", () => {
       "  refused alarms       0",
       "  rate limited         0",
       "  server faults        0",
+      "reported by pages, unverified: anyone can send these",
       "  client errors        0",
       "  deck checks failed   0",
       "  forced reloads       0",
+      "  reconnects           0",
     ]);
   });
+
+  it("keeps what pages report apart from what the server measured, so forged reports move no health or funnel line", () => {
+    const forged = [
+      stamp(SITE_SCOPE, T0 + 20, measure("DeckCheckFailed", { build: "b1" })),
+      stamp(SITE_SCOPE, T0 + 21, measure("DeckCheckFailed", { build: "b1" })),
+      stamp(
+        SITE_SCOPE,
+        T0 + 22,
+        measure("ClientError", {
+          build: "b1",
+          message: "boom",
+          name: "TypeError",
+          screen: "Room",
+        })
+      ),
+      stamp(
+        SITE_SCOPE,
+        T0 + 23,
+        measure("ClientReconnects", { build: "b1", reconnects: 40 })
+      ),
+    ];
+
+    const honest = funnelOf(groupPoints(points, period), period);
+
+    const flooded = funnelOf(
+      groupPoints([...points, ...forged], period),
+      period
+    );
+
+    expect([
+      funnelLines(flooded),
+      healthLines(flooded),
+      reportedLines(flooded).slice(1),
+    ]).toStrictEqual([
+      funnelLines(honest),
+      healthLines(honest),
+      [
+        "  client errors        1: TypeError 1",
+        "  deck checks failed   2",
+        "  forced reloads       0",
+        "  reconnects           40",
+      ],
+    ]);
+  });
+
+  it.prop(
+    "files every report a page can send under a kind measured by pages",
+    { report: Arbitrary.schema(ClientReportSchema) },
+    ({ report }) => {
+      expect(MEASURES[reportMeasure(report).kind].from).toBe("Page");
+    }
+  );
 });

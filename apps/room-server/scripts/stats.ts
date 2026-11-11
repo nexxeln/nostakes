@@ -28,6 +28,7 @@ import {
   funnelLines,
   funnelOf,
   healthLines,
+  reportedLines,
   isoTime,
   RoomRowsSchema,
   roomRowsFrom,
@@ -211,6 +212,7 @@ const report = Effect.gen(function* report() {
       `nostakes ${stage}, ${day(period.from)} to ${day(period.to - DAY_MS)} UTC (dataset ${dataset})`,
       ...funnelLines(funnel),
       ...healthLines(funnel),
+      ...reportedLines(funnel),
     ].join("\n")
   );
 });

@@ -7,7 +7,7 @@ import {
   MEASURE_KINDS,
   SITE_SCOPE,
 } from "../src/measures.ts";
-import type { MeasureKind, StampedPoint } from "../src/measures.ts";
+import type { MeasureKind, MeasuredBy, StampedPoint } from "../src/measures.ts";
 
 export const ROOM_KINDS: readonly MeasureKind[] = [
   "FirstHand",
@@ -543,20 +543,22 @@ const ruleKeys = (funnel: Funnel) => {
 
 const line = (label: string, value: string) => `  ${label.padEnd(20)} ${value}`;
 
-const total = (funnel: Funnel, kind: MeasureKind) =>
-  [...(funnel.counts.get(kind)?.values() ?? [])].reduce(
-    (sum, row) => sum + row.total,
-    0
-  );
+const total = (rows: ReadonlyMap<string, CountRow> | undefined) =>
+  [...(rows?.values() ?? [])].reduce((sum, row) => sum + row.total, 0);
 
 const weight = (
-  funnel: Funnel,
-  kind: MeasureKind,
+  rows: ReadonlyMap<string, CountRow> | undefined,
   details?: readonly string[]
 ) =>
-  [...(funnel.counts.get(kind)?.values() ?? [])]
+  [...(rows?.values() ?? [])]
     .filter((row) => details === undefined || details.includes(row.detail))
     .reduce((sum, row) => sum + row.weight, 0);
+
+const measured = (funnel: Funnel, kind: MeasuredBy<"Server">) =>
+  funnel.counts.get(kind);
+
+const reported = (funnel: Funnel, kind: MeasuredBy<"Page">) =>
+  funnel.counts.get(kind);
 
 export const funnelLines = (funnel: Funnel) => [
   "funnel",
@@ -597,32 +599,42 @@ export const funnelLines = (funnel: Funnel) => [
 ];
 
 export const healthLines = (funnel: Funnel) => [
-  "health",
-  line(
-    "reconnects",
-    `${plural(weight(funnel, "SocketResumed"))} (clients reported ${plural(total(funnel, "ClientReconnects"))})`
-  ),
-  line("sockets closed", listed(funnel.counts.get("SocketClosed"))),
+  "health, measured by the server",
+  line("reconnects", plural(weight(measured(funnel, "SocketResumed")))),
+  line("sockets closed", listed(measured(funnel, "SocketClosed"))),
   line(
     "outdated clients",
-    plural(weight(funnel, "SocketClosed", ["ClientOutdated", "ServerOutdated"]))
+    plural(
+      weight(measured(funnel, "SocketClosed"), [
+        "ClientOutdated",
+        "ServerOutdated",
+      ])
+    )
   ),
   line(
     "quiet / resumed",
-    `${plural(weight(funnel, "TableQuiet"))} / ${plural(weight(funnel, "TableResumed"))}`
+    `${plural(weight(measured(funnel, "TableQuiet")))} / ${plural(weight(measured(funnel, "TableResumed")))}`
   ),
   line(
     "stalled / cleared",
-    `${plural(weight(funnel, "TableStalled"))} / ${plural(weight(funnel, "StallCleared"))}`
+    `${plural(weight(measured(funnel, "TableStalled")))} / ${plural(weight(measured(funnel, "StallCleared")))}`
   ),
-  line("beacon outages", plural(weight(funnel, "BeaconOutage"))),
-  line("members removed", plural(weight(funnel, "MemberRemoved"))),
-  line("refused alarms", listed(funnel.counts.get("AlarmRefused"))),
-  line("rate limited", listed(funnel.counts.get("RateLimited"))),
-  line("server faults", listed(funnel.counts.get("ServerFault"))),
-  line("client errors", listed(funnel.counts.get("ClientError"))),
-  line("deck checks failed", plural(weight(funnel, "DeckCheckFailed"))),
-  line("forced reloads", listed(funnel.counts.get("ForcedReload"))),
+  line("beacon outages", plural(weight(measured(funnel, "BeaconOutage")))),
+  line("members removed", plural(weight(measured(funnel, "MemberRemoved")))),
+  line("refused alarms", listed(measured(funnel, "AlarmRefused"))),
+  line("rate limited", listed(measured(funnel, "RateLimited"))),
+  line("server faults", listed(measured(funnel, "ServerFault"))),
+];
+
+export const reportedLines = (funnel: Funnel) => [
+  "reported by pages, unverified: anyone can send these",
+  line("client errors", listed(reported(funnel, "ClientError"))),
+  line(
+    "deck checks failed",
+    plural(weight(reported(funnel, "DeckCheckFailed")))
+  ),
+  line("forced reloads", listed(reported(funnel, "ForcedReload"))),
+  line("reconnects", plural(total(reported(funnel, "ClientReconnects")))),
 ];
 
 export const blobOf = (point: StampedPoint, kind: MeasureKind, name: string) =>
