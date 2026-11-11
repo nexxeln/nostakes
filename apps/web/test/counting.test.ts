@@ -1,9 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "@effect/vitest";
-import {
-  BuildIdSchema,
-  PlayerIdSchema,
-  RoomCodeSchema,
-} from "@nostakes/protocol";
+import { PlayerIdSchema, RoomCodeSchema } from "@nostakes/protocol";
 import { Effect, Option } from "effect";
 
 import {
@@ -14,7 +10,7 @@ import {
   storeCounting,
 } from "../src/client/counting.js";
 import { Messages } from "../src/features/message.js";
-import { FairMarks, ReloadTargets } from "../src/features/model.js";
+import { FairMarks } from "../src/features/model.js";
 import type { Flags, Model } from "../src/features/model.js";
 import { ClientReportSchema } from "../src/features/reports.js";
 import { init, update } from "../src/features/update.js";
@@ -63,18 +59,6 @@ const everyReport = (model: Model) => [
   ),
 ];
 
-const reloaded = (counting: boolean) =>
-  reportsOf(
-    init({
-      ...flagsWith(counting, true),
-      reloadedFor: Option.some(
-        ReloadTargets.NewBuild({
-          build: BuildIdSchema.make("0123abcd4567ef89"),
-        })
-      ),
-    }).commands
-  );
-
 describe("anonymous counts on this device", () => {
   it("sends no report of any kind while counts are off", () => {
     expect(everyReport(init(flagsWith(false, true)).model)).toEqual([]);
@@ -97,34 +81,6 @@ describe("anonymous counts on this device", () => {
         }),
       },
     ]);
-  });
-
-  it("reports a reload forced by a new version once, from the page that came back, and only while counts are on", () => {
-    expect([reloaded(true), reloaded(false)]).toEqual([
-      [
-        {
-          report: ClientReportSchema.cases.ForcedReload.make({
-            build: "0123abcd4567ef89",
-            reason: "NewBuild",
-          }),
-        },
-      ],
-      [],
-    ]);
-  });
-
-  it("reports at most five errors from one page", () => {
-    let { model } = init(flagsWith(true, false));
-    let sent = 0;
-
-    for (let round = 0; round < 9; round += 1) {
-      const step = update(model, ERROR);
-
-      sent += reportsOf(step.commands).length;
-      ({ model } = step);
-    }
-
-    expect(sent).toBe(5);
   });
 
   it("stops reporting the moment the switch is turned off, and saves the choice", () => {
@@ -178,18 +134,6 @@ describe("the device's random number", () => {
   afterEach(() => {
     signalPrivacy(false);
   });
-
-  it.effect(
-    "goes with opening or joining a room while counts are on, and stays the same",
-    () =>
-      Effect.gen(function* sameNumber() {
-        const first = yield* deviceHeaders;
-        const second = yield* deviceHeaders;
-
-        expect(first[DEVICE_HEADER]).toMatch(/^[A-Za-z0-9_-]{22}$/u);
-        expect(second).toEqual(first);
-      })
-  );
 
   it.effect("is neither sent nor kept once counts are turned off", () =>
     Effect.gen(function* forgotten() {

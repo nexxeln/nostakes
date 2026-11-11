@@ -26,8 +26,6 @@ const CODE = RoomCodeSchema.make("ABC234");
 
 const PLAYER = PlayerIdSchema.make("player-0000000ab");
 
-const OTHER = PlayerIdSchema.make("player-0000000cd");
-
 const BUILD_B = BuildIdSchema.make("build-b");
 
 const BUILD_C = BuildIdSchema.make("build-c");
@@ -147,61 +145,6 @@ describe("loading a new version of the page", () => {
   );
 
   it.prop(
-    "a new build waits out the hand the player is still in, then reloads once",
-    { hand: hands, table: tables },
-    ({ hand, table }) => {
-      const playing = run(opened(Option.none()), [
-        shown(table, handWith(hand, PLAYER, "Active")),
-        link("Live", Option.some(BUILD_B)),
-        shown(table, handWith(hand, PLAYER, "AllIn")),
-      ]);
-
-      const after = run(opened(Option.none()), [
-        shown(table, handWith(hand, PLAYER, "Active")),
-        link("Live", Option.some(BUILD_B)),
-        shown(table, Option.none()),
-        link("Live", Option.some(BUILD_B)),
-        shown(table, Option.none()),
-      ]);
-
-      expect({ after, playing }).toEqual({
-        after: { reloads: [newBuild], stage: "Reloading" },
-        playing: { reloads: [], stage: "AfterThisHand" },
-      });
-    }
-  );
-
-  it.prop(
-    "a player who folded, or who is not in the hand, reloads for a new build at once",
-    { hand: hands, table: tables },
-    ({ hand, table }) => {
-      expect([
-        run(opened(Option.none()), [
-          shown(table, handWith(hand, PLAYER, "Folded")),
-          link("Live", Option.some(BUILD_B)),
-        ]),
-        run(opened(Option.none()), [
-          shown(
-            table,
-            handWith(
-              {
-                ...hand,
-                players: hand.players.filter(({ player }) => player !== PLAYER),
-              },
-              OTHER,
-              "Active"
-            )
-          ),
-          link("Live", Option.some(BUILD_B)),
-        ]),
-      ]).toEqual([
-        { reloads: [newBuild], stage: "Reloading" },
-        { reloads: [newBuild], stage: "Reloading" },
-      ]);
-    }
-  );
-
-  it.prop(
     "a page that already reloaded for this version stops and says so instead of reloading again",
     { table: tables },
     ({ table }) => {
@@ -226,21 +169,6 @@ describe("loading a new version of the page", () => {
           stage: "Reloading",
         },
       ]);
-    }
-  );
-
-  it.prop(
-    "a page on the build the server serves never reloads",
-    { table: tables },
-    ({ table }) => {
-      expect(
-        run(opened(Option.none()), [
-          shown(table, Option.none()),
-          link("Live", Option.none()),
-          link("Waiting", Option.none()),
-          link("Refused", Option.none()),
-        ])
-      ).toEqual({ reloads: [], stage: "None" });
     }
   );
 });

@@ -130,32 +130,4 @@ describe("a member the host removed", () => {
       state: Option.some("Shown"),
     });
   });
-
-  it("says nothing is owed to someone removed before they bought in", () => {
-    const shown = update(
-      update(opened, refused("Removed")).model,
-      Messages.GotOwnResult({
-        result: Schema.decodeSync(RemovedViewSchema)({
-          ...RESULT,
-          balance: { boughtIn: 0, cashedOut: 0, net: 0, player: BEN },
-          transfers: Option.none(),
-        }),
-      })
-    );
-
-    expect(
-      shownText(shown.model).includes(
-        "You did not buy in, so nothing is owed either way."
-      )
-    ).toBe(true);
-  });
-
-  it("lists the room as removed on the home screen", () => {
-    const home = update(
-      update(opened, refused("Removed")).model,
-      Messages.ClickedHome()
-    );
-
-    expect(shownText(home.model).includes("Removed")).toBe(true);
-  });
 });

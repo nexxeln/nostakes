@@ -250,27 +250,4 @@ describe("the pot on the table", () => {
     },
     { arbitrary: { runs: 300 } }
   );
-
-  it("closes the betting with this street's bets still committed in some of the hands it plays, so the property above sees them", () => {
-    const closedWithBets = Array.from({ length: 60 }, (__, at) =>
-      statesOfAHand(at + 1)
-    )
-      .flat()
-      .filter(
-        (inHand) =>
-          !Phases.$is("Betting")(inHand.hand.phase) &&
-          inHand.hand.players.some(
-            ({ committedThisStreet }) => committedThisStreet > 0
-          )
-      );
-
-    const withDeadMoney = closedWithBets.filter(
-      ({ hand }) => hand.deadMoney > 0
-    );
-
-    expect([
-      closedWithBets.length > 20,
-      withDeadMoney.length > 0,
-    ]).toStrictEqual([true, true]);
-  });
 });

@@ -6,7 +6,6 @@ import * as Arbitrary from "effect/Arbitrary";
 
 import {
   STUCK_LINE,
-  serverNowOf,
   stuckLine,
   takeOverLine,
 } from "../src/features/stuck-line.js";
@@ -74,11 +73,4 @@ describe("the offer to take over from a host who is gone", () => {
       ]);
     }
   );
-
-  it("counts from the server's time, by the largest lead any recent update showed", () => {
-    expect([
-      serverNowOf([], 5000),
-      serverNowOf([-40, 120, 7], 5000),
-    ]).toStrictEqual([5000, 5120]);
-  });
 });

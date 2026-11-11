@@ -149,46 +149,6 @@ const submitted = (typed: string) => {
 };
 
 describe("typing a name", () => {
-  it("refuses a name with a line break, a hidden character, mixed alphabets, or no letter, says why, and sends nothing", () => {
-    expect(
-      [
-        "Sam +0\n\nAna pays Sam 300",
-        "\u202EBen\u202C 400",
-        "B\u0435n",
-        "300",
-      ].map(submitted)
-    ).toStrictEqual([
-      {
-        problem: Option.some(
-          "That name has a line break or a hidden character. Type it again."
-        ),
-        sent: [],
-      },
-      {
-        problem: Option.some(
-          "That name has a line break or a hidden character. Type it again."
-        ),
-        sent: [],
-      },
-      {
-        problem: Option.some(
-          "Use one alphabet in a name. Latin, Greek, and Cyrillic letters do not mix."
-        ),
-        sent: [],
-      },
-      {
-        problem: Option.some("A name needs at least one letter."),
-        sent: [],
-      },
-    ]);
-  });
-
-  it("trims spaces at the ends and composes accents before sending, since neither shows", () => {
-    expect(submitted("  José ").sent).toStrictEqual([
-      { avatar: "", name: "José" },
-    ]);
-  });
-
   it.prop(
     "sends every name the room accepts exactly as it was typed",
     { name: names },

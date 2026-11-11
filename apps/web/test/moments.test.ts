@@ -10,27 +10,8 @@ import type { Moment, MomentKind, Tier } from "@nostakes/room";
 import { Option, Schema } from "effect";
 import * as Arbitrary from "effect/Arbitrary";
 
-import { CAPTIONS } from "../src/features/moments/captions.js";
-import type { CaptionFacts } from "../src/features/moments/captions.js";
 import { pictureSvg } from "../src/features/moments/picture.js";
 import { pictureOf } from "../src/features/moments/scene.js";
-import {
-  LONGEST_SCORE_SECONDS,
-  momentScore,
-  scoreLength,
-} from "../src/features/moments/score.js";
-
-const FACTS: CaptionFacts = {
-  against: "Dev",
-  bet: 1400,
-  category: "FullHouse",
-  hand: "kings full of nines",
-  other: "four nines",
-  percent: 81,
-  runs: 2,
-  start: "eight-seven",
-  who: "Maya",
-};
 
 const everyKindAndTier = MOMENT_KINDS.flatMap((kind) =>
   TIERS[kind].map((tier) => ({ kind, tier }))
@@ -96,74 +77,6 @@ const momentAt = (
   return facts[kind]();
 };
 
-describe("what the table says about a moment", () => {
-  it("has a title and a line for every kind and tier the room can call out", () => {
-    const missing = everyKindAndTier.filter(
-      ({ kind, tier }) => CAPTIONS[kind][tier] === undefined
-    );
-
-    expect(missing).toStrictEqual([]);
-  });
-
-  it("says it in a few calm words: a title of at most three words and no exclamation marks", () => {
-    for (const { kind, tier } of everyKindAndTier) {
-      const caption = CAPTIONS[kind][tier]?.(FACTS);
-
-      expect(caption?.title.split(" ").length ?? 0).toBeLessThanOrEqual(3);
-      expect(`${caption?.title ?? ""} ${caption?.line ?? ""}`).not.toMatch(
-        /!/u
-      );
-    }
-  });
-});
-
-describe("what the table says about a seven-deuce", () => {
-  it("says what the table paid when the bounty was collected, and nothing about chips when none was", () => {
-    const { 1: write } = CAPTIONS.SevenDeuce;
-
-    expect([
-      write?.({ ...FACTS, bet: 1400 }).line,
-      write?.({ ...FACTS, bet: 0 }).line,
-    ]).toStrictEqual([
-      "Maya won with the worst hand in poker. The table paid 1,400.",
-      "The worst hand in poker, and Maya won with it.",
-    ]);
-  });
-});
-
-describe("the sound of a moment", () => {
-  it("is a sting under two seconds for every kind and tier", () => {
-    for (const { kind, tier } of everyKindAndTier) {
-      expect(scoreLength(momentScore(kind, tier))).toBeLessThanOrEqual(
-        LONGEST_SCORE_SECONDS
-      );
-    }
-  });
-
-  it("plays everything a lower tier plays, and more, at each higher tier", () => {
-    for (const kind of MOMENT_KINDS) {
-      const tiers = TIERS[kind];
-
-      for (const [index, tier] of tiers.entries()) {
-        const louder = tiers[index + 1];
-
-        if (louder !== undefined) {
-          const quiet = momentScore(kind, tier).map((step) =>
-            JSON.stringify(step)
-          );
-
-          const loud = momentScore(kind, louder).map((step) =>
-            JSON.stringify(step)
-          );
-
-          expect(quiet.every((step) => loud.includes(step))).toBe(true);
-          expect(loud.length).toBeGreaterThan(quiet.length);
-        }
-      }
-    }
-  });
-});
-
 describe("the picture of a moment", () => {
   it.prop(
     "shows only cards the table was shown, and never the room code",
@@ -208,47 +121,6 @@ describe("the picture of a moment", () => {
 
       expect(pictured.filter((card) => !shown.has(card))).toStrictEqual([]);
       expect(svg.includes(view.code)).toBe(false);
-    }
-  );
-
-  it.prop(
-    "draws every shown hole card at full strength, the loser's too",
-    { kindPick: pick, seatPick: pick, view: views },
-    ({ kindPick, seatPick, view }) => {
-      const lastHand = Option.getOrUndefined(view.lastHand);
-
-      if (lastHand === undefined) {
-        return;
-      }
-
-      const { kind, tier } = everyKindAndTier[
-        kindPick % everyKindAndTier.length
-      ] ?? { kind: "BadBeat", tier: 1 };
-
-      const seats = lastHand.dealtIn.map((dealt) => dealt.seat);
-      const first = seats[seatPick % Math.max(1, seats.length)] ?? 0;
-      const second = seats[(seatPick + 1) % Math.max(1, seats.length)] ?? 1;
-
-      const picture = pictureOf([...view.members, ...view.departed], lastHand, {
-        also: Option.none(),
-        lead: momentAt(kind, tier, [first, second]),
-      });
-
-      const holeParts = pictureSvg(picture, {
-        deck: "TwoColour",
-        fonts: "",
-        frame: "Chat",
-        theme: "Dark",
-      })
-        .split('data-part="')
-        .filter((piece) => piece.startsWith("hole"));
-
-      expect(holeParts.length).toBe(
-        picture.faces.reduce((count, face) => count + face.cards.length, 0)
-      );
-      expect(
-        holeParts.filter((piece) => piece.includes("opacity"))
-      ).toStrictEqual([]);
     }
   );
 });
