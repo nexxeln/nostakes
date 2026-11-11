@@ -337,6 +337,27 @@ export const laneProblemsOn = (
   const resting = placeSeats(geo, plan(null, false));
   const restingSeats = seatsDrawn(geo, resting);
 
+  const captionsOnFaces = restingSeats.flatMap(([, caption], seat) =>
+    restingSeats.flatMap(([face], other) =>
+      other !== seat &&
+      caption !== undefined &&
+      face !== undefined &&
+      covers(caption, face)
+        ? [`seat ${seat} name or stack covers seat ${other} face at rest`]
+        : []
+    )
+  );
+
+  const captionsInTheMiddle = restingSeats.flatMap(([, caption], seat) =>
+    seat === you || caption === undefined || !geo.boardInStrip
+      ? []
+      : middle.flatMap(([what, box]) =>
+          covers(caption, box)
+            ? [`seat ${seat} name or stack covers ${what} at rest`]
+            : []
+        )
+  );
+
   const behind = piles.flatMap((pile, seat) => {
     const home = geo.seats[seat];
     const at = home ?? geo.self;
@@ -511,6 +532,8 @@ export const laneProblemsOn = (
 
   return [
     ...(geo.fits ? [] : ["the table says its lanes do not fit"]),
+    ...captionsOnFaces,
+    ...captionsInTheMiddle,
     ...behind,
     ...owned,
     ...laidOnce,

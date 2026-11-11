@@ -70,6 +70,8 @@ const BOARD_CARDS = 5;
 
 const CAPTION = 40;
 
+const CAPTION_DEPTH = CAPTION + 6;
+
 const MAX_TILE = 170;
 
 const TOP = 12;
@@ -497,6 +499,44 @@ const ovalMiddle = (w: number, inside: Solved, cardW: number): Middle => {
 
 const BET_ABOVE_BOARD = 16;
 
+const CAPTION_CLEARANCE = 1;
+
+const ORIGIN_TRACK = { nx: 0, ny: 0, x: 0, y: 0 };
+
+const STRIP_CLEARANCE = 6;
+
+const droppedClear = (
+  pts: readonly TrackPoint[],
+  tile: number,
+  bottom: number
+): readonly TrackPoint[] => {
+  const half = tile / 2;
+  const reach = Math.max(tile * 0.65, half) + half;
+  const lowest = bottom - STRIP_CLEARANCE - half - CAPTION_DEPTH;
+  const placed: TrackPoint[] = [...pts];
+
+  const topDown = pts
+    .map((p, index) => ({ index, y: p.y }))
+    .toSorted((a, b) => a.y - b.y);
+
+  for (const { index } of topDown) {
+    const p = placed[index] ?? ORIGIN_TRACK;
+
+    const clear = Math.max(
+      p.y,
+      ...placed.flatMap((above, other) =>
+        other !== index && above.y < p.y && Math.abs(above.x - p.x) < reach
+          ? [above.y + tile + CAPTION_DEPTH + CAPTION_CLEARANCE]
+          : []
+      )
+    );
+
+    placed[index] = { ...p, y: Math.max(p.y, Math.min(clear, lowest)) };
+  }
+
+  return placed;
+};
+
 const tallSeat = (
   p: TrackPoint,
   cx: number,
@@ -543,8 +583,6 @@ const POT_FLAT_ABOVE_BOARD = 3;
 const POT_MARGIN = 4;
 
 const SELF_ABOVE_EDGE = 2;
-
-const CAPTION_DEPTH = CAPTION + 6;
 
 const GROUP_MARGIN = 12;
 
@@ -628,7 +666,11 @@ const tallGeo = (w: number, h: number, count: number, room: Room): Geo => {
           y: TOP + (middle.strip.y - TOP) * READOUT_DEPTH,
         }
       : { align: "right", x: chip.x - 170, y: (railTop + chip.y) / 2 - 40 },
-    seats: middle.pts.map((p) => tallSeat(p, cx, middle.tile, middle.strip)),
+    seats: droppedClear(
+      middle.pts,
+      middle.tile,
+      boardInStrip ? middle.strip.y : heroTop
+    ).map((p) => tallSeat(p, cx, middle.tile, middle.strip)),
     self,
     strip: middle.strip,
     tabW: room.tabW,
@@ -2652,6 +2694,21 @@ const ownersAt = (geo: Geo, seats: readonly Pt[]) => [
   footprintOf(geo.self, geo.self.size),
 ];
 
+const captionsOnFaces = (geo: Geo, seats: readonly Pt[]) => {
+  const owners = ownersAt(geo, seats);
+
+  return owners.flatMap(({ seat: [, caption] }, index) =>
+    owners.flatMap(({ seat: [face] }, other) =>
+      other !== index &&
+      caption !== undefined &&
+      face !== undefined &&
+      overlap(caption, face) > 0
+        ? [other]
+        : []
+    )
+  ).length;
+};
+
 const TAB_EDGE = 2;
 
 interface TabPlace {
@@ -3830,6 +3887,7 @@ export const computeGeo = (
 
   if (
     kept !== null &&
+    captionsOnFaces(today, restingSeats) === 0 &&
     clashesOf(today, restingSeats, kept.arrangement, hintBoxOf(todaysHint)) ===
       0
   ) {
@@ -3883,7 +3941,10 @@ export const computeGeo = (
 
     return {
       clashes:
-        clashesOf(geo, geo.seats, lanes, hintBoxOf(hint)) + moved + tabsWithout,
+        clashesOf(geo, geo.seats, lanes, hintBoxOf(hint)) +
+        moved +
+        tabsWithout +
+        captionsOnFaces(geo, geo.seats),
       geo,
       hint,
       lanes,
