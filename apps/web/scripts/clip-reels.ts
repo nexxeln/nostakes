@@ -1,7 +1,7 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { Config, Console, Effect, Schema } from "effect";
 import * as FileSystem from "effect/FileSystem";
-import { chromium } from "playwright-core";
+import { chromium, webkit } from "playwright-core";
 
 import { mutedBrowser, servedVite } from "./local-site.ts";
 import { pagePolicy } from "./stage-policy.ts";
@@ -48,6 +48,12 @@ const bytesOf = (text: string) => Uint8Array.from(Buffer.from(text, "base64"));
 const program = Effect.gen(function* reels() {
   const files = yield* FileSystem.FileSystem;
   const dir = yield* Config.String("REELS_DIR");
+
+  const engine = yield* Config.Literals(
+    ["chromium", "webkit"],
+    "REEL_ENGINE"
+  ).pipe(Config.withDefault("chromium" as const));
+
   const hands = yield* listOf("REEL_HANDS", "AcesCracked");
   const samples = yield* listOf("REEL_SAMPLES", "");
   const themes = yield* listOf("REEL_THEMES", "Light");
@@ -74,7 +80,9 @@ const program = Effect.gen(function* reels() {
     )
   );
 
-  const opened = yield* mutedBrowser(chromium).pipe(
+  const opened = yield* mutedBrowser(
+    engine === "webkit" ? webkit : chromium
+  ).pipe(
     Effect.mapError(
       (failure) =>
         new ReelFailed({ detail: failure.detail, step: failure.step })
@@ -88,7 +96,7 @@ const program = Effect.gen(function* reels() {
 
   for (const { name: hand, query } of told) {
     for (const theme of themes) {
-      const label = `${hand}-${theme.toLowerCase()}${frame === "Chat" ? "-chat" : ""}`;
+      const label = `${engine === "webkit" ? "webkit-" : ""}${hand}-${theme.toLowerCase()}${frame === "Chat" ? "-chat" : ""}`;
       const page = yield* attempt("open a page", () => opened.newPage());
 
       yield* attempt("open the reel stage", () =>
