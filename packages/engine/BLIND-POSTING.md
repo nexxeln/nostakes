@@ -10,7 +10,7 @@ Robert's rule 2 allows either a moving button (2a) or a dead button (2b). A firs
 - **Small blind:** the seat that had the big blind last hand. If that seat cannot be dealt in (empty, sitting out, or out of chips), there is no small blind that hand: a dead small blind.
 - **Button:** the seat that had the small blind last hand, even if it is empty: a dead button. The deal and the action still go clockwise from the button seat.
 - **Heads-up (rule 3):** the small blind is on the button. When play becomes heads-up, the seat that had the big blind most recently gets the button, so the big blind still moves to the other seat.
-- **Fallback:** on the first hand, and when the dead-button positions collide (the big blind would land on the button seat, which only happens when a seat comes back between last hand's blinds at a table of three), the moving button picks the positions.
+- **Fallback:** on the first hand the moving button picks the positions. When the dead-button positions collide (the big blind would land on the button seat), the big blind still goes where the rule above puts it, the small blind is the dealt-in seat before it, and the button is the dealt-in seat before that. This happens when a seat comes back between last hand's blinds at a table of three, and whenever a table grows after a heads-up hand, because heads-up the small blind is on the button. The moving button was used here until a simulated table showed it failing: after a heads-up hand between seats 1 and 4, two seats that had busted came back at once, and the moving button gave seat 1 the big blind a second time and let seat 4 skip it.
 
 `HomeGame` keeps the moving button exactly as today.
 

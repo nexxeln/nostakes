@@ -100,8 +100,21 @@ const movingPositions = (
   return { button, ...blindSeats(dealtIn, button) };
 };
 
+const previousAmong = (
+  dealtIn: Arr.NonEmptyReadonlyArray<SeatIndex>,
+  before: SeatIndex
+) => dealtIn.findLast((seat) => seat < before) ?? Arr.lastNonEmpty(dealtIn);
+
+const behindTheBigBlind = (
+  dealtIn: Arr.NonEmptyReadonlyArray<SeatIndex>,
+  big: SeatIndex
+): Positions => {
+  const small = previousAmong(dealtIn, big);
+
+  return { big, button: previousAmong(dealtIn, small), small };
+};
+
 const deadButtonPositions = (
-  state: BetweenHands,
   dealtIn: Arr.NonEmptyReadonlyArray<SeatIndex>,
   last: Blinds
 ): Positions => {
@@ -114,7 +127,7 @@ const deadButtonPositions = (
   }
 
   return big === last.small
-    ? movingPositions(state, dealtIn)
+    ? behindTheBigBlind(dealtIn, big)
     : { big, button: last.small, small: last.big };
 };
 
@@ -125,7 +138,7 @@ const positionsAmong = (
   state.config.blindPosting === "Casino"
     ? Option.match(state.lastBlinds, {
         onNone: () => movingPositions(state, dealtIn),
-        onSome: (last) => deadButtonPositions(state, dealtIn, last),
+        onSome: (last) => deadButtonPositions(dealtIn, last),
       })
     : movingPositions(state, dealtIn);
 

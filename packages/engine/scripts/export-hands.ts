@@ -182,6 +182,19 @@ const previousButton = (state: TableState) =>
     ? Option.getOrNull(state.button)
     : null;
 
+const lastBlindsOf = (state: TableState) =>
+  TableStates.$is("BetweenHands")(state)
+    ? Option.getOrNull(state.lastBlinds)
+    : null;
+
+const lastDealtOf = (state: TableState) =>
+  TableStates.$is("BetweenHands")(state)
+    ? Option.match(state.lastHand, {
+        onNone: () => [],
+        onSome: (lastHand) => lastHand.players.map((dealt) => dealt.seat),
+      })
+    : [];
+
 const plannedStraddles = (state: TableState, random: Random) => {
   const seats = dealtIn(state);
   const previous = previousButton(state) ?? -1;
@@ -483,7 +496,11 @@ const pendingRecord = (pending: PendingDecision) =>
 const seatsRecord = (state: TableState) =>
   state.seats.map((seat) =>
     Seats.$is("Occupied")(seat)
-      ? { sittingOut: seat.sittingOut, stack: seat.stack }
+      ? {
+          owes: seat.owes.big || seat.owes.small || seat.owes.entry,
+          sittingOut: seat.sittingOut,
+          stack: seat.stack,
+        }
       : null
   );
 
@@ -510,6 +527,8 @@ interface AfterStep extends Step {
 
 interface TableSnapshot {
   readonly config: TableConfig;
+  readonly lastBlinds: { readonly big: number; readonly small: number } | null;
+  readonly lastDealt: readonly number[];
   readonly previousButton: number | null;
   readonly seats: ReturnType<typeof seatsRecord>;
 }
@@ -673,6 +692,8 @@ const exportHands = (seed: number, wanted: number) =>
 
       const before: TableSnapshot = {
         config: state.config,
+        lastBlinds: lastBlindsOf(state),
+        lastDealt: lastDealtOf(state),
         previousButton: previousButton(state),
         seats: seatsRecord(state),
       };

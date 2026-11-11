@@ -69,6 +69,7 @@ PokerKit cannot follow these rules. Each exclusion skips only the affected compa
 PokerKit has no model of these. The replay checks them with its own arithmetic from the brief, which is not an independent implementation:
 
 - the button, the blinds, and who is dealt in (rules 1 and 2),
+- under `blindPosting` Casino, that the big blind moves on exactly one seat: it never skips a seat dealt into both hands and no seat pays it twice in a row while another stays. The replay checks this on every Casino hand, including the hands the `casino-blind-posting` exclusion keeps it from comparing further,
 - which straddle lists are legal (rule 8),
 - the cap on the number of runs (rule 19),
 - rabbit hunting (rule 27), including who may hunt under `rabbitHunters` StillIn,

@@ -171,6 +171,12 @@ EXCLUSIONS = {
 }
 
 REPLAY_ONLY = {
+    "casino-big-blind-rotation": (
+        "With blindPosting Casino the big blind moves on exactly one seat: it never skips a seat "
+        "dealt into both hands, and no seat pays it twice in a row while another seat stays "
+        "(BLIND-POSTING.md). PokerKit has no table, so the replay checks this from the exported "
+        "seats on every Casino hand, including the hands it cannot compare any further."
+    ),
     "button-and-blinds": "Brief rules 1 and 2, recomputed from the seat snapshot. PokerKit has no table or button model.",
     "straddle-list": "Brief rule 8, recomputed for accepted and rejected straddle lists. PokerKit takes any blind list.",
     "run-cap": "Brief rule 19's cap of maxRuns and the remaining deck. PokerKit has no cap.",
@@ -316,10 +322,31 @@ class Hand:
         big = next_after(dealt, small)
         return (button, small, big) != (started["button"], started["smallBlindSeat"], started["bigBlindSeat"])
 
+    def check_casino_rotation(self, started):
+        last = self.record["lastBlinds"]
+        seats = self.record["seats"]
+        square = [
+            i
+            for i, seat in enumerate(seats)
+            if seat is not None and not seat["sittingOut"] and seat["stack"] > 0 and not seat["owes"]
+        ]
+        self.replay_checked.add("casino-big-blind-rotation")
+        if last is None or len(square) < 2:
+            return
+        big = started["bigBlindSeat"]
+        stayed = [seat for seat in self.record["lastDealt"] if seat in started["dealtIn"]]
+        span = (big - last["big"]) % len(seats)
+        skipped = [seat for seat in stayed if 0 < (seat - last["big"]) % len(seats) < span]
+        if skipped:
+            self.differ("casino-big-blind-rotation", f"the big blind went from seat {last['big']} to seat {big} past {skipped}, which stayed dealt in")
+        if big == last["big"] and any(seat != big for seat in stayed):
+            self.differ("casino-big-blind-rotation", f"seat {big} is the big blind twice in a row while {stayed} stayed dealt in")
+
     def run(self):
         started = self.started()
         if self.config.get("blindPosting") == "Casino":
             self.features.add("casino-blinds")
+            self.check_casino_rotation(started)
             if self.casino_differs(started):
                 self.excluded.add("casino-blind-posting")
                 self.stop("casino-blind-posting")

@@ -146,21 +146,46 @@ const dealtInProblems = (
   ];
 };
 
-export const dealProblems = (
+const rotationProblems = (
   before: TableState,
-  events: readonly Event[],
-  after: TableState
+  started: HandStart
 ): readonly string[] => {
-  const started = events.find(Events.$is("HandStarted"));
-
-  if (started === undefined || before.config.blindPosting !== "Casino") {
+  if (!TableStates.$is("BetweenHands")(before) || forgivenDeal(before)) {
     return [];
   }
 
-  const posts = entriesOf(events, started);
-  const lastBig = lastBigOf(before, started);
+  return Option.match(before.lastBlinds, {
+    onNone: () => [],
+    onSome: (last) => {
+      const stayed = Option.match(before.lastHand, {
+        onNone: () => [],
+        onSome: (lastHand) =>
+          lastHand.players
+            .map((dealt) => dealt.seat)
+            .filter((index) => started.dealtIn.includes(index)),
+      });
 
-  return SEAT_NUMBERS.flatMap((index) => {
+      return [
+        ...stayed
+          .filter((index) => between(last.big, started.bigBlindSeat, index))
+          .map((index) => `the big blind skipped seat ${index}`),
+        ...(started.bigBlindSeat === last.big &&
+        stayed.some((index) => index !== last.big)
+          ? [`seat ${last.big} is the big blind twice in a row`]
+          : []),
+      ];
+    },
+  });
+};
+
+const seatProblems = (
+  before: TableState,
+  started: HandStart,
+  posts: readonly Entry[],
+  lastBig: number,
+  after: TableState
+): readonly string[] =>
+  SEAT_NUMBERS.flatMap((index) => {
     const occupant = occupantAt(before, index);
 
     if (occupant === undefined) {
@@ -185,4 +210,23 @@ export const dealProblems = (
           ),
         ];
   });
+
+export const dealProblems = (
+  before: TableState,
+  events: readonly Event[],
+  after: TableState
+): readonly string[] => {
+  const started = events.find(Events.$is("HandStarted"));
+
+  if (started === undefined || before.config.blindPosting !== "Casino") {
+    return [];
+  }
+
+  const posts = entriesOf(events, started);
+  const lastBig = lastBigOf(before, started);
+
+  return [
+    ...rotationProblems(before, started),
+    ...seatProblems(before, started, posts, lastBig, after),
+  ];
 };

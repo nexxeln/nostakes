@@ -1,31 +1,43 @@
 import { describe, expect, it } from "@effect/vitest";
-import { Option } from "effect";
+import { Option, Result, Schema } from "effect";
 
 import {
+  Actions,
   Antes,
   Commands,
   Events,
   NO_DEBT,
+  PendingDecisions,
   Seats,
   StraddleNotAllowed,
   TableStates,
+  decide,
   legalActions,
+  pendingDecisions,
 } from "../src/index.js";
-import type { Event, TableConfig, TableState } from "../src/index.js";
+import type { Command, Event, TableConfig, TableState } from "../src/index.js";
+import { dealProblems } from "./blind-checks.js";
 import {
   baseConfig,
+  calls,
   chipCount,
   deckStartingWith,
+  fold as evolved,
   folds,
   occupiedTable,
+  play,
   player,
+  raisesTo,
   rejection,
   run,
   runAll,
+  runCount,
   seat,
   stacksOf,
   startHand,
 } from "./fixtures.js";
+import { seededRandom } from "./random.js";
+import { shuffledDeck } from "./sessions.js";
 
 const casino: TableConfig = { ...baseConfig, blindPosting: "Casino" };
 
@@ -370,5 +382,226 @@ describe("casino heads-up", () => {
       bigBlindSeat: seat(4),
       button: seat(2),
     });
+  });
+});
+
+const acesBeatSevenDeuce = deckStartingWith("7c Ah 2d As Kd Qc Jh 9s 4c");
+
+describe("the casino big blind after a heads-up hand", () => {
+  it("moves on one seat when two seats that busted come back at once, with the small blind behind it and the button behind that", () => {
+    const first = play(
+      startHand(occupiedTable(casino, { 1: 2000, 5: 50 }), acesBeatSevenDeuce)
+        .state,
+      [
+        [1, raisesTo(2000)],
+        [5, calls],
+      ]
+    ).state;
+
+    const second = play(
+      startHand(
+        run(
+          first,
+          Commands.SitDown({
+            buyIn: chipCount(99),
+            player: player("p0"),
+            seat: seat(0),
+          })
+        ).state,
+        acesBeatSevenDeuce
+      ).state,
+      [
+        [1, raisesTo(2050)],
+        [0, calls],
+      ]
+    ).state;
+
+    expect(stacksOf(second).slice(0, 6)).toStrictEqual([
+      0,
+      2149,
+      null,
+      null,
+      null,
+      0,
+    ]);
+
+    const headsUp = nextHand(sit(second, 4));
+
+    expect(started(headsUp.events)).toMatchObject({
+      bigBlindSeat: seat(1),
+      button: seat(4),
+      dealtIn: [seat(1), seat(4)],
+      smallBlindSeat: seat(4),
+    });
+
+    const back = runAll(foldedOut(headsUp.state), [
+      Commands.AddChips({ amount: chipCount(200), seat: seat(0) }),
+      Commands.AddChips({ amount: chipCount(200), seat: seat(5) }),
+    ]).state;
+
+    expect([0, 5].map((index) => owesAt(back, index))).toStrictEqual([
+      NO_DEBT,
+      NO_DEBT,
+    ]);
+    expect(started(nextHand(back).events)).toMatchObject({
+      bigBlindSeat: seat(4),
+      button: seat(0),
+      dealtIn: [seat(0), seat(1), seat(4), seat(5)],
+      smallBlindSeat: seat(1),
+    });
+  });
+});
+
+const stackAt = (state: TableState, index: number) => {
+  const held = state.seats[index];
+
+  return held !== undefined && Seats.$is("Occupied")(held) ? held.stack : -1;
+};
+
+const answered = (state: TableState, shove: boolean): Option.Option<Command> =>
+  PendingDecisions.$match(pendingDecisions(state), {
+    Bet: ({ legal }) =>
+      Option.some(
+        Commands.Act({
+          action: shove
+            ? Option.match(legal.raise, {
+                onNone: () =>
+                  legal.canCheck ? Actions.Check() : Actions.Call(),
+                onSome: (range) => Actions.RaiseTo({ to: range.maxTo }),
+              })
+            : Actions.Fold(),
+          seat: legal.seat,
+        })
+      ),
+    ChooseRuns: ({ seats }) =>
+      Option.some(
+        Commands.ChooseRuns({ runs: runCount(1), seat: seats[0] ?? seat(0) })
+      ),
+    Nothing: () => Option.none(),
+    Show: ({ choices }) =>
+      Option.some(Commands.TableHand({ seat: choices.seat })),
+  });
+
+const applied = (state: TableState, command: Command) => {
+  const decision = decide(state, command);
+
+  return Result.isSuccess(decision)
+    ? { events: decision.success, state: evolved(state, decision.success) }
+    : { events: [], state };
+};
+
+const comebackProblems = (seed: number) => {
+  const random = seededRandom(seed);
+  const seats = [0, 1, 2, 3, 4, 5, 6, 7, 8].filter(() => random.chance(2, 3));
+  const problems: string[] = [];
+  let afterHeadsUp = 0;
+
+  let state = occupiedTable(
+    casino,
+    Object.fromEntries(
+      (seats.length < 3 ? [0, 3, 6] : seats).map((index) => [
+        index,
+        20 + random.below(200),
+      ])
+    )
+  );
+
+  const rebuys = (current: TableState, share: number, least: number) => {
+    let next = current;
+
+    const playable = () =>
+      next.seats.filter((held) => Seats.$is("Occupied")(held) && held.stack > 0)
+        .length;
+
+    for (const index of next.seats.keys()) {
+      if (
+        stackAt(next, index) === 0 &&
+        (playable() < least || random.below(100) < share)
+      ) {
+        next = applied(
+          next,
+          Commands.AddChips({
+            amount: chipCount(20 + random.below(200)),
+            seat: seat(index),
+          })
+        ).state;
+      }
+    }
+
+    return next;
+  };
+
+  for (let hand = 0; hand < 30; hand += 1) {
+    state = rebuys(state, 35, 2);
+
+    const before = state;
+
+    const lastDealt = TableStates.$is("BetweenHands")(before)
+      ? Option.getOrUndefined(before.lastHand)?.players.length
+      : undefined;
+
+    const dealt = applied(
+      before,
+      Commands.StartHand({
+        deck: shuffledDeck(random),
+        posts: [],
+        straddles: [],
+      })
+    );
+
+    ({ state } = dealt);
+
+    const found = dealProblems(before, dealt.events, state);
+
+    afterHeadsUp +=
+      lastDealt === 2 && (started(dealt.events)?.dealtIn.length ?? 0) > 2
+        ? 1
+        : 0;
+
+    if (found.length > 0) {
+      problems.push(`seed ${seed} hand ${hand + 1}: ${found.join("; ")}`);
+    }
+
+    const shove = random.chance(3, 5);
+
+    for (let turn = 0; turn < 60; turn += 1) {
+      const command = answered(state, shove);
+
+      if (Option.isNone(command)) {
+        break;
+      }
+
+      ({ state } = applied(state, command.value));
+
+      if (turn === 0 && TableStates.$is("InHand")(state)) {
+        state = rebuys(state, 50, 0);
+      }
+    }
+  }
+
+  return { afterHeadsUp, problems };
+};
+
+const tableSeed = Schema.Int.check(
+  Schema.isBetween({ maximum: 2_000_000_000, minimum: 1 })
+);
+
+describe("generated tables where seats bust and come back", () => {
+  it.prop(
+    "the big blind moves on one seat: no seat pays it twice in a row and it skips no seat that stayed, however many seats come back after a heads-up hand",
+    { seed: tableSeed },
+    ({ seed }) => {
+      expect(comebackProblems(seed).problems).toStrictEqual([]);
+    }
+  );
+
+  it("reaches tables that grow after a heads-up hand", () => {
+    let afterHeadsUp = 0;
+
+    for (let seed = 1; seed <= 60; seed += 1) {
+      afterHeadsUp += comebackProblems(seed).afterHeadsUp;
+    }
+
+    expect(afterHeadsUp).toBeGreaterThan(40);
   });
 });
