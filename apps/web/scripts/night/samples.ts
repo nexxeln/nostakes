@@ -3,6 +3,7 @@ import { Option } from "effect";
 
 import { expressionFor } from "../../src/features/pictures/settle-up.js";
 import type { SettleUpCard } from "../../src/features/pictures/settle-up.js";
+import { NAME_FORMS } from "../../src/features/recap.js";
 import type { RecapCard } from "../../src/features/recap.js";
 import { samplePicture } from "../moments/samples.js";
 
@@ -136,7 +137,7 @@ const RECAPS = {
       ["BadBeat-1", "Jonas"],
       ["Bluff-2", "Lou"],
     ],
-    pot: [2400, 87, ["Kit"]],
+    pot: [2400, 87, ["Kit", "Priya", "Sam"]],
   },
   two: {
     hands: 18,
@@ -183,7 +184,9 @@ export const sampleRecap = (name: string): RecapCard => {
           name: player,
         },
         hand: 20 + index * 37,
-        line: picture.line.replaceAll(lead?.name ?? "", player),
+        lines: NAME_FORMS.map((form) =>
+          picture.line.replaceAll(lead?.name ?? "", form(player))
+        ),
         title: picture.title,
       };
     }),

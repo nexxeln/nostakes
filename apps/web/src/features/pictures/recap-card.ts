@@ -1,6 +1,7 @@
 import { Option } from "effect";
 
 import { chipsText } from "../moments/captions.js";
+import { NAME_FORMS, potTakers } from "../recap.js";
 import type { RecapCard } from "../recap.js";
 import {
   ON_RED,
@@ -16,7 +17,15 @@ import {
   titleSize,
 } from "./paper.js";
 import type { Palette, PictureLook } from "./paper.js";
-import { fitted, netText, textWidth } from "./settle-up.js";
+import { netText } from "./settle-up.js";
+import {
+  firstFitting,
+  firstWrapping,
+  fitted,
+  textWidth,
+  wrapped,
+  wrapsWhole,
+} from "./text-fit.js";
 
 const LEFT = 90;
 
@@ -57,40 +66,81 @@ const handsText = (card: RecapCard) => {
   return card.length.length === 0 ? hands : `${hands} in ${card.length}`;
 };
 
-const WINNER_HEIGHT = 200;
+const WINNER_FACE = 180;
 
-const TOOK = " took the night";
+const WINNER_NAME = 50;
+
+const WINNER_LINE = 54;
+
+const WINNER_X = LEFT + WINNER_FACE + 40;
+
+const STORY_NAME_SIZES = [WINNER_NAME, 42, 36];
+
+const winnerNames = (
+  name: string,
+  tall: boolean
+): { readonly lines: readonly string[]; readonly size: number } => {
+  const size = STORY_NAME_SIZES.find((each) =>
+    wrapsWhole(name, each, RIGHT - WINNER_X, 2)
+  );
+
+  return tall && size !== undefined
+    ? { lines: wrapped(name, size, RIGHT - WINNER_X, 2), size }
+    : {
+        lines: [
+          firstFitting(
+            NAME_FORMS.map((form) => form(name)),
+            WINNER_NAME,
+            RIGHT - WINNER_X
+          ).text,
+        ],
+        size: WINNER_NAME,
+      };
+};
+
+const winnerHeight = (card: RecapCard, tall: boolean) =>
+  Option.match(card.winner, {
+    onNone: () => 0,
+    onSome: ({ face }) =>
+      WINNER_FACE +
+      20 +
+      (winnerNames(face.name, tall).lines.length - 1) * WINNER_LINE,
+  });
 
 const winnerArt = (
   palette: Palette,
   look: PictureLook,
   winner: NonNullable<Option.Option.Value<RecapCard["winner"]>>,
-  top: number
+  place: { readonly tall: boolean; readonly top: number }
 ) => {
-  const face = 180;
-  const x = LEFT + face + 40;
-  const nameSize = 50;
-
-  const name = fitted(
-    winner.face.name,
-    nameSize,
-    RIGHT - x - textWidth(TOOK, 36)
-  );
+  const { top } = place;
+  const names = winnerNames(winner.face.name, place.tall);
+  const last = top + 100 + (names.lines.length - 1) * WINNER_LINE;
 
   return [
     faceArt(palette, { ...winner.face, name: "" }, look.theme, {
-      size: face,
+      size: WINNER_FACE,
       tagged: false,
       x: LEFT,
       y: top,
     }),
-    `<text x="${number(x)}" y="${number(top + 64)}" font-family="Figtree, sans-serif" xml:space="preserve">`,
-    `<tspan font-weight="700" font-size="${nameSize}" fill="${palette.ink}">${escaped(name.text)}</tspan>`,
-    `<tspan font-weight="600" font-size="36" fill="${palette.muted}">${TOOK}</tspan>`,
-    "</text>",
+    textAt(
+      palette.muted,
+      { x: WINNER_X, y: top + 40 },
+      { size: 34, text: "Took the night" },
+      { weight: 600 }
+    ),
+    ...names.lines.map((name, line) =>
+      textAt(
+        palette.ink,
+        { x: WINNER_X, y: top + 100 + line * WINNER_LINE },
+        { size: names.size, text: name },
+        { weight: 700 }
+      )
+    ),
     textAt(
       RED,
-      { x, y: top + 146 },
+      { x: WINNER_X, y: last + 84 },
       { size: 80, text: netText(winner.net) },
       { display: true, weight: 800 }
     ),
@@ -99,6 +149,22 @@ const winnerArt = (
 
 const POT_HEIGHT = 120;
 
+const WHO_SIZE = 36;
+
+const whoLines = (
+  pot: NonNullable<Option.Option.Value<RecapCard["biggestPot"]>>,
+  room: number
+): readonly string[] => {
+  const names = pot.takers.map(({ name }) => name);
+
+  return firstWrapping(
+    NAME_FORMS.map((form) => `${potTakers(names.map(form))}, hand ${pot.hand}`),
+    WHO_SIZE,
+    room,
+    2
+  );
+};
+
 const potArt = (
   palette: Palette,
   pot: NonNullable<Option.Option.Value<RecapCard["biggestPot"]>>,
@@ -106,13 +172,9 @@ const potArt = (
 ) => {
   const amount = chipsText(pot.pot);
   const width = 300 + textWidth(amount, 56);
-  const names = pot.takers.map(({ name }) => name);
   const after = LEFT + width + 28;
-
-  const who =
-    names.length > 1
-      ? `split, hand ${pot.hand}`
-      : `to ${names.join("")}, hand ${pot.hand}`;
+  const lines = whoLines(pot, RIGHT - after);
+  const first = lines.length > 1 ? top + 42 : top + 62;
 
   return [
     sheet(palette, {
@@ -131,11 +193,13 @@ const potArt = (
       { size: 56, text: amount },
       { anchor: "end", display: true, weight: 800 }
     ),
-    textAt(
-      palette.muted,
-      { x: after, y: top + 62 },
-      fitted(who, 36, RIGHT - after),
-      { weight: 600 }
+    ...lines.map((line, index) =>
+      textAt(
+        palette.muted,
+        { x: after, y: first + index * WHO_SIZE * 1.15 },
+        { size: WHO_SIZE, text: line },
+        { weight: 600 }
+      )
     ),
   ].join("");
 };
@@ -153,6 +217,7 @@ const momentRow = (
   const room = RIGHT - x - cardsRoom;
   const titleFont = Math.min(50, place.height * 0.34);
   const lineFont = Math.min(32, place.height * 0.22);
+  const lines = firstWrapping(moment.lines, lineFont, room, 2);
 
   return [
     faceArt(palette, { ...moment.face, name: "" }, look.theme, {
@@ -167,11 +232,13 @@ const momentRow = (
       fitted(moment.title, titleFont, room),
       { display: true, weight: 800 }
     ),
-    textAt(
-      palette.muted,
-      { x, y: place.y + face * 0.42 + lineFont * 1.45 },
-      fitted(moment.line, lineFont, room),
-      { weight: 600 }
+    ...lines.map((line, index) =>
+      textAt(
+        palette.muted,
+        { x, y: place.y + face * 0.42 + lineFont * (1.45 + index * 1.2) },
+        { size: lineFont, text: line },
+        { weight: 600 }
+      )
     ),
     ...moment.cards.map((card, index) =>
       cardArt(palette, card, {
@@ -203,7 +270,11 @@ const planFor = (card: RecapCard, tall: boolean): Plan => {
   const height = tall ? 1920 : 1350;
   const bottom = height - MARK_ROOM;
   const top = 110;
-  const winner = Option.isSome(card.winner) ? WINNER_HEIGHT + GAP : 0;
+
+  const winner = Option.isSome(card.winner)
+    ? winnerHeight(card, tall) + GAP
+    : 0;
+
   const pot = Option.isSome(card.biggestPot) ? POT_HEIGHT + GAP : 0;
   const rows = Math.max(1, card.moments.length);
   const room = bottom - top - HEADER - winner - pot;
@@ -241,7 +312,8 @@ export const recapSvg = (card: RecapCard, look: PictureLook) => {
       ),
       Option.match(card.winner, {
         onNone: () => "",
-        onSome: (winner) => winnerArt(palette, look, winner, plan.winnerTop),
+        onSome: (winner) =>
+          winnerArt(palette, look, winner, { tall, top: plan.winnerTop }),
       }),
       Option.match(card.biggestPot, {
         onNone: () => "",

@@ -18,6 +18,8 @@ import {
   titleSize,
 } from "./paper.js";
 import type { Palette, PictureLook } from "./paper.js";
+import { fitted, textWidth, wrapped } from "./text-fit.js";
+import type { Fitted } from "./text-fit.js";
 
 export const SettleUpCardSchema = Schema.Struct({
   players: Schema.Array(
@@ -87,65 +89,6 @@ export const netText = (net: number) => {
   return `${net > 0 ? "+" : MINUS}${chipsText(Math.abs(net))}`;
 };
 
-const NARROW = new Set("iljtfrI.,:;'!|() ");
-
-const WIDE = new Set("mwMW@%");
-
-const glyphWidth = (glyph: string) => {
-  if (NARROW.has(glyph)) {
-    return 0.34;
-  }
-
-  if (WIDE.has(glyph)) {
-    return 0.92;
-  }
-
-  return glyph.toUpperCase() === glyph && glyph.toLowerCase() !== glyph
-    ? 0.7
-    : 0.6;
-};
-
-export const textWidth = (text: string, size: number) => {
-  let total = 0;
-
-  for (const glyph of text) {
-    total += glyphWidth(glyph);
-  }
-
-  return total * size;
-};
-
-const ELLIPSIS = "\u2026";
-
-const GRAPHEMES = new Intl.Segmenter("en", { granularity: "grapheme" });
-
-export interface Fitted {
-  readonly size: number;
-  readonly text: string;
-}
-
-export const fitted = (text: string, size: number, room: number): Fitted => {
-  if (textWidth(text, size) <= room) {
-    return { size, text };
-  }
-
-  const letters = Array.from(GRAPHEMES.segment(text), ({ segment }) => segment);
-  let kept = letters.length;
-
-  while (
-    kept > 1 &&
-    textWidth(`${letters.slice(0, kept).join("").trimEnd()}${ELLIPSIS}`, size) >
-      room
-  ) {
-    kept -= 1;
-  }
-
-  return {
-    size,
-    text: `${letters.slice(0, kept).join("").trimEnd()}${ELLIPSIS}`,
-  };
-};
-
 const LEFT = 90;
 
 const RIGHT = 990;
@@ -198,28 +141,30 @@ const netFill = (palette: Palette, player: CardPlayer, best: number) => {
   return player.net > 0 ? palette.ink : palette.muted;
 };
 
+interface Slot {
+  readonly face: number;
+  readonly height: number;
+  readonly names: readonly string[];
+  readonly nameSize: number;
+  readonly netSize: number;
+  readonly stacked: boolean;
+  readonly width: number;
+  readonly x: number;
+  readonly y: number;
+}
+
 const playerRow = (
   palette: Palette,
   look: PictureLook,
   player: CardPlayer,
-  place: {
-    readonly best: number;
-    readonly height: number;
-    readonly stacked: boolean;
-    readonly width: number;
-    readonly x: number;
-    readonly y: number;
-  }
+  place: Slot & { readonly best: number }
 ) => {
-  const face = Math.round(
-    Math.min(place.height * 0.84, place.stacked ? 116 : 150)
-  );
-
+  const { face, nameSize, names, netSize } = place;
   const net = netText(player.net);
-  const nameX = place.x + face + place.height * 0.2;
+  const nameX = place.x + face + Math.min(32, face * 0.24);
   const right = place.x + place.width;
-  const middle = place.y + face / 2;
   const fill = netFill(palette, player, place.best);
+  const step = nameSize * 1.1;
 
   const faceTile = faceArt(palette, { ...player, name: "" }, look.theme, {
     size: face,
@@ -229,15 +174,14 @@ const playerRow = (
   });
 
   if (place.stacked) {
-    const nameSize = Math.min(42, place.height * 0.32);
-    const netSize = Math.min(48, place.height * 0.36);
+    const first = place.y + face * 0.44;
 
     return [
       faceTile,
       textAt(
         palette.ink,
-        { x: nameX, y: place.y + face * 0.44 },
-        fitted(player.name, nameSize, right - nameX),
+        { x: nameX, y: first },
+        { size: nameSize, text: names[0] ?? "" },
         { weight: 700 }
       ),
       textAt(
@@ -249,119 +193,204 @@ const playerRow = (
     ].join("");
   }
 
-  const netSize = Math.min(64, place.height * 0.44);
+  const middle = place.y + face / 2;
+  const first = middle + nameSize * 0.36 - ((names.length - 1) * step) / 2;
 
   return [
     faceTile,
-    textAt(
-      palette.ink,
-      { x: nameX, y: middle + place.height * 0.14 },
-      fitted(
-        player.name,
-        Math.min(52, place.height * 0.36),
-        right - nameX - textWidth(net, netSize) - place.height * 0.3
-      ),
-      { weight: 700 }
+    ...names.map((name, line) =>
+      textAt(
+        palette.ink,
+        { x: nameX, y: first + line * step },
+        { size: nameSize, text: name },
+        { weight: 700 }
+      )
     ),
     textAt(
       fill,
-      { x: right, y: middle + place.height * 0.16 },
+      { x: right, y: middle + netSize * 0.36 },
       { size: netSize, text: net },
       { anchor: "end", display: true, weight: 800 }
     ),
   ].join("");
 };
 
-const playersArt = (
-  palette: Palette,
-  look: PictureLook,
-  players: readonly CardPlayer[],
-  box: {
-    readonly columns: number;
-    readonly rowHeight: number;
-    readonly y: number;
-  }
-) => {
-  const rows = Math.ceil(players.length / box.columns);
-  const gutter = 44;
-  const width = (RIGHT - LEFT - gutter * (box.columns - 1)) / box.columns;
-  const best = Math.max(0, ...players.map(({ net }) => net));
+const PAYS = " pays ";
 
-  return players
-    .map((player, index) =>
-      playerRow(palette, look, player, {
-        best,
-        height: box.rowHeight,
-        stacked: box.columns > 1,
-        width,
-        x: LEFT + Math.floor(index / rows) * (width + gutter),
-        y: box.y + (index % rows) * box.rowHeight,
-      })
-    )
-    .join("");
+const BROKEN_ROW = 1.75;
+
+const RECEIPT_ROOM = RIGHT - LEFT - RECEIPT_INSET * 2;
+
+const firstNameOf = (name: string) => name.split(" ")[0] ?? name;
+
+const uniqueFirstName = (players: readonly CardPlayer[]) => {
+  const counts = new Map<string, number>();
+
+  for (const { name } of players) {
+    const first = firstNameOf(name);
+
+    counts.set(first, (counts.get(first) ?? 0) + 1);
+  }
+
+  return (name: string) => {
+    const first = firstNameOf(name);
+
+    return first !== name && counts.get(first) === 1 ? [name, first] : [name];
+  };
 };
 
-const transferRow = (
-  palette: Palette,
+interface PayLine {
+  readonly amount: string;
+  readonly amountSize: number;
+  readonly from: string;
+  readonly lines: number;
+  readonly size: number;
+  readonly to: string;
+}
+
+const payLineOf = (
   transfer: CardTransfer,
-  place: {
-    readonly height: number;
-    readonly inset: number;
-    readonly y: number;
-  }
-) => {
+  forms: (name: string) => readonly string[],
+  place: { readonly height: number; readonly tall: boolean }
+): PayLine => {
   const size = Math.min(40, place.height * 0.6);
   const amountSize = size * 1.1;
   const amount = chipsText(transfer.amount);
-  const left = LEFT + place.inset;
-  const right = RIGHT - place.inset;
-  const pays = " pays ";
-  const free = right - left - textWidth(amount, amountSize) - size;
-  const nameRoom = (free - textWidth(pays, size)) / 2;
-  const from = fitted(transfer.from, size, nameRoom);
-  const to = fitted(transfer.to, size, nameRoom);
+  const free = RECEIPT_ROOM - textWidth(amount, amountSize) - size;
+  const pays = textWidth(PAYS, size);
+  const froms = forms(transfer.from);
+  const tos = forms(transfer.to);
+
+  const pairs = froms.flatMap((from) => tos.map((to) => [from, to] as const));
+
+  const fits = pairs.find(
+    ([from, to]) => textWidth(from, size) + pays + textWidth(to, size) <= free
+  );
+
+  if (fits !== undefined) {
+    return { amount, amountSize, from: fits[0], lines: 1, size, to: fits[1] };
+  }
+
+  if (place.tall) {
+    return {
+      amount,
+      amountSize,
+      from: fitted(transfer.from, size, free).text,
+      lines: 2,
+      size,
+      to: fitted(transfer.to, size, free - pays).text,
+    };
+  }
+
+  const [from = transfer.from, to = transfer.to] = pairs.at(-1) ?? [];
+  const half = (free - pays) / 2;
+
+  const fromFit = fitted(
+    from,
+    size,
+    Math.max(half, free - pays - textWidth(to, size))
+  );
+
+  return {
+    amount,
+    amountSize,
+    from: fromFit.text,
+    lines: 1,
+    size,
+    to: fitted(to, size, free - pays - textWidth(fromFit.text, size)).text,
+  };
+};
+
+const paysAt = (
+  palette: Palette,
+  at: { readonly x: number; readonly y: number },
+  size: number,
+  parts: readonly (readonly [string, boolean])[]
+) =>
+  [
+    `<text x="${number(at.x)}" y="${number(at.y)}" font-family="Figtree, sans-serif" font-size="${number(size)}" xml:space="preserve">`,
+    ...parts.map(
+      ([text, name]) =>
+        `<tspan font-weight="${name ? 700 : 500}" fill="${name ? palette.cardInk : palette.cardMuted}">${escaped(text)}</tspan>`
+    ),
+    "</text>",
+  ].join("");
+
+const transferRow = (
+  palette: Palette,
+  line: PayLine,
+  place: { readonly height: number; readonly y: number }
+) => {
+  const left = LEFT + RECEIPT_INSET;
   const baseline = place.y + place.height * 0.68;
 
+  const amountArt = textAt(
+    palette.cardInk,
+    { x: RIGHT - RECEIPT_INSET, y: baseline },
+    { size: line.amountSize, text: line.amount },
+    { anchor: "end", display: true, weight: 800 }
+  );
+
+  if (line.lines > 1) {
+    return [
+      paysAt(palette, { x: left, y: baseline }, line.size, [[line.from, true]]),
+      paysAt(palette, { x: left, y: baseline + line.size * 1.2 }, line.size, [
+        [PAYS.trimStart(), false],
+        [line.to, true],
+      ]),
+      amountArt,
+    ].join("");
+  }
+
   return [
-    `<text x="${number(left)}" y="${number(baseline)}" font-family="Figtree, sans-serif" font-size="${number(size)}" xml:space="preserve">`,
-    `<tspan font-weight="700" fill="${palette.cardInk}">${escaped(from.text)}</tspan>`,
-    `<tspan font-weight="500" fill="${palette.cardMuted}">${pays}</tspan>`,
-    `<tspan font-weight="700" fill="${palette.cardInk}">${escaped(to.text)}</tspan>`,
-    "</text>",
-    textAt(
-      palette.cardInk,
-      { x: right, y: baseline },
-      { size: amountSize, text: amount },
-      { anchor: "end", display: true, weight: 800 }
-    ),
+    paysAt(palette, { x: left, y: baseline }, line.size, [
+      [line.from, true],
+      [PAYS, false],
+      [line.to, true],
+    ]),
+    amountArt,
   ].join("");
+};
+
+const rowHeightOf = (line: PayLine, height: number) =>
+  line.lines > 1 ? height * BROKEN_ROW : height;
+
+const receiptHeight = (lines: readonly PayLine[], height: number) => {
+  let total = RECEIPT_INSET * 1.2;
+
+  for (const line of lines) {
+    total += rowHeightOf(line, height);
+  }
+
+  return total;
 };
 
 const receiptArt = (
   palette: Palette,
-  transfers: readonly CardTransfer[],
+  lines: readonly PayLine[],
   box: { readonly rowHeight: number; readonly y: number }
 ) => {
-  const inset = RECEIPT_INSET;
-  const height = transfers.length * box.rowHeight + inset * 1.2;
+  let top = box.y + RECEIPT_INSET * 0.6;
+
+  const rows = lines.map((line) => {
+    const art = transferRow(palette, line, { height: box.rowHeight, y: top });
+
+    top += rowHeightOf(line, box.rowHeight);
+
+    return art;
+  });
 
   return [
     sheet(palette, {
       fill: palette.card,
-      height,
+      height: receiptHeight(lines, box.rowHeight),
       lift: 4,
       radius: 26,
       width: RIGHT - LEFT,
       x: LEFT,
       y: box.y,
     }),
-    ...transfers.map((transfer, index) =>
-      transferRow(palette, transfer, {
-        height: box.rowHeight,
-        inset,
-        y: box.y + inset * 0.6 + index * box.rowHeight,
-      })
-    ),
+    ...rows,
   ].join("");
 };
 
@@ -372,43 +401,125 @@ const HEADER_TOP = 110;
 const HEADER_BOTTOM = 304;
 
 interface Plan {
-  readonly columns: number;
   readonly payHeight: number;
-  readonly playersTop: number;
+  readonly payLines: readonly PayLine[];
   readonly receiptTop: number;
-  readonly rowHeight: number;
   readonly shift: number;
+  readonly slots: readonly Slot[];
 }
+
+const chatSlots = (
+  card: SettleUpCard,
+  room: number,
+  top: number
+): readonly Slot[] => {
+  const columns = card.players.length > 4 ? 2 : 1;
+  const rows = Math.max(1, Math.ceil(card.players.length / columns));
+  const gutter = 44;
+  const width = (RIGHT - LEFT - gutter * (columns - 1)) / columns;
+  const height = Math.min(columns === 1 ? 136 : 124, room / rows);
+  const stacked = columns > 1;
+  const face = Math.round(Math.min(height * 0.84, stacked ? 116 : 150));
+
+  const nameSize = stacked
+    ? Math.min(42, height * 0.32)
+    : Math.min(52, height * 0.36);
+
+  const netSize = stacked
+    ? Math.min(48, height * 0.36)
+    : Math.min(64, height * 0.44);
+
+  const nameX = face + Math.min(32, face * 0.24);
+
+  return card.players.map((player, index) => {
+    const netRoom = stacked
+      ? 0
+      : textWidth(netText(player.net), netSize) + height * 0.3;
+
+    return {
+      face,
+      height,
+      nameSize,
+      names: [fitted(player.name, nameSize, width - nameX - netRoom).text],
+      netSize,
+      stacked,
+      width,
+      x: LEFT + Math.floor(index / rows) * (width + gutter),
+      y: top + (index % rows) * height,
+    };
+  });
+};
+
+const STORY_UNITS = [150, 140, 130, 120, 112, 104, 96, 90, 84, 78, 72];
+
+const storySlots = (
+  card: SettleUpCard,
+  unit: number,
+  top: number
+): readonly Slot[] => {
+  const face = Math.round(unit * 0.74);
+  const nameSize = Math.min(46, unit * 0.36);
+  const netSize = Math.min(56, unit * 0.42);
+  const width = RIGHT - LEFT;
+  const nameX = face + Math.min(32, face * 0.24);
+  let y = top;
+
+  return card.players.map((player) => {
+    const room = width - nameX - textWidth(netText(player.net), netSize) - 24;
+    const names = wrapped(player.name, nameSize, room, 2);
+    const height = unit + (names.length - 1) * nameSize * 1.1;
+
+    const slot = {
+      face,
+      height,
+      nameSize,
+      names,
+      netSize,
+      stacked: false,
+      width,
+      x: LEFT,
+      y,
+    };
+
+    y += height;
+
+    return slot;
+  });
+};
+
+const slotsBottom = (slots: readonly Slot[], top: number) =>
+  Math.max(top, ...slots.map(({ height, y }) => y + height));
 
 const planFor = (card: SettleUpCard, tall: boolean): Plan => {
   const growth = tall ? STORY_GROWTH : 1;
-  const columns = card.players.length > 4 ? 2 : 1;
-  const rows = Math.max(1, Math.ceil(card.players.length / columns));
-  const transfers = card.transfers.length;
-  const payHeight = (transfers > 4 ? 52 : 70) * growth;
+  const payHeight = (card.transfers.length > 4 ? 52 : 70) * growth;
+  const forms = uniqueFirstName(card.players);
 
-  const receipt =
-    transfers === 0 ? 0 : transfers * payHeight + RECEIPT_INSET * 1.2 + GAP;
-
-  const bottom = (tall ? 1920 : 1350) - MARK_ROOM;
-  const playersRoom = bottom - HEADER_BOTTOM - receipt;
-
-  const rowHeight = Math.min(
-    (columns === 1 ? 136 : 124) * growth,
-    playersRoom / rows
+  const payLines = card.transfers.map((transfer) =>
+    payLineOf(transfer, forms, { height: payHeight, tall })
   );
 
-  const block = HEADER_BOTTOM - HEADER_TOP + rows * rowHeight + receipt;
-  const shift = tall ? Math.max(0, (bottom - HEADER_TOP - block) / 2) : 0;
-  const playersTop = HEADER_BOTTOM + shift;
+  const receipt =
+    payLines.length === 0 ? 0 : receiptHeight(payLines, payHeight) + GAP;
+
+  const bottom = (tall ? 1920 : 1350) - MARK_ROOM;
+  const room = bottom - HEADER_BOTTOM - receipt;
+
+  const slots = tall
+    ? (STORY_UNITS.map((unit) => storySlots(card, unit, HEADER_BOTTOM)).find(
+        (laid) => slotsBottom(laid, HEADER_BOTTOM) <= HEADER_BOTTOM + room
+      ) ?? storySlots(card, STORY_UNITS.at(-1) ?? 72, HEADER_BOTTOM))
+    : chatSlots(card, room, HEADER_BOTTOM);
+
+  const used = slotsBottom(slots, HEADER_BOTTOM) - HEADER_TOP + receipt;
+  const shift = tall ? Math.max(0, (bottom - HEADER_TOP - used) / 2) : 0;
 
   return {
-    columns,
     payHeight,
-    playersTop,
-    receiptTop: playersTop + rows * rowHeight + GAP,
-    rowHeight,
+    payLines,
+    receiptTop: slotsBottom(slots, HEADER_BOTTOM) + shift + GAP,
     shift,
+    slots: slots.map((slot) => ({ ...slot, y: slot.y + shift })),
   };
 };
 
@@ -416,6 +527,7 @@ export const settleUpSvg = (card: SettleUpCard, look: PictureLook) => {
   const palette = paletteFor(look.theme, look.deck);
   const tall = look.frame === "Story";
   const plan = planFor(card, tall);
+  const best = Math.max(0, ...card.players.map(({ net }) => net));
 
   return paperSvg(
     palette,
@@ -425,14 +537,16 @@ export const settleUpSvg = (card: SettleUpCard, look: PictureLook) => {
       titleArt(palette),
       `<text x="92" y="268" font-family="Figtree, sans-serif" font-weight="600" font-size="42" fill="${palette.muted}">${paymentsLine(card.transfers.length)}</text>`,
       "</g>",
-      playersArt(palette, look, card.players, {
-        columns: plan.columns,
-        rowHeight: plan.rowHeight,
-        y: plan.playersTop,
+      ...card.players.map((player, index) => {
+        const slot = plan.slots[index];
+
+        return slot === undefined
+          ? ""
+          : playerRow(palette, look, player, { ...slot, best });
       }),
-      card.transfers.length === 0
+      plan.payLines.length === 0
         ? ""
-        : receiptArt(palette, card.transfers, {
+        : receiptArt(palette, plan.payLines, {
             rowHeight: plan.payHeight,
             y: plan.receiptTop,
           }),

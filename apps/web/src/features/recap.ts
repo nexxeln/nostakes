@@ -5,6 +5,7 @@ import type { NightRecap, RecapMoment } from "@nostakes/room";
 import { Option, Schema } from "effect";
 
 import { chipsText } from "./moments/captions.js";
+import type { Person } from "./moments/element.js";
 import { pictureOf } from "./moments/scene.js";
 import type { MomentPicture } from "./moments/schema.js";
 import { netText } from "./pictures/settle-up.js";
@@ -32,7 +33,7 @@ export const RecapCardSchema = Schema.Struct({
       cards: Schema.Array(Schema.String),
       face: RecapFaceSchema,
       hand: Schema.Int,
-      line: Schema.String,
+      lines: Schema.Array(Schema.String),
       title: Schema.String,
     })
   ),
@@ -116,24 +117,69 @@ const lastHandOf = (recapped: RecapMoment) => ({
   yourCards: [],
 });
 
-export const recapPictureOf = (
-  view: ClosedView,
+const pictured = (
+  everyone: readonly Person[],
   recapped: RecapMoment
 ): MomentPicture =>
-  pictureOf(people(view), lastHandOf(recapped), {
+  pictureOf(everyone, lastHandOf(recapped), {
     also: Option.none(),
     lead: recapped.moment,
   });
 
-export const takersText = (view: ClosedView, takers: readonly PlayerId[]) => {
-  const names = takers.map((player) => nameOf(view, player));
+export const recapPictureOf = (view: ClosedView, recapped: RecapMoment) =>
+  pictured(people(view), recapped);
 
-  if (names.length <= 1) {
-    return names.join("");
+const SHORT_NAME = 12;
+
+const GRAPHEMES = new Intl.Segmenter("en", { granularity: "grapheme" });
+
+export const firstName = (name: string) => name.split(" ")[0] ?? name;
+
+export const shortName = (name: string) => {
+  const letters = Array.from(GRAPHEMES.segment(name), ({ segment }) => segment);
+
+  return letters.length > SHORT_NAME
+    ? `${letters
+        .slice(0, SHORT_NAME - 1)
+        .join("")
+        .trimEnd()}\u2026`
+    : name;
+};
+
+export const NAME_FORMS: readonly ((name: string) => string)[] = [
+  (name) => name,
+  firstName,
+  (name) => shortName(firstName(name)),
+];
+
+export const captionLines = (
+  view: ClosedView,
+  recapped: RecapMoment
+): readonly string[] => [
+  ...new Set(
+    NAME_FORMS.map(
+      (form) =>
+        pictured(
+          people(view).map((person) => ({
+            ...person,
+            name: form(person.name),
+          })),
+          recapped
+        ).line
+    )
+  ),
+];
+
+export const potTakers = (names: readonly string[]) => {
+  if (names.length > 2) {
+    return "split";
   }
 
-  return `${names.slice(0, -1).join(", ")} and ${names.at(-1) ?? ""}`;
+  return `to ${names.join(" and ")}`;
 };
+
+export const takersText = (view: ClosedView, takers: readonly PlayerId[]) =>
+  potTakers(takers.map((player) => nameOf(view, player)));
 
 export interface RecapLine {
   readonly detail: string;
@@ -156,7 +202,7 @@ export const recapLines = (view: ClosedView): readonly RecapLine[] => {
     Option.map(({ hand, pot, takers }) => ({
       detail: `hand ${hand}`,
       key: "pot",
-      title: `Biggest pot, ${chipsText(pot)}, to ${takersText(view, takers)}`,
+      title: `Biggest pot, ${chipsText(pot)}, ${takersText(view, takers)}`,
     }))
   );
 
@@ -200,7 +246,7 @@ export const recapCardOf = (view: ClosedView): RecapCard => {
           name: lead?.name ?? "",
         },
         hand: recapped.hand,
-        line: picture.line,
+        lines: captionLines(view, recapped),
         title: picture.title,
       };
     }),

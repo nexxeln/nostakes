@@ -7,14 +7,20 @@ import { chipsText } from "../src/features/moments/captions.js";
 import { pictureSvg } from "../src/features/moments/picture.js";
 import { recapSvg } from "../src/features/pictures/recap-card.js";
 import {
-  fitted,
   netText,
   settleUpCardOf,
   settleUpSvg,
-  textWidth,
 } from "../src/features/pictures/settle-up.js";
 import {
+  fitted,
+  textWidth,
+  wrapped,
+  wrapsWhole,
+} from "../src/features/pictures/text-fit.js";
+import {
+  captionLines,
   nightLength,
+  potTakers,
   recapCardOf,
   recapPictureOf,
   recapCardsShown,
@@ -144,6 +150,53 @@ describe("where a shared picture says to find the site", () => {
           ),
         ].map((svg) => readText(svg).includes("nostakes.club"))
       ).toStrictEqual([0, 1, ...view.recap.moments].map(() => true));
+    }
+  );
+});
+
+const names = Arbitrary.schema(
+  Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(40))
+);
+
+const rooms = Arbitrary.schema(
+  Schema.Int.check(Schema.isBetween({ maximum: 900, minimum: 120 }))
+);
+
+describe("long names on a shared picture", () => {
+  it.prop(
+    "wraps a name onto at most two lines, each within its room",
+    { name: names, room: rooms },
+    ({ name, room }) => {
+      const lines = wrapped(name, 40, room, 2);
+
+      expect({
+        count: lines.length <= 2,
+        within: lines.every((line) => textWidth(line, 40) <= room),
+      }).toStrictEqual({ count: true, within: true });
+    }
+  );
+
+  it("keeps a forty-letter name whole on two lines of a story row", () => {
+    expect(
+      wrapsWhole("Maximiliana Wolfenstein-Vanderbilt Okafo", 42, 680, 2)
+    ).toBe(true);
+  });
+
+  it("names one or two takers of the biggest pot and calls three a split", () => {
+    expect(
+      [["Ana"], ["Ana", "Ben"], ["Ana", "Ben", "Kit"]].map(potTakers)
+    ).toStrictEqual(["to Ana", "to Ana and Ben", "split"]);
+  });
+
+  it.prop(
+    "words a recap moment with shorter names before it would cut the sentence",
+    { view: closedViews },
+    ({ view }) => {
+      for (const recapped of view.recap.moments) {
+        const [whole = "", ...shorter] = captionLines(view, recapped);
+
+        expect(shorter.every((line) => line.length <= whole.length)).toBe(true);
+      }
     }
   );
 });
