@@ -100,20 +100,6 @@ const movingPositions = (
   return { button, ...blindSeats(dealtIn, button) };
 };
 
-const previousAmong = (
-  dealtIn: Arr.NonEmptyReadonlyArray<SeatIndex>,
-  before: SeatIndex
-) => dealtIn.findLast((seat) => seat < before) ?? Arr.lastNonEmpty(dealtIn);
-
-const behindTheBigBlind = (
-  dealtIn: Arr.NonEmptyReadonlyArray<SeatIndex>,
-  big: SeatIndex
-): Positions => {
-  const small = previousAmong(dealtIn, big);
-
-  return { big, button: previousAmong(dealtIn, small), small };
-};
-
 const deadButtonPositions = (
   dealtIn: Arr.NonEmptyReadonlyArray<SeatIndex>,
   last: Blinds
@@ -127,7 +113,7 @@ const deadButtonPositions = (
   }
 
   return big === last.small
-    ? behindTheBigBlind(dealtIn, big)
+    ? { big, button: last.big, small: last.big }
     : { big, button: last.small, small: last.big };
 };
 
@@ -321,7 +307,7 @@ const lineProblem = (
   const rules = state.config.straddle;
   const { big: bigBlind, button } = at;
 
-  if (dealtIn.length === 2) {
+  if (dealtIn.length === 2 || at.button === at.small) {
     return Option.some("HeadsUp");
   }
 

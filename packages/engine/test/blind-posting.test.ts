@@ -16,7 +16,7 @@ import {
   pendingDecisions,
 } from "../src/index.js";
 import type { Command, Event, TableConfig, TableState } from "../src/index.js";
-import { dealProblems } from "./blind-checks.js";
+import { NO_ORBITS, dealProblems, orbitsAfter } from "./blind-checks.js";
 import {
   baseConfig,
   calls,
@@ -388,7 +388,7 @@ describe("casino heads-up", () => {
 const acesBeatSevenDeuce = deckStartingWith("7c Ah 2d As Kd Qc Jh 9s 4c");
 
 describe("the casino big blind after a heads-up hand", () => {
-  it("moves on one seat when two seats that busted come back at once, with the small blind behind it and the button behind that", () => {
+  it("moves on one seat when two seats that busted come back at once, and last hand's big blind takes the small blind and keeps the button", () => {
     const first = play(
       startHand(occupiedTable(casino, { 1: 2000, 5: 50 }), acesBeatSevenDeuce)
         .state,
@@ -443,11 +443,82 @@ describe("the casino big blind after a heads-up hand", () => {
       NO_DEBT,
       NO_DEBT,
     ]);
-    expect(started(nextHand(back).events)).toMatchObject({
+    const grown = nextHand(back);
+
+    expect(started(grown.events)).toMatchObject({
       bigBlindSeat: seat(4),
-      button: seat(0),
+      button: seat(1),
       dealtIn: [seat(0), seat(1), seat(4), seat(5)],
       smallBlindSeat: seat(1),
+    });
+    expect(
+      legalActions(grown.state).pipe(Option.map(({ seat: at }) => at))
+    ).toStrictEqual(Option.some(seat(5)));
+    expect(
+      rejection(
+        back,
+        Commands.StartHand({
+          deck,
+          posts: [],
+          straddles: [seat(5)],
+        })
+      )
+    ).toStrictEqual(
+      new StraddleNotAllowed({ reason: "HeadsUp", straddles: [seat(5)] })
+    );
+    expect(started(nextHand(foldedOut(grown.state)).events)).toMatchObject({
+      bigBlindSeat: seat(5),
+      button: seat(1),
+      smallBlindSeat: seat(4),
+    });
+  });
+
+  it("does not hand the button back to a seat that held it, busted, and comes back to a heads-up table", () => {
+    const first = play(
+      startHand(
+        occupiedTable(casino, { 1: 60, 2: 60, 3: 60, 4: 2000, 5: 200 }),
+        deckStartingWith("7c 8c Ah Kc 7d 2d 3d As Qd 2h Kd Qc Jh 9s 4c")
+      ).state,
+      [
+        [4, raisesTo(60)],
+        [5, folds],
+        [1, calls],
+        [2, calls],
+        [3, calls],
+      ]
+    );
+
+    expect(started(first.events)?.button ?? seat(1)).toBe(seat(1));
+    expect(stacksOf(first.state).slice(1, 6)).toStrictEqual([
+      0, 0, 0, 2180, 200,
+    ]);
+
+    const headsUp = nextHand(first.state);
+
+    expect(started(headsUp.events)).toMatchObject({
+      bigBlindSeat: seat(4),
+      button: seat(5),
+      dealtIn: [seat(4), seat(5)],
+    });
+
+    const back = run(
+      foldedOut(headsUp.state),
+      Commands.AddChips({ amount: chipCount(200), seat: seat(1) })
+    ).state;
+
+    const grown = nextHand(back);
+
+    expect(owesAt(back, 1)).toStrictEqual(NO_DEBT);
+    expect(started(grown.events)).toMatchObject({
+      bigBlindSeat: seat(5),
+      button: seat(4),
+      dealtIn: [seat(1), seat(4), seat(5)],
+      smallBlindSeat: seat(4),
+    });
+    expect(started(nextHand(foldedOut(grown.state)).events)).toMatchObject({
+      bigBlindSeat: seat(1),
+      button: seat(4),
+      smallBlindSeat: seat(5),
     });
   });
 });
@@ -490,11 +561,23 @@ const applied = (state: TableState, command: Command) => {
     : { events: [], state };
 };
 
+const COMEBACK_HANDS = 40;
+
+const SEEDED_TABLES = 800;
+
+const SWEEP_TIMEOUT_MS = 120_000;
+
 const comebackProblems = (seed: number) => {
   const random = seededRandom(seed);
-  const seats = [0, 1, 2, 3, 4, 5, 6, 7, 8].filter(() => random.chance(2, 3));
+  const crowd = random.chance(1, 3) ? 2 : 1;
+
+  const seats = [0, 1, 2, 3, 4, 5, 6, 7, 8].filter(() =>
+    random.chance(crowd, 3)
+  );
+
   const problems: string[] = [];
   let afterHeadsUp = 0;
+  let orbits = NO_ORBITS;
 
   let state = occupiedTable(
     casino,
@@ -531,7 +614,7 @@ const comebackProblems = (seed: number) => {
     return next;
   };
 
-  for (let hand = 0; hand < 30; hand += 1) {
+  for (let hand = 0; hand < COMEBACK_HANDS; hand += 1) {
     state = rebuys(state, 35, 2);
 
     const before = state;
@@ -551,7 +634,14 @@ const comebackProblems = (seed: number) => {
 
     ({ state } = dealt);
 
-    const found = dealProblems(before, dealt.events, state);
+    const orbit = orbitsAfter(orbits, before, dealt.events);
+
+    ({ orbits } = orbit);
+
+    const found = [
+      ...dealProblems(before, dealt.events, state),
+      ...orbit.problems,
+    ];
 
     afterHeadsUp +=
       lastDealt === 2 && (started(dealt.events)?.dealtIn.length ?? 0) > 2
@@ -588,20 +678,29 @@ const tableSeed = Schema.Int.check(
 
 describe("generated tables where seats bust and come back", () => {
   it.prop(
-    "the big blind moves on one seat: no seat pays it twice in a row and it skips no seat that stayed, however many seats come back after a heads-up hand",
+    "the big blind moves on one seat, no seat pays it twice in a row, it skips no seat that stayed, and no seat holds the button twice without paying a blind in between, however many seats come back after a heads-up hand",
     { seed: tableSeed },
     ({ seed }) => {
       expect(comebackProblems(seed).problems).toStrictEqual([]);
     }
   );
 
-  it("reaches tables that grow after a heads-up hand", () => {
-    let afterHeadsUp = 0;
+  it(
+    "holds over 800 seeded tables, which reach tables that grow after a heads-up hand and seats that come back having last held the button",
+    () => {
+      let afterHeadsUp = 0;
+      const problems: string[] = [];
 
-    for (let seed = 1; seed <= 60; seed += 1) {
-      afterHeadsUp += comebackProblems(seed).afterHeadsUp;
-    }
+      for (let seed = 1; seed <= SEEDED_TABLES; seed += 1) {
+        const outcome = comebackProblems(seed);
 
-    expect(afterHeadsUp).toBeGreaterThan(40);
-  });
+        afterHeadsUp += outcome.afterHeadsUp;
+        problems.push(...outcome.problems);
+      }
+
+      expect(problems.slice(0, 5)).toStrictEqual([]);
+      expect(afterHeadsUp).toBeGreaterThan(600);
+    },
+    SWEEP_TIMEOUT_MS
+  );
 });

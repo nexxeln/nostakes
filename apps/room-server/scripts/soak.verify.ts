@@ -262,6 +262,7 @@ const ENDINGS: readonly NightEnding[] = [
 ];
 
 const INFORMATIONAL: ReadonlySet<CountName> = new Set([
+  "bounties",
   "endedBetweenHands",
   "handsCancelled",
   "catchUpsSkipped",

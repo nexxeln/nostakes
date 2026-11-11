@@ -211,6 +211,61 @@ const seatProblems = (
         ];
   });
 
+export type Orbits = ReadonlyMap<string, number>;
+
+export const NO_ORBITS: Orbits = new Map();
+
+export const orbitsAfter = (
+  orbits: Orbits,
+  before: TableState,
+  events: readonly Event[]
+) => {
+  const started = events.find(Events.$is("HandStarted"));
+  const problems: string[] = [];
+
+  if (started === undefined) {
+    return { orbits, problems };
+  }
+
+  if (before.config.blindPosting !== "Casino" || forgivenDeal(before)) {
+    return { orbits: NO_ORBITS, problems };
+  }
+
+  const posts = entriesOf(events, started);
+  const next = new Map<string, number>();
+
+  for (const index of SEAT_NUMBERS) {
+    const occupant = occupantAt(before, index);
+
+    if (occupant !== undefined) {
+      const dealt = started.dealtIn.some((seat) => seat === index);
+
+      const paid =
+        dealt &&
+        (index === started.bigBlindSeat ||
+          index === started.smallBlindSeat ||
+          posts.some((posted) => posted.seat === index));
+
+      const buttonsSincePaid = paid
+        ? 0
+        : (orbits.get(occupant.player) ?? 0) +
+          (dealt && index === started.button ? 1 : 0);
+
+      next.set(occupant.player, buttonsSincePaid);
+
+      if (buttonsSincePaid >= 2) {
+        problems.push(
+          `seat ${index} held the button twice without paying a blind`
+        );
+      }
+    }
+  }
+
+  const counted: Orbits = next;
+
+  return { orbits: counted, problems };
+};
+
 export const dealProblems = (
   before: TableState,
   events: readonly Event[],
