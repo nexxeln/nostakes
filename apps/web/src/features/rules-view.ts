@@ -26,8 +26,6 @@ import { icon, sheetLayer, sheetTop } from "./sheet.js";
 
 type H = HtmlBuilder<Message>;
 
-const CHEVRON = `<svg viewBox="0 0 20 20" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 4l6 6-6 6"/></svg>`;
-
 const partsView = (parts: readonly CardPart[], h: H): readonly Html[] =>
   parts.flatMap(({ changed, text }, index) => [
     index === 0 ? h.empty : h.span([h.Class("rule-dot")], [" · "]),
@@ -52,7 +50,7 @@ export const rulesCard = (view: OpenView, h: H): Html => {
           "House rules",
           isYou(view, view.host)
             ? h.span([h.Class("rules-card-edit")], ["Edit"])
-            : icon(CHEVRON, h),
+            : icon("Chevron", h),
         ]
       ),
       h.span([h.Class("rules-card-headline")], partsView(headline, h)),
@@ -227,7 +225,7 @@ const groupView = (
             [h.Class("rule-group-summary")],
             summary.length === 0 ? ["Standard"] : partsView(summary, h)
           ),
-          icon(CHEVRON, h),
+          icon("Chevron", h),
         ]
       ),
       open

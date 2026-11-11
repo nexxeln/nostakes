@@ -23,6 +23,7 @@ import { Keeper } from "../pictures/keeper.js";
 import { measureParts } from "./clip-measure.js";
 import type { PartBox } from "./clip-measure.js";
 import type { Clipper, ClipState } from "./clipper.js";
+import { paintPicture } from "./markup.js";
 import { noiseFor, perform, seededNoise } from "./synth.js";
 import type { Synth } from "./synth.js";
 
@@ -407,12 +408,12 @@ class NostakesMoment extends HTMLElement {
     this.#offered?.cancel();
     this.#fit();
     this.#card.className = small ? "card small" : "card";
-    this.#card.innerHTML = `<div class="wrap">${pictureSvg(picture, {
+    paintPicture(this.#card, picture, {
       deck: scene.deck,
       fonts: "",
       frame: "Table",
       theme: scene.theme,
-    })}</div>`;
+    });
     this.#keeping.className = "keeping gone";
     this.#play(picture);
 
@@ -474,7 +475,10 @@ class NostakesMoment extends HTMLElement {
     }
 
     this.#keeping.className = "keeping";
-    this.#keep.innerHTML = `Keep <b>${scene.picture.title}</b>`;
+    const title = document.createElement("b");
+
+    title.textContent = scene.picture.title;
+    this.#keep.replaceChildren("Keep ", title);
     this.#offered = this.#keeping.animate(STILL, { duration: KEEP_MS });
     this.#offered.onfinish = () => {
       this.#keeping.className = "keeping gone";

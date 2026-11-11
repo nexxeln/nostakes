@@ -21,6 +21,7 @@ const plugin = path.join(repoRoot, "scripts/oxlint-plugin-patterns.ts");
 const rules = [
   "nostakes-patterns/acquire-release-constructs-in-acquire-body",
   "nostakes-patterns/no-hand-rolled-hex",
+  "nostakes-patterns/no-markup-outside-builders",
   "nostakes-patterns/no-module-level-mutable-state",
   "nostakes-patterns/no-shared-pending-cache",
   "nostakes-patterns/retain-needs-stage-policy",
@@ -33,11 +34,15 @@ interface LintResult {
   readonly status: number;
 }
 
-const lintFixture = (area: string, source: string): LintResult => {
+const lintFixture = (
+  area: string,
+  source: string,
+  name = "fixture.ts"
+): LintResult => {
   const directory = mkdtempSync(path.join(tmpdir(), "nostakes-patterns-"));
   const fixtureDirectory = path.join(directory, area, "pattern-fixtures");
   const config = path.join(directory, "oxlint.json");
-  const file = path.join(fixtureDirectory, "fixture.ts");
+  const file = path.join(fixtureDirectory, name);
 
   mkdirSync(fixtureDirectory, { recursive: true });
   writeFileSync(
@@ -183,6 +188,43 @@ describe("nostakes pattern rules", () => {
         'export const hex = (bytes: number[]) => bytes.map((byte) => byte.toString(16).padStart(2, "0"));'
       ).status
     ).toBe(0);
+  });
+  it("keeps markup to the builders in markup.ts modules", () => {
+    const message = "This puts a string into the page as markup";
+
+    for (const source of [
+      'export const paint = (node: HTMLElement, name: string) => { node.innerHTML = "<b>" + name + "</b>"; };',
+      'export const paint = (node: HTMLElement) => { node.innerHTML = "<b>constant</b>"; };',
+      "export const paint = (node: Element, name: string) => { node.outerHTML = name; };",
+      'export const paint = (node: HTMLElement, name: string) => { node["innerHTML"] = name; };',
+      "export const paint = (frame: HTMLIFrameElement, name: string) => { frame.srcdoc = name; };",
+      'export const paint = (node: Element, name: string) => node.insertAdjacentHTML("beforeend", name);',
+      "export const paint = (range: Range, name: string) => range.createContextualFragment(name);",
+      "export const paint = (node: Element, name: string) => node.setHTMLUnsafe(name);",
+      "export const paint = (name: string) => globalThis.document.write(name);",
+      "export const paint = (name: string) => document.writeln(name);",
+      "export const view = (h: { InnerHTML: (html: string) => unknown }, name: string) => h.InnerHTML(name);",
+    ]) {
+      expectRuleSoft(lintFixture("apps/web/src/features", source), message);
+    }
+
+    for (const source of [
+      "export const paint = (node: HTMLElement, name: string) => { node.textContent = name; };",
+      'export const paint = (node: HTMLElement, name: string) => { const bold = document.createElement("b"); bold.textContent = name; node.replaceChildren(bold); };',
+      "export const write = (stream: { write: (text: string) => void }, name: string) => stream.write(name);",
+      'export const read = (text: string) => new DOMParser().parseFromString(text, "image/svg+xml");',
+    ]) {
+      expect.soft(lintFixture("apps/web/src/features", source).status).toBe(0);
+    }
+
+    const painter =
+      "export const paint = (node: HTMLElement, art: string) => { node.innerHTML = art; };";
+
+    expect(
+      lintFixture("apps/web/src/client", painter, "markup.ts").status
+    ).toBe(0);
+    expect(lintFixture("apps/web/scripts", painter).status).toBe(0);
+    expect(lintFixture("apps/web/test", painter).status).toBe(0);
   });
   it("rejects a module-owned waiter even through an Effect runner", () => {
     expectRule(

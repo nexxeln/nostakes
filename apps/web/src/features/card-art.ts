@@ -14,10 +14,46 @@ export const CARD_HEIGHT = 140;
 
 export const INDEX_SIZE = 46;
 
-export const rankLabel = (letter: string) => (letter === "T" ? "10" : letter);
+const RANK_LABELS = {
+  "2": "2",
+  "3": "3",
+  "4": "4",
+  "5": "5",
+  "6": "6",
+  "7": "7",
+  "8": "8",
+  "9": "9",
+  A: "A",
+  J: "J",
+  K: "K",
+  Q: "Q",
+  T: "10",
+} as const;
+
+export type RankLetter = keyof typeof RANK_LABELS;
+
+const isRankLetter = (letter: string): letter is RankLetter =>
+  Object.hasOwn(RANK_LABELS, letter);
+
+export interface CardFace {
+  readonly rank: RankLetter;
+  readonly suit: SuitLetter;
+}
+
+export const cardFaceOf = (card: string): CardFace | undefined => {
+  const rank = card.charAt(0);
+  const suit = card.charAt(1);
+
+  return card.length === 2 && isRankLetter(rank) && isSuitLetter(suit)
+    ? { rank, suit }
+    : undefined;
+};
 
 const pip = (suit: SuitLetter, x: number, y: number, size: number) =>
   `<path d="${SUIT_PATHS[suit]}" transform="translate(${x - size / 2} ${y - size / 2}) scale(${size / 100})"/>`;
 
-export const cardFaceMarks = (rank: string, suit: SuitLetter) =>
-  `<text x="12" y="50" font-size="${INDEX_SIZE}"${rank.length > 1 ? ` letter-spacing="${-INDEX_SIZE * 0.09}"` : ""}>${rank}</text>${pip(suit, 24, 70, 24)}${pip(suit, 64, CARD_HEIGHT * 0.73, 50)}`;
+export const cardFaceMarks = ({ rank, suit }: CardFace) => {
+  const label = RANK_LABELS[rank];
+
+  return `<text x="12" y="50" font-size="${INDEX_SIZE}"${label.length > 1 ? ` letter-spacing="${-INDEX_SIZE * 0.09}"` : ""}>${label}</text>${pip(suit, 24, 70, 24)}${pip(suit, 64, CARD_HEIGHT * 0.73, 50)}`;
+};

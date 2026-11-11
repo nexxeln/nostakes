@@ -1,14 +1,14 @@
 import type { Html, HtmlBuilder } from "foldkit/html";
 
+import { iconMarkup } from "./markup.js";
+import type { IconName } from "./markup.js";
 import { Messages } from "./message.js";
 import type { Message } from "./message.js";
 
 type H = HtmlBuilder<Message>;
 
-const CLOSE_ICON = `<svg viewBox="0 0 20 20" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 5l10 10M15 5L5 15"/></svg>`;
-
-export const icon = (svg: string, h: H): Html =>
-  h.span([h.Class("icon"), h.AriaHidden(true), h.InnerHTML(svg)], []);
+export const icon = (name: IconName, h: H): Html =>
+  h.span([h.Class("icon"), h.AriaHidden(true), iconMarkup(h, name)], []);
 
 export const closeButton = (h: H): Html =>
   h.button(
@@ -18,7 +18,7 @@ export const closeButton = (h: H): Html =>
       h.AriaLabel("Close"),
       h.OnClick(Messages.ClosedSheet()),
     ],
-    [icon(CLOSE_ICON, h)]
+    [icon("Close", h)]
   );
 
 export const sheetLayer = (

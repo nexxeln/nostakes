@@ -28,10 +28,6 @@ const SEAT_FACE_PX = 48;
 
 const LIST_FACE_PX = 30;
 
-const LINK_ICON = `<svg viewBox="0 0 20 20" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8.5 11.5a3 3 0 0 0 4.2 0l2.6-2.6a3 3 0 0 0-4.2-4.2l-1 1"/><path d="M11.5 8.5a3 3 0 0 0-4.2 0l-2.6 2.6a3 3 0 0 0 4.2 4.2l1-1"/></svg>`;
-
-const CHEVRON = `<svg viewBox="0 0 20 20" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 4l6 6-6 6"/></svg>`;
-
 const occupantOf = (view: OpenView, player: PlayerId) =>
   Option.fromNullishOr(
     view.seats.find(({ occupant }) =>
@@ -394,7 +390,7 @@ const peopleList = (
                   h.Class("person"),
                   h.OnClick(Messages.ClickedMember({ player: member.player })),
                 ],
-                [...content, icon(CHEVRON, h)]
+                [...content, icon("Chevron", h)]
               )
             : h.div([h.Class("person")], content),
         ]
@@ -491,7 +487,7 @@ const codeButton = (room: InRoom, h: H): Html =>
       h.AriaLabel("Copy the invite link"),
       h.OnClick(Messages.ClickedCopyLink()),
     ],
-    [room.copied === "Link" ? "Copied" : room.code, icon(LINK_ICON, h)]
+    [room.copied === "Link" ? "Copied" : room.code, icon("Link", h)]
   );
 
 export const menuSheet = (

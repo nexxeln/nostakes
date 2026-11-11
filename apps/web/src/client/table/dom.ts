@@ -1,15 +1,6 @@
-import {
-  CARD_HEIGHT,
-  cardFaceMarks,
-  isSuitLetter,
-  rankLabel,
-} from "../../features/card-art.js";
-import type { SuitLetter } from "../../features/card-art.js";
+import { paintCardFace } from "./markup.js";
 
 const SVG = "http://www.w3.org/2000/svg";
-
-const faceArt = (rank: string, suit: SuitLetter) =>
-  `<svg viewBox="0 0 100 ${CARD_HEIGHT}" aria-hidden="true">${cardFaceMarks(rank, suit)}</svg>`;
 
 export const el = <K extends keyof HTMLElementTagNameMap>(
   tag: K,
@@ -43,19 +34,6 @@ export const svgEl = <K extends keyof SVGElementTagNameMap>(
   return node;
 };
 
-const RANKS = "23456789TJQKA";
-
-const fillFace = (face: HTMLElement, card: string) => {
-  const letter = card.charAt(0);
-  const rank = rankLabel(letter);
-  const suit = card.charAt(1);
-
-  if (RANKS.includes(letter) && letter !== "" && isSuitLetter(suit)) {
-    face.className = `face suit-${suit}`;
-    face.innerHTML = faceArt(rank, suit);
-  }
-};
-
 export const cardEl = (
   card: string | null,
   width: number,
@@ -67,7 +45,7 @@ export const cardEl = (
   node.style.setProperty("--w", `${width}px`);
 
   if (card !== null) {
-    fillFace(face, card);
+    paintCardFace(face, card);
   }
 
   el("div", "back", node);

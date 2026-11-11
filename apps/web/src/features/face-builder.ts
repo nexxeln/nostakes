@@ -9,13 +9,13 @@ import {
   MOUTHS,
   NECKWEAR,
   RANKS,
-  render,
   SPECIES,
   SUITS,
 } from "@nostakes/avatar";
 import type { Avatar, Expression } from "@nostakes/avatar";
 import type { Html, HtmlBuilder } from "foldkit/html";
 
+import { faceMarkup } from "./markup.js";
 import { Messages } from "./message.js";
 import type { Message } from "./message.js";
 import type { FacePart, Theme } from "./model.js";
@@ -121,9 +121,11 @@ export const face = (
     [
       h.Class(className),
       h.AriaHidden(true),
-      h.InnerHTML(
-        render(avatar, { expression, size: look.size, theme: look.theme })
-      ),
+      faceMarkup(h, avatar, {
+        expression,
+        size: look.size,
+        theme: look.theme,
+      }),
     ],
     []
   );
@@ -139,9 +141,12 @@ const stackedFace = (
     [
       h.Class(className),
       h.AriaHidden(true),
-      h.InnerHTML(
-        render(avatar, { expression, layers: true, size: PREVIEW_PX, theme })
-      ),
+      faceMarkup(h, avatar, {
+        expression,
+        layers: true,
+        size: PREVIEW_PX,
+        theme,
+      }),
     ],
     []
   );

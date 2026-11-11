@@ -1164,12 +1164,100 @@ const noHandRolledHex = defineRule({
   },
 });
 
+const MARKUP_PROPERTIES = new Set(["innerHTML", "outerHTML", "srcdoc"]);
+
+const MARKUP_METHODS = new Set([
+  "createContextualFragment",
+  "insertAdjacentHTML",
+  "parseHTMLUnsafe",
+  "setHTMLUnsafe",
+]);
+
+const DOCUMENT_WRITERS = new Set(["write", "writeln"]);
+
+const isMarkupModule = (filename: string) =>
+  path.basename(filename) === "markup.ts";
+
+const isDocument = (node: ESTree.Expression) => {
+  const target = unwrapExpression(node);
+
+  return (
+    (target.type === "Identifier" && target.name === "document") ||
+    (target.type === "MemberExpression" &&
+      staticPropertyName(target) === "document")
+  );
+};
+
+const isMarkupCall = (node: ESTree.CallExpression) => {
+  const callee = unwrapExpression(node.callee);
+
+  if (callee.type === "Identifier") {
+    return callee.name === "InnerHTML";
+  }
+
+  if (callee.type !== "MemberExpression") {
+    return false;
+  }
+
+  const name = staticPropertyName(callee);
+
+  if (name === null) {
+    return false;
+  }
+
+  return (
+    name === "InnerHTML" ||
+    MARKUP_METHODS.has(name) ||
+    (DOCUMENT_WRITERS.has(name) && isDocument(callee.object))
+  );
+};
+
+const noMarkupOutsideBuilders = defineRule({
+  create(context) {
+    const filename = workspacePath(context.filename);
+
+    if (!isRuntimeSource(filename) || isMarkupModule(filename)) {
+      return {};
+    }
+
+    return {
+      AssignmentExpression(node) {
+        const target = node.left;
+
+        if (
+          target.type === "MemberExpression" &&
+          MARKUP_PROPERTIES.has(staticPropertyName(target) ?? "")
+        ) {
+          context.report({ messageId: "markup", node });
+        }
+      },
+      CallExpression(node) {
+        if (isMarkupCall(node)) {
+          context.report({ messageId: "markup", node });
+        }
+      },
+    };
+  },
+  meta: {
+    docs: {
+      description:
+        "Markup reaches the page only through builders in a markup.ts module.",
+    },
+    messages: {
+      markup:
+        "This puts a string into the page as markup. A name or anything else a player typed that reaches it would be read as tags and could run as script. Fix: set `textContent` or build the elements; for art the code draws, call a builder in a `markup.ts` module that takes typed values and escapes every text it writes.",
+    },
+    type: "problem",
+  },
+});
+
 export default definePlugin({
   meta: { name: "nostakes-patterns" },
   rules: {
     "acquire-release-constructs-in-acquire-body":
       acquireReleaseConstructsInAcquireBody,
     "no-hand-rolled-hex": noHandRolledHex,
+    "no-markup-outside-builders": noMarkupOutsideBuilders,
     "no-module-level-mutable-state": noModuleLevelMutableState,
     "no-shared-pending-cache": noSharedPendingCache,
     "no-sleep-in-loop": noSleepInLoop,

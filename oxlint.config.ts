@@ -90,6 +90,7 @@ export default defineConfig({
     "nostakes-boundaries/no-cross-layer-imports": "error",
     "nostakes-patterns/acquire-release-constructs-in-acquire-body": "error",
     "nostakes-patterns/no-hand-rolled-hex": "error",
+    "nostakes-patterns/no-markup-outside-builders": "error",
     "nostakes-patterns/no-module-level-mutable-state": "error",
     "nostakes-patterns/no-shared-pending-cache": "error",
     "nostakes-patterns/no-sleep-in-loop": "error",

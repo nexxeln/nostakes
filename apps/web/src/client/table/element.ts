@@ -1,4 +1,4 @@
-import { avatarFor, render } from "@nostakes/avatar";
+import { avatarFor } from "@nostakes/avatar";
 import type { Expression, Theme } from "@nostakes/avatar";
 import { REACTIONS } from "@nostakes/room";
 import type { Reaction } from "@nostakes/room";
@@ -40,6 +40,7 @@ import {
   runLanes,
 } from "./layout.js";
 import type { ButtonSpot, ButtonSpots, Geo, Pt, TagSide } from "./layout.js";
+import { paintAvatar } from "./markup.js";
 import { TableSound } from "./sound.js";
 import { Spring } from "./spring.js";
 import { tableCss } from "./styles.js";
@@ -771,7 +772,7 @@ const paintFace = (
 
   if (pic.dataset.face !== key) {
     pic.dataset.face = key;
-    pic.innerHTML = render(avatarFor(avatar), {
+    paintAvatar(pic, avatarFor(avatar), {
       expression,
       size: pixels,
       theme: look.theme,

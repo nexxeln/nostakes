@@ -1,12 +1,7 @@
 import { avatarFor, render } from "@nostakes/avatar";
 import type { Expression } from "@nostakes/avatar";
 
-import {
-  CARD_HEIGHT,
-  cardFaceMarks,
-  isSuitLetter,
-  rankLabel,
-} from "../card-art.js";
+import { CARD_HEIGHT, cardFaceMarks, cardFaceOf } from "../card-art.js";
 import type { SuitLetter } from "../card-art.js";
 import type { Deck, Theme } from "../model.js";
 
@@ -133,12 +128,13 @@ export const cardArt = (
     readonly y: number;
   }
 ) => {
-  const rank = rankLabel(card.charAt(0));
-  const suit = card.charAt(1);
+  const face = cardFaceOf(card);
   const { width, x, y } = place;
   const height = width * CARD_RATIO;
-  const marks = isSuitLetter(suit) ? cardFaceMarks(rank, suit) : "";
-  const colour = isSuitLetter(suit) ? palette.suits[suit] : palette.cardInk;
+  const marks = face === undefined ? "" : cardFaceMarks(face);
+
+  const colour =
+    face === undefined ? palette.cardInk : palette.suits[face.suit];
 
   return [
     `<g transform="rotate(${place.turn} ${number(x + width / 2)} ${number(y + height / 2)})">`,
