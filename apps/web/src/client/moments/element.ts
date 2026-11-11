@@ -39,11 +39,22 @@ const STYLE = `
 .keeping button { pointer-events: auto; font: 700 var(--text-2, 15px)/1 var(--font-body, sans-serif); color: var(--color-raised-ink, #1f1c31); background: var(--color-raised, #fffdf8); border: 0; border-radius: var(--radius-3, 10px); padding: 8px 12px; box-shadow: var(--shadow-sheet-1); display: flex; gap: 6px; align-items: center; min-height: 36px; }
 .keeping button:active { transform: translate(var(--press-1, 1px 1.8px)); }
 .keeping b { color: var(--color-accent-ink, #d63a00); }
-.keeping .story, .keeping .clip { color: var(--color-ink-muted, #716a79); font-weight: 600; padding: 8px 10px; }
+.keeping .story, .keeping .clip, .keeping .hide { color: var(--color-ink-muted, #716a79); font-weight: 600; padding: 8px 10px; }
+.keeping:not(.lingering) .hide, .keeping.lingering .keep, .keeping.lingering .story { display: none; }
+.keeping .clip[aria-busy="true"] { opacity: 0.8; }
 .gone, .keeping .gone { display: none; }
 `;
 
 const KEEP_MS = 25_000;
+
+const READY_HOLD_MS = 15_000;
+
+const MAKING: ReadonlySet<ClipState> = new Set([
+  "Asked",
+  "Checking",
+  "Making",
+  "Waiting",
+]);
 
 const ENTRY_MS = 1400;
 
@@ -111,10 +122,10 @@ class NostakesMoment extends HTMLElement {
   readonly #keep: HTMLButtonElement;
   readonly #story: HTMLButtonElement;
   readonly #clip: HTMLButtonElement;
+  readonly #hide: HTMLButtonElement;
   #keeper: Keeper | null = null;
   #clipper: Clipper | null = null;
   #clipLive = false;
-  #sceneHand = -1;
   readonly #motion = globalThis.matchMedia("(prefers-reduced-motion: reduce)");
   #scene: MomentScene | null = null;
   readonly #newest = new NewestHand<MomentHand>(handKey, idle, (hand) => {
@@ -127,6 +138,8 @@ class NostakesMoment extends HTMLElement {
   readonly #random = seededNoise(NOISE_SEED);
   #holding: Animation | null = null;
   #offered: Animation | null = null;
+  #lingering = false;
+  #released: Animation | null = null;
 
   constructor() {
     super();
@@ -153,7 +166,16 @@ class NostakesMoment extends HTMLElement {
     this.#clip.addEventListener("click", () => {
       this.#clipper?.keep();
     });
-    this.#keeping.append(this.#keep, this.#story, this.#clip);
+    this.#hide = document.createElement("button");
+    this.#hide.className = "hide";
+    this.#hide.type = "button";
+    this.#hide.textContent = "Hide";
+    this.#hide.title = "Stop making the clip";
+    this.#hide.addEventListener("click", () => {
+      this.#closeKeeping();
+      this.#dropClip();
+    });
+    this.#keeping.append(this.#keep, this.#story, this.#clip, this.#hide);
     this.#root.append(style, this.#card, this.#keeping);
     adoptEarlyProperties(this, momentElement.properties);
   }
@@ -166,6 +188,7 @@ class NostakesMoment extends HTMLElement {
     globalThis.removeEventListener("pointerdown", this.#unlock);
     this.#holding?.cancel();
     this.#offered?.cancel();
+    this.#released?.cancel();
     this.#keeper?.drop();
     this.#dropClip();
   }
@@ -196,11 +219,6 @@ class NostakesMoment extends HTMLElement {
   }
 
   set hand(next: MomentHand | null) {
-    if (next === null || next.lastHand.handNumber !== this.#sceneHand) {
-      this.#clipLive = false;
-      this.#clipper?.abandon();
-    }
-
     this.#newest.set(next);
   }
 
@@ -208,7 +226,6 @@ class NostakesMoment extends HTMLElement {
     const found = shownMomentOf(hand);
 
     if (Option.isSome(found)) {
-      this.#sceneHand = hand.lastHand.handNumber;
       this.present({
         deck: hand.deck,
         id: found.value.id,
@@ -246,6 +263,9 @@ class NostakesMoment extends HTMLElement {
     );
     this.#keeper.prepare(KEPT_FRAMES);
     this.#dropClip();
+    this.#lingering = false;
+    this.#released?.cancel();
+    this.#released = null;
     this.#clipLive = true;
     this.#show(scene);
   }
@@ -270,6 +290,10 @@ class NostakesMoment extends HTMLElement {
 
     if (!next && this.#dealing && this.#clipLive) {
       this.#clipper?.prepare();
+    }
+
+    if (this.#lingering) {
+      this.#keeping.classList.toggle("gone", next);
     }
 
     this.#dealing = next;
@@ -328,12 +352,56 @@ class NostakesMoment extends HTMLElement {
   }
 
   #showClip(state: ClipState) {
+    const busy = state === "Asked" || (this.#lingering && MAKING.has(state));
+
     this.dataset.clip = state;
     this.#clip.className =
       state === "Unavailable" || state === "Checking" ? "clip gone" : "clip";
-    this.#clip.textContent = CLIP_LABELS[state];
+    this.#clip.textContent = busy ? CLIP_LABELS.Asked : CLIP_LABELS[state];
     this.#clip.disabled = state === "Asked";
-    this.#clip.setAttribute("aria-busy", String(state === "Asked"));
+    this.#clip.setAttribute("aria-busy", String(busy));
+
+    if (!this.#lingering) {
+      return;
+    }
+
+    if (state === "Unavailable") {
+      this.#closeKeeping();
+    } else if (!MAKING.has(state) && this.#released === null) {
+      this.#released = this.#keeping.animate(STILL, {
+        duration: READY_HOLD_MS,
+      });
+      this.#released.onfinish = () => {
+        this.#closeKeeping();
+      };
+    }
+  }
+
+  #offerEnded() {
+    const state = this.#clipper?.state;
+
+    if (this.#clipLive && state !== undefined && MAKING.has(state)) {
+      this.#lingering = true;
+      this.dataset.lingering = "true";
+      this.#keeping.className = this.#dealing
+        ? "keeping lingering gone"
+        : "keeping lingering";
+      this.#showClip(state);
+
+      return;
+    }
+
+    this.#closeKeeping();
+  }
+
+  #closeKeeping() {
+    this.#lingering = false;
+    delete this.dataset.lingering;
+    this.#released?.cancel();
+    this.#released = null;
+    this.#keeping.className = "keeping gone";
+    this.#clipLive = false;
+    this.#clipper?.abandon();
   }
 
   readonly #unlock = () => {
@@ -491,9 +559,7 @@ class NostakesMoment extends HTMLElement {
     this.#keep.replaceChildren("Keep ", title);
     this.#offered = this.#keeping.animate(STILL, { duration: KEEP_MS });
     this.#offered.onfinish = () => {
-      this.#keeping.className = "keeping gone";
-      this.#clipLive = false;
-      this.#clipper?.abandon();
+      this.#offerEnded();
     };
   }
 

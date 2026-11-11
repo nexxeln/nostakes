@@ -1178,6 +1178,128 @@ const abandonedClip = (engine: BrowserType) =>
     };
   }).pipe(Effect.scoped);
 
+const PAST_THE_OFFER_MS = 27_000;
+
+const lingeredClip = (engine: BrowserType) =>
+  Effect.gen(function* lingerClip() {
+    const origin = yield* StageOrigin;
+    const opened = yield* mutedBrowser(engine);
+
+    const context = yield* attempt("open a phone-sized context", () =>
+      opened.newContext({
+        hasTouch: true,
+        viewport: { height: 844, width: 390 },
+      })
+    );
+
+    yield* attempt("stub the share sheet", () =>
+      context.addInitScript(SHARE_STUB)
+    );
+
+    const page = yield* attempt("open a page", () => context.newPage());
+    const label = `${engine.name()}-lingering`;
+    const tab = page.locator("nostakes-moment .keeping");
+
+    yield* policed(page, engine.name());
+    yield* attempt("open the stage", () =>
+      page.goto(
+        `${origin}${STAGE}/stage.html?view=live&sample=Cooler-2&theme=Light`
+      )
+    );
+    yield* attempt("wait for the pictures", () =>
+      page
+        .locator('nostakes-moment[data-drawn="Chat Story"]')
+        .waitFor({ state: "attached", timeout: 60_000 })
+    );
+    yield* attempt("tap the moment away", () =>
+      page.locator("nostakes-moment .card").click()
+    );
+
+    const started = yield* attempt("wait for the clip to start", () =>
+      page
+        .locator('nostakes-moment[data-clip="Making"]')
+        .waitFor({ state: "attached", timeout: 30_000 })
+    ).pipe(
+      Effect.as(true),
+      Effect.catchTag("ClipCheckFailed", () => Effect.succeed(false))
+    );
+
+    if (!started) {
+      return { label, line: `${label}: no clip on this browser`, problems: [] };
+    }
+
+    yield* turnTo(page, true);
+    yield* attempt("hold the turn past the Keep tab's time", () =>
+      page.waitForTimeout(PAST_THE_OFFER_MS)
+    );
+
+    const lingering = yield* attempt("look for a lingering tab", () =>
+      page.locator('nostakes-moment[data-lingering="true"]').count()
+    );
+
+    const hiddenInTurn = !(yield* attempt("look at the tab in the turn", () =>
+      tab.isVisible()
+    ));
+
+    yield* turnTo(page, false);
+
+    const backAfterTurn = yield* attempt("look at the tab after the turn", () =>
+      tab.isVisible()
+    );
+
+    const made = yield* attempt("wait for the clip", () =>
+      page
+        .locator('nostakes-moment[data-clip="Ready"]')
+        .waitFor({ state: "attached", timeout: 60_000 })
+    ).pipe(
+      Effect.as(true),
+      Effect.catchTag("ClipCheckFailed", () => Effect.succeed(false))
+    );
+
+    const offered = made
+      ? yield* attempt("tap Clip on the lingering tab", () =>
+          page.locator("nostakes-moment .clip").click()
+        ).pipe(
+          Effect.andThen(
+            attempt("wait for the clip to reach the share sheet", () =>
+              sharedAtLeast(page, 1, 15_000)
+            )
+          ),
+          Effect.as(true),
+          Effect.catchTag("ClipCheckFailed", () => Effect.succeed(false))
+        )
+      : false;
+
+    yield* attempt("hide the tab", () =>
+      page.locator("nostakes-moment .hide").click()
+    ).pipe(Effect.catchTag("ClipCheckFailed", () => Effect.void));
+
+    const hidden = !(yield* attempt("look at the tab after Hide", () =>
+      tab.isVisible()
+    ));
+
+    return {
+      label,
+      line: `${label}: ${lingering > 0 ? "lingered" : "left"} past the Keep tab's time, ${hiddenInTurn ? "hidden" : "shown"} in the turn, ${backAfterTurn ? "back" : "gone"} after it, ${made ? "made" : "never made"}, ${offered ? "shared" : "not shared"}, ${hidden ? "gone" : "still there"} after Hide`,
+      problems: [
+        ...(lingering > 0
+          ? []
+          : [`${label}: the tab left with the clip still being made`]),
+        ...(hiddenInTurn
+          ? []
+          : [`${label}: the lingering tab stayed through the player's turn`]),
+        ...(backAfterTurn
+          ? []
+          : [`${label}: the tab did not come back after the turn`]),
+        ...(made ? [] : [`${label}: the clip was never made`]),
+        ...(offered
+          ? []
+          : [`${label}: Clip on the lingering tab shared nothing`]),
+        ...(hidden ? [] : [`${label}: Hide left the tab on the table`]),
+      ],
+    };
+  }).pipe(Effect.scoped);
+
 const replayedClip = (
   engine: BrowserType,
   settings: Settings,
@@ -1476,6 +1598,7 @@ const checks = Effect.gen(function* checkClips() {
         refusedClip(engine),
         askedClip(engine, settings),
         abandonedClip(engine),
+        lingeredClip(engine),
         guardedClip(engine, 1),
         guardedClip(engine, 2),
         guardedClip(engine, 8),
