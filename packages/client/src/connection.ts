@@ -4,7 +4,12 @@ import type { Cause } from "effect";
 import type { ConnectionEvent, Link } from "./client-events.js";
 import type { ClientCodec, ClientMessage, RoomTypes } from "./codec.js";
 import { SocketEvents } from "./socket-event.js";
-import { CLIENT_BURST_REFILL_MS, CLIENT_FRAME_BURST } from "./timing.js";
+import {
+  CLIENT_BURST_REFILL_MS,
+  CLIENT_COMMAND_BURST,
+  CLIENT_COMMAND_REFILL_MS,
+  CLIENT_FRAME_BURST,
+} from "./timing.js";
 import type { Socket } from "./transport.js";
 import { Transport } from "./transport.js";
 
@@ -76,6 +81,12 @@ const writeFrames = <T extends RoomTypes>(
 ) =>
   Stream.fromQueue(outlet).pipe(
     Stream.rechunk(1),
+    Stream.throttle({
+      cost: (frames) => frames.filter(codec.client.guards.Command).length,
+      duration: `${CLIENT_COMMAND_REFILL_MS} millis`,
+      strategy: "shape",
+      units: CLIENT_COMMAND_BURST,
+    }),
     Stream.throttle({
       cost: (frames) => frames.length,
       duration: `${CLIENT_BURST_REFILL_MS} millis`,

@@ -1,11 +1,14 @@
 import { Option } from "effect";
 
 import {
+  COMMAND_BURST,
+  COMMANDS_PER_SECOND,
   FRAME_BURST,
   FRAMES_PER_SECOND,
   ROOM_STALL_TOLERANCE_MS,
   SIGNAL_BURST,
   SIGNALS_PER_SECOND,
+  SOCKETS_PER_PLAYER,
 } from "./limits.js";
 
 const MILLI = 1000;
@@ -18,6 +21,17 @@ export interface Allowance {
 export const FRAME_ALLOWANCE: Allowance = {
   burst: FRAME_BURST + (FRAMES_PER_SECOND * ROOM_STALL_TOLERANCE_MS) / MILLI,
   perSecond: FRAMES_PER_SECOND,
+};
+
+export const PLAYER_FRAME_ALLOWANCE: Allowance = {
+  burst: FRAME_ALLOWANCE.burst * SOCKETS_PER_PLAYER,
+  perSecond: FRAME_ALLOWANCE.perSecond * SOCKETS_PER_PLAYER,
+};
+
+export const COMMAND_ALLOWANCE: Allowance = {
+  burst:
+    COMMAND_BURST + (COMMANDS_PER_SECOND * ROOM_STALL_TOLERANCE_MS) / MILLI,
+  perSecond: COMMANDS_PER_SECOND,
 };
 
 export const SIGNAL_ALLOWANCE: Allowance = {

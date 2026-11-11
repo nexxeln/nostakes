@@ -42,6 +42,7 @@ export interface RoomStorage {
   ) => Option.Option<string>;
   readonly storeReply: (player: PlayerId, id: CommandId, reply: string) => void;
   readonly countReplies: () => number;
+  readonly rowsWritten: () => number;
   readonly grant: (credential: Credential) => void;
   readonly credentials: () => readonly Credential[];
   readonly refusals: () => Option.Option<Refusals>;

@@ -106,6 +106,14 @@ export const sqliteStorage = (
   keepAlive: (pending: Promise<void>) => void
 ): RoomStorage => {
   const { sql } = storage;
+  let written = 0;
+
+  const writeRows = (query: string, ...bindings: unknown[]) => {
+    const cursor = sql.exec(query, ...bindings);
+
+    cursor.toArray();
+    written += cursor.rowsWritten;
+  };
 
   const isCreated = () =>
     decodeTables(
@@ -118,7 +126,7 @@ export const sqliteStorage = (
 
   return {
     appendEvent: ({ at, event, seq }) => {
-      sql.exec(
+      writeRows(
         "insert into events (seq, at, event) values (?, ?, ?)",
         seq,
         at,
@@ -148,7 +156,7 @@ export const sqliteStorage = (
         sql.exec(statement);
       }
 
-      sql.exec(
+      writeRows(
         "insert into meta (id, schema_version, code, halted) values (1, ?, ?, null)",
         STORAGE_SCHEMA_VERSION,
         code
@@ -183,7 +191,7 @@ export const sqliteStorage = (
       Effect.andThen(Effect.promise(() => storage.deleteAll()))
     ),
     grant: ({ hash, player }) => {
-      sql.exec(
+      writeRows(
         "insert into members_auth (player, token_hash) values (?, ?)",
         player,
         hash
@@ -191,8 +199,8 @@ export const sqliteStorage = (
     },
     halt: (reason, soundSeq) => {
       sql.exec(soundSeqTable);
-      sql.exec("update meta set halted = ? where id = 1", reason);
-      sql.exec(
+      writeRows("update meta set halted = ? where id = 1", reason);
+      writeRows(
         "insert or replace into sound_seq (id, seq) values (1, ?)",
         soundSeq
       );
@@ -223,17 +231,17 @@ export const sqliteStorage = (
         : Option.none(),
     noteCommandFaults: (faults) => {
       sql.exec(commandFaultsTable);
-      sql.exec(
+      writeRows(
         "insert or replace into command_faults (id, faults) values (1, ?)",
         faults
       );
     },
     noteRefusals: (refusals) => {
       sql.exec(refusalsTable);
-      sql.exec("delete from refusals");
+      writeRows("delete from refusals");
 
       for (const { count, deadline, retryAt } of Option.toArray(refusals)) {
-        sql.exec(
+        writeRows(
           "insert into refusals (id, deadline, count, retry_at) values (1, ?, ?, ?)",
           deadline,
           count,
@@ -256,7 +264,9 @@ export const sqliteStorage = (
         }))
       );
     },
+    rowsWritten: () => written,
     setAlarm: (at) => {
+      written += Option.isSome(at) ? 1 : 0;
       keepAlive(
         Option.match(at, {
           onNone: () => storage.deleteAlarm(),
@@ -265,13 +275,13 @@ export const sqliteStorage = (
       );
     },
     storeReply: (player, id, reply) => {
-      sql.exec(
-        "insert into commands (player, id, reply) values (?, ?, ?)",
+      writeRows(
+        "insert or ignore into commands (player, id, reply) values (?, ?, ?)",
         player,
         id,
         reply
       );
-      sql.exec(
+      writeRows(
         `delete from commands where player = ? and rowid not in (
            select rowid from commands where player = ? order by rowid desc limit ?
          )`,

@@ -3,15 +3,16 @@ import * as Test from "@alchemy.run/test/Vitest";
 import { expect } from "@effect/vitest";
 import type { PlayerId, RoomPass } from "@nostakes/protocol";
 import {
+  COMMAND_BURST,
+  COMMANDS_PER_SECOND,
   SeqSchema,
   FRAME_BURST,
-  FRAMES_PER_SECOND,
   SIGNAL_BURST,
+  SOCKETS_PER_PLAYER,
 } from "@nostakes/protocol";
 import { Effect, Option, Redacted, Schema, pipe } from "effect";
 import * as FetchHttpClient from "effect/http/FetchHttpClient";
 
-import { SOCKETS_PER_PLAYER } from "../src/room-rpc.js";
 import {
   appliedSeqs,
   codec,
@@ -101,9 +102,9 @@ const dealRound = (
   });
 
 const pace = (index: number) =>
-  index < FRAME_BURST - 4
+  index < COMMAND_BURST - 2
     ? Effect.void
-    : Effect.sleep(`${Math.ceil(1000 / (FRAMES_PER_SECOND - 2))} millis`);
+    : Effect.sleep(`${Math.ceil(1000 / COMMANDS_PER_SECOND)} millis`);
 
 test(
   "4. secrecy: across reconnects and catch-up no socket receives another member's secret",
@@ -233,7 +234,7 @@ test(
     const ben = yield* joinAs(base, benPass, "ben");
     const cy = yield* joinAs(base, cyPass, "cy");
     const start = ana.welcome.seq;
-    const bursts = 30;
+    const bursts = 16;
     const benFirst = ben.client;
     let benSecond = ben.client;
     let benCut = 0;
@@ -294,7 +295,7 @@ test(
   }).pipe(Effect.provide(FetchHttpClient.layer))
 );
 
-const COMMANDS_PER_CLIENT = 50;
+const COMMANDS_PER_CLIENT = 5;
 
 const sendAll = (client: RoomClient, prefix: string) =>
   Effect.gen(function* sendEveryCommand() {
@@ -322,10 +323,20 @@ const eventLog = (client: RoomClient) =>
   );
 
 test(
-  "13. order under load: three members on every device they may hold send 450 commands in all and every socket sees the stored order",
+  "13. order under load: eight members on every device they may hold send 120 commands in all and every socket sees the stored order",
   Effect.gen(function* underLoad() {
     const base = yield* baseUrl;
-    const passes = yield* openRoomWith(base, ["Ana", "Ben", "Cy"]);
+
+    const passes = yield* openRoomWith(base, [
+      "Ana",
+      "Ben",
+      "Cy",
+      "Dee",
+      "Eli",
+      "Fay",
+      "Gus",
+      "Hal",
+    ]);
 
     const devices = passes.flatMap((pass) =>
       Array.from({ length: SOCKETS_PER_PLAYER }, () => pass)

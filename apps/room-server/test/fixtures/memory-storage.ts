@@ -38,8 +38,10 @@ export const memoryStorage = () => {
   let tables = emptyTables;
   let alarm = Option.none<number>();
   let transactions = 0;
+  let written = 0;
 
   const write = (change: (current: Tables) => Tables) => {
+    written += 1;
     tables = change(tables);
   };
 
@@ -106,10 +108,19 @@ export const memoryStorage = () => {
       write((current) => ({ ...current, refusals }));
     },
     refusals: () => tables.refusals,
+    rowsWritten: () => written,
     setAlarm: (at) => {
       alarm = at;
     },
     storeReply: (player, id, reply) => {
+      if (
+        tables.replies.some(
+          (stored) => stored.player === player && stored.id === id
+        )
+      ) {
+        return;
+      }
+
       write((current) => {
         const replies = [...current.replies, { id, player, reply }];
         const mine = replies.filter((stored) => stored.player === player);

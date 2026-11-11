@@ -1,10 +1,30 @@
 import type * as cf from "@cloudflare/workers-types";
-import { CloseReasonSchema, PlayerIdSchema } from "@nostakes/protocol";
+import {
+  CloseReasonSchema,
+  CommandIdSchema,
+  PlayerIdSchema,
+} from "@nostakes/protocol";
 import { Option, Result, Schema } from "effect";
+
+export const REJECTIONS_KEPT_PER_SOCKET = 8;
+
+export const REJECTION_BYTES_PER_SOCKET = 8192;
+
+export const KeptRejectionSchema = Schema.Struct({
+  id: CommandIdSchema,
+  reply: Schema.String,
+});
+
+export type KeptRejection = typeof KeptRejectionSchema.Type;
 
 export const AttachmentSchema = Schema.TaggedUnion({
   Closed: { reason: CloseReasonSchema },
-  Live: { heardAt: Schema.Int, opened: Schema.Int, player: PlayerIdSchema },
+  Live: {
+    heardAt: Schema.Int,
+    opened: Schema.Int,
+    player: PlayerIdSchema,
+    rejected: Schema.Array(KeptRejectionSchema),
+  },
   Pending: { acceptedAt: Schema.Int, opened: Schema.Int },
 });
 

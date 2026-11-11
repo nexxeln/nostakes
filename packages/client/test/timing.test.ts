@@ -1,5 +1,7 @@
 import { describe, expect, it } from "@effect/vitest";
 import {
+  COMMAND_BURST,
+  COMMANDS_PER_SECOND,
   FRAME_BURST,
   FRAMES_PER_SECOND,
   PING_FRAME,
@@ -10,6 +12,8 @@ import { Result } from "effect";
 import {
   ANSWER_LIMIT_MS,
   CLIENT_BURST_REFILL_MS,
+  CLIENT_COMMAND_BURST,
+  CLIENT_COMMAND_REFILL_MS,
   CLIENT_FRAME_BURST,
   OVERDUE_GRACE_MS,
   PING_INTERVAL_MS,
@@ -22,6 +26,13 @@ describe("frame budget", () => {
     expect(CLIENT_FRAME_BURST).toBeLessThan(FRAME_BURST);
     expect(CLIENT_FRAME_BURST * 1000).toBeLessThan(
       FRAMES_PER_SECOND * CLIENT_BURST_REFILL_MS
+    );
+  });
+
+  it("sends commands in bursts and at a rate within the server's command allowance, so a player's own taps never get their socket closed", () => {
+    expect(CLIENT_COMMAND_BURST).toBeLessThan(COMMAND_BURST);
+    expect(CLIENT_COMMAND_BURST * 1000).toBeLessThanOrEqual(
+      COMMANDS_PER_SECOND * CLIENT_COMMAND_REFILL_MS
     );
   });
 });

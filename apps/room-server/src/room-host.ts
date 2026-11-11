@@ -70,7 +70,7 @@ export interface CommitInput<T extends RoomTypes> {
 
 export type CommitNote = Data.TaggedEnum<{
   Replayed: { readonly id: CommandId };
-  Rejected: { readonly stored: boolean };
+  Rejected: { readonly reply: string };
   Committed: { readonly from: number; readonly to: number };
   StorageFailed: { readonly cause: string };
   Crashed: { readonly cause: string; readonly fault: string };
@@ -499,36 +499,30 @@ export const hostRoom = <T extends RoomTypes>(
     }
   };
 
-  const reject = (
-    input: CommitInput<T>,
-    rejection: T["Rejection"]
-  ): CommitResult<T> => {
+  const reject = (rejection: T["Rejection"]): CommitResult<T> => {
     const reply = codec.reply.cases.Rejected.make({ rejection });
 
-    const stored = Result.try({
+    return {
+      events: [],
+      note: CommitNotes.Rejected({ reply: codec.encodeReply(reply) }),
+      reply,
+    };
+  };
+
+  const keepReplies = (
+    player: PlayerId,
+    replies: readonly { readonly id: CommandId; readonly reply: string }[]
+  ) =>
+    Result.try({
       catch: (cause) => Inspectable.toStringUnknown(cause, 0),
       try: () => {
         storage.transaction(() => {
-          storeReply(input.origin, reply);
+          for (const { id, reply } of replies) {
+            storage.storeReply(player, id, reply);
+          }
         });
       },
     });
-
-    return Result.match(stored, {
-      onFailure: (cause) => ({
-        events: [],
-        note: CommitNotes.StorageFailed({ cause }),
-        reply: unavailable("StorageFailed"),
-      }),
-      onSuccess: () => ({
-        events: [],
-        note: CommitNotes.Rejected({
-          stored: Origins.$is("Member")(input.origin),
-        }),
-        reply,
-      }),
-    });
-  };
 
   const accept = (
     input: CommitInput<T>,
@@ -700,7 +694,7 @@ export const hostRoom = <T extends RoomTypes>(
     }
 
     return Result.match(decided.success, {
-      onFailure: (rejection) => reject(input, rejection),
+      onFailure: reject,
       onSuccess: (events) => accept(input, events, connections),
     });
   };
@@ -1016,6 +1010,7 @@ export const hostRoom = <T extends RoomTypes>(
     commit,
     dueAt,
     expiresAt,
+    keepReplies,
     nextDeadline,
     noteAttendance,
     snapshot: () => current,

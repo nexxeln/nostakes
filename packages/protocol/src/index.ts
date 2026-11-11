@@ -20,8 +20,10 @@ export {
 } from "./frames.js";
 
 export {
+  COMMAND_ALLOWANCE,
   FRAME_ALLOWANCE,
   fullBucket,
+  PLAYER_FRAME_ALLOWANCE,
   SIGNAL_ALLOWANCE,
   spendToken,
   type Allowance,
@@ -44,6 +46,8 @@ export {
 } from "./http.js";
 
 export {
+  COMMAND_BURST,
+  COMMANDS_PER_SECOND,
   FRAME_BURST,
   FRAMES_PER_SECOND,
   ROOM_STALL_TOLERANCE_MS,
@@ -54,6 +58,7 @@ export {
   SIGNAL_BURST,
   SIGNALS_PER_SECOND,
   SOCKET_SILENCE_LIMIT_MS,
+  SOCKETS_PER_PLAYER,
 } from "./limits.js";
 
 export {

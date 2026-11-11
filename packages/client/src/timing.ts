@@ -1,4 +1,4 @@
-import { FRAME_BURST } from "@nostakes/protocol";
+import { COMMAND_BURST, FRAME_BURST } from "@nostakes/protocol";
 
 export { PING_INTERVAL_MS } from "@nostakes/protocol";
 
@@ -23,3 +23,7 @@ export const WAKE_PROBE_MS = 2000;
 export const CLIENT_FRAME_BURST = FRAME_BURST - 2;
 
 export const CLIENT_BURST_REFILL_MS = 500;
+
+export const CLIENT_COMMAND_BURST = COMMAND_BURST - 2;
+
+export const CLIENT_COMMAND_REFILL_MS = 5000;

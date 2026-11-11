@@ -6,6 +6,12 @@ export const FRAME_BURST = 10;
 
 export const ROOM_STALL_TOLERANCE_MS = 3000;
 
+export const SOCKETS_PER_PLAYER = 3;
+
+export const COMMANDS_PER_SECOND = 2;
+
+export const COMMAND_BURST = 12;
+
 export const SIGNALS_PER_SECOND = 4;
 
 export const SIGNAL_BURST = 6;

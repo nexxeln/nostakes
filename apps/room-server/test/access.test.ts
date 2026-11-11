@@ -3,18 +3,21 @@ import * as Test from "@alchemy.run/test/Vitest";
 import { expect } from "@effect/vitest";
 import {
   CLOSE_CODES,
+  COMMAND_ALLOWANCE,
   FRAME_ALLOWANCE,
   HELLO_TIMEOUT_MS,
   HttpRefusalSchema,
   MAX_FRAME_BYTES,
   PING_FRAME,
+  PLAYER_FRAME_ALLOWANCE,
   PONG_FRAME,
   ROOM_CODE_ALPHABET,
   RoomCodeSchema,
+  SOCKETS_PER_PLAYER,
   TOKEN_BYTES,
   TokenSchema,
 } from "@nostakes/protocol";
-import type { RoomCode, RoomPass } from "@nostakes/protocol";
+import type { CloseReason, RoomCode, RoomPass } from "@nostakes/protocol";
 import {
   Effect,
   Option,
@@ -32,11 +35,8 @@ import * as HttpClientRequest from "effect/http/HttpClientRequest";
 import type * as HttpClientResponse from "effect/http/HttpClientResponse";
 
 import { retryDelay } from "../src/refused-deadline.js";
-import {
-  MAX_MEMBERS,
-  PENDING_SOCKETS,
-  SOCKETS_PER_PLAYER,
-} from "../src/room-rpc.js";
+import { MAX_MEMBERS, PENDING_SOCKETS } from "../src/room-rpc.js";
+import { REJECTIONS_KEPT_PER_SOCKET } from "../src/socket-attachment.js";
 import {
   codec,
   command,
@@ -89,7 +89,8 @@ const baseUrl = deployed.pipe(
 
 const Commands = ToyMemberCommandSchema.cases;
 
-const FLOOD = FRAME_ALLOWANCE.burst + 2 * FRAME_ALLOWANCE.perSecond;
+const FLOOD =
+  PLAYER_FRAME_ALLOWANCE.burst + 2 * PLAYER_FRAME_ALLOWANCE.perSecond;
 
 const isEvent = ToyRedactedSchema.guards;
 
@@ -484,7 +485,7 @@ test(
     ).length;
 
     expect(tooMany.reason).toBe("TooManyFrames");
-    expect(pongs).toBeGreaterThanOrEqual(FRAME_ALLOWANCE.burst - 2);
+    expect(pongs).toBeGreaterThanOrEqual(PLAYER_FRAME_ALLOWANCE.burst - 2);
     expect(pongs).toBeLessThan(FLOOD);
   }).pipe(Effect.provide(FetchHttpClient.layer))
 );
@@ -765,5 +766,153 @@ test(
       waiting,
       Effect.forEach((client) => client.disconnect)
     );
+  }).pipe(Effect.provide(FetchHttpClient.layer))
+);
+
+const CHURNED_SOCKETS = 6;
+
+const isClosingWith =
+  (reason: CloseReason) =>
+  (message: ToyServerMessage): message is ToyClosing =>
+    isClosing(message) && message.reason === reason;
+
+type ToyClosing = typeof codec.server.cases.Closing.Type;
+
+const UNDER_ONE_SOCKET = FRAME_ALLOWANCE.burst - 1;
+
+test(
+  "15. writes on demand: a member's rejected commands write no storage while their socket is open and stay final for their ids on every socket and after a reconnect, and a player's commands and frames are metered across all their sockets",
+  Effect.gen(function* writesOnDemand() {
+    const base = yield* baseUrl;
+
+    const [anaPass, benPass, cyPass] = yield* openRoomWith(base, [
+      "Ana",
+      "Ben",
+      "Cy",
+    ]);
+
+    if (
+      anaPass === undefined ||
+      benPass === undefined ||
+      cyPass === undefined
+    ) {
+      return;
+    }
+
+    const { code } = anaPass;
+    const ana = yield* joinAs(base, anaPass, "ana laptop");
+    const before = yield* inspect(base, code);
+    const tries = COMMAND_ALLOWANCE.burst - 4;
+    const early: ToyServerMessage[] = [];
+
+    for (let index = 0; index < tries; index += 1) {
+      yield* ana.client.send(command(`early ${index}`, Commands.Act.make({})));
+      early.push(
+        yield* ana.client.next(
+          `reply early ${index}`,
+          replyTo(`early ${index}`)
+        )
+      );
+    }
+
+    const afterRejections = yield* inspect(base, code);
+    const phone = yield* joinAs(base, anaPass, "ana phone");
+
+    yield* phone.client.send(
+      command("turn", Commands.StartTurn.make({ ms: 600_000 }))
+    );
+
+    const turn = yield* phone.client.next("reply turn", replyTo("turn"));
+
+    yield* phone.client.send(
+      command(`early ${tries - 1}`, Commands.Act.make({}))
+    );
+
+    const fromLaptop = yield* phone.client.next(
+      "the laptop's rejection",
+      replyTo(`early ${tries - 1}`)
+    );
+
+    yield* ana.client.disconnect;
+
+    const kept = yield* inspect(base, code).pipe(
+      Effect.repeat({
+        schedule: Schedule.spaced("50 millis"),
+        times: 40,
+        until: (inspection) => inspection.replies > before.replies + 1,
+      })
+    );
+
+    const again = yield* joinAs(base, anaPass, "ana laptop again");
+
+    yield* again.client.send(
+      command(`early ${tries - 2}`, Commands.Act.make({}))
+    );
+
+    const fromStorage = yield* again.client.next(
+      "the stored rejection",
+      replyTo(`early ${tries - 2}`)
+    );
+
+    expect(
+      early.every(
+        (reply) =>
+          codec.server.guards.Reply(reply) &&
+          codec.reply.guards.Rejected(reply.result)
+      )
+    ).toBe(true);
+    expect(afterRejections.rowsWritten).toBe(before.rowsWritten);
+    expect(afterRejections.replies).toBe(before.replies);
+    expect(
+      codec.server.guards.Reply(turn) &&
+        codec.reply.guards.Accepted(turn.result)
+    ).toBe(true);
+    expect(fromLaptop).toStrictEqual(early.at(-1));
+    expect(fromStorage).toStrictEqual(early.at(-2));
+    expect(kept.replies).toBe(before.replies + 1 + REJECTIONS_KEPT_PER_SOCKET);
+
+    const benSockets = yield* pipe(
+      Array.from({ length: SOCKETS_PER_PLAYER }, (_, index) => index),
+      Effect.forEach((index) => joinAs(base, benPass, `ben ${index}`))
+    );
+
+    for (let index = 0; index <= COMMAND_ALLOWANCE.burst; index += 1) {
+      const sender = benSockets[index % benSockets.length];
+
+      if (sender !== undefined) {
+        yield* sender.client.send(
+          command(`count ${index}`, Commands.Increment.make({ times: 1 }))
+        );
+      }
+    }
+
+    const benClosing = yield* Effect.raceAll(
+      benSockets.map(({ client }) =>
+        client.next("the flood's close", isClosing)
+      )
+    );
+
+    const churned: RoomClient[] = [];
+
+    for (let index = 0; index < CHURNED_SOCKETS; index += 1) {
+      const { client } = yield* joinAs(base, cyPass, `cy ${index}`);
+
+      for (let frame = 0; frame < UNDER_ONE_SOCKET; frame += 1) {
+        yield* client.sendText(paddedPing(PING_FRAME.length + 1));
+      }
+
+      churned.push(client);
+    }
+
+    const cyClosing = yield* Effect.raceAll(
+      churned.map((client) =>
+        client.next("a flood's close", isClosingWith("TooManyFrames"))
+      )
+    );
+
+    expect(benClosing).toStrictEqual(
+      codec.server.cases.Closing.make({ reason: "TooManyFrames" })
+    );
+    expect(cyClosing.reason).toBe("TooManyFrames");
   }).pipe(Effect.provide(FetchHttpClient.layer))
 );

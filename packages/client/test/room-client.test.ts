@@ -1,6 +1,8 @@
 import { describe, expect, it } from "@effect/vitest";
 import {
   BuildIdSchema,
+  COMMAND_BURST,
+  COMMANDS_PER_SECOND,
   FRAME_BURST,
   FRAMES_PER_SECOND,
   MAX_FRAME_BYTES,
@@ -199,15 +201,16 @@ const helloAfter = (socket: FakeSocket) =>
 const seqsOf = (seen: readonly Activity<ToyTypes["Event"]>[]) =>
   seen.flatMap((item) => (Activities.$is("Applied")(item) ? [item.seq] : []));
 
-const serverAdmits = (frames: readonly SentFrame[]) => {
-  let tokens = FRAME_BURST * 1000;
+const serverAdmits = (
+  frames: readonly SentFrame[],
+  burst = FRAME_BURST,
+  perSecond = FRAMES_PER_SECOND
+) => {
+  let tokens = burst * 1000;
   let last = frames[0]?.at ?? 0;
 
   return frames.every(({ at }) => {
-    tokens = Math.min(
-      FRAME_BURST * 1000,
-      tokens + (at - last) * FRAMES_PER_SECOND
-    );
+    tokens = Math.min(burst * 1000, tokens + (at - last) * perSecond);
     last = at;
 
     if (tokens < 1000) {
@@ -1009,7 +1012,7 @@ describe("room client against a fake socket", () => {
         const open = yield* socket(0);
 
         const burst = yield* Effect.all(
-          Array.from({ length: 120 }, (_, index) => client.issue(add(index)))
+          Array.from({ length: 60 }, (_, index) => client.issue(add(index)))
         );
 
         const later: IssuedCommand<ToyTypes>[] = [];
@@ -1488,7 +1491,7 @@ describe("room client against a fake socket", () => {
   );
 
   it.effect(
-    "frames never outrun the server's flood limit, even in a resend burst",
+    "frames and commands never outrun the server's limits, even in a resend burst",
     () =>
       Effect.gen(function* rateLimited() {
         const { client, greet } = yield* harness;
@@ -1502,12 +1505,19 @@ describe("room client against a fake socket", () => {
 
         const open = yield* greet(0, 1);
 
-        for (let step = 0; step < 100; step += 1) {
+        for (let step = 0; step < 400; step += 1) {
           yield* advance(50);
         }
 
         expect(commandIds(open)).toEqual(issued.map(({ id }) => id));
         expect(serverAdmits(open.sent)).toBe(true);
+        expect(
+          serverAdmits(
+            open.sent.filter(({ message }) => Sent.Command(message)),
+            COMMAND_BURST,
+            COMMANDS_PER_SECOND
+          )
+        ).toBe(true);
         expect(open.sent.filter(({ at }) => at === open.openedAt).length).toBe(
           8
         );

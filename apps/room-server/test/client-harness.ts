@@ -12,7 +12,7 @@ import type {
   RoomClient,
   SocketEvent,
 } from "@nostakes/client";
-import { FRAME_ALLOWANCE, TokenSchema } from "@nostakes/protocol";
+import { PLAYER_FRAME_ALLOWANCE, TokenSchema } from "@nostakes/protocol";
 import type { RoomPass } from "@nostakes/protocol";
 import { Effect, Layer, Result, Schema, Stream } from "effect";
 
@@ -143,7 +143,8 @@ export const tappedWire = (label: string) => {
 
       for (
         let frame = 0;
-        frame < FRAME_ALLOWANCE.burst + 2 * FRAME_ALLOWANCE.perSecond;
+        frame <
+        PLAYER_FRAME_ALLOWANCE.burst + 2 * PLAYER_FRAME_ALLOWANCE.perSecond;
         frame += 1
       ) {
         tapped?.raw.send(WAKING_PING_FRAME);

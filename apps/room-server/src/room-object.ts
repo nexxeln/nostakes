@@ -1,8 +1,10 @@
 import * as Cloudflare from "@alchemy.run/cloudflare";
 import type * as cf from "@cloudflare/workers-types";
 import {
+  COMMAND_ALLOWANCE,
   FRAME_ALLOWANCE,
   HELLO_TIMEOUT_MS,
+  PLAYER_FRAME_ALLOWANCE,
   PlainRefusalSchema,
   PING_FRAME,
   PONG_FRAME,
@@ -11,6 +13,7 @@ import {
   PlayerIdSchema,
   RoomCodeSchema,
   SIGNAL_ALLOWANCE,
+  SOCKETS_PER_PLAYER,
   StandingsRequestSchema,
   TOKEN_BYTES,
   TokenTextSchema,
@@ -19,8 +22,10 @@ import {
   versionMismatch,
 } from "@nostakes/protocol";
 import type {
+  Allowance,
   Bucket,
   CloseReason,
+  CommandId,
   PlainRefusal,
   PlayerId,
 } from "@nostakes/protocol";
@@ -74,7 +79,6 @@ import {
   MAX_MEMBERS,
   OpenOutcomeSchema,
   PENDING_SOCKETS,
-  SOCKETS_PER_PLAYER,
   StandingsOutcomeSchema,
 } from "./room-rpc.js";
 import type { Inspection } from "./room-rpc.js";
@@ -84,7 +88,10 @@ import {
   attachmentOf,
   AttachmentSchema,
   openedOf,
+  REJECTION_BYTES_PER_SOCKET,
+  REJECTIONS_KEPT_PER_SOCKET,
 } from "./socket-attachment.js";
+import type { KeptRejection } from "./socket-attachment.js";
 import { acknowledgeClose, closeWith } from "./socket-close.js";
 import { sqliteStorage } from "./sqlite-storage.js";
 import { workerdGlobals } from "./workerd.js";
@@ -141,6 +148,61 @@ const mintCredential = Effect.gen(function* mintCredential() {
 });
 
 const byNumber = Order.Number;
+
+interface Buckets<K> {
+  readonly get: (key: K) => Bucket | undefined;
+  readonly set: (key: K, bucket: Bucket) => void;
+}
+
+const spendFrom = <K>(
+  buckets: Buckets<K>,
+  key: K,
+  allowance: Allowance,
+  at: number
+) => {
+  const spent = spendToken(
+    allowance,
+    buckets.get(key) ?? fullBucket(allowance, at),
+    at
+  );
+
+  for (const bucket of Option.toArray(spent)) {
+    buckets.set(key, bucket);
+  }
+
+  return Option.isSome(spent);
+};
+
+const keptWith = (
+  kept: readonly KeptRejection[],
+  added: KeptRejection
+): readonly KeptRejection[] => {
+  const newest = [...kept, added].slice(-REJECTIONS_KEPT_PER_SOCKET);
+  let bytes = 0;
+
+  return newest
+    .toReversed()
+    .filter(({ id, reply }) => {
+      bytes += id.length + reply.length;
+
+      return bytes <= REJECTION_BYTES_PER_SOCKET;
+    })
+    .toReversed();
+};
+
+const keepOnSocket = (socket: cf.WebSocket, added: KeptRejection) => {
+  for (const live of Option.toArray(
+    attachmentOf(socket).pipe(Option.filter(AttachmentSchema.guards.Live))
+  )) {
+    attach(
+      socket,
+      AttachmentSchema.cases.Live.make({
+        ...live,
+        rejected: keptWith(live.rejected, added),
+      })
+    );
+  }
+};
 
 const oldestFirst = <A extends { readonly opened: number }>(
   open: readonly A[]
@@ -207,7 +269,9 @@ export const roomObject = <T extends RoomTypes, Tally>(
         const served = yield* servedBuildOrNone;
         const alarmRuns: { at: number; outcome: string }[] = [];
         const faults: string[] = [];
-        const buckets = new WeakMap<cf.WebSocket, Bucket>();
+        const socketBuckets = new WeakMap<cf.WebSocket, Bucket>();
+        const playerBuckets = new Map<PlayerId, Bucket>();
+        const commandBuckets = new Map<PlayerId, Bucket>();
         const signalBuckets = new Map<PlayerId, Bucket>();
         const runtimeContext = yield* Effect.context<RuntimeContext>();
 
@@ -438,11 +502,26 @@ export const roomObject = <T extends RoomTypes, Tally>(
           room.armAlarm(connectionsOf(room, Option.none()).socketDeadline);
         };
 
+        const keepRejections = (socket: cf.WebSocket) => {
+          for (const { player, rejected } of Option.toArray(
+            attachmentOf(socket).pipe(
+              Option.filter(AttachmentSchema.guards.Live)
+            )
+          )) {
+            for (const room of Option.toArray(host)) {
+              if (rejected.length > 0) {
+                room.keepReplies(player, rejected);
+              }
+            }
+          }
+        };
+
         const closeSocket = (socket: cf.WebSocket, reason: CloseReason) => {
           const wasLive = attachmentOf(socket).pipe(
             Option.filter(AttachmentSchema.guards.Live)
           );
 
+          keepRejections(socket);
           attach(socket, AttachmentSchema.cases.Closed.make({ reason }));
           closeWith(socket, reason);
           note(measure("SocketClosed", { reason }));
@@ -542,6 +621,7 @@ export const roomObject = <T extends RoomTypes, Tally>(
               heardAt: at,
               opened,
               player: player.value,
+              rejected: [],
             })
           );
 
@@ -588,6 +668,7 @@ export const roomObject = <T extends RoomTypes, Tally>(
 
         const admit = (
           socket: cf.WebSocket,
+          sender: Option.Option<PlayerId>,
           frame: string | ArrayBuffer,
           at: number
         ): Option.Option<CloseReason> => {
@@ -597,36 +678,38 @@ export const roomObject = <T extends RoomTypes, Tally>(
             return tooLarge;
           }
 
-          const spent = spendToken(
-            FRAME_ALLOWANCE,
-            buckets.get(socket) ?? fullBucket(FRAME_ALLOWANCE, at),
-            at
-          );
+          const spent = Option.match(sender, {
+            onNone: () => spendFrom(socketBuckets, socket, FRAME_ALLOWANCE, at),
+            onSome: (player) =>
+              spendFrom(playerBuckets, player, PLAYER_FRAME_ALLOWANCE, at),
+          });
 
-          if (Option.isNone(spent)) {
+          if (!spent) {
             return Option.some("TooManyFrames");
           }
-
-          buckets.set(socket, spent.value);
 
           return frame instanceof ArrayBuffer
             ? Option.some("ProtocolViolation")
             : Option.none();
         };
 
-        const signalAllowance = (player: PlayerId, at: number) => {
-          const spent = spendToken(
-            SIGNAL_ALLOWANCE,
-            signalBuckets.get(player) ?? fullBucket(SIGNAL_ALLOWANCE, at),
-            at
+        const signalAllowance = (player: PlayerId, at: number) =>
+          spendFrom(signalBuckets, player, SIGNAL_ALLOWANCE, at);
+
+        const rejectedBefore = (player: PlayerId, id: CommandId) =>
+          Arr.findFirst(
+            sockets().flatMap((socket) =>
+              attachmentOf(socket).pipe(
+                Option.filter(AttachmentSchema.guards.Live),
+                Option.filter((live) => live.player === player),
+                Option.match({
+                  onNone: () => [],
+                  onSome: ({ rejected }) => rejected,
+                })
+              )
+            ),
+            (kept) => kept.id === id
           );
-
-          for (const bucket of Option.toArray(spent)) {
-            signalBuckets.set(player, bucket);
-          }
-
-          return Option.isSome(spent);
-        };
 
         const relaySignal = (
           room: RoomHost<T>,
@@ -673,7 +756,16 @@ export const roomObject = <T extends RoomTypes, Tally>(
 
             const room = host.value;
             const codec = codecOf(room);
-            const refusal = admit(socket, frame, at);
+
+            const refusal = admit(
+              socket,
+              attachment.pipe(
+                Option.filter(AttachmentSchema.guards.Live),
+                Option.map(({ player }) => player)
+              ),
+              frame,
+              at
+            );
 
             if (Option.isSome(refusal)) {
               closeSocket(socket, refusal.value);
@@ -711,6 +803,35 @@ export const roomObject = <T extends RoomTypes, Tally>(
                     return;
                   }
 
+                  if (
+                    !spendFrom(
+                      commandBuckets,
+                      live.value.player,
+                      COMMAND_ALLOWANCE,
+                      at
+                    )
+                  ) {
+                    closeSocket(socket, "TooManyFrames");
+
+                    return;
+                  }
+
+                  const earlier = rejectedBefore(live.value.player, id);
+
+                  if (Option.isSome(earlier)) {
+                    send(
+                      socket,
+                      codec.encodeFrame(
+                        codec.server.cases.Reply.make({
+                          id,
+                          result: codec.decodeReply(earlier.value.reply),
+                        })
+                      )
+                    );
+
+                    return;
+                  }
+
                   const stamped = core.stamp(live.value.player, at, command);
 
                   const { fault, result, stall } = room.answerMember(
@@ -732,6 +853,10 @@ export const roomObject = <T extends RoomTypes, Tally>(
                       })
                     )
                   );
+
+                  if (CommitNotes.$is("Rejected")(result.note)) {
+                    keepOnSocket(socket, { id, reply: result.note.reply });
+                  }
 
                   yield* logCommit(result, stamped);
 
@@ -814,6 +939,7 @@ export const roomObject = <T extends RoomTypes, Tally>(
               note(measure("SocketClosed", { reason: ending }));
             }
 
+            keepRejections(socket);
             acknowledgeClose(socket);
 
             for (const room of Option.toArray(host)) {
@@ -1095,6 +1221,7 @@ export const roomObject = <T extends RoomTypes, Tally>(
                 )
               ),
               replies: Option.isSome(host) ? storage.countReplies() : 0,
+              rowsWritten: storage.rowsWritten(),
               seqs: rows.map(({ seq }) => seq),
               sockets: {
                 live: liveSockets(Option.none()).length,

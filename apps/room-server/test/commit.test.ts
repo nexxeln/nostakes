@@ -102,16 +102,26 @@ describe("commit", () => {
     expect(CommitNotes.$is("Committed")(otherPlayer.note)).toBe(true);
   });
 
-  it("stores a rejection and repeats it even after the state would accept the command", () => {
+  it("writes nothing for a rejection, and once its socket keeps the reply, repeats it even after the state would accept the command", () => {
     const room = withMembers();
+    const before = room.memory.storage.rowsWritten();
 
     const early = room.send(ben, "act", 1003, Commands.Act.make({}));
+    const afterRejection = room.memory.storage.rowsWritten();
+
+    const kept = CommitNotes.$is("Rejected")(early.note)
+      ? room.host.keepReplies(ben, [
+          { id: CommandIdSchema.make("act"), reply: early.note.reply },
+        ])
+      : Result.fail("the rejection gave no reply to keep");
 
     room.send(ben, "start", 1004, Commands.StartTurn.make({ ms: 500 }));
 
     const retried = room.send(ben, "act", 1005, Commands.Act.make({}));
 
     expect(room.host.codec.reply.guards.Rejected(early.reply)).toBe(true);
+    expect(afterRejection).toBe(before);
+    expect(Result.isSuccess(kept)).toBe(true);
     expect(retried.reply).toEqual(early.reply);
     expect(Option.isSome(room.host.snapshot().state.turn)).toBe(true);
   });
@@ -416,6 +426,12 @@ describe("commit over generated sessions", () => {
           lastId = `c${index}`;
 
           const result = room.send(player, lastId, now, command[action]);
+
+          if (CommitNotes.$is("Rejected")(result.note)) {
+            room.host.keepReplies(player, [
+              { id: CommandIdSchema.make(lastId), reply: result.note.reply },
+            ]);
+          }
 
           replies.set(`${player}:${lastId}`, result.reply);
         }

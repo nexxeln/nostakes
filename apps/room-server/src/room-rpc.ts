@@ -7,8 +7,6 @@ import { Schema } from "effect";
 
 export const MAX_MEMBERS = 64;
 
-export const SOCKETS_PER_PLAYER = 3;
-
 export const PENDING_SOCKETS = 16;
 
 export const OpenOutcomeSchema = Schema.TaggedUnion({
@@ -61,6 +59,7 @@ export const InspectionSchema = Schema.Struct({
   members: Schema.Int,
   memoryMatchesLog: Schema.Boolean,
   replies: Schema.Int,
+  rowsWritten: Schema.Int,
   seqs: Schema.Array(Schema.Int),
   sockets: Schema.Struct({ live: Schema.Int, pending: Schema.Int }),
 });
