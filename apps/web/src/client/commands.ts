@@ -2,6 +2,7 @@ import { randomAvatar } from "@nostakes/avatar";
 import {
   haltedStandings,
   HttpRefusalSchema,
+  joinRefused,
   RoomCodeSchema,
   RoomPassSchema,
   StandingsRequestSchema,
@@ -10,6 +11,7 @@ import type { UnavailableReason } from "@nostakes/protocol";
 import {
   JoinRequestSchema,
   MemberCommandSchema,
+  RoomRejectionSchema,
   RoomSignalSchema,
   RoomViewSchema,
 } from "@nostakes/room";
@@ -30,6 +32,7 @@ import {
   ThemeSchema,
 } from "../features/model.js";
 import { refusalText } from "../features/refusals.js";
+import { rejectionText } from "../features/rejections.js";
 import { ClientReportSchema, REPORTS_PATH } from "../features/reports.js";
 import { HintSchema } from "../features/table/snapshot.js";
 import { roomPath } from "../features/wire.js";
@@ -52,6 +55,16 @@ import {
 } from "./storage.js";
 
 const encodeJoin = Schema.encodeSync(Schema.toCodecJson(JoinRequestSchema));
+
+const EntryRefusalSchema = Schema.Union([
+  joinRefused(Schema.toCodecJson(RoomRejectionSchema)),
+  HttpRefusalSchema,
+]);
+
+const entryRefusalText = (refusal: typeof EntryRefusalSchema.Type) =>
+  refusal.refusal === "JoinRefused"
+    ? rejectionText(refusal.rejection, Option.none())
+    : refusalText(refusal);
 
 class EntryRefused extends Schema.TaggedError<
   EntryRefused,
@@ -77,19 +90,18 @@ const passFrom = (url: string, request: JoinRequest) =>
         ),
         Effect.flatMap((json) =>
           Schema.decodeUnknownEffect(RoomPassSchema)(json).pipe(
-            Effect.mapError(() =>
-              Option.match(
-                Schema.decodeUnknownOption(HttpRefusalSchema)(json),
-                {
-                  onNone: () =>
-                    new EntryRefused({
-                      reason:
+            Effect.mapError(
+              () =>
+                new EntryRefused({
+                  reason: Option.match(
+                    Schema.decodeUnknownOption(EntryRefusalSchema)(json),
+                    {
+                      onNone: () =>
                         "The room server sent an answer this page cannot read. Try again.",
-                    }),
-                  onSome: (refusal) =>
-                    new EntryRefused({ reason: refusalText(refusal) }),
-                }
-              )
+                      onSome: entryRefusalText,
+                    }
+                  ),
+                })
             )
           )
         )

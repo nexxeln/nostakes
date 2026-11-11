@@ -34,6 +34,10 @@ export type StandingsRequest = typeof StandingsRequestSchema.Type;
 export const haltedStandings = <View extends WireSchema>(view: View) =>
   Schema.Struct({ view });
 
+export const joinRefused = <Rejection extends WireSchema>(
+  rejection: Rejection
+) => Schema.Struct({ refusal: Schema.Literal("JoinRefused"), rejection });
+
 export type PlainRefusal = typeof PlainRefusalSchema.Type;
 
 export const TooManyRequestsSchema = Schema.Struct({

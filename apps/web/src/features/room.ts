@@ -7,6 +7,7 @@ import { Option } from "effect";
 
 import { Screens } from "./model.js";
 import type { InRoom, Model, RoomRecord, SavedPass } from "./model.js";
+import { isolated } from "./names.js";
 
 export type OpenView = Extract<RoomView, { readonly _tag: "Open" }>;
 
@@ -106,15 +107,17 @@ export const waitsToClaimHost = (room: InRoom) =>
     (view) => Option.isSome(view.hostAway) && !isYou(view, view.host)
   );
 
+export const signedNet = (net: number) => `${net > 0 ? "+" : ""}${net}`;
+
 export const settlementText = (view: ClosedView) => {
-  const name = (player: PlayerId) => nameOf(view, player);
+  const name = (player: PlayerId) => isolated(nameOf(view, player));
 
   const nets = view.settlement.balances
     .toSorted((left, right) => right.net - left.net)
-    .map(({ net, player }) => `${name(player)} ${net > 0 ? "+" : ""}${net}`);
+    .map(({ net, player }) => `${signedNet(net)} ${name(player)}`);
 
   const transfers = view.settlement.transfers.map(
-    ({ amount, from, to }) => `${name(from)} pays ${name(to)} ${amount}`
+    ({ amount, from, to }) => `${name(from)} pays ${amount} to ${name(to)}`
   );
 
   return [

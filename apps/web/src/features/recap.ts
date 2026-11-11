@@ -8,6 +8,7 @@ import { chipsText } from "./moments/captions.js";
 import type { Person } from "./moments/element.js";
 import { pictureOf } from "./moments/scene.js";
 import type { MomentPicture } from "./moments/schema.js";
+import { isolated } from "./names.js";
 import { netText } from "./pictures/settle-up.js";
 import { nameOf } from "./room.js";
 import type { ClosedView } from "./room.js";
@@ -179,7 +180,7 @@ export const potTakers = (names: readonly string[]) => {
 };
 
 export const takersText = (view: ClosedView, takers: readonly PlayerId[]) =>
-  potTakers(takers.map((player) => nameOf(view, player)));
+  potTakers(takers.map((player) => isolated(nameOf(view, player))));
 
 export interface RecapLine {
   readonly detail: string;
@@ -194,7 +195,7 @@ export const recapLines = (view: ClosedView): readonly RecapLine[] => {
     Option.map(({ net, player }) => ({
       detail: netText(net),
       key: "winner",
-      title: `${nameOf(view, player)} took the night`,
+      title: `${isolated(nameOf(view, player))} took the night`,
     }))
   );
 

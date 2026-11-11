@@ -59,6 +59,7 @@ import type { Message, ReplyOutcome } from "./message.js";
 import { FairMarks, HaltedStandings, Screens } from "./model.js";
 import type { Flags, InRoom, Link, Model, RulesSheet } from "./model.js";
 import { NO_MOMENTS, watchedMoments } from "./moments/watch.js";
+import { enteredName, nameRefusal } from "./names.js";
 import { considerUpdate } from "./page-update.js";
 import { rejectionText } from "./rejections.js";
 import {
@@ -1076,33 +1077,34 @@ export const update = (model: Model, message: Message): Return =>
     ShuffledFace: ({ avatar }) => wearFace(model, avatar, true),
     StartedReload: () => ({ model }),
     SubmittedCreate: () => {
-      const name = model.profile.name.trim();
+      const name = enteredName(model.profile.name);
 
       if (!Screens.guards.Home(model.screen) || model.screen.busy) {
         return { model };
       }
 
-      return name.length > 0
-        ? {
-            commands: [CreateRoom({ avatar: model.profile.avatar, name })],
-            model: {
-              ...model,
-              profile: { ...model.profile, name },
-              screen: Screens.Home({ busy: true, problem: Option.none() }),
-            },
-          }
-        : {
-            model: {
-              ...model,
-              screen: Screens.Home({
-                busy: false,
-                problem: Option.some("Type your name first."),
-              }),
-            },
-          };
+      return Option.match(nameRefusal(name), {
+        onNone: () => ({
+          commands: [CreateRoom({ avatar: model.profile.avatar, name })],
+          model: {
+            ...model,
+            profile: { ...model.profile, name },
+            screen: Screens.Home({ busy: true, problem: Option.none() }),
+          },
+        }),
+        onSome: (problem) => ({
+          model: {
+            ...model,
+            screen: Screens.Home({
+              busy: false,
+              problem: Option.some(problem),
+            }),
+          },
+        }),
+      });
     },
     SubmittedInvite: () => {
-      const name = model.profile.name.trim();
+      const name = enteredName(model.profile.name);
 
       if (!Screens.guards.Invited(model.screen) || model.screen.busy) {
         return { model };
@@ -1110,32 +1112,33 @@ export const update = (model: Model, message: Message): Return =>
 
       const { code } = model.screen;
 
-      return name.length > 0
-        ? {
-            commands: [JoinRoom({ avatar: model.profile.avatar, code, name })],
-            model: {
-              ...model,
-              profile: { ...model.profile, name },
-              screen: Screens.Invited({
-                busy: true,
-                code,
-                problem: Option.none(),
-              }),
-            },
-          }
-        : {
-            model: {
-              ...model,
-              screen: Screens.Invited({
-                busy: false,
-                code,
-                problem: Option.some("Type your name first."),
-              }),
-            },
-          };
+      return Option.match(nameRefusal(name), {
+        onNone: () => ({
+          commands: [JoinRoom({ avatar: model.profile.avatar, code, name })],
+          model: {
+            ...model,
+            profile: { ...model.profile, name },
+            screen: Screens.Invited({
+              busy: true,
+              code,
+              problem: Option.none(),
+            }),
+          },
+        }),
+        onSome: (problem) => ({
+          model: {
+            ...model,
+            screen: Screens.Invited({
+              busy: false,
+              code,
+              problem: Option.some(problem),
+            }),
+          },
+        }),
+      });
     },
     SubmittedJoin: () => {
-      const name = model.profile.name.trim();
+      const name = enteredName(model.profile.name);
 
       const code = Schema.decodeOption(RoomCodeSchema)(model.joinCode.trim());
 
@@ -1154,26 +1157,27 @@ export const update = (model: Model, message: Message): Return =>
           },
         }),
         onSome: (valid) =>
-          name.length > 0
-            ? {
-                commands: [
-                  JoinRoom({ avatar: model.profile.avatar, code: valid, name }),
-                ],
-                model: {
-                  ...model,
-                  profile: { ...model.profile, name },
-                  screen: Screens.Home({ busy: true, problem: Option.none() }),
-                },
-              }
-            : {
-                model: {
-                  ...model,
-                  screen: Screens.Home({
-                    busy: false,
-                    problem: Option.some("Type your name first."),
-                  }),
-                },
+          Option.match(nameRefusal(name), {
+            onNone: () => ({
+              commands: [
+                JoinRoom({ avatar: model.profile.avatar, code: valid, name }),
+              ],
+              model: {
+                ...model,
+                profile: { ...model.profile, name },
+                screen: Screens.Home({ busy: true, problem: Option.none() }),
               },
+            }),
+            onSome: (problem) => ({
+              model: {
+                ...model,
+                screen: Screens.Home({
+                  busy: false,
+                  problem: Option.some(problem),
+                }),
+              },
+            }),
+          }),
       });
     },
     SwitchedCounting: ({ on }) => ({

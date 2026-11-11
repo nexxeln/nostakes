@@ -24,7 +24,7 @@ export const JoinOutcomeSchema = Schema.TaggedUnion({
   Invalid: {},
   Joined: { player: PlayerIdSchema, token: TokenTextSchema },
   NotFound: {},
-  Refused: {},
+  Refused: { rejection: Schema.Json },
   RoomFull: { members: Schema.Int },
   RoomHalted: {},
 });

@@ -733,8 +733,12 @@ export const plannerFor = (setup: PlannerSetup) => {
   };
 
   const illegalIntent = (open: OpenView): Option.Option<Intent> => {
-    const roll = random.below(6);
+    const roll = random.below(7);
     const occupied = open.seats.find(({ occupant }) => Option.isSome(occupant));
+
+    const someoneElse = [...open.members, ...open.departed].find(
+      ({ player }) => player !== pass.player
+    );
 
     const yours = open.lastHand.pipe(
       Option.map(({ yourCards }) => yourCards),
@@ -760,6 +764,15 @@ export const plannerFor = (setup: PlannerSetup) => {
         random.chance(50)
           ? Commands.ChooseRuns.make({ runs: decodeRuns(2) })
           : Commands.TableHand.make({})
+      );
+    }
+
+    if (roll === 5 && someoneElse !== undefined) {
+      return illegal(
+        Commands.SetProfile.make({
+          avatar: "taken",
+          name: someoneElse.name.toUpperCase(),
+        })
       );
     }
 

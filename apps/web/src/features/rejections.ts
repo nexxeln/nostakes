@@ -188,6 +188,8 @@ export const rejectionText = (
           ? `${voice.subject(host)} left less than two minutes ago. Anyone can take over as host once two minutes have passed.`
           : `${voice.subject(host)} ${voice.isYou(host) ? "are" : "is"} still here, so the host stays the same.`,
       MembersOnly: () => "Only players in the room can do that.",
+      NameTaken: ({ wanted }) =>
+        `Someone here is already called ${wanted}. Try adding an initial.`,
       NoChipRequest: ({ player }) =>
         `${voice.subject(player)} ${voice.isYou(player) ? "have" : "has"} no chip request waiting.`,
       NoSeatRequest: ({ player }) =>

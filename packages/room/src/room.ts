@@ -169,7 +169,7 @@ const decideOpen = (state: Open, command: RoomCommand): Decision =>
     SealHand: (sealing) =>
       Result.flatMap(fromServer(sealing), () => sealNextHand(state, sealing)),
     SetProfile: (profile) =>
-      byMember(state, profile, (player) => setProfile(player, profile)),
+      byMember(state, profile, (player) => setProfile(state, player, profile)),
     ShowCards: (show) =>
       byMember(state, show, (player) => play(state, player, show)),
     SitIn: (sitIn) =>

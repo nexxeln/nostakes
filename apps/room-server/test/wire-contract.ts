@@ -3,6 +3,7 @@ export interface WireParts {
   readonly command: string;
   readonly event: string;
   readonly httpRefusal: string;
+  readonly joinRefusal?: string;
   readonly joinRequest: string;
   readonly openRequest: string;
   readonly rejection: string;
@@ -230,5 +231,22 @@ export const WIRE_CONTRACTS: readonly WireContract[] = [
       view: "dbe1561d8da9af01",
     },
     protocol: 14,
+  },
+  {
+    parts: {
+      clientFrame: "992be1ddc7b57306",
+      command: "22a47aa12c715bce",
+      event: "b35b35f73024fbb4",
+      httpRefusal: "201bc8c0ad84f4a8",
+      joinRefusal: "fae79c460c7ae257",
+      joinRequest: "06c8d1a0370bf3b3",
+      openRequest: "ba87dd6a45c87ab3",
+      rejection: "014f43ae195379b6",
+      roomPass: "c10081ecd072b4b7",
+      serverFrame: "2d1efe8773a5b92c",
+      standings: "753b6e96af724625",
+      view: "823e0e57d366f75b",
+    },
+    protocol: 15,
   },
 ];

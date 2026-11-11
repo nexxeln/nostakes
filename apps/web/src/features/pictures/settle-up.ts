@@ -4,6 +4,7 @@ import type { PlayerId } from "@nostakes/protocol";
 import { Schema } from "effect";
 
 import { chipsText } from "../moments/captions.js";
+import { isolated } from "../names.js";
 import { nameOf } from "../room.js";
 import type { ClosedView } from "../room.js";
 import {
@@ -311,7 +312,7 @@ const paysAt = (
     `<text x="${number(at.x)}" y="${number(at.y)}" font-family="Figtree, sans-serif" font-size="${number(size)}" xml:space="preserve">`,
     ...parts.map(
       ([text, name]) =>
-        `<tspan font-weight="${name ? 700 : 500}" fill="${name ? palette.cardInk : palette.cardMuted}">${escaped(text)}</tspan>`
+        `<tspan font-weight="${name ? 700 : 500}" fill="${name ? palette.cardInk : palette.cardMuted}">${escaped(name ? isolated(text) : text)}</tspan>`
     ),
     "</text>",
   ].join("");

@@ -18,6 +18,7 @@ import { DealingIsAutomatic } from "./rejections/dealing-is-automatic.js";
 import { GameAlready } from "./rejections/game-already.js";
 import { HostStillHere } from "./rejections/host-still-here.js";
 import { MembersOnly } from "./rejections/members-only.js";
+import { NameTaken } from "./rejections/name-taken.js";
 import { NoChipRequest } from "./rejections/no-chip-request.js";
 import { NoSeatRequest } from "./rejections/no-seat-request.js";
 import { NoSuchDeadline } from "./rejections/no-such-deadline.js";
@@ -58,6 +59,7 @@ export const RoomRejectionSchema = Schema.Union([
   GameAlready,
   HostStillHere,
   MembersOnly,
+  NameTaken,
   NoChipRequest,
   NoSeatRequest,
   NoSuchDeadline,
@@ -117,6 +119,8 @@ export { GameAlready } from "./rejections/game-already.js";
 export { HostStillHere } from "./rejections/host-still-here.js";
 
 export { MembersOnly } from "./rejections/members-only.js";
+
+export { NameTaken } from "./rejections/name-taken.js";
 
 export { NoChipRequest } from "./rejections/no-chip-request.js";
 

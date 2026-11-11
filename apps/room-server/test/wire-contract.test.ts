@@ -2,6 +2,7 @@ import { describe, expect, it } from "@effect/vitest";
 import {
   haltedStandings,
   HttpRefusalSchema,
+  joinRefused,
   PROTOCOL_VERSION,
   RoomPassSchema,
   StandingsRequestSchema,
@@ -70,6 +71,7 @@ const wire = {
   command: schemas.memberCommand,
   event: schemas.redacted,
   httpRefusal: HttpRefusalSchema,
+  joinRefusal: joinRefused(schemas.rejection),
   joinRequest: schemas.joinRequest,
   openRequest: schemas.openRequest,
   rejection: schemas.rejection,
@@ -92,6 +94,7 @@ const current: WireParts = {
   command: digestOf(wire.command),
   event: digestOf(wire.event),
   httpRefusal: digestOf(wire.httpRefusal),
+  joinRefusal: digestOf(wire.joinRefusal),
   joinRequest: digestOf(wire.joinRequest),
   openRequest: digestOf(wire.openRequest),
   rejection: digestOf(wire.rejection),

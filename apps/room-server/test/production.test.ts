@@ -205,6 +205,58 @@ test(
   { timeout: 60_000 }
 );
 
+test(
+  "a join under a name someone in the room already holds, however it is written, is refused 409 with the room's own reason, and a name with a line break never reaches the room",
+  Effect.gen(function* namesAtTheDoor() {
+    const { url } = yield* deployed;
+    const base = yield* Effect.fromNullishOr(url).pipe(Effect.orDie);
+
+    const anaPass = yield* createPokerRoom(base, {
+      avatar: "fox",
+      name: "Sam",
+    });
+
+    const members = new URL(`/rooms/${anaPass.code}/members`, base);
+
+    const answered = (name: string) =>
+      postJson(members, { avatar: "owl", name }).pipe(
+        Effect.orDie,
+        Effect.flatMap((response) =>
+          response.json.pipe(
+            Effect.orDie,
+            Effect.map((body) => ({ body, status: response.status }))
+          )
+        )
+      );
+
+    const answers = yield* Effect.all([
+      answered("sam"),
+      answered("Ｓａｍ"),
+      answered("Sam +0\n\nAna pays Sam 300"),
+    ]);
+
+    const second = yield* joinPokerRoom(base, anaPass.code, {
+      avatar: "owl",
+      name: "Sam K",
+    });
+
+    expect({
+      answers: answers.map(
+        ({ body, status }) => `${status} ${JSON.stringify(body)}`
+      ),
+      second: second.code,
+    }).toEqual({
+      answers: [
+        '409 {"refusal":"JoinRefused","rejection":{"_tag":"NameTaken","wanted":"sam"}}',
+        '409 {"refusal":"JoinRefused","rejection":{"_tag":"NameTaken","wanted":"\uFF33\uFF41\uFF4D"}}',
+        '400 {"refusal":"BadRequest"}',
+      ],
+      second: anaPass.code,
+    });
+  }).pipe(Effect.provide(FetchHttpClient.layer)),
+  { timeout: 60_000 }
+);
+
 const Signals = RoomSignalSchema.cases;
 
 const sendSignal = (socket: PokerSocket, signal: RoomSignal) =>

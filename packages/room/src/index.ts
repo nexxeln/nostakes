@@ -72,6 +72,16 @@ export {
 export type { Actor, RoomCode } from "./identity.js";
 
 export {
+  NAME_MAX_LENGTH,
+  NameProblemSchema,
+  nameKey,
+  nameProblem,
+  sameName,
+} from "./names.js";
+
+export type { NameProblem } from "./names.js";
+
+export {
   ActionNotOnSeat,
   AlreadyAMember,
   AlreadyLeaving,
@@ -89,6 +99,7 @@ export {
   GameAlready,
   HostStillHere,
   MembersOnly,
+  NameTaken,
   NoChipRequest,
   NoSeatRequest,
   NoSuchDeadline,

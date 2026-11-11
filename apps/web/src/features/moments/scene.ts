@@ -5,6 +5,7 @@ import { Moments, headline, isPainful, momentsOf } from "@nostakes/room";
 import type { Headline, Moment } from "@nostakes/room";
 import { Option } from "effect";
 
+import { isolated } from "../names.js";
 import { CAPTIONS } from "./captions.js";
 import type { Caption, CaptionFacts } from "./captions.js";
 import type { MomentHand, Person } from "./element.js";
@@ -98,7 +99,9 @@ const factsFor = (
   const other = otherOf(moment);
 
   const named = (seat: SeatIndex | undefined) =>
-    seat === undefined ? STRANGER.name : personAt(people, lastHand, seat).name;
+    isolated(
+      seat === undefined ? STRANGER.name : personAt(people, lastHand, seat).name
+    );
 
   const leadRank =
     "rank" in moment ? Option.some(moment.rank) : rankOn(lastHand, lead);

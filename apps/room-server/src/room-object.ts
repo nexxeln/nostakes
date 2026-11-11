@@ -1042,7 +1042,12 @@ export const roomObject = <T extends RoomTypes, Tally>(
                   player: minted.player,
                   token: minted.token,
                 }),
-              Rejected: () => JoinOutcomeSchema.cases.Refused.make({}),
+              Rejected: ({ rejection }) =>
+                JoinOutcomeSchema.cases.Refused.make({
+                  rejection: Schema.encodeSync(core.schemas.rejection)(
+                    rejection
+                  ),
+                }),
               Unavailable: ({ reason }) =>
                 reason === "RoomFault"
                   ? JoinOutcomeSchema.cases.Faulted.make({})

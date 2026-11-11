@@ -1,4 +1,5 @@
-import { nameOf, settlementText } from "./room.js";
+import { isolated } from "./names.js";
+import { nameOf, settlementText, signedNet } from "./room.js";
 import type { ClosedView } from "./room.js";
 
 export const HALTED_LINE =
@@ -10,8 +11,6 @@ export interface HaltedRow {
   readonly detail: string;
   readonly net: number;
 }
-
-const signed = (net: number) => `${net > 0 ? "+" : ""}${net}`;
 
 export const haltedRows = (view: ClosedView): readonly HaltedRow[] =>
   view.settlement.balances
@@ -27,10 +26,11 @@ export const haltedText = (view: ClosedView) =>
   [
     HALTED_LINE,
     ...haltedRows(view).map(
-      ({ detail, name, net }) => `${name} ${signed(net)} (${detail})`
+      ({ detail, name, net }) =>
+        `${signedNet(net)} ${isolated(name)} (${detail})`
     ),
     "",
     settlementText(view),
   ].join("\n");
 
-export const netText = signed;
+export { signedNet as netText } from "./room.js";

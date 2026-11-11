@@ -30,6 +30,7 @@ export {
 
 export {
   haltedStandings,
+  joinRefused,
   HttpRefusalSchema,
   PlainRefusalSchema,
   RoomPassSchema,

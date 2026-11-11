@@ -4,6 +4,7 @@ import { balances } from "@nostakes/ledger";
 import { Option } from "effect";
 
 import { chipsOnTable, allEntries } from "./money.js";
+import { nameKey } from "./names.js";
 import { sameTableRules } from "./rules.js";
 import { seatsTakenFrom } from "./seats.js";
 import {
@@ -11,6 +12,7 @@ import {
   RoomStates,
   SEATS,
   isMember,
+  namedPeople,
   occupantAt,
   seatOf,
 } from "./state.js";
@@ -77,6 +79,20 @@ const peopleViolations = (state: Open) => [
     !hasDuplicates(state.departed.map((member) => member.player)),
     "DepartedAreDistinct",
     () => state.departed.map((member) => member.player).join(",")
+  ),
+  ...check(
+    !hasDuplicates(namedPeople(state).map(({ name }) => nameKey(name))),
+    "NamesAreDistinct",
+    () =>
+      namedPeople(state)
+        .filter(({ name, player }) =>
+          namedPeople(state).some(
+            (other) =>
+              other.player !== player && nameKey(other.name) === nameKey(name)
+          )
+        )
+        .map(({ player }) => player)
+        .join(",")
   ),
 ];
 

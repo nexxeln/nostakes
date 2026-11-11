@@ -2,7 +2,21 @@ const NARROW = new Set("iljtfrI.,:;'!|() ");
 
 const WIDE = new Set("mwMW@%");
 
+const NO_WIDTH =
+  /^[\p{Mn}\p{Me}\p{Default_Ignorable_Code_Point}\p{Emoji_Modifier}]$/u;
+
+const FULL_WIDTH =
+  /^[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}\p{Extended_Pictographic}]$/u;
+
 const glyphWidth = (glyph: string) => {
+  if (NO_WIDTH.test(glyph)) {
+    return 0;
+  }
+
+  if (FULL_WIDTH.test(glyph)) {
+    return 1;
+  }
+
   if (NARROW.has(glyph)) {
     return 0.34;
   }

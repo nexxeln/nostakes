@@ -6,13 +6,15 @@ import type { Decision } from "./decision.js";
 import { RoomEvents } from "./events.js";
 import type { RoomEvent } from "./events.js";
 import { leaveSeat } from "./money.js";
+import { sameName } from "./names.js";
 import {
   AlreadyAMember,
   AlreadyTheHost,
   HostStillHere,
+  NameTaken,
   NotAMember,
 } from "./rejection.js";
-import { SEATS, isMember, occupantAt, seatOf } from "./state.js";
+import { SEATS, isMember, namedPeople, occupantAt, seatOf } from "./state.js";
 import type { Open } from "./state.js";
 import { secondsAfter } from "./time.js";
 import type { Millis } from "./time.js";
@@ -42,13 +44,22 @@ export const claimHost = (
       );
 };
 
+const nameHeldByAnother = (state: Open, player: PlayerId, name: string) =>
+  namedPeople(state).some(
+    (holder) => holder.player !== player && sameName(holder.name, name)
+  );
+
 export const joinRoom = (
   state: Open,
   player: PlayerId,
   command: RoomCommandOf<"Join">
-) => {
+): Decision => {
   if (isMember(state, player)) {
     return Result.fail(new AlreadyAMember({ player }));
+  }
+
+  if (nameHeldByAnother(state, player, command.name)) {
+    return Result.fail(new NameTaken({ wanted: command.name }));
   }
 
   const joined = RoomEvents.MemberJoined({
@@ -68,17 +79,20 @@ export const joinRoom = (
 };
 
 export const setProfile = (
+  state: Open,
   player: PlayerId,
   command: RoomCommandOf<"SetProfile">
-) =>
-  Result.succeed([
-    RoomEvents.ProfileChanged({
-      at: command.at,
-      avatar: command.avatar,
-      name: command.name,
-      player,
-    }),
-  ]);
+): Decision =>
+  nameHeldByAnother(state, player, command.name)
+    ? Result.fail(new NameTaken({ wanted: command.name }))
+    : Result.succeed([
+        RoomEvents.ProfileChanged({
+          at: command.at,
+          avatar: command.avatar,
+          name: command.name,
+          player,
+        }),
+      ]);
 
 export const successorTo = (state: Open, leaving: PlayerId) => {
   const stays = (player: PlayerId) =>

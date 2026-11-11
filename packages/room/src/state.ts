@@ -229,6 +229,11 @@ export const memberOf = (state: Open | Closed, player: PlayerId) =>
 export const isMember = (state: Open | Closed, player: PlayerId) =>
   state.members.some((member) => member.player === player);
 
+export const namedPeople = (state: Open): readonly Member[] => [
+  ...state.members,
+  ...state.departed,
+];
+
 export const SEATS: readonly SeatIndex[] = Array.from(
   { length: SEAT_COUNT },
   (_, index) => SeatIndexSchema.make(index)
