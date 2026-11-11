@@ -4,6 +4,7 @@ import { Option, Schema } from "effect";
 import * as Arbitrary from "effect/Arbitrary";
 
 import { chipsText } from "../src/features/moments/captions.js";
+import { pictureSvg } from "../src/features/moments/picture.js";
 import { recapSvg } from "../src/features/pictures/recap-card.js";
 import {
   fitted,
@@ -15,6 +16,7 @@ import {
 import {
   nightLength,
   recapCardOf,
+  recapPictureOf,
   recapCardsShown,
   shownInRecap,
 } from "../src/features/recap.js";
@@ -122,4 +124,26 @@ describe("the night's recap on the page", () => {
       [0, 59, 60, 190].map((minutes) => nightLength(spanOf(minutes)))
     ).toStrictEqual(["1 min", "59 min", "1 h", "3 h 10 min"]);
   });
+});
+
+const readText = (svg: string) => svg.replaceAll(/<[^>]*>/gu, "");
+
+describe("where a shared picture says to find the site", () => {
+  it.prop(
+    "every moment, settle-up, and recap picture reads nostakes.club",
+    { frame: frames, theme: themes, view: closedViews },
+    ({ frame, theme, view }) => {
+      const look = { deck: "TwoColour", fonts: "", frame, theme } as const;
+
+      expect(
+        [
+          settleUpSvg(settleUpCardOf(view), look),
+          recapSvg(recapCardOf(view), look),
+          ...view.recap.moments.map((recapped) =>
+            pictureSvg(recapPictureOf(view, recapped), look)
+          ),
+        ].map((svg) => readText(svg).includes("nostakes.club"))
+      ).toStrictEqual([0, 1, ...view.recap.moments].map(() => true));
+    }
+  );
 });

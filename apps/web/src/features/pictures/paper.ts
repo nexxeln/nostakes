@@ -240,14 +240,22 @@ export const faceArt = (
 export const titleSize = (title: string, room: number, largest: number) =>
   Math.min(largest, room / Math.max(1, title.length * 0.56));
 
+export const SITE_NAME = "nostakes";
+
+export const SITE_DOMAIN = ".club";
+
 export const markArt = (
   palette: Palette,
   place: { readonly x: number; readonly y: number }
-) =>
-  [
-    `<text x="${place.x + 3}" y="${place.y + 3}" text-anchor="end" font-family="DM Sans, Figtree, sans-serif" font-weight="800" font-size="40" letter-spacing="-1.4" fill="${palette.brandShadow}">nostakes</text>`,
-    `<text x="${place.x}" y="${place.y}" text-anchor="end" font-family="DM Sans, Figtree, sans-serif" font-weight="800" font-size="40" letter-spacing="-1.4" fill="${palette.ink}">nostakes</text>`,
+) => {
+  const text = (dx: number, name: string, domain: string) =>
+    `<text x="${place.x + dx}" y="${place.y + dx}" text-anchor="end" font-family="DM Sans, Figtree, sans-serif" font-weight="800" font-size="40" letter-spacing="-1.4" xml:space="preserve"><tspan fill="${name}">${SITE_NAME}</tspan><tspan fill="${domain}">${SITE_DOMAIN}</tspan></text>`;
+
+  return [
+    text(3, palette.brandShadow, "none"),
+    text(0, palette.ink, palette.muted),
   ].join("");
+};
 
 export const fontsFor = (fonts: string) =>
   fonts.length > 0 ? `<style>${fonts}</style>` : "";
