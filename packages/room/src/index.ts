@@ -269,7 +269,13 @@ export type {
   RecapMoment,
 } from "./recap.js";
 
-export { ReplaySteps, cardsRevealedBy, replayOf } from "./replay.js";
+export {
+  ReplaySteps,
+  cardsRevealedBy,
+  oddsAskedBy,
+  replayOf,
+  tableChances,
+} from "./replay.js";
 
 export type { Act, Chance, Post, Replay, ReplayStep, Share } from "./replay.js";
 

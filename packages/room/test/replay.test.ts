@@ -4,7 +4,13 @@ import type { Card, Event } from "@nostakes/engine";
 import { Match, Option, Schema } from "effect";
 import * as Arbitrary from "effect/Arbitrary";
 
-import { ReplaySteps, cardsRevealedBy, replayOf } from "../src/index.js";
+import {
+  ReplaySteps,
+  cardsRevealedBy,
+  oddsAskedBy,
+  replayOf,
+  tableChances,
+} from "../src/index.js";
 import type { ReplayStep, SeenTableEvent } from "../src/index.js";
 import {
   act,
@@ -124,6 +130,28 @@ describe("a hand's replay", () => {
           }))
         )
       ).toStrictEqual(Option.some({ awarded: true, dealt: 1, ordered: true }));
+    },
+    HANDS
+  );
+
+  it.prop(
+    "asks for the same odds it would compute itself, so a device can work them out elsewhere",
+    { seed: handSeed },
+    ({ seed }) => {
+      const feed = spectatorFeed(generatedHand(seededRandom(seed)));
+      const asked = oddsAskedBy(feed);
+
+      expect(
+        replayOf(feed, (question) =>
+          Option.match(asked, {
+            onNone: () => [],
+            onSome: (known) =>
+              JSON.stringify(known) === JSON.stringify(question)
+                ? tableChances(known)
+                : [],
+          })
+        )
+      ).toStrictEqual(replayOf(feed));
     },
     HANDS
   );

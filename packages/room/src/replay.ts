@@ -352,46 +352,75 @@ const tell = (telling: Telling, event: SeenTableEvent, at: number): Told =>
 const contendersOf = (story: HandStory, dealtIn: readonly SeatIndex[]) =>
   dealtIn.filter((seat) => !story.folded.includes(seat));
 
-const oddsOf = (
+export interface OddsAsked {
+  readonly board: readonly Card[];
+  readonly holes: readonly (readonly Card[])[];
+}
+
+export type Chances = (asked: OddsAsked) => readonly number[];
+
+export const tableChances: Chances = ({ board, holes }) => {
+  const equity = equities(holes, board);
+
+  return holes.map((_, index) => percentOf(equity, index));
+};
+
+const askedOf = (
   story: HandStory,
-  dealtIn: readonly SeatIndex[],
-  steps: readonly ReplayStep[]
-): Option.Option<ReplayStep> => {
+  dealtIn: readonly SeatIndex[]
+): Option.Option<OddsAsked & { readonly seats: readonly SeatIndex[] }> => {
   const contenders = contendersOf(story, dealtIn);
   const holes = contenders.map((seat) => story.shown[seat] ?? []);
-
-  if (contenders.length < 2 || holes.some((hole) => hole.length < HOLE_CARDS)) {
-    return Option.none();
-  }
-
   const moneyIn = moneyInBoard(story, contenders);
   const [board = []] = story.boards;
 
-  if (moneyIn >= FULL_BOARD) {
-    return Option.none();
-  }
+  return contenders.length < 2 ||
+    holes.some((hole) => hole.length < HOLE_CARDS) ||
+    moneyIn >= FULL_BOARD
+    ? Option.none()
+    : Option.some({ board: board.slice(0, moneyIn), holes, seats: contenders });
+};
 
-  const seen = steps.filter(
-    (step) =>
-      ReplaySteps.$is("Shown")(step) &&
-      contenders.includes(step.seat) &&
-      step.cards.length === HOLE_CARDS
-  );
+const oddsOf = (
+  story: HandStory,
+  dealtIn: readonly SeatIndex[],
+  steps: readonly ReplayStep[],
+  chances: Chances
+): Option.Option<ReplayStep> =>
+  askedOf(story, dealtIn).pipe(
+    Option.map(({ board, holes, seats }) => {
+      const seen = steps.filter(
+        (step) =>
+          ReplaySteps.$is("Shown")(step) &&
+          seats.includes(step.seat) &&
+          step.cards.length === HOLE_CARDS
+      );
 
-  const at = Math.max(...seen.map((step) => step.at));
-  const equity = equities(holes, board.slice(0, moneyIn));
+      const percents = chances({ board, holes });
 
-  return Option.some(
-    ReplaySteps.Odds({
-      at,
-      board: board.slice(0, moneyIn),
-      chances: contenders.map((seat, index) => ({
-        cards: holes[index] ?? [],
-        percent: percentOf(equity, index),
-        seat,
-      })),
+      return ReplaySteps.Odds({
+        at: Math.max(...seen.map((step) => step.at)),
+        board,
+        chances: seats.map((seat, index) => ({
+          cards: holes[index] ?? [],
+          percent: percents[index] ?? 0,
+          seat,
+        })),
+      });
     })
   );
+
+export const oddsAskedBy = (
+  record: readonly SeenTableEvent[]
+): Option.Option<OddsAsked> => {
+  const [first] = record;
+
+  return first === undefined || !Events.$is("HandStarted")(first)
+    ? Option.none()
+    : storyOf(record).pipe(
+        Option.flatMap((story) => askedOf(story, first.dealtIn)),
+        Option.map(({ board, holes }) => ({ board, holes }))
+      );
 };
 
 const withOdds = (
@@ -408,7 +437,8 @@ const withOdds = (
   });
 
 export const replayOf = (
-  record: readonly SeenTableEvent[]
+  record: readonly SeenTableEvent[],
+  chances: Chances = tableChances
 ): Option.Option<Replay> => {
   const [first] = record;
 
@@ -440,7 +470,7 @@ export const replayOf = (
         dealtIn: first.dealtIn,
         handNumber: first.handNumber,
         smallBlindSeat: first.smallBlindSeat,
-        steps: withOdds(steps, oddsOf(story, first.dealtIn, steps)),
+        steps: withOdds(steps, oddsOf(story, first.dealtIn, steps, chances)),
       };
     })
   );
