@@ -531,7 +531,10 @@ const evolveOpen = (state: Open, event: RoomEvent): RoomState =>
       ),
   });
 
-const evolveUntallied = (state: RoomState, event: RoomEvent): RoomState =>
+export const evolveWithoutRecap = (
+  state: RoomState,
+  event: RoomEvent
+): RoomState =>
   RoomStates.$match(state, {
     Closed: (closed) => closed,
     Open: (open) =>
@@ -563,17 +566,17 @@ const withRecap = (before: RoomState, after: RoomState): RoomState =>
 export const evolve = (state: RoomState, event: RoomEvent): RoomState => {
   const withTally = tallying(state, event);
 
-  return withRecap(withTally, evolveUntallied(withTally, event));
+  return withRecap(withTally, evolveWithoutRecap(withTally, event));
 };
 
-export const evolveToDecide = (
+export const evolveAllWithoutRecap = (
   state: RoomState,
   events: readonly RoomEvent[]
 ) => {
   let current = state;
 
   for (const event of events) {
-    current = evolveUntallied(current, event);
+    current = evolveWithoutRecap(current, event);
   }
 
   return current;
@@ -593,3 +596,6 @@ export type RoomLog = readonly [RoomEventOf<"RoomOpened">, ...RoomEvent[]];
 
 export const replay = ([first, ...rest]: RoomLog) =>
   evolveAll(opened(first), rest);
+
+export const replayWithoutRecap = ([first, ...rest]: RoomLog) =>
+  evolveAllWithoutRecap(opened(first), rest);

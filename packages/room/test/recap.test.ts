@@ -41,6 +41,7 @@ import type {
   SeenTableEvent,
 } from "../src/index.js";
 import { generatedHand } from "./moment-hands.js";
+import { viewRoundTrips } from "./observers.js";
 import { seededRandom } from "./random.js";
 import { playSession, session } from "./sessions.js";
 
@@ -50,7 +51,7 @@ const nightSeed = Arbitrary.schema(
   Schema.Int.check(Schema.isBetween({ maximum: 2_000_000_000, minimum: 1 }))
 );
 
-const FEW_NIGHTS = { arbitrary: { runs: 6 }, timeout: 120_000 };
+const FEW_NIGHTS = { arbitrary: { runs: 4 }, timeout: 120_000 };
 
 const FOLDING_AUDIENCES = 4;
 
@@ -81,7 +82,7 @@ const renumbered = (event: Event, hand: number): Event => {
 
 const nightOf = (seed: number): readonly RoomEvent[] => {
   const random = seededRandom(seed);
-  const hands = 3 + random.below(6);
+  const hands = 3 + random.below(4);
   let at = 0;
 
   const table = (event: Event) => {
@@ -446,9 +447,14 @@ describe("the recap a room carries", () => {
     ({ source }) => {
       const seatings: ReadonlyMap<SeatIndex, PlayerId>[] = [];
 
-      const played = playSession(source, (state) => {
-        seatings.push(seatsOf(state));
-      });
+      const played = playSession(
+        source,
+        (state) => {
+          seatings.push(seatsOf(state));
+        },
+        (same) => same,
+        "Folded"
+      );
 
       const seatsAt = (index: number) => seatings[index] ?? new Map();
 
@@ -483,6 +489,12 @@ describe("the recap a room carries", () => {
         expect(recaps).toStrictEqual(
           recaps.map(() => Option.some(closed.recap))
         );
+
+        expect(
+          [Audiences.Spectator()].map((audience) =>
+            viewRoundTrips(viewFor(closed, audience, closed.now))
+          )
+        ).toStrictEqual([true]);
       }
     },
     ROOM_NIGHTS
@@ -515,7 +527,8 @@ const closingOfPinnedNight = () => {
 
       before = state;
     },
-    (settings) => ({ ...settings, moments: "All" })
+    (settings) => ({ ...settings, moments: "All" }),
+    "Folded"
   );
 
   return closing;

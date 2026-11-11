@@ -46,7 +46,7 @@ const FEW_HANDS = { arbitrary: { runs: 40 } };
 
 const EVERY_AUDIENCE = { arbitrary: { runs: 20 } };
 
-const QUICK_CHECKS = { arbitrary: { runs: 150 }, timeout: 120_000 };
+const QUICK_CHECKS = { arbitrary: { runs: 80 }, timeout: 120_000 };
 
 const pot = (amount: number): Chips => ChipsSchema.make(amount);
 

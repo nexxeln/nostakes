@@ -23,11 +23,11 @@ import {
   RoomEvents,
   RoomStates,
   decide,
-  evolveAll,
+  evolveAllWithoutRecap,
   millis,
   nextDeadline,
   openRoom,
-  replay,
+  replayWithoutRecap,
 } from "../src/index.js";
 import type {
   Decision,
@@ -109,7 +109,7 @@ const startedRoom = (
   players: number,
   below: (bound: number) => number
 ) => {
-  let state = replay(
+  let state = replayWithoutRecap(
     openRoom({
       at: millis(0),
       avatar: "",
@@ -125,7 +125,7 @@ const startedRoom = (
     const decision = decide(state, command);
 
     if (Result.isSuccess(decision)) {
-      state = evolveAll(state, decision.success);
+      state = evolveAllWithoutRecap(state, decision.success);
     }
   };
 
@@ -174,7 +174,7 @@ const silentNight = (
     const decision = decide(state, command);
 
     if (Result.isSuccess(decision)) {
-      state = evolveAll(state, decision.success);
+      state = evolveAllWithoutRecap(state, decision.success);
     }
 
     return decision;
@@ -348,7 +348,7 @@ describe("liveness", () => {
         const decision = decide(state, command);
 
         if (Result.isSuccess(decision)) {
-          state = evolveAll(state, decision.success);
+          state = evolveAllWithoutRecap(state, decision.success);
         }
 
         return decision;
@@ -449,7 +449,7 @@ describe("liveness at an interactive showdown", () => {
         const decision = decide(state, command);
 
         if (Result.isSuccess(decision)) {
-          state = evolveAll(state, decision.success);
+          state = evolveAllWithoutRecap(state, decision.success);
         }
 
         return decision;

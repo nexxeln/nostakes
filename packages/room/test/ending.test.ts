@@ -18,10 +18,10 @@ import {
   RoomEvents,
   SealedSeatsMoved,
   decide,
-  evolveAll,
+  evolveAllWithoutRecap,
   millis,
   nextDeadline,
-  replay,
+  replayWithoutRecap,
 } from "../src/index.js";
 import type {
   Deadline,
@@ -141,7 +141,7 @@ const endNight = (start: Night, decideWith: Decide): Ended => {
 
     if (Result.isSuccess(decision)) {
       log.push(...decision.success);
-      state = evolveAll(state, decision.success);
+      state = evolveAllWithoutRecap(state, decision.success);
     } else if (
       Actors.$is("Server")(command.by) &&
       !RoomCommands.$is("RunQueue")(command)
@@ -154,7 +154,7 @@ const endNight = (start: Night, decideWith: Decide): Ended => {
       );
 
       log.push(...Result.getOrElse(noted, () => []));
-      state = evolveAll(
+      state = evolveAllWithoutRecap(
         state,
         Result.getOrElse(noted, () => [])
       );
@@ -178,7 +178,7 @@ const applied = (night: Night, command: RoomCommand): Night => {
 
   return {
     log: [...night.log, ...events],
-    state: evolveAll(night.state, events),
+    state: evolveAllWithoutRecap(night.state, events),
   };
 };
 
@@ -331,7 +331,11 @@ const cancelProblems = (ended: Ended): readonly string[] =>
 
     const started = ended.log[startedAt];
     const [opening, ...rest] = ended.log;
-    const before = replay([opening, ...rest.slice(0, startedAt - 1)]);
+
+    const before = replayWithoutRecap([
+      opening,
+      ...rest.slice(0, startedAt - 1),
+    ]);
 
     if (
       started === undefined ||

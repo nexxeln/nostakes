@@ -50,7 +50,14 @@ export { HOST_CLAIM_AFTER_SECONDS } from "./members.js";
 
 export type { Closing } from "./closing.js";
 
-export { evolve, evolveAll, replay } from "./evolve.js";
+export {
+  evolve,
+  evolveAll,
+  evolveAllWithoutRecap,
+  evolveWithoutRecap,
+  replay,
+  replayWithoutRecap,
+} from "./evolve.js";
 
 export type { RoomLog } from "./evolve.js";
 

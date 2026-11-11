@@ -34,10 +34,12 @@ import {
   SealedDealSources,
   decide,
   evolve,
+  evolveWithoutRecap,
   millis,
   nextDeadline,
   openRoom,
   replay,
+  replayWithoutRecap,
   seatOf,
 } from "../src/index.js";
 import type {
@@ -877,11 +879,20 @@ export const openingCommands = (
   ];
 };
 
+export type RecapFolding = "Folded" | "Skipped";
+
+const FOLDINGS = {
+  Folded: { evolve, replay },
+  Skipped: { evolve: evolveWithoutRecap, replay: replayWithoutRecap },
+} as const;
+
 export const playSession = (
   source: Session,
   onEvent?: (state: RoomState, event: RoomEvent) => void,
-  adjust: (settings: RoomSettings) => RoomSettings = (same) => same
+  adjust: (settings: RoomSettings) => RoomSettings = (same) => same,
+  recap: RecapFolding = "Skipped"
 ): Played => {
+  const folding = FOLDINGS[recap];
   const settings = adjust(settingsFrom(seededRandom(source.setup)));
   const host = POOL[0] ?? PlayerIdSchema.make("p0");
 
@@ -897,7 +908,7 @@ export const playSession = (
     }),
   ];
 
-  let state = replay(log);
+  let state = folding.replay(log);
 
   for (const event of log) {
     onEvent?.(state, event);
@@ -912,7 +923,7 @@ export const playSession = (
     const events = Result.isSuccess(decision) ? decision.success : [];
 
     for (const event of events) {
-      state = evolve(state, event);
+      state = folding.evolve(state, event);
       log.push(event);
       onEvent?.(state, event);
     }

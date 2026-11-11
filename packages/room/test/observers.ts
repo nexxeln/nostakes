@@ -27,7 +27,7 @@ import {
   SeenEventSchema,
   TimeBankRefills,
   decide,
-  evolve,
+  evolveWithoutRecap,
   nextDeadline,
   timeBankLeft,
 } from "../src/index.js";
@@ -708,7 +708,7 @@ const bankProblems = (
       problems.push(...bankProblem(during, event, banks));
     }
 
-    during = evolve(during, event);
+    during = evolveWithoutRecap(during, event);
   }
 
   return problems;

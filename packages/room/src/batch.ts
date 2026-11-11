@@ -1,7 +1,7 @@
 import { Result } from "effect";
 
 import type { Decision } from "./decision.js";
-import { evolveToDecide } from "./evolve.js";
+import { evolveAllWithoutRecap } from "./evolve.js";
 import { isOpen } from "./state.js";
 import type { Open } from "./state.js";
 
@@ -12,7 +12,7 @@ export const andThen = (
 ): Decision =>
   first.pipe(
     Result.flatMap((events) => {
-      const after = evolveToDecide(state, events);
+      const after = evolveAllWithoutRecap(state, events);
 
       return isOpen(after)
         ? Result.map(next(after), (more) => [...events, ...more])

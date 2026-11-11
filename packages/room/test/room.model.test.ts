@@ -6,11 +6,11 @@ import {
   RoomEvents,
   RoomStates,
   audienceOf,
-  evolve,
+  evolveWithoutRecap,
   invariants,
   nextDeadline,
   redact,
-  replay,
+  replayWithoutRecap,
   settlement,
   viewFor,
 } from "../src/index.js";
@@ -138,7 +138,7 @@ describe("generated rooms", () => {
         let during = step.before;
 
         for (const event of step.events) {
-          during = evolve(during, event);
+          during = evolveWithoutRecap(during, event);
           known = learn(known, during, event);
         }
 
@@ -174,7 +174,7 @@ describe("generated rooms", () => {
         let during = step.before;
 
         for (const event of step.events) {
-          during = evolve(during, event);
+          during = evolveWithoutRecap(during, event);
 
           for (const player of POOL) {
             const atEvent = redact(event, audienceOf(during, player));
@@ -235,7 +235,7 @@ describe("generated rooms", () => {
     ({ source }) => {
       const played = playSession(source);
 
-      expect(replay(played.log)).toStrictEqual(played.state);
+      expect(replayWithoutRecap(played.log)).toStrictEqual(played.state);
 
       let events = 0;
 
@@ -245,9 +245,9 @@ describe("generated rooms", () => {
         if (index % 40 === 0) {
           const [opened, ...rest] = played.log;
 
-          expect(replay([opened, ...rest.slice(0, events + 1)])).toStrictEqual(
-            step.after
-          );
+          expect(
+            replayWithoutRecap([opened, ...rest.slice(0, events + 1)])
+          ).toStrictEqual(step.after);
         }
       }
     }
