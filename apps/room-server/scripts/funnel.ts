@@ -728,4 +728,6 @@ export const reportedLines = (funnel: Funnel) => [
   ),
   line("forced reloads", listed(reported(funnel, "ForcedReload"))),
   line("reconnects", plural(total(reported(funnel, "ClientReconnects")))),
+  line("guide steps", listed(reported(funnel, "GuideStep"))),
+  line("guide took", listed(reported(funnel, "GuideTook"))),
 ];

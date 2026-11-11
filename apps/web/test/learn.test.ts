@@ -26,6 +26,13 @@ import type { Command, Event, SeatIndex, TableState } from "@nostakes/engine";
 import { Result, Schema } from "effect";
 
 import learnPage from "../learn.html?raw";
+import {
+  GUIDE_STEPS,
+  stepAt,
+  stepReport,
+  timeTaken,
+  tookReport,
+} from "../src/features/learn/counts.js";
 import { cardWords, factsOf } from "../src/features/learn/facts.js";
 import { HABITS, RANKING } from "../src/features/learn/guide.js";
 import { LESSON, RECAP } from "../src/features/learn/hands.js";
@@ -674,5 +681,46 @@ describe("what a screen reader is told", () => {
     ).toBe(
       "Your cards: ace of spades, king of hearts. On the table: king of diamonds, eight of clubs, three of spades. In the pot: 50. Bo: Fold. Mara: Check. Jonas: Fold."
     );
+  });
+});
+
+const skipped = (walk: Walk): readonly Walk[] =>
+  (here(LESSON, walk)?.choices.length ?? 0) === 0
+    ? [walk]
+    : [walk, ...skipped(skip(LESSON, walk))];
+
+describe("what the guide counts", () => {
+  it("counts the start, each later hand, and the end, once and in order", () => {
+    expect(
+      skipped(begin(LESSON)).flatMap((walk) => {
+        const step = stepAt(LESSON, walk.at);
+
+        return step === undefined ? [] : [step];
+      })
+    ).toStrictEqual([...GUIDE_STEPS]);
+  });
+
+  it("writes its two reports as the server reads them", () => {
+    expect([stepReport("Hand3"), tookReport(90_000)]).toStrictEqual([
+      '{"_tag":"GuideStep","step":"Hand3"}',
+      '{"_tag":"GuideTook","took":"1to2m"}',
+    ]);
+  });
+
+  it("files how long it took in five coarse buckets", () => {
+    expect(
+      [0, 59_999, 60_000, 119_999, 120_000, 180_000, 299_999, 300_000].map(
+        (ms) => timeTaken(ms)
+      )
+    ).toStrictEqual([
+      "Under1m",
+      "Under1m",
+      "1to2m",
+      "1to2m",
+      "2to3m",
+      "3to5m",
+      "3to5m",
+      "Over5m",
+    ]);
   });
 });

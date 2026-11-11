@@ -22,6 +22,8 @@ export const MEASURES = {
   FirstHand: { blobs: [], doubles: ["sinceOpenMs", "players"], from: "Server" },
   ForcedReload: { blobs: ["reason", "build"], doubles: [], from: "Page" },
   GameStarted: { blobs: [], doubles: ["sinceOpenMs"], from: "Server" },
+  GuideStep: { blobs: ["step"], doubles: [], from: "Page" },
+  GuideTook: { blobs: ["took"], doubles: [], from: "Page" },
   HandFinished: {
     blobs: ["deal", "ending"],
     doubles: ["hand", "players"],

@@ -3,6 +3,7 @@ import type { Avatar, Theme } from "@nostakes/avatar";
 import { Effect, Option } from "effect";
 
 import { LEARNER_FACE } from "../../features/learn/cast.js";
+import { stepAt } from "../../features/learn/counts.js";
 import { factsOf } from "../../features/learn/facts.js";
 import { SHARE } from "../../features/learn/guide.js";
 import { LESSON } from "../../features/learn/hands.js";
@@ -22,6 +23,7 @@ import {
 import type { Walk } from "../../features/learn/walk.js";
 import type { Keeper } from "../pictures/keeper.js";
 import { openCoach } from "./coach.js";
+import { openCounts } from "./counts.js";
 import { openGestures } from "./gestures.js";
 import { drawExamples, openRanks } from "./ranks.js";
 import { openRecap } from "./recap.js";
@@ -117,6 +119,7 @@ const startLesson = (lesson: HTMLElement) => {
 
   const session: Session = { keeper: undefined, walk: begin(LESSON) };
   const timeline = openTimeline();
+  const counts = openCounts();
 
   const stage = openStage(lesson, timeline, {
     learner: learnerFace(),
@@ -143,6 +146,12 @@ const startLesson = (lesson: HTMLElement) => {
 
     if (view === undefined) {
       return;
+    }
+
+    const step = stepAt(LESSON, walk.at);
+
+    if (step !== undefined) {
+      counts.reached(step, performance.now());
     }
 
     session.walk = walk;

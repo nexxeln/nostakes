@@ -22,6 +22,23 @@ const ErrorNameSchema = Schema.String.check(
 
 const MessageSchema = Schema.String.check(Schema.isMaxLength(240));
 
+export const GUIDE_STEPS = [
+  "Started",
+  "Hand2",
+  "Hand3",
+  "Hand4",
+  "Hand5",
+  "Finished",
+] as const;
+
+export const GUIDE_TIMES = [
+  "Under1m",
+  "1to2m",
+  "2to3m",
+  "3to5m",
+  "Over5m",
+] as const;
+
 export const ClientReportSchema = Schema.TaggedUnion({
   ClientError: {
     build: BuildSchema,
@@ -34,6 +51,8 @@ export const ClientReportSchema = Schema.TaggedUnion({
     build: BuildSchema,
     reason: Schema.Literals(["NewProtocol", "NewBuild"]),
   },
+  GuideStep: { step: Schema.Literals(GUIDE_STEPS) },
+  GuideTook: { took: Schema.Literals(GUIDE_TIMES) },
   Reconnects: {
     build: BuildSchema,
     reconnects: Schema.Int.check(
@@ -82,6 +101,8 @@ export const reportMeasure = (report: ClientReport): Measure =>
     DeckCheckFailed: ({ build }) => measure("DeckCheckFailed", { build }),
     ForcedReload: ({ build, reason }) =>
       measure("ForcedReload", { build, reason }),
+    GuideStep: ({ step }) => measure("GuideStep", { step }),
+    GuideTook: ({ took }) => measure("GuideTook", { took }),
     Reconnects: ({ build, reconnects }) =>
       measure("ClientReconnects", { build, reconnects }),
   });

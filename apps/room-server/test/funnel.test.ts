@@ -1,5 +1,5 @@
 import { describe, expect, it } from "@effect/vitest";
-import { Duration } from "effect";
+import { Duration, Schema } from "effect";
 import * as Arbitrary from "effect/Arbitrary";
 
 import {
@@ -208,6 +208,8 @@ describe("the stats report", () => {
       "  deck checks failed   0",
       "  forced reloads       0",
       "  reconnects           0",
+      "  guide steps          0",
+      "  guide took           0",
     ]);
   });
 
@@ -230,6 +232,10 @@ describe("the stats report", () => {
         T0 + 23,
         measure("ClientReconnects", { build: "b1", reconnects: 40 })
       ),
+      stamp(SITE_SCOPE, T0 + 24, measure("GuideStep", { step: "Started" })),
+      stamp(SITE_SCOPE, T0 + 25, measure("GuideStep", { step: "Started" })),
+      stamp(SITE_SCOPE, T0 + 26, measure("GuideStep", { step: "Finished" })),
+      stamp(SITE_SCOPE, T0 + 27, measure("GuideTook", { took: "1to2m" })),
     ];
 
     const honest = funnelOf(groupPoints(points, period), period);
@@ -251,7 +257,25 @@ describe("the stats report", () => {
         "  deck checks failed   2",
         "  forced reloads       0",
         "  reconnects           40",
+        "  guide steps          3: Started 2, Finished 1",
+        "  guide took           1: 1to2m 1",
       ],
+    ]);
+  });
+
+  it("reads the guide's two reports as the page writes them", () => {
+    const decode = Schema.decodeUnknownSync(
+      Schema.fromJsonString(ClientReportSchema)
+    );
+
+    expect(
+      [
+        '{"_tag":"GuideStep","step":"Hand3"}',
+        '{"_tag":"GuideTook","took":"1to2m"}',
+      ].map((text) => reportMeasure(decode(text)))
+    ).toStrictEqual([
+      measure("GuideStep", { step: "Hand3" }),
+      measure("GuideTook", { took: "1to2m" }),
     ]);
   });
 
