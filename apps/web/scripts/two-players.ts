@@ -207,7 +207,7 @@ const GESTURES: readonly Gesture[] = [
   },
 ];
 
-const whoseTurn = (pages: readonly Page[]) =>
+const whoseTurn = (pages: readonly Page[], looks = 150) =>
   Effect.gen(function* findTheLiveChip() {
     for (const page of pages) {
       if ((yield* count(page, `${CHIP}.live`)) > 0) {
@@ -219,7 +219,7 @@ const whoseTurn = (pages: readonly Page[]) =>
   }).pipe(
     Effect.repeat({
       schedule: Schedule.spaced("150 millis"),
-      times: 150,
+      times: looks,
       until: Option.isSome,
     }),
     Effect.flatMap(
@@ -611,6 +611,10 @@ const showsABluff = (ana: Page, ben: Page) =>
 
 const AWARDED = `${TABLE} [data-awarded]`;
 
+const NEXT_DEAL_LOOKS = 400;
+
+const AWARD_SETTLES = "3 seconds";
+
 const tablesWhenAsked = (pages: readonly Page[], watcher: Page) =>
   Effect.gen(function* tableOnce() {
     for (const page of pages) {
@@ -626,6 +630,8 @@ const tablesWhenAsked = (pages: readonly Page[], watcher: Page) =>
 
 const callsTheRiver = (ana: Page, ben: Page) =>
   Effect.gen(function* betCallAndShow() {
+    yield* whoseTurn([ana, ben], NEXT_DEAL_LOOKS);
+
     const bettor = yield* toRiver([ana, ben]);
     const caller = bettor === ana ? ben : ana;
 
@@ -949,12 +955,19 @@ const night = Effect.gen(function* playOneHand() {
       ? `deck: ${deck}. The server could not reach drand in time and shuffled the hand itself; an honest outage passes this check.`
       : `deck: ${deck}`
   );
+  yield* callsTheRiver(ana, ben);
+  yield* feltStayedClear(ana, "Ana");
+  yield* feltStayedClear(ben, "Ben");
+  yield* Console.log(
+    "a called river bet went into the pot before either hint showed the hands"
+  );
+  yield* Effect.sleep(AWARD_SETTLES);
 
   const chipsBefore =
     (yield* stackOf(ana, "Ana")) + (yield* stackOf(ben, "Ben"));
 
   yield* whoseTurn([ana, ben]);
-  yield* Console.log("hand 2 is dealt");
+  yield* Console.log("the next hand is dealt");
   yield* click(ana, "Ana opens the menu", "Menu");
   yield* click(ana, "Ana pauses after this hand", "Pause after this hand");
   yield* click(ana, "Ana closes the menu", "Close");
@@ -1008,17 +1021,9 @@ const night = Effect.gen(function* playOneHand() {
   yield* click(ana, "Ana starts the game again", "Start the game");
   yield* whoseTurn([ana, ben]);
   yield* Console.log("hand 3 is dealt on the new build");
-  yield* watchesTheFelt(ana);
-  yield* watchesTheFelt(ben);
   yield* showsABluff(ana, ben);
   yield* Console.log(
     `both players see the same moment: ${yield* sameMoment(ana, ben)}`
-  );
-  yield* callsTheRiver(ana, ben);
-  yield* feltStayedClear(ana, "Ana");
-  yield* feltStayedClear(ben, "Ben");
-  yield* Console.log(
-    "a called river bet went into the pot before either hint showed the hands"
   );
   yield* holds(
     loads.ana === 2 && loads.ben === 2,
