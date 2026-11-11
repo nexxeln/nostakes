@@ -9,6 +9,7 @@ import { pokerRoom } from "../../src/poker-room.js";
 import type { PokerTypes } from "../../src/poker-room.js";
 import { roomCodec } from "../../src/room-codec.js";
 import type { ClientMessage, ServerMessage } from "../../src/room-codec.js";
+import { decodedWindow, HeldArrival } from "./held-arrival.js";
 import { socketUrl } from "./room-client.js";
 import { TEST_ORIGIN } from "./toy-worker.js";
 
@@ -44,6 +45,7 @@ export interface Closed {
 export interface PokerSocket {
   readonly label: string;
   readonly arrivals: Arrival[];
+  readonly lastSeq: () => Option.Option<number>;
   readonly problems: string[];
   readonly signal: Queue.Queue<number>;
   readonly closed: () => Option.Option<Closed>;
@@ -66,6 +68,8 @@ export const openSocket = (base: string, code: string, label: string) =>
   Effect.gen(function* openPokerSocket() {
     const signal = yield* Queue.unbounded<number>();
     const arrivals: Arrival[] = [];
+    const window = decodedWindow();
+    let lastSeq = Option.none<number>();
     const problems: string[] = [];
     let closed = Option.none<Closed>();
     let lastSent = 0;
@@ -82,7 +86,10 @@ export const openSocket = (base: string, code: string, label: string) =>
           problems.push(`${label} could not decode ${text}: ${error.message}`);
         },
         onSuccess: (message) => {
-          arrivals.push({ at: wallClock(), message, text });
+          const held = new HeldArrival(text, wallClock(), message, window);
+
+          lastSeq = Option.orElse(held.seq, () => lastSeq);
+          arrivals.push(held);
         },
       });
 
@@ -91,6 +98,7 @@ export const openSocket = (base: string, code: string, label: string) =>
 
     socket.addEventListener("close", (event) => {
       closed = Option.some({ code: event.code, reason: event.reason });
+      window.releaseAll();
       Queue.offerUnsafe(signal, -1);
     });
 
@@ -132,6 +140,7 @@ export const openSocket = (base: string, code: string, label: string) =>
         socket.close(1000, "done");
       }),
       label,
+      lastSeq: () => lastSeq,
       pingIfQuiet: Effect.suspend(() =>
         Option.isNone(closed) && wallClock() - lastSent >= PING_INTERVAL_MS
           ? Effect.asVoid(sendText(PING_FRAME))

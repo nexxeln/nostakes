@@ -2,6 +2,7 @@ import { Transport, webSocketTransport } from "@nostakes/client";
 import { PING_FRAME } from "@nostakes/protocol";
 import { Effect, Layer, Option, Result, Schema, Stream } from "effect";
 
+import { decodedWindow, HeldArrival } from "./held-arrival.js";
 import { decodeServerFrame, pokerCodec, wallClock } from "./poker-socket.js";
 import type { Arrival, PokerServerMessage } from "./poker-socket.js";
 import { TEST_ORIGIN } from "./toy-worker.js";
@@ -102,6 +103,7 @@ export const clientWire = (journal: Timeline) => {
   const lines: Line[] = [];
   const frames: string[] = [];
   const arrivals: Arrival[] = [];
+  const window = decodedWindow();
   const batches: PastBatch[] = [];
   const echoes: string[] = [];
   let offline = false;
@@ -144,7 +146,7 @@ export const clientWire = (journal: Timeline) => {
 
       for (const message of Option.toArray(decoded)) {
         if (heard) {
-          arrivals.push({ at: wallClock(), message, text });
+          arrivals.push(new HeldArrival(text, wallClock(), message, window));
         }
       }
 

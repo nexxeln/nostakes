@@ -921,21 +921,7 @@ export const startBot = (setup: BotSetup) => {
     );
 
   const lastSeqOf = (device: Device) =>
-    currentOf(device).pipe(
-      Option.flatMap(({ socket }) =>
-        Option.fromUndefinedOr(
-          socket.arrivals
-            .flatMap(({ message }) => {
-              if (guards.Welcome(message)) {
-                return [message.seq];
-              }
-
-              return guards.Events(message) ? [message.to] : [];
-            })
-            .at(-1)
-        )
-      )
-    );
+    currentOf(device).pipe(Option.flatMap(({ socket }) => socket.lastSeq()));
 
   const absorb = () => {
     const current = currentOf(main);

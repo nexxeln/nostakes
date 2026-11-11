@@ -33,6 +33,7 @@ import type { ClientBotRecord, ClientTemper } from "./client-bot.js";
 import { timeline } from "./client-wire.js";
 import type { Timeline } from "./client-wire.js";
 import { haltMidHand } from "./halt-night.js";
+import { HeldArrival, KEPT_DECODED } from "./held-arrival.js";
 import { checkNight } from "./night-checks.js";
 import type {
   HaltEvidence,
@@ -42,6 +43,7 @@ import type {
 } from "./night-checks.js";
 import { createPokerRoom, joinPokerRoom } from "./poker-http.js";
 import { wallClock } from "./poker-socket.js";
+import type { Arrival } from "./poker-socket.js";
 import {
   inspect,
   jamRoom,
@@ -472,8 +474,52 @@ export interface OpenedNight {
   readonly passes: readonly RoomPass[];
   readonly openedAt: number;
   readonly journal: Timeline;
+  readonly bots: BotRecord[];
   readonly clients: ClientBotRecord[];
 }
+
+export interface Holding {
+  readonly frames: number;
+  readonly frameBytes: number;
+  readonly notes: number;
+  readonly byKind: ReadonlyMap<string, { count: number; bytes: number }>;
+}
+
+export const holdingOf = (night: OpenedNight): Holding => {
+  const arrivals = [
+    ...night.bots.flatMap((bot) =>
+      bot.devices.flatMap((device) =>
+        device.sockets.flatMap(({ socket }) => socket.arrivals)
+      )
+    ),
+    ...night.clients.flatMap((client) => client.arrivals()),
+  ];
+
+  const byKind = new Map<string, { count: number; bytes: number }>();
+
+  for (const arrival of arrivals) {
+    const { text } = arrival;
+
+    const tag =
+      arrival instanceof HeldArrival ? arrival.kind : arrival.message._tag;
+
+    const kind = byKind.get(tag) ?? { bytes: 0, count: 0 };
+
+    byKind.set(tag, {
+      bytes: kind.bytes + text.length,
+      count: kind.count + 1,
+    });
+  }
+
+  return {
+    byKind,
+    frameBytes: arrivals.reduce((sum, { text }) => sum + text.length, 0),
+    frames: arrivals.length,
+    notes:
+      night.journal.moments().length +
+      night.clients.reduce((sum, client) => sum + client.timeline().length, 0),
+  };
+};
 
 export const openNight = (base: string, plan: NightPlan) =>
   Effect.gen(function* openRoomForNight() {
@@ -516,6 +562,7 @@ export const openNight = (base: string, plan: NightPlan) =>
     }
 
     const opened: OpenedNight = {
+      bots: [],
       clients: [],
       journal: timeline(),
       openedAt,
@@ -544,7 +591,7 @@ export const playNight = (base: string, opened: OpenedNight) =>
       stop: false,
     };
 
-    const records: BotRecord[] = [];
+    const records = opened.bots;
     const watched: Watched[] = [];
     const closers: Effect.Effect<void>[] = [];
 
@@ -919,6 +966,41 @@ export const playNight = (base: string, opened: OpenedNight) =>
     return played;
   });
 
+const decodedIn = (arrivals: readonly Arrival[]) =>
+  arrivals.filter(
+    (arrival) => arrival instanceof HeldArrival && arrival.decoded
+  ).length;
+
+export const keptDecoded = (
+  bots: readonly BotRecord[],
+  clients: readonly ClientBotRecord[]
+): readonly string[] => [
+  ...bots.flatMap((bot) =>
+    bot.devices.flatMap((device) =>
+      device.sockets.flatMap(({ socket }) => {
+        const kept = decodedIn(socket.arrivals);
+        const closed = Option.isSome(socket.closed());
+        const most = closed ? 0 : KEPT_DECODED;
+
+        return kept > most
+          ? [
+              `the harness kept ${kept} decoded frames of ${socket.label}, which ${closed ? "had closed" : "was open"}, where ${most} is the most`,
+            ]
+          : [];
+      })
+    )
+  ),
+  ...clients.flatMap((client) => {
+    const kept = decodedIn(client.arrivals());
+
+    return kept > KEPT_DECODED
+      ? [
+          `the harness kept ${kept} decoded frames of ${client.label}, where ${KEPT_DECODED} is the most`,
+        ]
+      : [];
+  }),
+];
+
 export const judgeNight = (played: PlayedNight): NightResult => {
   const checkedAt = wallClock();
   const checked = checkNight(played.evidence);
@@ -928,6 +1010,7 @@ export const judgeNight = (played: PlayedNight): NightResult => {
     problems: [
       ...checked.problems,
       ...checkAnalytics(played.events, played.analytics),
+      ...keptDecoded(played.evidence.bots, played.evidence.clients),
     ],
   };
 

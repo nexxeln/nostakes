@@ -31,7 +31,9 @@ import type {
   RoomState,
   RoomView,
 } from "@nostakes/room";
+import { sha256 } from "@nostakes/shuffle";
 import { Option, Predicate, Result, Schema } from "effect";
+import * as Hex from "effect/encoding/Hex";
 
 import { pokerRoom } from "../../src/poker-room.js";
 import type { MemberCommand } from "../../src/poker-room.js";
@@ -43,9 +45,10 @@ import {
   judgeDevice,
   sealKeyOf,
   stretchesFrom,
+  stretchFold,
   waitBeyondPause,
 } from "./fair-checks.js";
-import type { FairnessCounts, Proof } from "./fair-checks.js";
+import type { FairnessCounts, Proof, Stretch } from "./fair-checks.js";
 import {
   haltedViewOf,
   ledgerFromLog,
@@ -79,6 +82,11 @@ const textOf = (encoded: Result.Result<string, Schema.SchemaError>) =>
   Result.getOrElse(encoded, (failure) => `unencodable: ${failure.message}`);
 
 const decodeJson = Schema.decodeUnknownSync(Schema.fromJsonString(Schema.Json));
+
+const utf8 = new TextEncoder();
+
+const digestOf = (text: string): string =>
+  Hex.encode(sha256(utf8.encode(text)));
 
 const { guards } = pokerCodec.server;
 
@@ -317,15 +325,16 @@ export interface NightVerdict {
 
 interface Seen {
   readonly player: PlayerId;
-  readonly text: string;
-  readonly raw: Schema.Json;
   readonly where: string;
+  readonly cards: readonly number[];
+  readonly digest: string;
+  readonly text: () => string;
 }
 
 interface WelcomeSeen {
   readonly player: PlayerId;
   readonly view: RoomView;
-  readonly raw: Schema.Json;
+  readonly cards: readonly number[];
   readonly helloAt: number;
   readonly arrivedAt: number;
   readonly where: string;
@@ -364,6 +373,7 @@ interface Received {
   readonly clientViews: Map<number, ClientView[]>;
   readonly traces: Trace[];
   readonly finals: Final[];
+  readonly stretches: Map<string, readonly Stretch[]>;
 }
 
 interface Knowledge {
@@ -563,6 +573,41 @@ interface Lineage {
   welcomed: boolean;
 }
 
+const batchEventText = (arrival: Arrival, offset: number) => {
+  const { message } = arrival;
+
+  return guards.Events(message)
+    ? Option.match(Option.fromUndefinedOr(message.events[offset]), {
+        onNone: () => "nothing",
+        onSome: (event) => textOf(encodeSeenResult(event)),
+      })
+    : "nothing";
+};
+
+const batchViewText = (arrival: Arrival) => {
+  const { message } = arrival;
+
+  return guards.Events(message)
+    ? textOf(encodeViewResult(message.view))
+    : "nothing";
+};
+
+const missedText = (arrival: Arrival, offset: number) => {
+  const { message } = arrival;
+
+  if (
+    !guards.Welcome(message) ||
+    !pokerCodec.catchUp.guards.Missed(message.catchUp)
+  ) {
+    return "nothing";
+  }
+
+  return Option.match(Option.fromUndefinedOr(message.catchUp.events[offset]), {
+    onNone: () => "nothing",
+    onSome: (event) => textOf(encodeSeenResult(event)),
+  });
+};
+
 const welcomeArrived = (
   checker: Checker,
   received: Received,
@@ -570,7 +615,8 @@ const welcomeArrived = (
   record: SocketRecord,
   lineage: Lineage,
   player: PlayerId,
-  arrival: Arrival
+  arrival: Arrival,
+  held: Arrival
 ) => {
   const { message } = arrival;
 
@@ -609,9 +655,10 @@ const welcomeArrived = (
 
       for (const [offset, event] of events.entries()) {
         pushTo(received.events, from + offset, {
+          cards: cardsIn(rawMissed[offset] ?? null, false),
+          digest: digestOf(textOf(encodeSeenResult(event))),
           player,
-          raw: rawMissed[offset] ?? null,
-          text: textOf(encodeSeenResult(event)),
+          text: () => missedText(held, offset),
           where,
         });
       }
@@ -645,9 +692,9 @@ const welcomeArrived = (
 
   pushTo(received.welcomes, message.seq, {
     arrivedAt: arrival.at,
+    cards: cardsIn(fieldOf(raw, "view"), false),
     helloAt: record.helloAt,
     player,
-    raw: fieldOf(raw, "view"),
     view: message.view,
     where,
   });
@@ -660,7 +707,8 @@ const eventsArrived = (
   where: string,
   lineage: Lineage,
   player: PlayerId,
-  arrival: Arrival
+  arrival: Arrival,
+  held: Arrival
 ) => {
   const { message } = arrival;
 
@@ -693,17 +741,19 @@ const eventsArrived = (
 
   for (const [offset, event] of message.events.entries()) {
     pushTo(received.events, message.from + offset, {
+      cards: cardsIn(rawEvents[offset] ?? null, false),
+      digest: digestOf(textOf(encodeSeenResult(event))),
       player,
-      raw: rawEvents[offset] ?? null,
-      text: textOf(encodeSeenResult(event)),
+      text: () => batchEventText(held, offset),
       where,
     });
   }
 
   pushTo(received.views, message.to, {
+    cards: cardsIn(fieldOf(raw, "view"), false),
+    digest: digestOf(textOf(encodeViewResult(message.view))),
     player,
-    raw: fieldOf(raw, "view"),
-    text: textOf(encodeViewResult(message.view)),
+    text: () => batchViewText(held),
     where,
   });
   lineage.next = Option.some(message.to + 1);
@@ -752,6 +802,7 @@ const indexBot = (checker: Checker, received: Received, bot: BotRecord) => {
 
   for (const device of bot.devices) {
     const lineage: Lineage = { next: Option.none(), welcomed: false };
+    const fold = stretchFold();
 
     for (const [index, record] of device.sockets.entries()) {
       const where = `${bot.label} ${device.name} #${index + 1}`;
@@ -762,8 +813,15 @@ const indexBot = (checker: Checker, received: Received, bot: BotRecord) => {
         report(checker, problem);
       }
 
-      for (const arrival of record.socket.arrivals) {
+      for (const held of record.socket.arrivals) {
+        const arrival: Arrival = {
+          at: held.at,
+          message: held.message,
+          text: held.text,
+        };
+
         checker.counts.framesChecked += 1;
+        fold.add(arrival);
 
         if (arrival.text.includes('"deck"')) {
           report(checker, `${where} received a frame with a deck`);
@@ -776,9 +834,10 @@ const indexBot = (checker: Checker, received: Received, bot: BotRecord) => {
           record,
           lineage,
           player,
-          arrival
+          arrival,
+          held
         );
-        eventsArrived(checker, received, where, lineage, player, arrival);
+        eventsArrived(checker, received, where, lineage, player, arrival, held);
         signalArrived(checker, received, where, lineage, arrival);
 
         for (const seen of Option.toArray(viewOf(arrival))) {
@@ -794,6 +853,10 @@ const indexBot = (checker: Checker, received: Received, bot: BotRecord) => {
           replies.set(arrival.message.id, list);
         }
       }
+    }
+
+    if (device.sockets.length > 0) {
+      received.stretches.set(`${bot.label} ${device.name}`, fold.stretches());
     }
   }
 
@@ -884,9 +947,10 @@ const indexClientActivity = (
 
         checker.counts.clientEventsChecked += 1;
         pushTo(received.events, item.seq, {
+          cards: cardsIn(decodeJson(text), false),
+          digest: digestOf(text),
           player,
-          raw: decodeJson(text),
-          text,
+          text: () => textOf(encodeSeenResult(item.event)),
           where,
         });
         expected = item.seq + 1;
@@ -1307,7 +1371,7 @@ const checkCards = (
 ) => {
   const allowed = allowedFor(ledger.known, state, seen.player);
 
-  const leaked = cardsIn(seen.raw, false).filter((card) => !allowed.has(card));
+  const leaked = seen.cards.filter((card) => !allowed.has(card));
 
   if (leaked.length > 0) {
     report(
@@ -1334,10 +1398,10 @@ const checkReceivedEvents = (
 
     expectedFor.set(item.player, expected);
 
-    if (item.text !== expected) {
+    if (item.digest !== digestOf(expected)) {
       report(
         checker,
-        `${item.where} got ${item.text} at ${seq}, not ${expected}`
+        `${item.where} got ${item.text()} at ${seq}, not ${expected}`
       );
     }
 
@@ -1362,10 +1426,10 @@ const checkReceivedViews = (
 
     const expected = encodeView(view);
 
-    if (item.text !== expected) {
+    if (item.digest !== digestOf(expected)) {
       report(
         checker,
-        `${item.where} was shown a view at ${seq} that differs from the log's: ${item.text} / ${expected}`
+        `${item.where} was shown a view at ${seq} that differs from the log's: ${item.text()} / ${expected}`
       );
     }
 
@@ -1395,9 +1459,10 @@ const checkWelcomes = (
       ledger,
       state,
       {
+        cards: welcome.cards,
+        digest: "",
         player: welcome.player,
-        raw: welcome.raw,
-        text: "",
+        text: () => "",
         where: welcome.where,
       },
       seq
@@ -1863,7 +1928,8 @@ const checkEnding = (
 const checkFairness = (
   checker: Checker,
   evidence: NightEvidence,
-  events: readonly RoomEvent[]
+  events: readonly RoomEvent[],
+  folded: ReadonlyMap<string, readonly Stretch[]>
 ) => {
   const fairness = emptyFairness();
   const proofs: Proof[] = [];
@@ -1873,7 +1939,7 @@ const checkFairness = (
   for (const device of devicesOf(evidence)) {
     const judged = judgeDevice(
       device.label,
-      stretchesFrom(device.arrivals),
+      folded.get(device.label) ?? stretchesFrom(device.arrivals),
       evidence.code,
       now,
       withdrawnWhileStalled(events)
@@ -1934,6 +2000,7 @@ export const checkNight = (evidence: NightEvidence): NightVerdict => {
     events: new Map(),
     finals: [],
     signals: new Map(),
+    stretches: new Map(),
     traces: [],
     views: new Map(),
     welcomes: new Map(),
@@ -2061,7 +2128,7 @@ export const checkNight = (evidence: NightEvidence): NightVerdict => {
       ? []
       : checkSettlement(checker, received.finals, ledger.net);
 
-  const fair = checkFairness(checker, evidence, events);
+  const fair = checkFairness(checker, evidence, events, received.stretches);
 
   return {
     counts: checker.counts,

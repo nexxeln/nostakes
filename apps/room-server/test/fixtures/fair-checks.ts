@@ -147,13 +147,19 @@ const firstNewSeq = (message: Arrival["message"]): Option.Option<number> => {
     : Option.some(message.seq + 1);
 };
 
-export const stretchesFrom = (
-  arrivals: readonly Arrival[]
-): readonly Stretch[] => {
+export interface StretchFold {
+  readonly add: (arrival: Pick<Arrival, "at" | "message">) => void;
+  readonly stretches: () => readonly Stretch[];
+}
+
+export const stretchFold = (): StretchFold => {
   const stretches: Stretch[] = [];
-  let witness = emptyWitness;
-  let applied = 0;
-  let lastHeardAt = Option.none<number>();
+
+  const fold = {
+    applied: 0,
+    lastHeardAt: Option.none<number>(),
+    witness: emptyWitness,
+  };
 
   const apply = (
     events: readonly Parameters<typeof witnessEvent>[1][],
@@ -161,54 +167,71 @@ export const stretchesFrom = (
     arrival: SealArrival
   ) => {
     for (const [index, event] of events.entries()) {
-      if (from + index > applied) {
-        witness = witnessEvent(witness, event, arrival);
+      if (from + index > fold.applied) {
+        fold.witness = witnessEvent(fold.witness, event, arrival);
       }
     }
   };
 
-  for (const { at: time, message } of arrivals) {
-    const when = at(time);
-    const first = firstNewSeq(message);
+  return {
+    add: ({ at: time, message }) => {
+      const when = at(time);
+      const first = firstNewSeq(message);
 
-    const skipsAhead =
-      applied > 0 && Option.isSome(first) && first.value > applied + 1;
+      const skipsAhead =
+        fold.applied > 0 &&
+        Option.isSome(first) &&
+        first.value > fold.applied + 1;
 
-    for (const heard of Option.toArray(lastHeardAt)) {
-      if (skipsAhead) {
-        stretches.push({ lastHeardAt: heard, witness });
-      }
-    }
-
-    if (guards.Welcome(message)) {
-      const { catchUp } = message;
-
-      if (pokerCodec.catchUp.guards.Missed(catchUp)) {
-        apply(
-          catchUp.events,
-          catchUp.from,
-          SealArrivals.CaughtUp({ at: when })
-        );
+      for (const heard of Option.toArray(fold.lastHeardAt)) {
+        if (skipsAhead) {
+          stretches.push({ lastHeardAt: heard, witness: fold.witness });
+        }
       }
 
-      applied = Math.max(applied, message.seq);
-      witness = witnessView(witness, message.view, when);
-    }
+      if (guards.Welcome(message)) {
+        const { catchUp } = message;
 
-    if (guards.Events(message)) {
-      apply(message.events, message.from, SealArrivals.Live({ at: when }));
-      applied = Math.max(applied, message.to);
-      witness = witnessView(witness, message.view, when);
-    }
+        if (pokerCodec.catchUp.guards.Missed(catchUp)) {
+          apply(
+            catchUp.events,
+            catchUp.from,
+            SealArrivals.CaughtUp({ at: when })
+          );
+        }
 
-    lastHeardAt = Option.some(time);
+        fold.applied = Math.max(fold.applied, message.seq);
+        fold.witness = witnessView(fold.witness, message.view, when);
+      }
+
+      if (guards.Events(message)) {
+        apply(message.events, message.from, SealArrivals.Live({ at: when }));
+        fold.applied = Math.max(fold.applied, message.to);
+        fold.witness = witnessView(fold.witness, message.view, when);
+      }
+
+      fold.lastHeardAt = Option.some(time);
+    },
+    stretches: () => [
+      ...stretches,
+      ...Option.toArray(fold.lastHeardAt).map((heard) => ({
+        lastHeardAt: heard,
+        witness: fold.witness,
+      })),
+    ],
+  };
+};
+
+export const stretchesFrom = (
+  arrivals: readonly Arrival[]
+): readonly Stretch[] => {
+  const fold = stretchFold();
+
+  for (const arrival of arrivals) {
+    fold.add(arrival);
   }
 
-  for (const heard of Option.toArray(lastHeardAt)) {
-    stretches.push({ lastHeardAt: heard, witness });
-  }
-
-  return stretches;
+  return fold.stretches();
 };
 
 const sealKeys = (witness: Witness): readonly string[] => {

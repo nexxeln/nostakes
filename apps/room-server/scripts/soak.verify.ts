@@ -32,6 +32,7 @@ import {
 } from "../test/fixtures/night-checks.js";
 import type { CountName, NightEnding } from "../test/fixtures/night-checks.js";
 import {
+  holdingOf,
   judgeNight,
   openNight,
   planNight,
@@ -47,6 +48,7 @@ import { wallClock } from "../test/fixtures/poker-socket.js";
 import { PokerStack } from "../test/fixtures/poker-stack.js";
 import { inspect, refusedAlarms } from "../test/fixtures/stack.js";
 import { funnelLines, funnelOf, groupPoints, healthLines } from "./funnel.ts";
+import { SoakHeapLimit } from "./soak-heap-limit.ts";
 
 const { afterAll, beforeAll, deploy, destroy, test } = Test.make({
   dev: true,
@@ -61,6 +63,12 @@ afterAll(destroy(PokerStack));
 
 const ROOMS_AT_ONCE = 4;
 
+const HEAP_LIMIT_MB = 4096;
+
+const HEAP_REPORT_MS = 60_000;
+
+const HEAP_CHECK_MS = 1000;
+
 const BUDGET_MINUTES = 95;
 
 const VITEST_LIMIT_MS = (BUDGET_MINUTES + 15) * 60_000;
@@ -70,7 +78,11 @@ const soakConfig = Config.all({
     Config.withDefault(BUDGET_MINUTES)
   ),
   hands: Config.Int("SOAK_HANDS").pipe(Config.withDefault(1000)),
+  heapLimitMb: Config.Int("SOAK_HEAP_LIMIT_MB").pipe(
+    Config.withDefault(HEAP_LIMIT_MB)
+  ),
   keepLogs: Config.Boolean("SOAK_KEEP_LOGS").pipe(Config.withDefault(false)),
+  only: Config.String("SOAK_ONLY").pipe(Config.withDefault("")),
   rooms: Config.Int("SOAK_ROOMS").pipe(Config.withDefault(12)),
   roomsAtOnce: Config.Int("SOAK_CONCURRENCY").pipe(
     Config.withDefault(ROOMS_AT_ONCE)
@@ -150,6 +162,36 @@ interface Probe {
 type JudgedNight = Omit<NightResult, "events">;
 
 const MEGABYTE = 1024 * 1024;
+
+const heapMb = () => Math.round(process.memoryUsage().heapUsed / MEGABYTE);
+
+const liveHeapMb = () => {
+  globalThis.gc?.();
+
+  return heapMb();
+};
+
+const overLimit = (limitMb: number) =>
+  heapMb() > limitMb && liveHeapMb() > limitMb;
+
+const rssMb = () => Math.round(process.memoryUsage().rss / MEGABYTE);
+
+const holdings = (nights: readonly OpenedNight[]) =>
+  nights
+    .map((night) => {
+      const held = holdingOf(night);
+
+      const kinds = [...held.byKind]
+        .toSorted(([, left], [, right]) => right.bytes - left.bytes)
+        .map(
+          ([kind, { bytes, count }]) =>
+            `${kind} ${count} (${(bytes / MEGABYTE).toFixed(0)} MB)`
+        )
+        .join(", ");
+
+      return `${night.plan.code} holds ${held.frames} frames (${(held.frameBytes / MEGABYTE).toFixed(0)} MB of text: ${kinds}) and ${held.notes} timeline notes`;
+    })
+    .join("; ");
 
 const watchEventLoop = (probe: Probe) =>
   Effect.gen(function* probeEventLoop() {
@@ -388,12 +430,27 @@ test(
     const { url } = yield* deployed;
     const base = yield* Effect.fromNullishOr(url).pipe(Effect.orDie);
 
-    const { budgetMinutes, hands, keepLogs, rooms, roomsAtOnce, seed } =
-      yield* soakConfig;
+    const {
+      budgetMinutes,
+      hands,
+      heapLimitMb,
+      keepLogs,
+      only,
+      rooms,
+      roomsAtOnce,
+      seed,
+    } = yield* soakConfig;
 
     const perRoom = Math.ceil(hands / rooms);
 
-    const plans = Array.from({ length: rooms }, (_, index) => {
+    const chosen = new Set(
+      only
+        .split(",")
+        .filter((part) => part.trim() !== "")
+        .map((part) => Number(part.trim()))
+    );
+
+    const planned = Array.from({ length: rooms }, (_, index) => {
       const turnSeconds = index % 6 === 5 ? 0 : 1 + (index % 2);
 
       return planNight(
@@ -420,8 +477,13 @@ test(
       );
     });
 
+    const plans =
+      chosen.size === 0
+        ? planned
+        : planned.filter((_, index) => chosen.has(index));
+
     yield* Console.log(
-      `soak seed ${seed}: ${rooms} rooms, ${hands} hands wanted, ${roomsAtOnce} rooms playing at a time, ${budgetMinutes} minutes to finish`
+      `soak seed ${seed}: ${rooms} rooms, ${hands} hands wanted, ${roomsAtOnce} rooms playing at a time, ${budgetMinutes} minutes to finish, heap limit ${heapLimitMb} MB${chosen.size === 0 ? "" : `, only rooms ${[...chosen].join(",")}`}`
     );
 
     for (const plan of plans) {
@@ -447,6 +509,8 @@ test(
     let wavesJudged = 0;
 
     const playWaves = Effect.gen(function* playWaves() {
+      let stopped = Option.none<SoakHeapLimit>();
+
       for (const wave of waves) {
         const opened: OpenedNight[] = [];
 
@@ -455,10 +519,45 @@ test(
         }
 
         const from = wallClock();
+        const waveNumber = wavesJudged + 1;
+
+        const heapReport = Effect.suspend(() =>
+          Console.log(
+            `  heap at +${((wallClock() - started) / 1000).toFixed(0)} s in wave ${waveNumber}: ${liveHeapMb()} MB live, ${rssMb()} MB rss; ${holdings(opened)}`
+          )
+        );
+
+        const reporter = yield* Effect.forever(
+          Effect.sleep(Duration.millis(HEAP_REPORT_MS)).pipe(
+            Effect.andThen(heapReport)
+          )
+        ).pipe(Effect.forkChild);
+
+        const heapWatch = Effect.forever(
+          Effect.sleep(Duration.millis(HEAP_CHECK_MS)).pipe(
+            Effect.andThen(
+              Effect.suspend(() =>
+                overLimit(heapLimitMb)
+                  ? Effect.fail(
+                      new SoakHeapLimit({
+                        heapMb: heapMb(),
+                        limitMb: heapLimitMb,
+                        playing: holdings(opened),
+                        wave: waveNumber,
+                      })
+                    )
+                  : Effect.void
+              )
+            )
+          )
+        );
 
         const played = yield* Effect.all(
           opened.map((night) => playNight(base, night).pipe(Effect.result)),
           { concurrency: "unbounded" }
+        ).pipe(
+          Effect.raceFirst(heapWatch),
+          Effect.ensuring(Fiber.interrupt(reporter))
         );
 
         windows.push({ from, to: wallClock() });
@@ -499,6 +598,18 @@ test(
             `  wave ${wavesJudged + 1} ${plan.code}: ${verdict.counts.hands} hands in ${(durationMs / 1000).toFixed(0)} s, checked in ${checkMs.toFixed(0)} ms, ${verdict.problems.length === 0 ? "ok" : `FAILED ${verdict.problems.slice(0, 3).join(" | ")}`}`
           );
 
+          if (overLimit(heapLimitMb)) {
+            stopped = Option.some(
+              new SoakHeapLimit({
+                heapMb: heapMb(),
+                limitMb: heapLimitMb,
+                playing: `none, after judging ${plan.code}; ${holdings(opened)}`,
+                wave: waveNumber,
+              })
+            );
+            break;
+          }
+
           if (verdict.problems.length > 0) {
             const path = yield* saveLog(seed, night, events, verdict.proofs);
 
@@ -513,10 +624,28 @@ test(
         }
 
         wavesJudged += 1;
+
+        if (Option.isSome(stopped)) {
+          break;
+        }
+
+        yield* Console.log(
+          `  wave ${wavesJudged} judged: heap ${liveHeapMb()} MB live, ${rssMb()} MB rss`
+        );
       }
+
+      return yield* Option.match(stopped, {
+        onNone: () => Effect.void,
+        onSome: (limit) => Effect.fail(limit),
+      });
     });
 
     const finished = yield* playWaves.pipe(
+      Effect.catchTag("SoakHeapLimit", (limit) =>
+        Effect.sync(() => {
+          failures.push(limit.message);
+        })
+      ),
       Effect.timeoutOption(Duration.minutes(budgetMinutes))
     );
 
