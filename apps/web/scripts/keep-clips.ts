@@ -1323,6 +1323,88 @@ const lingeredClip = (engine: BrowserType) =>
     };
   }).pipe(Effect.scoped);
 
+const FilmResultSchema = Schema.Struct({
+  compared: Schema.optionalKey(
+    Schema.NullOr(
+      Schema.Struct({
+        frames: Schema.Int,
+        most: Schema.Int,
+        pixels: Schema.Int,
+      })
+    )
+  ),
+  ms: Schema.optionalKey(Schema.Finite),
+  redrawn: Schema.optionalKey(Schema.Int),
+  state: Schema.String,
+});
+
+const filmResult = (engine: BrowserType, query: string) =>
+  Effect.gen(function* makeTestFilm() {
+    const origin = yield* StageOrigin;
+    const opened = yield* mutedBrowser(engine);
+    const page = yield* attempt("open a page", () => opened.newPage());
+
+    yield* policed(page, engine.name());
+    yield* attempt("open the film stage", () =>
+      page.goto(`${origin}${STAGE}/film.html?${query}`)
+    );
+    yield* attempt("wait for the film", () =>
+      page.waitForFunction(
+        () => {
+          const stage = document.querySelector("#stage");
+
+          return (
+            stage instanceof HTMLElement && stage.dataset.result !== undefined
+          );
+        },
+        undefined,
+        { timeout: 300_000 }
+      )
+    );
+
+    return yield* read(
+      page,
+      'document.querySelector("#stage").dataset.result',
+      FilmResultSchema,
+      "read the film's result"
+    );
+  }).pipe(Effect.scoped);
+
+const EDGE_NOISE_LEVELS = 12;
+
+const EDGE_NOISE_PIXELS = 50;
+
+const redrawnFilms = (engine: BrowserType) =>
+  Effect.gen(function* compareRedraws() {
+    const label = `${engine.name()}-redraw`;
+    const lines: string[] = [];
+    const problems: string[] = [];
+
+    for (const scene of ["scene=replay", "scene=pan&seconds=4"]) {
+      const made = yield* filmResult(engine, `${scene}&compare=true`);
+      const compared = made.compared ?? { frames: 0, most: 0, pixels: 0 };
+      const perFrame = compared.pixels / Math.max(1, compared.frames);
+
+      lines.push(
+        `${scene}: ${made.redrawn ?? 0} frames redrawn in part, ${compared.frames} differ from whole frames in ${compared.pixels} luma pixels by at most ${compared.most}`
+      );
+
+      if (
+        made.state !== "Made" ||
+        made.compared === undefined ||
+        made.compared === null ||
+        compared.most > EDGE_NOISE_LEVELS ||
+        perFrame > EDGE_NOISE_PIXELS
+      ) {
+        problems.push(
+          `${label}: ${scene} made ${made.state}, and redrawing in part left ${compared.pixels} luma pixels in ${compared.frames} frames up to ${compared.most} levels from whole frames`
+        );
+      }
+    }
+
+    return { label, line: `${label}: ${lines.join("; ")}`, problems };
+  });
+
 const replayedClip = (
   engine: BrowserType,
   settings: Settings,
@@ -1622,6 +1704,7 @@ const checks = Effect.gen(function* checkClips() {
         askedClip(engine, settings),
         abandonedClip(engine),
         lingeredClip(engine),
+        redrawnFilms(engine),
         guardedClip(engine, 1),
         guardedClip(engine, 2),
         guardedClip(engine, 8),

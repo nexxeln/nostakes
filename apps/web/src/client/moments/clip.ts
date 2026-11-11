@@ -110,16 +110,21 @@ const aacSupported =
       )
     : Effect.succeed(false);
 
-export const clipSupport = (
-  frame: KeptFrame
-): Effect.Effect<Option.Option<ClipSupport>> =>
+export const filmSupport = (size: {
+  readonly height: number;
+  readonly width: number;
+}): Effect.Effect<Option.Option<ClipSupport>> =>
   hasEncoders()
-    ? Effect.all([videoCodec(FRAME_SIZES[frame]), aacSupported]).pipe(
+    ? Effect.all([videoCodec(size), aacSupported]).pipe(
         Effect.map(([codec, sound]) =>
           codec.pipe(Option.map((found) => ({ codec: found, sound })))
         )
       )
     : Effect.succeedNone;
+
+export const clipSupport = (
+  frame: KeptFrame
+): Effect.Effect<Option.Option<ClipSupport>> => filmSupport(FRAME_SIZES[frame]);
 
 export type ClipPace = "Asked" | "Quiet";
 

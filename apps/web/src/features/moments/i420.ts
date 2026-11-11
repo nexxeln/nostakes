@@ -68,40 +68,55 @@ export const writeI420Area = (
   into: Uint8Array
 ) => {
   const { bytes, offset, order, stride } = pixels;
-  const half = frame.width / 2;
-  const blueAt = frame.width * frame.height;
+  const { red: R, green: G, blue: B } = order;
+  const { width } = frame;
+  const half = width / 2;
+  const blueAt = width * frame.height;
   const redAt = blueAt + half * (frame.height / 2);
-  let r = 0;
-  let g = 0;
-  let b = 0;
+  const right = area.x + area.width;
+  const bottom = area.y + area.height;
 
-  const take = (row: number, col: number) => {
-    const at = offset + (row - area.y) * stride + (col - area.x) * 4;
-    const red = bytes[at + order.red] ?? 0;
-    const green = bytes[at + order.green] ?? 0;
-    const blue = bytes[at + order.blue] ?? 0;
+  for (let row = area.y; row < bottom; row += 2) {
+    const upper = offset + (row - area.y) * stride - area.x * 4;
+    const lower = upper + stride;
+    const lumaUpper = row * width;
+    const lumaLower = lumaUpper + width;
+    const chromaRow = (row / 2) * half;
 
-    r += red;
-    g += green;
-    b += blue;
-    into[row * frame.width + col] =
-      LUMA_FLOOR + LUMA_RED * red + LUMA_GREEN * green + LUMA_BLUE * blue;
-  };
+    for (let col = area.x; col < right; col += 2) {
+      const a = upper + col * 4;
+      const b = a + 4;
+      const c = lower + col * 4;
+      const d = c + 4;
+      const r0 = bytes[a + R] ?? 0;
+      const g0 = bytes[a + G] ?? 0;
+      const b0 = bytes[a + B] ?? 0;
+      const r1 = bytes[b + R] ?? 0;
+      const g1 = bytes[b + G] ?? 0;
+      const b1 = bytes[b + B] ?? 0;
+      const r2 = bytes[c + R] ?? 0;
+      const g2 = bytes[c + G] ?? 0;
+      const b2 = bytes[c + B] ?? 0;
+      const r3 = bytes[d + R] ?? 0;
+      const g3 = bytes[d + G] ?? 0;
+      const b3 = bytes[d + B] ?? 0;
 
-  for (let row = area.y; row < area.y + area.height; row += 2) {
-    for (let col = area.x; col < area.x + area.width; col += 2) {
-      r = 0;
-      g = 0;
-      b = 0;
-      take(row, col);
-      take(row, col + 1);
-      take(row + 1, col);
-      take(row + 1, col + 1);
+      into[lumaUpper + col] =
+        LUMA_FLOOR + LUMA_RED * r0 + LUMA_GREEN * g0 + LUMA_BLUE * b0;
+      into[lumaUpper + col + 1] =
+        LUMA_FLOOR + LUMA_RED * r1 + LUMA_GREEN * g1 + LUMA_BLUE * b1;
+      into[lumaLower + col] =
+        LUMA_FLOOR + LUMA_RED * r2 + LUMA_GREEN * g2 + LUMA_BLUE * b2;
+      into[lumaLower + col + 1] =
+        LUMA_FLOOR + LUMA_RED * r3 + LUMA_GREEN * g3 + LUMA_BLUE * b3;
 
-      const shade = luma(r / 4, g / 4, b / 4);
-      const chroma = (row / 2) * half + col / 2;
+      const r = r0 + r1 + r2 + r3;
+      const g = g0 + g1 + g2 + g3;
+      const bl = b0 + b1 + b2 + b3;
+      const shade = luma(r / 4, g / 4, bl / 4);
+      const chroma = chromaRow + col / 2;
 
-      into[blueAt + chroma] = CHROMA_ZERO + BLUE_SCALE * (b / 4 - shade);
+      into[blueAt + chroma] = CHROMA_ZERO + BLUE_SCALE * (bl / 4 - shade);
       into[redAt + chroma] = CHROMA_ZERO + RED_SCALE * (r / 4 - shade);
     }
   }

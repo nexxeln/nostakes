@@ -248,6 +248,93 @@ export const boundsOf = (
     : Option.none();
 };
 
+const areaOf = (box: Box) => box.width * box.height;
+
+const unionOf = (one: Box, other: Box): Box => {
+  const x = Math.min(one.x, other.x);
+  const y = Math.min(one.y, other.y);
+
+  return {
+    height: Math.max(one.y + one.height, other.y + other.height) - y,
+    width: Math.max(one.x + one.width, other.x + other.width) - x,
+    x,
+    y,
+  };
+};
+
+const UNION_SLACK = 1.3;
+
+const worthJoining = (one: Box, other: Box) =>
+  areaOf(unionOf(one, other)) <= (areaOf(one) + areaOf(other)) * UNION_SLACK;
+
+export const MOST_AREAS = 6;
+
+export const WHOLE_FRAME_SHARE = 0.55;
+
+const joined = (boxes: readonly Box[]): readonly Box[] => {
+  const open = [...boxes];
+  let merged = true;
+
+  while (merged) {
+    merged = false;
+
+    for (let one = 0; one < open.length && !merged; one += 1) {
+      for (let other = one + 1; other < open.length && !merged; other += 1) {
+        const first = open[one];
+        const second = open[other];
+
+        if (
+          first !== undefined &&
+          second !== undefined &&
+          (worthJoining(first, second) || open.length > MOST_AREAS)
+        ) {
+          open.splice(other, 1);
+          open.splice(one, 1, unionOf(first, second));
+          merged = true;
+        }
+      }
+    }
+  }
+
+  return open;
+};
+
+export const changedAreas = (
+  sizes: readonly { readonly height: number; readonly width: number }[],
+  before: readonly Placed[] | null,
+  now: readonly Placed[],
+  frame: { readonly height: number; readonly width: number }
+): readonly Box[] => {
+  const whole: Box = { height: frame.height, width: frame.width, x: 0, y: 0 };
+
+  if (before === null) {
+    return [whole];
+  }
+
+  const boxes = now.flatMap((placed, index) => {
+    const earlier = before[index];
+    const size = sizes[index];
+
+    if (
+      size === undefined ||
+      earlier === undefined ||
+      samePlace(earlier, placed)
+    ) {
+      return [];
+    }
+
+    return [
+      ...Option.toArray(boundsOf(size, earlier, frame)),
+      ...Option.toArray(boundsOf(size, placed, frame)),
+    ];
+  });
+
+  const areas = joined(boxes);
+  const covered = areas.reduce((total, box) => total + areaOf(box), 0);
+
+  return covered >= areaOf(whole) * WHOLE_FRAME_SHARE ? [whole] : areas;
+};
+
 const even = (value: number) => value % 2 === 0;
 
 export const filmProblem = (film: Film): Option.Option<string> => {

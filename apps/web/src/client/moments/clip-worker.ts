@@ -1,7 +1,7 @@
 import { tableChances } from "@nostakes/room";
 import { Effect, Option, Schema } from "effect";
 
-import { frameTime, samePlace } from "../../features/moments/film.js";
+import { changedAreas, frameTime } from "../../features/moments/film.js";
 import type { Box, Placed } from "../../features/moments/film.js";
 import {
   BGRA_ORDER,
@@ -100,20 +100,31 @@ const snapshotOrder = (canvas: OffscreenCanvas): Option.Option<Channels> => {
 
 const areaOf = (box: Box) => box.width * box.height;
 
-const DIGEST_BASE = 257;
+interface Compared {
+  frames: number;
+  most: number;
+  pixels: number;
+}
 
-const DIGEST_PRIME = 2_147_483_647;
+const comparedLuma = (
+  compared: Compared,
+  drawn: Uint8Array,
+  whole: Uint8Array,
+  count: number
+) => {
+  let pixels = 0;
 
-const DIGEST_START = 1;
+  for (let at = 0; at < count; at += 1) {
+    const gap = Math.abs((drawn[at] ?? 0) - (whole[at] ?? 0));
 
-const digestOf = (hash: number, bytes: Uint8Array) => {
-  let next = hash;
-
-  for (const byte of bytes) {
-    next = (next * DIGEST_BASE + byte + 1) % DIGEST_PRIME;
+    if (gap > 0) {
+      pixels += 1;
+      compared.most = Math.max(compared.most, gap);
+    }
   }
 
-  return next;
+  compared.pixels += pixels;
+  compared.frames += pixels > 0 ? 1 : 0;
 };
 
 interface Reading {
@@ -203,17 +214,8 @@ const readAreas = (reading: Reading, areas: readonly Box[]) => {
   });
 };
 
-const moved = (before: readonly Placed[] | null, now: readonly Placed[]) =>
-  before === null ||
-  now.some((placed, index) => {
-    const earlier = before[index];
-
-    return earlier === undefined || !samePlace(earlier, placed);
-  });
-
 interface Drawn {
   before: readonly Placed[] | null;
-  digest: number;
   redrawn: number;
 }
 
@@ -309,18 +311,30 @@ const videoTrack = (request: FilmRequest) =>
       snapshot: snapshotOrder(canvas),
     };
 
+    const sizes = request.shots.map((shot) => shot.box);
     const whole: readonly Box[] = [{ ...frame, x: 0, y: 0 }];
 
-    const drawn: Drawn = { before: null, digest: DIGEST_START, redrawn: 0 };
+    const drawn: Drawn = { before: null, redrawn: 0 };
+    const compared: Compared = { frames: 0, most: 0, pixels: 0 };
+
+    const witness = request.compare
+      ? new OffscreenCanvas(request.width, request.height).getContext("2d", {
+          willReadFrequently: true,
+        })
+      : null;
+
+    const witnessed = new Uint8Array(
+      request.compare ? i420Size(request.width, request.height) : 0
+    );
 
     for (let index = 0; index < request.frames; index += 1) {
       const ms = frameTime(index, request.fps);
       const placements = placementsAt(request, ms);
 
       const areas =
-        request.redraw === "Whole" || moved(drawn.before, placements)
+        request.redraw === "Whole"
           ? whole
-          : [];
+          : changedAreas(sizes, drawn.before, placements, frame);
 
       if (areas.length > 0) {
         yield* Effect.try({
@@ -335,8 +349,26 @@ const videoTrack = (request: FilmRequest) =>
 
       drawn.before = placements;
 
-      if (request.digest) {
-        drawn.digest = digestOf(drawn.digest, reading.pixels);
+      if (witness !== null) {
+        drawAreas(witness, request.bands, request, placements, whole);
+        writeI420Area(
+          {
+            bytes: witness.getImageData(0, 0, request.width, request.height)
+              .data,
+            offset: 0,
+            order: RGBA_ORDER,
+            stride: request.width * 4,
+          },
+          whole[0] ?? { ...frame, x: 0, y: 0 },
+          frame,
+          witnessed
+        );
+        comparedLuma(
+          compared,
+          reading.pixels,
+          witnessed,
+          request.width * request.height
+        );
       }
 
       yield* Effect.try({
@@ -385,7 +417,7 @@ const videoTrack = (request: FilmRequest) =>
     }
 
     return {
-      digest: request.digest ? drawn.digest.toString(16) : null,
+      compared: request.compare ? compared : null,
       redrawn: drawn.redrawn,
       track: {
         avcC,
@@ -503,7 +535,7 @@ const made = (request: FilmRequest) =>
     request.sound === null ? Effect.succeed(null) : audioTrack(request.sound),
   ]).pipe(
     Effect.map(([video, audio]) => ({
-      digest: video.digest,
+      compared: video.compared,
       file: new Blob([...mp4Parts({ audio, video: video.track })], {
         type: "video/mp4",
       }),
@@ -526,9 +558,9 @@ const answered = (request: WorkerRequest) =>
         );
       })
     : made(request).pipe(
-        Effect.flatMap(({ digest, file, redrawn }) =>
+        Effect.flatMap(({ compared, file, redrawn }) =>
           Effect.sync(() => {
-            reply({ digest, file, redrawn, tag: "Made" }, []);
+            reply({ compared, file, redrawn, tag: "Made" }, []);
           })
         )
       );

@@ -53,7 +53,7 @@ export const FilmRequestSchema = Schema.Struct({
   bitrate: Schema.Int,
   camera: Schema.Array(KeySchema),
   codec: Schema.String,
-  digest: Schema.Boolean,
+  compare: Schema.Boolean,
   fps: Schema.Literals([24, 25, 30]),
   frames: Schema.Int,
   height: Schema.Int,
@@ -85,7 +85,13 @@ export const ClipReplySchema = Schema.Union([
     tag: Schema.Literal("Chances"),
   }),
   Schema.Struct({
-    digest: Schema.NullOr(Schema.String),
+    compared: Schema.NullOr(
+      Schema.Struct({
+        frames: Schema.Int,
+        most: Schema.Int,
+        pixels: Schema.Int,
+      })
+    ),
     file: Schema.instanceOf(Blob),
     redrawn: Schema.Int,
     tag: Schema.Literal("Made"),

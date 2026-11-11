@@ -34,17 +34,23 @@ export interface FilmOrder {
 }
 
 export interface FilmMade {
-  readonly digest: string | null;
+  readonly compared: FilmCompared | null;
   readonly file: File;
   readonly redrawn: number;
 }
 
+export interface FilmCompared {
+  readonly frames: number;
+  readonly most: number;
+  readonly pixels: number;
+}
+
 export interface FilmChecks {
-  readonly digest: boolean;
+  readonly compare: boolean;
   readonly redraw: FilmRequest["redraw"];
 }
 
-const EVERYDAY: FilmChecks = { digest: false, redraw: "Changed" };
+const EVERYDAY: FilmChecks = { compare: false, redraw: "Changed" };
 
 type Progress = (made: number) => Option.Option<ClipTooSlow>;
 
@@ -216,7 +222,7 @@ export const filmOn = (
       bitrate: videoBitrate(film),
       camera: film.camera,
       codec: order.support.codec,
-      digest: checks.digest,
+      compare: checks.compare,
       fps: film.fps,
       frames: filmFrames(film),
       height: film.height,
@@ -244,7 +250,7 @@ export const filmOn = (
     }
 
     return {
-      digest: reply.digest,
+      compared: reply.compared,
       file: new File([reply.file], order.name, { type: "video/mp4" }),
       redrawn: reply.redrawn,
     };

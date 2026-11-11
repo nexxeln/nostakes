@@ -1,9 +1,11 @@
 import { describe, expect, it } from "@effect/vitest";
-import { Schema } from "effect";
+import { Option, Schema } from "effect";
 import * as Arbitrary from "effect/Arbitrary";
 
 import {
+  boundsOf,
   cameraAt,
+  changedAreas,
   filmFrames,
   frameTime,
   placedAt,
@@ -11,7 +13,7 @@ import {
   sampledKeys,
   UNMOVED,
 } from "../src/features/moments/film.js";
-import type { Placed } from "../src/features/moments/film.js";
+import type { Box, Placed } from "../src/features/moments/film.js";
 import { REST } from "../src/features/moments/timeline.js";
 import type { Pose } from "../src/features/moments/timeline.js";
 
@@ -35,6 +37,24 @@ const PoseSchema = Schema.Struct({
   turn: between(-30, 30),
 });
 
+const ShotSchema = Schema.Struct({
+  before: PoseSchema,
+  box: Schema.Struct({
+    height: between(1, 400),
+    width: between(1, 400),
+    x: between(-200, 1000),
+    y: between(-200, 1700),
+  }),
+  moves: Schema.Boolean,
+  now: PoseSchema,
+});
+
+const shots = Arbitrary.schema(
+  Schema.Array(ShotSchema).check(Schema.isMinLength(1), Schema.isMaxLength(30))
+);
+
+const FRAME = { height: 1600, width: 1000 };
+
 const SIGNLESS_ZERO = 0;
 
 const unsigned = (pose: Pose): Pose => ({
@@ -44,6 +64,17 @@ const unsigned = (pose: Pose): Pose => ({
   scale: pose.scale + SIGNLESS_ZERO,
   squeeze: pose.squeeze + SIGNLESS_ZERO,
   turn: pose.turn + SIGNLESS_ZERO,
+});
+
+const inside = (point: { readonly x: number; readonly y: number }, box: Box) =>
+  point.x >= box.x &&
+  point.x <= box.x + box.width &&
+  point.y >= box.y &&
+  point.y <= box.y + box.height;
+
+const clamped = (point: { readonly x: number; readonly y: number }) => ({
+  x: Math.min(FRAME.width, Math.max(0, point.x)),
+  y: Math.min(FRAME.height, Math.max(0, point.y)),
 });
 
 describe("a film's frames", () => {
@@ -154,4 +185,86 @@ describe("a film's frames", () => {
       );
     }
   );
+
+  it.prop(
+    "redraws an area around every pixel a changed shot covered before or covers now",
+    { drawn: shots },
+    ({ drawn }) => {
+      const camera = UNMOVED;
+      const sizes = drawn.map((shot) => shot.box);
+
+      const before = drawn.map((shot) =>
+        placedAt({ box: shot.box }, shot.before, camera)
+      );
+
+      const now = drawn.map((shot, index) =>
+        shot.moves
+          ? placedAt({ box: shot.box }, shot.now, camera)
+          : (before[index] ?? placedAt({ box: shot.box }, REST, camera))
+      );
+
+      const areas = changedAreas(sizes, before, now, FRAME);
+
+      const missed = drawn.flatMap((shot, index) => {
+        const earlier = before[index];
+        const later = now[index];
+
+        if (!shot.moves || earlier === undefined || later === undefined) {
+          return [];
+        }
+
+        return [earlier, later].flatMap((placed) =>
+          placed.alpha <= 0 || Option.isNone(boundsOf(shot.box, placed, FRAME))
+            ? []
+            : [
+                [0, 0],
+                [shot.box.width, 0],
+                [0, shot.box.height],
+                [shot.box.width, shot.box.height],
+                [shot.box.width / 2, shot.box.height / 2],
+              ].flatMap(([x = 0, y = 0]) => {
+                const point = clamped(corner(placed, x, y));
+
+                const covered = areas.some((area) =>
+                  inside(
+                    {
+                      x: Math.min(point.x, FRAME.width - 1),
+                      y: Math.min(point.y, FRAME.height - 1),
+                    },
+                    area
+                  )
+                );
+
+                return covered ? [] : [{ index, point }];
+              })
+        );
+      });
+
+      const odd = areas.filter(
+        (area) =>
+          area.x % 2 !== 0 ||
+          area.y % 2 !== 0 ||
+          area.width % 2 !== 0 ||
+          area.height % 2 !== 0
+      );
+
+      expect({ missed, odd }).toStrictEqual({ missed: [], odd: [] });
+    }
+  );
+
+  it("redraws nothing when nothing moved, and the whole frame on the first one", () => {
+    const placed = [
+      placedAt({ box: { height: 5, width: 5, x: 0, y: 0 } }, REST, UNMOVED),
+    ];
+
+    const sizes = [{ height: 5, width: 5 }];
+
+    expect({
+      first: changedAreas(sizes, null, placed, FRAME),
+      still: changedAreas(sizes, placed, placed, FRAME),
+    }).toStrictEqual({
+      first: [{ height: 1600, width: 1000, x: 0, y: 0 }],
+      still: [],
+    });
+  });
 });
