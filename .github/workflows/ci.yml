@@ -14,7 +14,18 @@ concurrency:
 
 jobs:
   checks:
+    name: ${{ matrix.part }}
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - part: check and build
+            run: pnpm turbo run check build --concurrency=4
+          - part: test
+            run: pnpm turbo run test --filter=!@nostakes/room-server --concurrency=2
+          - part: room-server test
+            run: pnpm turbo run build --filter=@nostakes/room-server... && pnpm --filter @nostakes/room-server test
     env:
       TURBO_RUN_SUMMARY: "true"
     steps:
@@ -28,13 +39,13 @@ jobs:
         run: corepack enable && corepack prepare pnpm@11.28.11 --activate
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
-      - name: Check, test, and build
-        run: pnpm turbo run check test build --concurrency=2
+      - name: Run ${{ matrix.part }}
+        run: ${{ matrix.run }}
       - name: Upload Turbo run summaries
         if: always()
         uses: actions/upload-artifact@v7.0.2
         with:
-          name: turbo-runs
+          name: turbo-runs-${{ strategy.job-index }}
           path: .turbo/runs/*.json
           include-hidden-files: true
           if-no-files-found: ignore

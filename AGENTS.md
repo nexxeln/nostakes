@@ -61,7 +61,7 @@ Workspace `package.json` files declare the pinned stack. Keep every dependency e
 - `pnpm stats [production|preview] [7d | YYYY-MM-DD..YYYY-MM-DD]`: print the funnel with visits to the home page and to invite links by where they came from, real nights, returning groups, and health counts, and apart from them what pages reported, unverified, for whole UTC days from the stage's Analytics Engine dataset, through Cloudflare's SQL API with the credentials in `~/.config/nostakes/`. The token needs Account Analytics Read. It only reads.
 - `pnpm plan:<stage>`: show what a deploy of `production` or `preview` would change. Add `--first` before the first deploy. It never writes to Cloudflare.
 - `pnpm deploy:<stage> --confirm=<stage>`: check, test, build, deploy, and smoke the stage. The owner approves every `production` deploy, each time. The lead agent may deploy `preview` from `main` when there is something worth seeing there. Delegated workers never deploy either stage: they report the command and what to check afterwards.
-- `pnpm turbo run check test build`: the full gate. CI runs it after a frozen install.
+- `pnpm turbo run check test build`: the full gate. CI runs the same work as three parallel jobs after a frozen install: check and build, every test but the room server's, and the room server's tests, so its wall time is the slowest job's.
 
 ### Verification scripts
 
@@ -97,7 +97,7 @@ The fence makes cheating uncomfortable. If a hook fails, fix the failure. Do not
   - A type-level test uses `expectTypeOf` from `@effect/vitest`, not `@ts-expect-error`, because every directive counts as debt.
 - `no-redeclare` rejects Foldkit's habit of naming a schema and its type alike (`const Model` beside `type Model`). Name the schema `ModelSchema` and the Message union `Messages`, and keep `Model` and `Message` for the types.
 - `xstate-effect/no-inline-effect` rejects an Effect returned from an inline `enq` callback and inline Effect logic passed to `enq.spawn`. Declare Effect work in `setupEffect({ actors })`.
-- CI runs `pnpm install --frozen-lockfile` and then `pnpm turbo run check test build`.
+- CI runs `pnpm install --frozen-lockfile` in each of its three jobs, then check and build, the tests of every package but the room server, and the room server's tests (after building its packages), side by side. Locally `turbo.json` holds the room server's tests until the other packages' have run; on CI they run in a job of their own.
 
 ## Project law
 
