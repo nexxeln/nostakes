@@ -2,7 +2,7 @@ import type { Tier } from "@nostakes/room";
 
 import type { Family } from "./score.js";
 import { partPose } from "./timeline.js";
-import type { Pose } from "./timeline.js";
+import type { Pose, Staging } from "./timeline.js";
 
 export const CLIP_FPS = 30;
 
@@ -53,8 +53,17 @@ const resting = (pose: Pose) =>
   Math.abs(pose.scale - 1) < NEAR &&
   Math.abs(pose.squeeze - 1) < NEAR;
 
+export const CLIP_STAGING: Staging = { landed: new Set(["felt", "title"]) };
+
 export const poseOf = (layer: Layer, ms: number, motion: Motion): Pose =>
-  partPose(layer.role, layer.index, ms, motion.family, motion.tier);
+  partPose(
+    layer.role,
+    layer.index,
+    ms,
+    motion.family,
+    motion.tier,
+    CLIP_STAGING
+  );
 
 const LAST_FRAME_SEARCHED = (CLIP_LONGEST_MS * CLIP_FPS) / 1000;
 

@@ -2,6 +2,7 @@ import "../../src/client/tokens.css";
 import { Clock, Effect, Option } from "effect";
 
 import { measureParts } from "../../src/client/moments/clip-measure.js";
+import type { PartBox } from "../../src/client/moments/clip-measure.js";
 import {
   clipFile,
   clipSupport,
@@ -9,7 +10,7 @@ import {
 } from "../../src/client/moments/clip.js";
 import { EMBEDDED_FONTS, pngFile } from "../../src/client/pictures/png.js";
 import { pictureSvg } from "../../src/features/moments/picture.js";
-import { fileNameOf } from "../../src/features/pictures/paper.js";
+import { FRAME_SIZES, fileNameOf } from "../../src/features/pictures/paper.js";
 import type { KeptFrame } from "../../src/features/pictures/paper.js";
 import { samplePicture } from "./samples.js";
 
@@ -63,6 +64,16 @@ const tableStandIn = () => {
   requestAnimationFrame(tick);
 
   return seen;
+};
+
+const frameTop = (FRAME_SIZES[frame].height - FRAME_SIZES.Chat.height) / 2;
+
+const titleBoxOf = (boxes: readonly PartBox[]) => {
+  const title = boxes.find((part) => part.role === "title");
+
+  return title === undefined
+    ? undefined
+    : { ...title.box, y: title.box.y + frameTop };
 };
 
 const measured = () => {
@@ -152,6 +163,7 @@ const program = Effect.gen(function* stageClip() {
       size: clip.size,
       slices,
       support: support.value,
+      title: titleBoxOf(boxes),
     },
   };
 });

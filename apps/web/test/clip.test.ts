@@ -6,6 +6,7 @@ import { SAMPLE_NAMES, samplePicture } from "../scripts/moments/samples.js";
 import {
   bandsOf,
   CLIP_FPS,
+  CLIP_STAGING,
   CLIP_HOLD_MS,
   CLIP_LONGEST_MS,
   clipFrames,
@@ -22,7 +23,7 @@ import {
   momentScore,
   scoreLength,
 } from "../src/features/moments/score.js";
-import { REST } from "../src/features/moments/timeline.js";
+import { partPose, REST } from "../src/features/moments/timeline.js";
 
 const PART = /data-part="(?<role>[a-z]+)" data-index="(?<index>\d+)"/gu;
 
@@ -89,6 +90,70 @@ describe("a moment's clip", () => {
         poses: poses.map(() => roundedPose(REST)),
       }))
     );
+  });
+
+  it("opens every sample clip with the card and the title landed, and moves every other part exactly as the table does", () => {
+    const found = SAMPLE_NAMES.map((name) => {
+      const motion = motionOf(name);
+      const layers = layersOf(name);
+      const frames = clipFrames(layers, motion, stingMsOf(name));
+
+      const landed = layers.filter((layer) =>
+        CLIP_STAGING.landed.has(layer.role)
+      );
+
+      const drifted = layers
+        .filter((layer) => !CLIP_STAGING.landed.has(layer.role))
+        .flatMap((layer) =>
+          Array.from({ length: frames }, (_, frame) => frameMs(frame)).filter(
+            (ms) =>
+              JSON.stringify(poseOf(layer, ms, motion)) !==
+              JSON.stringify(
+                partPose(
+                  layer.role,
+                  layer.index,
+                  ms,
+                  motion.family,
+                  motion.tier
+                )
+              )
+          )
+        );
+
+      return {
+        drifted: drifted.length,
+        firstFrame: landed.map((layer) => ({
+          pose: roundedPose(poseOf(layer, 0, motion)),
+          role: layer.role,
+        })),
+        name,
+      };
+    });
+
+    expect(found).toStrictEqual(
+      SAMPLE_NAMES.map((name) => ({
+        drifted: 0,
+        firstFrame: [
+          { pose: roundedPose(REST), role: "felt" },
+          { pose: roundedPose(REST), role: "title" },
+        ],
+        name,
+      }))
+    );
+  });
+
+  it("leaves the table's own staging alone, so the table still brings the title in", () => {
+    expect(
+      (["Celebration", "Groan", "Reveal"] as const).map((family) => {
+        const pose = partPose("title", 0, 0, family, 2);
+
+        return { family, opacity: pose.opacity, scale: rounded(pose.scale) };
+      })
+    ).toStrictEqual([
+      { family: "Celebration", opacity: 0, scale: 1.4 },
+      { family: "Groan", opacity: 0, scale: 1 },
+      { family: "Reveal", opacity: 0, scale: 1.4 },
+    ]);
   });
 
   it("holds the still for two seconds after the last part lands, outlasts the sting, and stays within four seconds", () => {

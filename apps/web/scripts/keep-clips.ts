@@ -93,7 +93,18 @@ const CLIP_TOOLS = `
     for (let at = 0; at < bytes.length; at += 32768) binary += String.fromCharCode(...bytes.subarray(at, at + 32768));
     return btoa(binary);
   };
-  window.__judge = async (clipIndex, stillIndex) => {
+  const lightGaps = (one, other) => {
+    let total = 0;
+    let far = 0;
+    for (let at = 0; at < one.length; at += 4) {
+      const gap = Math.max(Math.abs(one[at] - other[at]), Math.abs(one[at + 1] - other[at + 1]), Math.abs(one[at + 2] - other[at + 2]));
+      const light = Math.abs(0.2126 * (one[at] - other[at]) + 0.7152 * (one[at + 1] - other[at + 1]) + 0.0722 * (one[at + 2] - other[at + 2]));
+      total += gap;
+      if (light > 40) far += 1;
+    }
+    return { far: far / (one.length / 4), mean: total / (one.length / 4) };
+  };
+  window.__judge = async (clipIndex, stillIndex, title) => {
     const video = document.createElement("video");
     video.muted = true;
     video.playsInline = true;
@@ -103,6 +114,22 @@ const CLIP_TOOLS = `
       video.onloadeddata = resolve;
       video.onerror = () => reject(new Error("the clip does not load: " + (video.error ? video.error.message || video.error.code : "")));
     });
+    const width = video.videoWidth;
+    const height = video.videoHeight;
+    const still = new OffscreenCanvas(width, height).getContext("2d");
+    still.drawImage(await createImageBitmap(window.__files[stillIndex]), 0, 0, width, height);
+    await new Promise((resolve) => {
+      video.onseeked = resolve;
+      video.currentTime = 1 / 120;
+    });
+    if ("requestVideoFrameCallback" in video) {
+      await new Promise((resolve) => { video.requestVideoFrameCallback(resolve); requestAnimationFrame(() => requestAnimationFrame(resolve)); });
+    }
+    const first = new OffscreenCanvas(width, height).getContext("2d");
+    first.drawImage(video, 0, 0);
+    video.currentTime = 0;
+    const box = [Math.max(0, Math.floor(title.x) - 6), Math.max(0, Math.floor(title.y) - 6), Math.ceil(title.width) + 12, Math.ceil(title.height) + 12];
+    const opening = lightGaps(first.getImageData(...box).data, still.getImageData(...box).data);
     const ended = new Promise((resolve) => { video.onended = resolve; });
     const shown = { count: 0 };
     if ("requestVideoFrameCallback" in video) {
@@ -111,23 +138,10 @@ const CLIP_TOOLS = `
     }
     await video.play();
     await Promise.race([ended, new Promise((resolve, reject) => setTimeout(() => reject(new Error("the clip never reached its end")), 20000))]);
-    const width = video.videoWidth;
-    const height = video.videoHeight;
     const last = new OffscreenCanvas(width, height).getContext("2d");
     last.drawImage(video, 0, 0);
-    const still = new OffscreenCanvas(width, height).getContext("2d");
-    still.drawImage(await createImageBitmap(window.__files[stillIndex]), 0, 0, width, height);
-    const one = last.getImageData(0, 0, width, height).data;
-    const other = still.getImageData(0, 0, width, height).data;
-    let total = 0;
-    let far = 0;
-    for (let at = 0; at < one.length; at += 4) {
-      const gap = Math.max(Math.abs(one[at] - other[at]), Math.abs(one[at + 1] - other[at + 1]), Math.abs(one[at + 2] - other[at + 2]));
-      const light = Math.abs(0.2126 * (one[at] - other[at]) + 0.7152 * (one[at + 1] - other[at + 1]) + 0.0722 * (one[at + 2] - other[at + 2]));
-      total += gap;
-      if (light > 40) far += 1;
-    }
-    return JSON.stringify({ currentTime: video.currentTime, duration: video.duration, ended: video.ended, far: far / (one.length / 4), height, mean: total / (one.length / 4), shown: shown.count, width });
+    const closing = lightGaps(last.getImageData(0, 0, width, height).data, still.getImageData(0, 0, width, height).data);
+    return JSON.stringify({ currentTime: video.currentTime, duration: video.duration, ended: video.ended, far: closing.far, height, mean: closing.mean, shown: shown.count, titleFar: opening.far, width });
   };
 })();
 `;
@@ -140,8 +154,22 @@ const JudgedSchema = Schema.Struct({
   height: Schema.Int,
   mean: Schema.Finite,
   shown: Schema.Int,
+  titleFar: Schema.Finite,
   width: Schema.Int,
 });
+
+const TitleBoxSchema = Schema.Struct({
+  height: Schema.Finite,
+  width: Schema.Finite,
+  x: Schema.Finite,
+  y: Schema.Finite,
+});
+
+type TitleBox = typeof TitleBoxSchema.Type;
+
+const TITLE_FAR = 0.05;
+
+const NO_TITLE: TitleBox = { height: 0, width: 0, x: 0, y: 0 };
 
 const SharedSchema = Schema.Array(
   Schema.Struct({
@@ -398,6 +426,12 @@ const playbackProblems = (judged: typeof JudgedSchema.Type, frame: Frame) => {
     problems.push(`the video plays at ${judged.width}x${judged.height}`);
   }
 
+  if (judged.titleFar > TITLE_FAR) {
+    problems.push(
+      `the first frame does not open on the title: ${(judged.titleFar * 100).toFixed(1)}% of the title's pixels differ from the still`
+    );
+  }
+
   if (judged.mean > MEAN_DIFFERENCE || judged.far > FAR_SHARE) {
     problems.push(
       `the last frame is not the still picture: mean difference ${judged.mean.toFixed(2)}, ${(judged.far * 100).toFixed(2)}% of pixels far off`
@@ -448,6 +482,7 @@ const judged = (
     readonly clip: number;
     readonly label: string;
     readonly still: number;
+    readonly title: TitleBox;
   },
   expected: Expected
 ) =>
@@ -469,7 +504,7 @@ const judged = (
 
     const played = yield* read(
       page,
-      `window.__judge(${names.clip}, ${names.still})`,
+      `window.__judge(${names.clip}, ${names.still}, ${JSON.stringify(names.title)})`,
       JudgedSchema,
       "play the clip to its end"
     ).pipe(
@@ -530,6 +565,24 @@ const liveClip = (
     const sound = yield* attempt("ask whether this browser encodes AAC", () =>
       page.evaluate<boolean>("window.__aac()")
     );
+
+    const title = yield* attempt("measure the title on the card", () =>
+      page.locator("nostakes-moment").evaluate((node) => {
+        const part = node.shadowRoot?.querySelector('[data-part="title"]');
+
+        const box =
+          part instanceof SVGGraphicsElement
+            ? part.getBBox()
+            : { height: 0, width: 0, x: 0, y: 0 };
+
+        return JSON.stringify({
+          height: box.height,
+          width: box.width,
+          x: box.x,
+          y: box.y,
+        });
+      })
+    ).pipe(Effect.flatMap(decoded(TitleBoxSchema, "measure the title")));
 
     yield* attempt("tap the moment away", () =>
       page.locator("nostakes-moment .card").click()
@@ -633,13 +686,13 @@ const liveClip = (
     const verdict = yield* judged(
       page,
       settings,
-      { clip: clipIndex, label, still: stillIndex },
+      { clip: clipIndex, label, still: stillIndex, title },
       { frame: "Chat", sound }
     );
 
     return {
       label,
-      line: `${label}: ${verdict.bytes} bytes, ready ${readyMs} ms after the moment left, ${after.late - before.late} late frames of ${after.frames - before.frames}, last frame mean difference ${verdict.played?.mean.toFixed(2) ?? "?"} with ${((verdict.played?.far ?? 0) * 100).toFixed(2)}% far off${verdict.probed ? "" : ", no ffprobe"}${sound ? ", with sound" : ", silent"}`,
+      line: `${label}: ${verdict.bytes} bytes, ready ${readyMs} ms after the moment left, ${after.late - before.late} late frames of ${after.frames - before.frames}, title on frame 0 off by ${((verdict.played?.titleFar ?? 1) * 100).toFixed(1)}%, last frame mean difference ${verdict.played?.mean.toFixed(2) ?? "?"} with ${((verdict.played?.far ?? 0) * 100).toFixed(2)}% far off${verdict.probed ? "" : ", no ffprobe"}${sound ? ", with sound" : ", silent"}`,
       problems: [
         ...tapProblems,
         ...verdict.problems.map((problem) => `${label}: ${problem}`),
@@ -910,6 +963,7 @@ const StagedSchema = Schema.Struct({
       Schema.Struct({ codec: Schema.String, sound: Schema.Boolean })
     )
   ),
+  title: Schema.optional(TitleBoxSchema),
 });
 
 const stagedClip = (
@@ -964,13 +1018,13 @@ const stagedClip = (
     const verdict = yield* judged(
       page,
       settings,
-      { clip: 1, label, still: 0 },
+      { clip: 1, label, still: 0, title: staged.title ?? NO_TITLE },
       { frame: look.frame, sound: staged.support.sound }
     );
 
     return {
       label,
-      line: `${label}: ${verdict.bytes} bytes in ${staged.ms ?? 0} ms (${look.pace}), main-thread slices ${(staged.slices ?? []).join(" ")} ms, late frames ${staged.lateDuring ?? 0} during and ${staged.lateBefore ?? 0} in a second before, longest ${staged.longestDuringMs ?? 0} ms against ${staged.longestBeforeMs ?? 0} ms, last frame mean difference ${verdict.played?.mean.toFixed(2) ?? "?"}`,
+      line: `${label}: ${verdict.bytes} bytes in ${staged.ms ?? 0} ms (${look.pace}), main-thread slices ${(staged.slices ?? []).join(" ")} ms, late frames ${staged.lateDuring ?? 0} during and ${staged.lateBefore ?? 0} in a second before, longest ${staged.longestDuringMs ?? 0} ms against ${staged.longestBeforeMs ?? 0} ms, title on frame 0 off by ${((verdict.played?.titleFar ?? 1) * 100).toFixed(1)}%, last frame mean difference ${verdict.played?.mean.toFixed(2) ?? "?"}`,
       problems: verdict.problems.map((problem) => `${label}: ${problem}`),
     };
   }).pipe(Effect.scoped);

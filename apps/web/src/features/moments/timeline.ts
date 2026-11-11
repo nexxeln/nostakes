@@ -127,13 +127,24 @@ const fall = (ms: number, index: number): Pose => {
   };
 };
 
+export interface Staging {
+  readonly landed: ReadonlySet<string>;
+}
+
+export const TABLE_STAGING: Staging = { landed: new Set() };
+
 export const partPose = (
   role: string,
   index: number,
   ms: number,
   family: Family,
-  tier: Tier
+  tier: Tier,
+  staging: Staging = TABLE_STAGING
 ): Pose => {
+  if (staging.landed.has(role)) {
+    return REST;
+  }
+
   const groan = family === "Groan";
 
   const face = () =>
