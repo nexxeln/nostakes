@@ -377,6 +377,79 @@ const letTablePanAndPinch = (page: Page, on: boolean) =>
 const scaleAfterPinch = (page: Page) =>
   waitFor(visualScale(page), (scale) => scale > PINCHED_ABOVE);
 
+const letsPinch = (touchAction: string) =>
+  touchAction === "auto" ||
+  touchAction === "manipulation" ||
+  touchAction.split(" ").includes("pinch-zoom");
+
+const touchActionsUnder = (page: Page) =>
+  attempt("read touch-action under a face, the cards, the chip, the felt", () =>
+    page.evaluate((table) => {
+      const host = document.querySelector(table);
+      const root = host?.shadowRoot;
+
+      if (host === null || root === null || root === undefined) {
+        return [];
+      }
+
+      const centreOf = (selector: string) => {
+        const found = root.querySelector(selector)?.getBoundingClientRect();
+
+        return found === undefined
+          ? undefined
+          : {
+              x: found.left + found.width / 2,
+              y: found.top + found.height / 2,
+            };
+      };
+
+      const frame = host.getBoundingClientRect();
+
+      const points = [
+        ["a face", centreOf(".tile .frame")],
+        ["your cards", centreOf(".hand .hc:last-child")],
+        ["the chip", centreOf(".chipctl")],
+        [
+          "the felt",
+          {
+            x: frame.left + frame.width / 2,
+            y: frame.top + frame.height * 0.45,
+          },
+        ],
+      ] as const;
+
+      return points.map(([name, point]) => {
+        const values: string[] = [];
+
+        let node: Element | null =
+          point === undefined ? null : root.elementFromPoint(point.x, point.y);
+
+        while (node !== null) {
+          values.push(getComputedStyle(node).touchAction);
+
+          const parent: Element | null = node.parentElement;
+          const owner = node.getRootNode();
+
+          node = parent ?? (owner instanceof ShadowRoot ? owner.host : null);
+        }
+
+        return { name, values };
+      });
+    }, TABLE)
+  );
+
+const pinchForbidden = (
+  found: readonly {
+    readonly name: string;
+    readonly values: readonly string[];
+  }[]
+) =>
+  found.flatMap(({ name, values }) =>
+    values.every(letsPinch)
+      ? []
+      : [`${name}: ${values.filter((value) => value !== "auto").join(" > ")}`]
+  );
+
 const wideOverflow = (page: Page) =>
   attempt("measure the page's width", () =>
     page.evaluate(
@@ -416,6 +489,13 @@ const zoomedModeCheck = <R>(
 
     const zoomedTouch = yield* style(page, TABLE, "touch-action");
     const zoomedHint = yield* zoomHintShown(page);
+    const zoomedUnder = pinchForbidden(yield* touchActionsUnder(page));
+
+    yield* note(
+      "zoomed in, nothing under a face, your cards, the chip, or the felt stops a pinch",
+      zoomedUnder.length === 0,
+      zoomedUnder.join("; ") || "pan and pinch everywhere"
+    );
 
     yield* realScale ? setPageScale(context, page, 1) : forgetPretendZoom(page);
 
@@ -615,6 +695,14 @@ const phoneChecks = (engine: BrowserType, app: string, watched: PageWatch) =>
       "the table keeps one-finger touches for its gestures and lets a pinch through",
       (yield* style(host, TABLE, "touch-action")) === "pinch-zoom",
       yield* style(host, TABLE, "touch-action")
+    );
+
+    const forbidding = pinchForbidden(yield* touchActionsUnder(host));
+
+    yield* note(
+      "nothing under a face, your cards, the chip, or the felt stops a pinch",
+      forbidding.length === 0,
+      forbidding.join("; ") || "pinch allowed at each"
     );
 
     const overflow = yield* wideOverflow(host);
