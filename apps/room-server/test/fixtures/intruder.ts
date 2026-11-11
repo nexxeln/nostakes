@@ -139,6 +139,39 @@ const stillFinishing = (standings: { readonly body: Schema.Json }) =>
     ({ removed }) => removed.finishing
   );
 
+const COMEBACK_TRIES = 6;
+
+const COMEBACK_GAP_MS = 1000;
+
+const answered = (greeting: {
+  readonly greeting: Greeting;
+  readonly socket: PokerSocket;
+}) =>
+  greeting.greeting !== "Other" || Option.isSome(closingOf(greeting.socket));
+
+const helloThroughRestarts = (base: string, pass: RoomPass, label: string) =>
+  Effect.gen(function* comeBackThroughRestarts() {
+    let attempt = 1;
+
+    let back = yield* hello(base, pass, `${label} #${attempt}`).pipe(
+      Effect.option
+    );
+
+    while (attempt < COMEBACK_TRIES && !Option.exists(back, answered)) {
+      for (const dropped of Option.toArray(back)) {
+        yield* dropped.socket.disconnect;
+      }
+
+      yield* Effect.sleep(Duration.millis(COMEBACK_GAP_MS));
+      attempt += 1;
+      back = yield* hello(base, pass, `${label} #${attempt}`).pipe(
+        Effect.option
+      );
+    }
+
+    return back;
+  });
+
 export const comeBackAndRead = (
   base: string,
   pass: RoomPass,
@@ -146,7 +179,7 @@ export const comeBackAndRead = (
   label: string
 ) =>
   Effect.gen(function* comeBack() {
-    const back = yield* hello(base, pass, `${label} comes back`);
+    const back = yield* helloThroughRestarts(base, pass, `${label} comes back`);
 
     let standings = yield* readStandings(base, pass);
     const asked = performance.now();
@@ -159,12 +192,21 @@ export const comeBackAndRead = (
       standings = yield* readStandings(base, pass);
     }
 
-    for (const socket of [...sockets, back.socket]) {
+    for (const socket of [
+      ...sockets,
+      ...Option.toArray(back).map(({ socket: last }) => last),
+    ]) {
       yield* socket.disconnect;
     }
 
     return {
-      cameBack: Option.getOrElse(closingOf(back.socket), () => back.greeting),
+      cameBack: Option.match(back, {
+        onNone: () => "could not open",
+        onSome: (last) =>
+          greeted(last.socket)
+            ? "Welcomed"
+            : Option.getOrElse(closingOf(last.socket), () => last.greeting),
+      }),
       standings: Option.some(standings),
     };
   });

@@ -428,6 +428,11 @@ const strangerOf = (recipe: NightRecipe, seed: number) => {
   };
 };
 
+const racingOnlyWithoutSpectators = <V extends { readonly clearRace: boolean }>(
+  visitors: V,
+  spectators: number
+): V => ({ ...visitors, clearRace: visitors.clearRace && spectators === 0 });
+
 const racerIndex = (plan: NightPlan) =>
   Array.from({ length: plan.players }, (_, index) => index).find(
     (index) => index > 0 && !plan.clients.includes(index)
@@ -547,7 +552,7 @@ export const planNight = (
     ),
     ending: recipe.ending,
 
-    ...visitors,
+    ...racingOnlyWithoutSpectators(visitors, plan.spectators),
     limitMs:
       plan.limitMs +
       recipe.hands * slowRulesAllowanceMs(played) +
