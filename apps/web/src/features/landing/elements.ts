@@ -25,6 +25,7 @@ export const landingFaceElement = CustomElement.define({
   properties: {
     avatar: Schema.String,
     expression: ExpressionSchema,
+    shuffles: Schema.Boolean,
     theme: ThemeSchema,
   },
   tag: LANDING_FACE_TAG,
@@ -34,7 +35,6 @@ export const landingPictureElement = CustomElement.define({
   events: {},
   properties: {
     picture: LandingPictureSchema,
-    theme: ThemeSchema,
   },
   tag: LANDING_PICTURE_TAG,
 });

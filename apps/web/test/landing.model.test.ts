@@ -1,13 +1,33 @@
 import { describe, expect, it } from "@effect/vitest";
+import { CardFromText } from "@nostakes/engine";
 import { PlayerIdSchema, RoomCodeSchema } from "@nostakes/protocol";
-import { Option } from "effect";
+import { equities, percentOf } from "@nostakes/room";
+import { Option, Schema } from "effect";
 import { Scene } from "foldkit";
 import { findAll, textContent } from "foldkit/scene";
 
 import { ScrollToTop } from "../src/client/commands.js";
+import {
+  CAST,
+  OPEN_SEATS,
+  SEATED,
+  TOOTHPICK,
+} from "../src/features/landing/cast.js";
+import {
+  BAD_BEAT,
+  BOARD,
+  FAVOURITE_PERCENT,
+  HANDS,
+  MONEY_WENT_IN_AFTER,
+  POT,
+  SETTLE_UP,
+} from "../src/features/landing/night.js";
+import { landingPictures } from "../src/features/landing/pictures.js";
 import { LANDING_WORDS } from "../src/features/landing/view.js";
 import { Messages } from "../src/features/message.js";
 import type { KnownRoom, Model } from "../src/features/model.js";
+import { chipsText } from "../src/features/moments/captions.js";
+import { escaped } from "../src/features/pictures/paper.js";
 import { init, update } from "../src/features/update.js";
 import { view } from "../src/features/view.js";
 
@@ -71,7 +91,9 @@ const namesOf = (commands: Issued | undefined) =>
 describe("the first screen at /", () => {
   it("shows a first-time visitor the landing and nothing of the create form", () => {
     expect(firstVisit.screen._tag).toBe("Welcome");
-    expect(texts(firstVisit, "h1")).toStrictEqual([LANDING_WORDS.title]);
+    expect(texts(firstVisit, "h1")).toStrictEqual([
+      LANDING_WORDS.title.join(" "),
+    ]);
     expect(texts(firstVisit, ".landing-open")).toStrictEqual([
       "Open a room",
       "Open a room",
@@ -189,15 +211,107 @@ describe("the landing under reduced motion", () => {
   });
 });
 
+const TILES = Object.values(LANDING_WORDS.tiles);
+
+describe("the landing's tiles", () => {
+  it("shows six features, each with a title and a line, in the order the page tells them", () => {
+    expect(texts(firstVisit, ".tile-title")).toStrictEqual([
+      LANDING_WORDS.tiles.link.title,
+      LANDING_WORDS.tiles.face.title,
+      LANDING_WORDS.tiles.table.title,
+      LANDING_WORDS.tiles.rules.title,
+      LANDING_WORDS.tiles.moment.title,
+      LANDING_WORDS.tiles.settle.title,
+    ]);
+    expect(texts(firstVisit, ".tile-body")).toHaveLength(TILES.length);
+  });
+
+  it("gives no tile to the sealed deck or to money, and says both once, quietly, at the end", () => {
+    for (const { body, title } of TILES) {
+      expect(`${title} ${body}`).not.toMatch(/seal|shuffl|beacon|money/iu);
+    }
+
+    expect(texts(firstVisit, ".close-quiet")).toStrictEqual([
+      LANDING_WORDS.quiet,
+    ]);
+  });
+
+  it("seats five friends at the link's table and leaves four seats open, nine in all", () => {
+    expect(SEATED.length + OPEN_SEATS).toBe(9);
+    expect(texts(firstVisit, ".link-seat")).toHaveLength(9);
+    expect(texts(firstVisit, ".link-seat-open")).toHaveLength(OPEN_SEATS);
+  });
+
+  it("puts the toothpick on the face a visitor can shuffle", () => {
+    expect(CAST[TOOTHPICK].extra).toBe("Toothpick");
+    expect(texts(firstVisit, ".face-shuffle")).toStrictEqual([
+      LANDING_WORDS.shuffle,
+    ]);
+  });
+});
+
+const sampleCards = Schema.decodeSync(Schema.Array(CardFromText));
+
+describe("the landing's two pictures", () => {
+  const drawn = landingPictures();
+
+  it("says in words what the moment card shows", () => {
+    const odds = equities(
+      [sampleCards(HANDS.Jonas), sampleCards(HANDS.Priya)],
+      sampleCards(BOARD.slice(0, MONEY_WENT_IN_AFTER))
+    );
+
+    expect(percentOf(odds, 0)).toBe(FAVOURITE_PERCENT);
+    expect(LANDING_WORDS.pictures.Moment).toContain(BAD_BEAT.title);
+    expect(LANDING_WORDS.pictures.Moment).toContain(
+      `${FAVOURITE_PERCENT}% to win`
+    );
+    expect(LANDING_WORDS.pictures.Moment).toContain(chipsText(POT));
+    expect(drawn.Moment).toContain(escaped(BAD_BEAT.line));
+  });
+
+  it("says in words every payment the settle-up card shows, and the card squares", () => {
+    for (const { amount, from, to } of SETTLE_UP.transfers) {
+      expect(LANDING_WORDS.pictures.SettleUp).toContain(from);
+      expect(LANDING_WORDS.pictures.SettleUp).toContain(to);
+      expect(LANDING_WORDS.pictures.SettleUp).toContain(chipsText(amount));
+    }
+
+    const paid = new Map<string, number>();
+
+    for (const { amount, from, to } of SETTLE_UP.transfers) {
+      paid.set(from, (paid.get(from) ?? 0) - amount);
+      paid.set(to, (paid.get(to) ?? 0) + amount);
+    }
+
+    expect(SETTLE_UP.players.map(({ name, net }) => [name, net])).toStrictEqual(
+      SETTLE_UP.players.map(({ name }) => [name, paid.get(name) ?? 0])
+    );
+  });
+
+  it("draws each once for both themes, with every theme colour as a variable and no size of its own", () => {
+    for (const picture of Object.values(drawn)) {
+      expect(picture).toMatch(/^<svg xmlns="[^"]+" viewBox="[\d. ]+" /u);
+      expect(picture).toContain("var(--landing-ink-0)");
+      expect(picture).toContain(':root[data-theme="dark"]');
+      expect(picture).not.toMatch(/<script|\son[a-z]+=/iu);
+    }
+  });
+});
+
 describe("the landing's words", () => {
   const all = [
-    LANDING_WORDS.title,
+    ...LANDING_WORDS.title,
     LANDING_WORDS.lede,
-    LANDING_WORDS.under,
     LANDING_WORDS.close,
     LANDING_WORDS.open,
-    ...LANDING_WORDS.beats.flatMap(({ line, time }) => [line, time]),
-    ...LANDING_WORDS.finePrint.flatMap(({ label, value }) => [label, value]),
+    LANDING_WORDS.quiet,
+    LANDING_WORDS.said,
+    LANDING_WORDS.shuffle,
+    ...LANDING_WORDS.gestures,
+    ...Object.values(LANDING_WORDS.pictures),
+    ...Object.values(LANDING_WORDS.rules).flat(),
+    ...TILES.flatMap(({ body, title }) => [title, body]),
   ];
 
   it.each(all)(

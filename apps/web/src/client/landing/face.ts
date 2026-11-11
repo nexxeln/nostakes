@@ -1,4 +1,4 @@
-import { avatarFor } from "@nostakes/avatar";
+import { avatarFor, codeFor, randomAvatar } from "@nostakes/avatar";
 import type { Expression } from "@nostakes/avatar";
 
 import {
@@ -14,6 +14,10 @@ const FRAME_BUDGET_MS = 4;
 const NEAR = "200% 0px 200% 0px";
 
 const SMALLEST_FACE_PX = 24;
+
+const SHUFFLE_STRIDE = 7919;
+
+const SHUFFLE_FIRST = 31;
 
 interface Paintable extends Element {
   paint: () => void;
@@ -100,8 +104,20 @@ class NostakesLandingFace extends HTMLElement {
   #avatar: string | null = null;
   #expression: Expression | null = null;
   #theme: Theme | null = null;
+  #shuffles = false;
+  #turns = 0;
   #drawn = "";
   #near = false;
+  readonly #shuffle = () => {
+    if (this.#shuffles) {
+      this.#turns += 1;
+      this.#avatar = codeFor(
+        randomAvatar(SHUFFLE_FIRST + this.#turns * SHUFFLE_STRIDE)
+      );
+      this.dataset.turns = String(this.#turns);
+      this.paint();
+    }
+  };
 
   constructor() {
     super();
@@ -113,8 +129,18 @@ class NostakesLandingFace extends HTMLElement {
   }
 
   set avatar(value: string | null) {
-    this.#avatar = value;
-    this.#changed();
+    if (this.#turns === 0) {
+      this.#avatar = value;
+      this.#changed();
+    }
+  }
+
+  get shuffles() {
+    return this.#shuffles;
+  }
+
+  set shuffles(value: boolean) {
+    this.#shuffles = value;
   }
 
   get expression() {
@@ -137,10 +163,12 @@ class NostakesLandingFace extends HTMLElement {
 
   connectedCallback() {
     faces.watch(this);
+    this.closest("button")?.addEventListener("click", this.#shuffle);
   }
 
   disconnectedCallback() {
     faces.forget(this);
+    this.closest("button")?.removeEventListener("click", this.#shuffle);
     this.#near = false;
   }
 

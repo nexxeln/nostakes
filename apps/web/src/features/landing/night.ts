@@ -1,42 +1,51 @@
 import { codeFor } from "@nostakes/avatar";
 
 import { CAPTIONS } from "../moments/captions.js";
-import type { CaptionFacts } from "../moments/captions.js";
 import type { MomentPicture } from "../moments/schema.js";
 import type { SettleUpCard } from "../pictures/settle-up.js";
 import { CAST } from "./cast.js";
 
-const FACTS: CaptionFacts = {
-  against: "",
+export const HANDS = {
+  Jonas: ["Ah", "As"],
+  Priya: ["Kd", "Kc"],
+} as const;
+
+export const BOARD = ["2c", "7h", "9s", "3d", "Kh"] as const;
+
+export const MONEY_WENT_IN_AFTER = 4;
+
+export const FAVOURITE_PERCENT = 95;
+
+export const POT = 2120;
+
+const TIER = 3;
+
+const caption = CAPTIONS.BadBeat[TIER]?.({
+  against: "Priya",
   bet: 0,
-  category: "HighCard",
+  category: "OnePair",
   hand: "",
   other: "",
-  percent: 81,
+  percent: FAVOURITE_PERCENT,
   runs: 1,
   start: "",
   who: "Jonas",
-};
-
-const caption = CAPTIONS.BadBeat[1]?.(FACTS) ?? {
-  line: "Jonas was 81% to win.",
-  title: "Bad beat",
-};
+}) ?? { line: "", title: "Bad beat" };
 
 export const BAD_BEAT: MomentPicture = {
   also: "",
-  boards: [["2c", "7h", "9s", "Kh", "3d"]],
+  boards: [[...BOARD]],
   faces: [
     {
       avatar: codeFor(CAST.Jonas),
-      cards: ["Ah", "As"],
+      cards: [...HANDS.Jonas],
       expression: "Gutted",
       name: "Jonas",
       won: false,
     },
     {
       avatar: codeFor(CAST.Priya),
-      cards: ["Kd", "Kc"],
+      cards: [...HANDS.Priya],
       expression: "Happy",
       name: "Priya",
       won: true,
@@ -46,8 +55,8 @@ export const BAD_BEAT: MomentPicture = {
   lifted: ["Kd", "Kc", "Kh", "9s", "7h"],
   line: caption.line,
   painful: true,
-  pot: 2000,
-  tier: 1,
+  pot: POT,
+  tier: TIER,
   title: caption.title,
 };
 
@@ -60,7 +69,6 @@ export const SETTLE_UP: SettleUpCard = {
       net: 1250,
     },
     { avatar: codeFor(CAST.Maya), expression: "Happy", name: "Maya", net: 310 },
-    { avatar: codeFor(CAST.Lou), expression: "Resting", name: "Lou", net: 0 },
     {
       avatar: codeFor(CAST.Dev),
       expression: "Resting",

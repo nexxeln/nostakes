@@ -5,12 +5,21 @@ import type { Html, HtmlBuilder } from "foldkit/html";
 import { cardFaceOf } from "../card-art.js";
 import { themeSwitch } from "../chrome.js";
 import { face } from "../face-builder.js";
+import { BRAND_LINE } from "../link-preview.js";
 import { cardMarkup } from "../markup.js";
 import { Messages } from "../message.js";
 import type { Message } from "../message.js";
 import { pageTheme } from "../model.js";
 import type { Model, Theme } from "../model.js";
-import { CAST, FLOP, PREVIEW_CAST, RING, TABLE } from "./cast.js";
+import {
+  CAST,
+  OPEN_SEATS,
+  RING,
+  SEATED,
+  SECOND_LOOKS,
+  TOOTHPICK,
+  WARDROBE,
+} from "./cast.js";
 import type { CastName } from "./cast.js";
 import {
   landingElement,
@@ -24,38 +33,73 @@ type H = HtmlBuilder<Message>;
 const RING_FACE_PX = 96;
 
 export const LANDING_WORDS = {
-  beats: [
-    { line: "Sam drops the link in the group chat.", time: "9:02 pm" },
-    { line: "Everyone sits down, wherever they live now.", time: "9:10 pm" },
-    {
-      line: "Priya cracks Jonas's aces. Someone keeps the clip.",
-      time: "11:48 pm",
-    },
-    {
-      line: "Jonas pays Priya 1,000. nostakes only keeps the count.",
-      time: "1:20 am",
-    },
-  ],
   close: "Deal your friends in.",
-  finePrint: [
-    { label: "Price", value: "Free" },
-    { label: "Sign-up", value: "None" },
-    { label: "Players", value: "Up to 9" },
-    { label: "House rules", value: "The host's" },
-    { label: "The deck", value: "Sealed, checked on every phone" },
-    { label: "Money", value: "Never touches it" },
-  ],
-  lede: "Poker night with your friends, in the browser.",
+  gestures: ["Hold to peek", "Drag to raise", "Flick to fold"],
+  lede: "Free, no sign-up. Open a room and send the link.",
   open: "Open a room",
-  title: "Sharks and fish welcome.",
-  under: "Free, and nobody signs up.",
+  pictures: {
+    Moment:
+      "The moment card for a bad beat, The cruellest card: Jonas was 95% to win with aces, and Priya took the pot of 2,120 with three kings.",
+    SettleUp:
+      "The settle-up card: Jonas pays Priya 1,000, Sam pays Priya 250 and Maya 150, and Dev pays Maya 160.",
+  },
+  quiet:
+    "Every deck is sealed before the deal, and nostakes never touches money.",
+  rules: {
+    headline: "NL hold'em 10/20",
+    label: "House rules",
+    rest: "Ante 5, straddles, run it twice",
+    status: "Bomb pot next hand. Everyone antes 50.",
+    tags: [
+      "Bomb pots",
+      "7-2 bounty",
+      "Run it three times",
+      "Straddles",
+      "Show one card",
+      "Muck",
+    ],
+  },
+  said: "poker tonight?",
+  shuffle: "Tap for another",
+  tiles: {
+    face: {
+      body: "Sharks, fish, and a whole wardrobe.",
+      title: "Make your face.",
+    },
+    link: {
+      body: "No download, no accounts. Up to nine at a table.",
+      title: "One link and everyone's in.",
+    },
+    moment: {
+      body: "With a picture and a clip you can keep and send.",
+      title: "Big hands get called out.",
+    },
+    rules: {
+      body: "The host sets them, and calls the bomb pots.",
+      title: "Your house, your rules.",
+    },
+    settle: {
+      body: "Who pays whom, when the night ends.",
+      title: "It settles up.",
+    },
+    table: {
+      body: "No buttons to hunt for. Your hands already know how.",
+      title: "It plays like a real table.",
+    },
+  },
+  title: ["Your friends moved.", "Poker night didn't."],
 } as const;
+
+type TileName = keyof typeof LANDING_WORDS.tiles;
 
 const later = (
   h: H,
   who: CastName,
-  expression: Expression,
-  theme: Theme,
+  look: {
+    readonly expression: Expression;
+    readonly shuffles?: boolean;
+    readonly theme: Theme;
+  },
   className: string
 ): Html => {
   const lazyFace = landingFaceElement.withMessage(h);
@@ -65,8 +109,9 @@ const later = (
       h.Class(className),
       h.AriaHidden(true),
       lazyFace.Avatar(codeFor(CAST[who])),
-      lazyFace.Expression(expression),
-      lazyFace.Theme(theme),
+      lazyFace.Expression(look.expression),
+      lazyFace.Shuffles(look.shuffles ?? false),
+      lazyFace.Theme(look.theme),
     ],
     []
   );
@@ -96,7 +141,12 @@ const seat = (h: H, theme: Theme) => (who: CastName, index: number) =>
             "ring-face",
             h
           ),
-          later(h, who, "LookingDown", theme, "ring-face ring-look"),
+          later(
+            h,
+            who,
+            { expression: SECOND_LOOKS[who], theme },
+            "ring-face ring-look"
+          ),
         ]
       ),
     ]
@@ -104,13 +154,20 @@ const seat = (h: H, theme: Theme) => (who: CastName, index: number) =>
 
 const hero = (h: H, theme: Theme): Html =>
   h.section(
-    [h.Class("hero"), h.DataAttribute("scene", "hero")],
+    [h.Class("hero")],
     [
       h.div(
         [h.Class("hero-felt")],
         [
           ...RING.map(seat(h, theme)),
-          h.h1([h.Class("hero-title")], [LANDING_WORDS.title]),
+          h.h1(
+            [h.Class("hero-title")],
+            [
+              h.span([], [LANDING_WORDS.title[0]]),
+              " ",
+              h.span([], [LANDING_WORDS.title[1]]),
+            ]
+          ),
         ]
       ),
       h.div(
@@ -118,160 +175,191 @@ const hero = (h: H, theme: Theme): Html =>
         [
           h.p([h.Class("hero-lede")], [LANDING_WORDS.lede]),
           openButton(h, "hero-open"),
-          h.p([h.Class("hero-under")], [LANDING_WORDS.under]),
         ]
       ),
     ]
   );
 
-const chatPiece = (h: H, theme: Theme): Html =>
+const linkPiece = (h: H, theme: Theme): Html =>
   h.div(
-    [h.Class("chat")],
+    [h.Class("piece piece-link")],
     [
+      h.p([h.Class("link-said")], [LANDING_WORDS.said]),
       h.div(
-        [h.Class("chat-row")],
+        [h.Class("link-card")],
         [
-          later(h, "Maya", "Resting", theme, "chat-face"),
-          h.p([h.Class("chat-bubble")], ["poker tonight?"]),
+          later(h, "Sam", { expression: "Resting", theme }, "link-face"),
+          h.span(
+            [h.Class("link-words")],
+            [
+              h.span([h.Class("link-brand")], ["nostakes"]),
+              h.span([h.Class("link-line")], [BRAND_LINE]),
+              h.span([h.Class("link-host")], ["nostakes.club"]),
+            ]
+          ),
         ]
       ),
       h.div(
-        [h.Class("chat-row chat-sent")],
+        [h.Class("link-seats")],
         [
-          later(h, "Sam", "Happy", theme, "chat-face"),
-          h.div(
-            [h.Class("chat-bubble chat-link landing-move")],
-            [
-              h.div(
-                [h.Class("preview")],
-                [
-                  later(h, "Sam", "Resting", theme, "preview-face"),
-                  h.div(
-                    [h.Class("preview-words")],
-                    [
-                      h.span([h.Class("preview-brand")], ["nostakes"]),
-                      h.span(
-                        [h.Class("preview-line")],
-                        ["Poker night. Pull up a chair."]
-                      ),
-                      h.span(
-                        [h.Class("preview-cast")],
-                        PREVIEW_CAST.map((who) =>
-                          later(h, who, "Resting", theme, "preview-cast-face")
-                        )
-                      ),
-                    ]
-                  ),
-                ]
-              ),
-              h.p([h.Class("link-title")], ["Poker night. Pull up a chair."]),
-              h.p([h.Class("link-host")], ["nostakes.club"]),
-            ]
+          ...SEATED.map((who) =>
+            h.span(
+              [h.Class("link-seat")],
+              [later(h, who, { expression: "Happy", theme }, "link-seat-face")]
+            )
+          ),
+          ...Array.from({ length: OPEN_SEATS }, () =>
+            h.span([h.Class("link-seat link-seat-open")], [])
           ),
         ]
       ),
     ]
   );
 
-const cardFace = (h: H, card: string, className: string): Html => {
+const facePiece = (h: H, theme: Theme): Html =>
+  h.div(
+    [h.Class("piece piece-face")],
+    [
+      h.button(
+        [
+          h.Type("button"),
+          h.Class("face-shuffle"),
+          h.AriaLabel("Shuffle the face"),
+        ],
+        [
+          later(
+            h,
+            TOOTHPICK,
+            { expression: "Resting", shuffles: true, theme },
+            "face-big"
+          ),
+          h.span([h.Class("face-tab")], [LANDING_WORDS.shuffle]),
+        ]
+      ),
+      h.div(
+        [h.Class("face-wardrobe")],
+        WARDROBE.map((who) =>
+          h.span(
+            [h.Class("face-small")],
+            [later(h, who, { expression: "Resting", theme }, "face-small-art")]
+          )
+        )
+      ),
+    ]
+  );
+
+const playingCard = (h: H, card: string, className: string): Html => {
   const drawn = cardFaceOf(card);
 
   return drawn === undefined
-    ? h.empty
+    ? h.span([h.Class(`playing-card card-back ${className}`)], [])
     : h.span(
         [
-          h.Class(`deal-card deal-up suit-${drawn.suit} ${className}`),
+          h.Class(`playing-card card-up suit-${drawn.suit} ${className}`),
           cardMarkup(h, drawn),
         ],
         []
       );
 };
 
-const dealSeat = (h: H, theme: Theme) => (who: CastName, index: number) =>
+const gesture = (h: H, name: string, word: string, piece: readonly Html[]) =>
   h.div(
-    [h.Class(`deal-seat deal-seat-${index}`)],
-    [later(h, who, "LookingDown", theme, "deal-face")]
-  );
-
-const dealHole = (h: H) => (_who: CastName, index: number) =>
-  h.div(
-    [h.Class(`deal-hole deal-hole-${index}`)],
+    [h.Class(`gesture gesture-${name}`)],
     [
-      h.span([h.Class("deal-card deal-back")], []),
-      h.span([h.Class("deal-card deal-back")], []),
+      h.div([h.Class("gesture-piece")], piece),
+      h.span([h.Class("gesture-word")], [word]),
     ]
   );
 
-const dealPiece = (h: H, theme: Theme): Html =>
-  h.div(
-    [h.Class("deal")],
+const tablePiece = (h: H): Html => {
+  const [peek, raise, fold] = LANDING_WORDS.gestures;
+
+  return h.div(
+    [h.Class("piece piece-table")],
     [
+      gesture(h, "peek", peek, [
+        playingCard(h, "As", "card-first"),
+        playingCard(h, "Ks", "card-second"),
+      ]),
+      gesture(h, "raise", raise, [
+        h.span([h.Class("rail")], []),
+        h.span([h.Class("rail-fill")], []),
+        h.span([h.Class("puck")], []),
+        h.span([h.Class("raise-to")], ["180"]),
+      ]),
+      gesture(h, "fold", fold, [
+        h.span([h.Class("fold-trail")], []),
+        playingCard(h, "", "card-first"),
+        playingCard(h, "", "card-second"),
+      ]),
+    ]
+  );
+};
+
+const rulesPiece = (h: H): Html =>
+  h.div(
+    [h.Class("piece piece-rules")],
+    [
+      h.p([h.Class("rules-status")], [LANDING_WORDS.rules.status]),
       h.div(
-        [h.Class("deal-felt")],
+        [h.Class("rules-card landing-rules-card")],
         [
-          ...TABLE.map(dealHole(h)),
-          ...TABLE.map(dealSeat(h, theme)),
-          h.div(
-            [h.Class("deal-board")],
-            FLOP.map((card, index) => cardFace(h, card, `deal-flop-${index}`))
+          h.span([h.Class("rules-card-label")], [LANDING_WORDS.rules.label]),
+          h.span(
+            [h.Class("rules-card-headline")],
+            [LANDING_WORDS.rules.headline]
           ),
+          h.span([h.Class("rules-card-rest")], [LANDING_WORDS.rules.rest]),
         ]
+      ),
+      h.ul(
+        [h.Class("rule-tags")],
+        LANDING_WORDS.rules.tags.map((tag) => h.li([], [tag]))
       ),
     ]
   );
 
-const picture = (h: H, which: LandingPicture, theme: Theme): Html => {
+const picturePiece = (h: H, which: LandingPicture): Html => {
   const drawn = landingPictureElement.withMessage(h);
 
-  return drawn(
+  return h.div(
+    [h.Class("piece piece-picture")],
     [
-      h.Class("landing-picture"),
-      h.Role("img"),
-      h.AriaLabel(
-        which === "Moment"
-          ? "The bad beat card: Jonas was 81% to win with aces, and Priya took the pot of 2,000 with kings."
-          : "The settle-up card: Jonas pays Priya 1,000, Sam pays Priya 250 and Maya 150, Dev pays Maya 160."
+      drawn(
+        [
+          h.Class("landing-picture"),
+          h.Role("img"),
+          h.AriaLabel(LANDING_WORDS.pictures[which]),
+          drawn.Picture(which),
+        ],
+        []
       ),
-      drawn.Picture(which),
-      drawn.Theme(theme),
-    ],
-    []
+    ]
   );
 };
 
-const beat = (h: H, index: number, piece: Html): Html => {
-  const words = LANDING_WORDS.beats[index];
-
-  return words === undefined
-    ? h.empty
-    : h.article(
-        [h.Class(`beat beat-${index}`), h.DataAttribute("scene", "beat")],
+const tile = (h: H, name: TileName, piece: Html): Html =>
+  h.article(
+    [h.Class(`tile tile-${name}`)],
+    [
+      piece,
+      h.div(
+        [h.Class("tile-words")],
         [
-          h.div(
-            [h.Class("beat-words")],
-            [
-              h.p([h.Class("beat-time")], [words.time]),
-              h.h2([h.Class("beat-line")], [words.line]),
-            ]
-          ),
-          h.div([h.Class("beat-piece")], [piece]),
+          h.h2([h.Class("tile-title")], [LANDING_WORDS.tiles[name].title]),
+          h.p([h.Class("tile-body")], [LANDING_WORDS.tiles[name].body]),
         ]
-      );
-};
+      ),
+    ]
+  );
 
 const close = (h: H): Html =>
   h.section(
-    [h.Class("close"), h.DataAttribute("scene", "close")],
+    [h.Class("close")],
     [
       h.h2([h.Class("close-title")], [LANDING_WORDS.close]),
-      h.dl(
-        [h.Class("fine-print")],
-        LANDING_WORDS.finePrint.flatMap(({ label, value }) => [
-          h.dt([], [label]),
-          h.dd([], [value]),
-        ])
-      ),
       openButton(h, "close-open"),
+      h.p([h.Class("close-quiet")], [LANDING_WORDS.quiet]),
       h.footer(
         [h.Class("reading-links")],
         [
@@ -301,12 +389,14 @@ export const landingView = (model: Model, h: H): Html => {
         [
           hero(h, theme),
           h.section(
-            [h.Class("night"), h.AriaLabel("One night of poker")],
+            [h.Class("tiles"), h.AriaLabel("What a night on nostakes has")],
             [
-              beat(h, 0, chatPiece(h, theme)),
-              beat(h, 1, dealPiece(h, theme)),
-              beat(h, 2, picture(h, "Moment", theme)),
-              beat(h, 3, picture(h, "SettleUp", theme)),
+              tile(h, "link", linkPiece(h, theme)),
+              tile(h, "face", facePiece(h, theme)),
+              tile(h, "table", tablePiece(h)),
+              tile(h, "rules", rulesPiece(h)),
+              tile(h, "moment", picturePiece(h, "Moment")),
+              tile(h, "settle", picturePiece(h, "SettleUp")),
             ]
           ),
           close(h),

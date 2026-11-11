@@ -166,17 +166,14 @@ const scrollToEnd = (page: Page) =>
 
 const picturesDrawn = () =>
   [...document.querySelectorAll("nostakes-landing-picture")].every(
-    (host) => host.shadowRoot?.querySelector(".native svg") !== null
+    (host) => host.querySelector("svg") !== null
   );
 
-const STILL_PIECES = `[...document.querySelectorAll(".chat-link, .deal-hole, .deal-up, .ring-look")].flatMap((node) => {
+const STILL_PIECES = `[...document.querySelectorAll(".landing .tile, .landing .ring-tile, .landing .ring-look")].flatMap((node) => {
   const style = getComputedStyle(node);
   const wanted = node.classList.contains("ring-look") ? "0" : "1";
   return style.opacity === wanted && style.transform === "none" && node.getAnimations().length === 0 ? [] : [node.className + " " + style.opacity + " " + style.transform];
-}).concat([...document.querySelectorAll("nostakes-landing-picture")].flatMap((host) => {
-  const moving = [...(host.shadowRoot?.querySelectorAll("*") ?? [])].filter((node) => node.getAnimations().length > 0);
-  return moving.length === 0 ? [] : [host.getAttribute("aria-label").slice(0, 20) + " moves " + moving.length + " parts"];
-}))`;
+})`;
 
 const WIDER = `[...document.querySelectorAll(".landing *")].filter((node) => !(node instanceof SVGElement) && node.getClientRects().length > 0).flatMap((node) => {
   const box = node.getBoundingClientRect();
@@ -435,12 +432,20 @@ if (localStorage.getItem("nostakes.rooms") === null) {
 
 interface FirstScreen {
   readonly name: string;
+  readonly opened: boolean;
   readonly path: string;
   readonly returning: boolean;
   readonly controls: readonly string[];
 }
 
 const FIRST_SCREENS: readonly FirstScreen[] = [
+  {
+    controls: [".landing .hero-title", ".landing .hero-open"],
+    name: "the landing",
+    opened: false,
+    path: "/",
+    returning: false,
+  },
   {
     controls: [
       ".card-panel .text-input",
@@ -450,12 +455,14 @@ const FIRST_SCREENS: readonly FirstScreen[] = [
       ".join-row .button",
     ],
     name: "the create form",
+    opened: true,
     path: "/",
     returning: false,
   },
   {
     controls: [".room-row", ".card-panel .button.primary"],
     name: "a returning player's home",
+    opened: false,
     path: "/",
     returning: true,
   },
@@ -466,6 +473,7 @@ const FIRST_SCREENS: readonly FirstScreen[] = [
       ".card-panel .button.primary",
     ],
     name: "the invitation",
+    opened: false,
     path: "/r/ABC234",
     returning: false,
   },
@@ -570,7 +578,7 @@ const checkFirstScreens = (engine: BrowserType, origin: string) =>
           page.evaluate(() => document.fonts.ready.then(() => true))
         );
 
-        if (screen.path === "/" && !screen.returning) {
+        if (screen.opened) {
           yield* attempt("tap Open a room on the landing", () =>
             page.locator(".landing .hero-open").click()
           );
@@ -606,7 +614,7 @@ const checkFirstScreens = (engine: BrowserType, origin: string) =>
       problems
     );
     yield* Console.log(
-      `${engine.name()}: the create form, a returning home, and the invitation fit the first screen at ${FIRST_SCREEN_SIZES.map(([width, height]) => `${width}x${height}`).join(", ")}`
+      `${engine.name()}: the landing, the create form, a returning home, and the invitation fit the first screen at ${FIRST_SCREEN_SIZES.map(([width, height]) => `${width}x${height}`).join(", ")}`
     );
   }).pipe(Effect.scoped);
 

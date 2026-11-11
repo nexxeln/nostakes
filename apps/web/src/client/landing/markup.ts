@@ -1,5 +1,11 @@
-import type { DrawnPicture } from "./picture-wire.js";
+import type { LandingPicture } from "../../features/landing/elements.js";
 
-export const paintDrawn = (into: HTMLElement, drawn: DrawnPicture) => {
-  into.innerHTML = drawn;
+export type BuiltPictures = Readonly<Record<LandingPicture, string>>;
+
+export const paintPicture = (
+  into: HTMLElement,
+  picture: LandingPicture,
+  built: BuiltPictures
+) => {
+  into.innerHTML = built[picture];
 };

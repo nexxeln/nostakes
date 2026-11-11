@@ -1,5 +1,5 @@
 import { DEFAULT_AVATAR } from "@nostakes/avatar";
-import type { Avatar } from "@nostakes/avatar";
+import type { Avatar, Expression } from "@nostakes/avatar";
 
 const plain: Avatar = {
   colour: "YellowRed",
@@ -106,21 +106,28 @@ export const RING: readonly CastName[] = [
   "Ana",
 ];
 
-export const TABLE: readonly CastName[] = [
+export const SEATED: readonly CastName[] = [
   "Sam",
   "Maya",
   "Jonas",
   "Priya",
   "Dev",
-  "Lou",
 ];
 
-export const PREVIEW_CAST: readonly CastName[] = [
-  "Maya",
-  "Jonas",
-  "Priya",
-  "Dev",
-  "Lou",
-];
+export const OPEN_SEATS = 4;
 
-export const FLOP: readonly string[] = ["2c", "7h", "9s"];
+export const WARDROBE: readonly CastName[] = ["Kit", "Lou", "Ana", "Dev"];
+
+export const TOOTHPICK: CastName = "Ben";
+
+export const SECOND_LOOKS: Readonly<Record<CastName, Expression>> = {
+  Ana: "Happy",
+  Ben: "Thinking",
+  Dev: "LookingDown",
+  Jonas: "Happy",
+  Kit: "LookingDown",
+  Lou: "Happy",
+  Maya: "LookingDown",
+  Priya: "Thinking",
+  Sam: "LookingDown",
+};

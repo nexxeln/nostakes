@@ -3,6 +3,7 @@ import { Hash, Option } from "effect";
 import { defineConfig } from "vite";
 import type { Plugin, Rolldown } from "vite";
 
+import { landingPictures } from "./src/features/landing/pictures.js";
 import {
   HOME_PREVIEW,
   INVITE_PREVIEW,
@@ -53,6 +54,19 @@ const linkPreviews = (): Plugin => ({
 
     return html.replace(PLAIN_TITLE, previewHead(HOME_PREVIEW));
   },
+});
+
+const PICTURES_MODULE = "virtual:nostakes-landing-pictures";
+
+const RESOLVED_PICTURES = `\0${PICTURES_MODULE}`;
+
+const builtLandingPictures = (): Plugin => ({
+  load: (id) =>
+    id === RESOLVED_PICTURES
+      ? `export const PICTURES = ${JSON.stringify(landingPictures())};`
+      : undefined,
+  name: "nostakes-landing-pictures",
+  resolveId: (id) => (id === PICTURES_MODULE ? RESOLVED_PICTURES : undefined),
 });
 
 const BUILD_FILE = "build.json";
@@ -137,6 +151,7 @@ export default defineConfig({
   },
   plugins: [
     foldkit({ devToolsMcpPort: false }),
+    builtLandingPictures(),
     buildStamp(),
     linkPreviews(),
     securityHeaders(),
