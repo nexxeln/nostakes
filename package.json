@@ -54,12 +54,12 @@
     },
     "runtime": {
       "name": "node",
-      "version": ">=24.22.1",
+      "version": ">=24.18.0",
       "onFail": "warn"
     }
   },
   "engines": {
-    "node": ">=24.22.1",
+    "node": ">=24.18.0",
     "pnpm": ">=11.1.2"
   },
   "packageManager": "pnpm@11.28.11"
