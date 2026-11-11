@@ -61,8 +61,10 @@
           </li>
         </ul>
         <p>
-          Each count is filed under a random key for its room, not the room's
-          code. Counts are kept for three months.
+          Each count from a room is filed under a one-way hash of the room's
+          internal identifier, the same for every count from that room. The
+          room's code cannot be read back from it. Counts are kept for three
+          months.
         </p>
       </section>
 
@@ -97,6 +99,55 @@
             and drand.cloudflare.com. Like any website, those relays see your
             device's internet address, and the request shows it came from
             nostakes. It carries no name, room code, or cards.
+          </li>
+        </ul>
+      </section>
+
+      <section class="sheet">
+        <h2>Our server's log</h2>
+        <ul>
+          <li>
+            Our server writes a log line when something goes wrong, such as a
+            fault, a step the room refused, or a failed save, and when a room
+            starts up.
+          </li>
+          <li>
+            The lines our code writes never contain a room's code, a person's
+            name or face, a card, a room pass, or anything anyone typed. To
+            group one room's lines, each carries a short hash of the room's
+            internal identifier instead of its code.
+          </li>
+          <li>
+            Cloudflare's per-request logs, which would record every web address
+            requested and so the room code in a room's link, are turned off.
+            Cloudflare's documentation does not say what it adds to the lines
+            our code writes, such as the web address of the request, so we
+            cannot promise that a line never shows one.
+          </li>
+          <li>Cloudflare keeps our log lines for at most 7 days.</li>
+        </ul>
+      </section>
+
+      <section class="sheet">
+        <h2>Your internet address</h2>
+        <ul>
+          <li>
+            Cloudflare, which runs our server, sees your internet address on
+            every request, as any website's host does.
+          </li>
+          <li>
+            To stop abuse, the server counts how many rooms you open, rooms you
+            join, and connections you make from one internet address each
+            minute, using Cloudflare's rate limiting. Checking whether a room
+            still exists and sending an error report count as connections. An
+            IPv6 address is counted by its network, the first half of the
+            address, so one home or office network shares one count.
+            Cloudflare's documentation does not say how long it keeps a count
+            after its minute is up.
+          </li>
+          <li>
+            We do not store your internet address. Our code never puts it in a
+            room, in a log line, or in our counts of what happens.
           </li>
         </ul>
       </section>
