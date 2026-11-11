@@ -82,6 +82,17 @@
   --size-face-undo: 2.25rem;
   --size-face-token: 2rem;
   --size-face-tray: 8.5rem;
+  --size-face-tray-wide: calc(
+    (var(--size-face-side) - var(--space-3)) / 3 * 4 + var(--space-3) * 3 +
+      2.25rem
+  );
+  --size-face-tray-short: calc(
+    (var(--size-face-side) - var(--space-3) * 2) / 4.5 * 3 + var(--space-3) *
+      2 + 2.25rem
+  );
+  --size-face-art: min(26rem, 44vh);
+  --space-face-head: 2rem;
+  --space-face-head-wide: 3.5rem;
   --gap-face-callout: 0.25rem;
 
   --display-in-light: inline-flex;

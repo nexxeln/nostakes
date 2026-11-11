@@ -62,7 +62,7 @@ import {
   pausedUntil,
   stillWaiting,
 } from "./door.js";
-import { stepped, toldOf } from "./face/parts.js";
+import { PART_LABELS, stepped, toldOf } from "./face/parts.js";
 import { haltedText } from "./halted.js";
 import { Messages, ReplyOutcomes } from "./message.js";
 import type { Message, ReplyOutcome } from "./message.js";
@@ -199,10 +199,12 @@ export const init = (flags: Flags): Return => {
     counting: flags.counting ?? false,
     deck: flags.deck,
     faceDraft: Option.none(),
+    faceHolding: false,
     faceLearned: false,
     faceMood: "Resting" as const,
     facePart: "species" as const,
     facePast: [],
+    faceScrub: Option.none(),
     faceShuffles: 0,
     faceTold: "",
     joinCode: "",
@@ -890,14 +892,17 @@ const closedFace = (model: Model): Model => ({
   ...model,
   faceDraft: Option.none(),
   facePast: [],
+  faceScrub: Option.none(),
 });
 
 const openedFace = (model: Model, worn: Avatar): Model => ({
   ...model,
   faceDraft: Option.some(worn),
+  faceHolding: false,
   faceMood: "Resting",
   facePart: "species",
   facePast: [],
+  faceScrub: Option.none(),
   faceTold: "",
 });
 
@@ -984,15 +989,56 @@ const toldOfChange = (model: Model, avatar: Avatar) =>
 
 const holdFacePart = (model: Model, part: Part): Model => ({
   ...model,
+  faceHolding: !(model.faceHolding && model.facePart === part),
   faceLearned: true,
   facePart: part,
   faceTold: model.faceDraft.pipe(
     Option.match({
       onNone: () => "",
-      onSome: (draft) => toldOf(draft, part),
+      onSome: (draft) =>
+        model.faceHolding && model.facePart === part
+          ? `${PART_LABELS[part]} put down`
+          : toldOf(draft, part),
     })
   ),
 });
+
+const scrubFacePart = (model: Model, part: Part, by: number): Return =>
+  Option.match(model.faceDraft, {
+    onNone: () => ({ model }),
+    onSome: (draft) => {
+      const from = Option.getOrElse(model.faceScrub, () => draft);
+      const avatar = stepped(from, part, by);
+
+      return {
+        model: {
+          ...model,
+          faceDraft: Option.some(avatar),
+          faceHolding: true,
+          faceLearned: true,
+          facePart: part,
+          faceScrub: Option.some(from),
+          faceTold: toldOf(avatar, part),
+        },
+      };
+    },
+  });
+
+const settleFaceScrub = (model: Model, kept: boolean): Return =>
+  Option.match(Option.all([model.faceDraft, model.faceScrub]), {
+    onNone: () => ({ model: { ...model, faceScrub: Option.none() } }),
+    onSome: ([draft, from]) => ({
+      model: {
+        ...model,
+        faceDraft: Option.some(kept ? draft : from),
+        facePast:
+          kept && codeFor(draft) !== codeFor(from)
+            ? [...model.facePast, from].slice(-FACES_KEPT_FOR_UNDO)
+            : model.facePast,
+        faceScrub: Option.none(),
+      },
+    }),
+  });
 
 const flipFacePart = (model: Model, part: Part, by: number): Return =>
   Option.match(model.faceDraft, {
@@ -1001,7 +1047,7 @@ const flipFacePart = (model: Model, part: Part, by: number): Return =>
       const avatar = stepped(draft, part, by);
 
       return wearFace(
-        { ...model, faceLearned: true, facePart: part },
+        { ...model, faceHolding: true, faceLearned: true, facePart: part },
         { avatar, shuffled: false, told: toldOf(avatar, part) }
       );
     },
@@ -1457,6 +1503,7 @@ export const update = (model: Model, message: Message): Return =>
     ReleasedConnection: () =>
       editRoom(model, (room) => ({ ...room, connected: false })),
     ScrolledToTop: () => ({ model }),
+    ScrubbedFacePart: ({ by, part }) => scrubFacePart(model, part, by),
     SentSignal: ({ at, sent, signal }) =>
       sent && RoomSignalSchema.guards.Reaction(signal)
         ? inRoom(model, (room) => ({
@@ -1475,6 +1522,7 @@ export const update = (model: Model, message: Message): Return =>
             },
           }))
         : { model },
+    SettledFaceScrub: ({ kept }) => settleFaceScrub(model, kept),
     ShuffledFace: ({ avatar }) =>
       wearFace(model, { avatar, shuffled: true, told: "A new face" }),
     StartedReload: () => ({ model }),

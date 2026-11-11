@@ -1,6 +1,7 @@
 import {
   choicesOf,
   codeFor,
+  isPlaced,
   PartSchema,
   PLACED_PARTS,
   PlacedPartSchema,
@@ -9,10 +10,14 @@ import {
 import type { Avatar, Expression, Part, PlacedPart } from "@nostakes/avatar";
 import { Schema } from "effect";
 
-import { calloutPoint, stepped } from "../../features/face/parts.js";
+import { calloutPoints } from "../../features/face/parts.js";
 import type { Side } from "../../features/face/parts.js";
 import { FACE_TAG, faceElement } from "../../features/face/stage.js";
-import type { FaceFlip, FaceHold } from "../../features/face/stage.js";
+import type {
+  FaceFlip,
+  FaceHold,
+  FaceSettle,
+} from "../../features/face/stage.js";
 import type { Theme } from "../../features/model.js";
 import { adoptEarlyProperties } from "../early-properties.js";
 import { paintFace } from "./markup.js";
@@ -39,6 +44,7 @@ const STYLE = `
 .lines circle { fill: var(--color-raised, #fffdf8); stroke: var(--color-ink-muted, #716a79); stroke-width: 1.5; }
 .lines path.is-held { stroke: var(--color-accent, #ef5326); stroke-width: 2; }
 .lines circle.is-held { fill: var(--color-accent, #ef5326); stroke: var(--color-on-accent, #fffaf3); }
+.lines circle.is-empty { fill: none; stroke-dasharray: 2 2; }
 @media (prefers-reduced-motion: reduce) { .art [data-part] { transition: none; } }
 `;
 
@@ -82,13 +88,15 @@ const sheetAt = (event: PointerEvent): Part | null => {
 interface Drag {
   readonly x: number;
   readonly y: number;
-  readonly part: Part;
+  readonly sheet: Part | null;
+  readonly under: Part;
   readonly flipped: Part;
+  readonly steps: number;
   readonly moved: boolean;
 }
 
 interface Seen {
-  readonly held: Part;
+  readonly held: Part | null;
   readonly shuffles: number;
   readonly choice: string;
 }
@@ -109,14 +117,12 @@ class NostakesFace extends HTMLElement {
   readonly #fine = globalThis.matchMedia("(hover: hover) and (pointer: fine)");
 
   #face: Avatar | null = null;
-  #held: Part = "species";
+  #held: Part | null = null;
   #mood: Expression = "Resting";
   #theme: Theme = "Light";
   #shuffles = 0;
   #hintShown = true;
 
-  #tried: Avatar | null = null;
-  #grabbed: Part | null = null;
   #drag: Drag | null = null;
   #near: Part | null = null;
   #wheeled = 0;
@@ -189,16 +195,14 @@ class NostakesFace extends HTMLElement {
 
   set face(next: Avatar | null) {
     this.#face = next;
-    this.#tried = null;
-    this.#grabbed = null;
     this.#schedule();
   }
 
-  get held(): Part {
+  get held(): Part | null {
     return this.#held;
   }
 
-  set held(next: Part) {
+  set held(next: Part | null) {
     this.#held = next;
     this.#schedule();
   }
@@ -260,14 +264,14 @@ class NostakesFace extends HTMLElement {
   }
 
   #paint() {
-    const face = this.#tried ?? this.#face;
+    const face = this.#face;
     const size = Math.round(this.#box.getBoundingClientRect().width);
 
     if (face === null || !this.isConnected || size === 0) {
       return;
     }
 
-    const held = this.#grabbed ?? this.#held;
+    const held = this.#held;
 
     const key = JSON.stringify([
       codeFor(face),
@@ -279,14 +283,20 @@ class NostakesFace extends HTMLElement {
 
     if (key !== this.#painted) {
       this.#painted = key;
-      paintFace(this.#art, face, {
+
+      const look = {
         expression: this.#mood,
         layers: true,
-        lifted: held,
         parts: true,
         size,
         theme: this.#theme,
-      });
+      };
+
+      paintFace(
+        this.#art,
+        face,
+        held === null ? look : { ...look, lifted: held }
+      );
       this.#move(face, held);
     }
 
@@ -294,12 +304,16 @@ class NostakesFace extends HTMLElement {
     this.#paintLines(face, held);
   }
 
-  #move(face: Avatar, held: Part) {
+  #move(face: Avatar, held: Part | null) {
     const before = this.#seen;
 
-    this.#seen = { choice: face[held], held, shuffles: this.#shuffles };
+    this.#seen = {
+      choice: held === null ? "" : face[held],
+      held,
+      shuffles: this.#shuffles,
+    };
 
-    if (this.#calm.matches || this.#tried !== null) {
+    if (this.#calm.matches || this.#drag?.moved === true) {
       return;
     }
 
@@ -309,7 +323,7 @@ class NostakesFace extends HTMLElement {
       this.#pullApart();
     } else if (before.held !== held) {
       this.#pickUp();
-    } else if (before.choice !== face[held]) {
+    } else if (before.choice !== this.#seen.choice) {
       this.#settle();
     }
   }
@@ -379,19 +393,17 @@ class NostakesFace extends HTMLElement {
     }
   }
 
-  #paintFoot(face: Avatar, held: Part) {
-    const choices = choicesOf(held);
-
+  #paintFoot(face: Avatar, held: Part | null) {
     this.#hint.textContent = this.#fine.matches
       ? "Click a part. Scroll to flip."
       : "Tap a part. Swipe to flip.";
     this.#hint.toggleAttribute("hidden", !this.#hintShown);
-    this.#dots.toggleAttribute("hidden", this.#hintShown);
+    this.#dots.toggleAttribute("hidden", this.#hintShown || held === null);
     this.#dots.replaceChildren(
-      ...choices.map((choice) => {
+      ...(held === null ? [] : choicesOf(held)).map((choice) => {
         const dot = document.createElement("i");
 
-        dot.className = choice === face[held] ? "is-on" : "";
+        dot.className = held !== null && choice === face[held] ? "is-on" : "";
 
         return dot;
       })
@@ -405,9 +417,10 @@ class NostakesFace extends HTMLElement {
     );
   }
 
-  #paintLines(face: Avatar, held: Part) {
+  #paintLines(face: Avatar, held: Part | null) {
     const around = this.#stage.getBoundingClientRect();
     const frame = this.#artFrame();
+    const points = calloutPoints(face);
     const drawn: SVGElement[] = [];
 
     for (const side of ["left", "right"] as const) {
@@ -415,14 +428,15 @@ class NostakesFace extends HTMLElement {
         const part =
           callout instanceof HTMLElement ? callout.dataset.part : undefined;
 
-        if (isPlacedPart(part)) {
+        const point = points.find((each) => each.part === part);
+
+        if (isPlacedPart(part) && point !== undefined) {
           const button = callout.getBoundingClientRect();
-          const [x, y] = calloutPoint(face, part, side);
           const edge = side === "left" ? button.right : button.left;
           const fromX = edge - around.left;
           const fromY = button.top + button.height / 2 - around.top;
-          const toX = frame.left + (x / 100) * frame.width - around.left;
-          const toY = frame.top + (y / 100) * frame.height - around.top;
+          const toX = frame.left + (point.x / 100) * frame.width - around.left;
+          const toY = frame.top + (point.y / 100) * frame.height - around.top;
           const line = document.createElementNS(SVG, "path");
           const dot = document.createElementNS(SVG, "circle");
           const name = part === held ? "is-held" : "";
@@ -432,7 +446,8 @@ class NostakesFace extends HTMLElement {
           dot.setAttribute("cx", String(toX));
           dot.setAttribute("cy", String(toY));
           dot.setAttribute("r", "3");
-          dot.setAttribute("class", name);
+          dot.setAttribute("class", point.worn ? name : `${name} is-empty`);
+          dot.dataset.part = part;
           drawn.push(line, dot);
         }
       }
@@ -486,6 +501,18 @@ class NostakesFace extends HTMLElement {
     this.dispatchEvent(new CustomEvent("flip", { detail }));
   }
 
+  #emitScrub(part: Part, by: number) {
+    const detail: FaceFlip = { by, part };
+
+    this.dispatchEvent(new CustomEvent("scrub", { detail }));
+  }
+
+  #emitSettle(kept: boolean) {
+    const detail: FaceSettle = { kept };
+
+    this.dispatchEvent(new CustomEvent("settle", { detail }));
+  }
+
   #showNear(part: Part | null) {
     if (part === this.#near) {
       return;
@@ -498,15 +525,31 @@ class NostakesFace extends HTMLElement {
     }
   }
 
+  #tap(drag: Drag) {
+    const held = this.#held;
+
+    if (held === null) {
+      this.#emitHold(drag.under);
+    } else if (isPlaced(held) && drag.sheet !== null && drag.sheet !== held) {
+      this.#emitHold(drag.sheet);
+    } else {
+      this.#emitFlip(held, 1);
+    }
+  }
+
   readonly #onDown = (event: PointerEvent) => {
     if (event.button !== 0) {
       return;
     }
 
+    const under = this.#partAt(event);
+
     this.#drag = {
-      flipped: sheetAt(event) ?? this.#held,
+      flipped: this.#held ?? under,
       moved: false,
-      part: this.#partAt(event),
+      sheet: sheetAt(event),
+      steps: 0,
+      under,
       x: event.clientX,
       y: event.clientY,
     };
@@ -515,10 +558,9 @@ class NostakesFace extends HTMLElement {
 
   readonly #onMove = (event: PointerEvent) => {
     const drag = this.#drag;
-    const face = this.#face;
 
-    if (drag === null || face === null) {
-      if (event.pointerType === "mouse") {
+    if (drag === null) {
+      if (event.pointerType === "mouse" && this.#held === null) {
         this.#showNear(this.#partAt(event));
       }
 
@@ -532,54 +574,41 @@ class NostakesFace extends HTMLElement {
       drag.moved ||
       (Math.abs(dx) > SCRUB_START_PX && Math.abs(dx) > Math.abs(dy));
 
-    if (moved) {
-      this.#drag = { ...drag, moved };
-      this.#grabbed = drag.flipped;
-      this.#tried = stepped(face, drag.flipped, Math.round(dx / SCRUB_STEP_PX));
+    const steps = Math.round(dx / SCRUB_STEP_PX);
+
+    if (moved && (!drag.moved || steps !== drag.steps)) {
+      this.#drag = { ...drag, moved, steps };
       this.#box.classList.add("is-scrubbing");
-      this.#paint();
+      this.#emitScrub(drag.flipped, steps);
     }
   };
 
-  readonly #onUp = (event: PointerEvent) => {
+  readonly #onUp = () => {
     const drag = this.#drag;
-    const face = this.#face;
 
     this.#drag = null;
     this.#box.classList.remove("is-scrubbing");
 
-    if (drag === null || face === null) {
+    if (drag === null) {
       return;
     }
 
-    if (!drag.moved) {
-      if (drag.part === this.#held) {
-        this.#emitFlip(drag.part, 1);
-      } else {
-        this.#emitHold(drag.part);
-      }
-
-      return;
-    }
-
-    const by = Math.round((event.clientX - drag.x) / SCRUB_STEP_PX);
-
-    if (codeFor(stepped(face, drag.flipped, by)) === codeFor(face)) {
-      this.#tried = null;
-      this.#grabbed = null;
-      this.#emitHold(drag.flipped);
-      this.#schedule();
+    if (drag.moved) {
+      this.#emitSettle(true);
     } else {
-      this.#emitFlip(drag.flipped, by);
+      this.#tap(drag);
     }
   };
 
   readonly #onCancel = () => {
+    const drag = this.#drag;
+
     this.#drag = null;
-    this.#tried = null;
-    this.#grabbed = null;
     this.#box.classList.remove("is-scrubbing");
-    this.#schedule();
+
+    if (drag?.moved === true) {
+      this.#emitSettle(false);
+    }
   };
 
   readonly #onLeave = () => {
@@ -591,7 +620,7 @@ class NostakesFace extends HTMLElement {
     this.#wheeled += event.deltaY + event.deltaX;
 
     if (Math.abs(this.#wheeled) >= WHEEL_STEP) {
-      this.#emitFlip(this.#held, Math.sign(this.#wheeled));
+      this.#emitFlip(this.#held ?? "species", Math.sign(this.#wheeled));
       this.#wheeled = 0;
     }
   };

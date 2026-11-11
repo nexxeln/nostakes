@@ -19,11 +19,20 @@ export const FaceFlipSchema = Schema.Struct({
 
 export type FaceFlip = typeof FaceFlipSchema.Type;
 
+export const FaceSettleSchema = Schema.Struct({ kept: Schema.Boolean });
+
+export type FaceSettle = typeof FaceSettleSchema.Type;
+
 export const faceElement = CustomElement.define({
-  events: { flip: FaceFlipSchema, hold: FaceHoldSchema },
+  events: {
+    flip: FaceFlipSchema,
+    hold: FaceHoldSchema,
+    scrub: FaceFlipSchema,
+    settle: FaceSettleSchema,
+  },
   properties: {
     face: AvatarSchema,
-    held: PartSchema,
+    held: Schema.NullOr(PartSchema),
     hint: Schema.Boolean,
     mood: ExpressionSchema,
     shuffles: Schema.Int,

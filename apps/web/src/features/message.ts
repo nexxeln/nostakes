@@ -122,11 +122,13 @@ export const Messages = defineMessageUnion({
   PolledDoor: {},
   ReleasedConnection: {},
   ScrolledToTop: {},
+  ScrubbedFacePart: { by: Schema.Int, part: PartSchema },
   SentSignal: {
     at: Schema.Int,
     sent: Schema.Boolean,
     signal: RoomSignalSchema,
   },
+  SettledFaceScrub: { kept: Schema.Boolean },
   ShuffledFace: { avatar: AvatarSchema },
   StartedReload: {},
   SubmittedCreate: {},

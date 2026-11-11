@@ -1,11 +1,10 @@
 import {
-  boxOfPart,
   choicesOf,
   PLACED_PARTS,
   reachOfPart,
+  spotsOfPart,
 } from "@nostakes/avatar";
-import type { Avatar, Box, Part, PlacedPart } from "@nostakes/avatar";
-import { Option } from "effect";
+import type { Avatar, Part, PlacedPart } from "@nostakes/avatar";
 
 export const PART_LABELS: Readonly<Record<Part, string>> = {
   colour: "Colour",
@@ -57,63 +56,100 @@ export const stepped = (avatar: Avatar, part: Part, by: number): Avatar => {
 export const toldOf = (avatar: Avatar, part: Part) =>
   `${PART_LABELS[part]}: ${choiceName(part, avatar[part])}`;
 
-export const placeOn = (avatar: Avatar, part: PlacedPart): Box =>
-  boxOfPart(avatar, part).pipe(
-    Option.getOrElse(() => reachOfPart(avatar.species, part))
-  );
-
 export type Side = "left" | "right";
 
-export type Sides = Readonly<Record<Side, readonly PlacedPart[]>>;
-
-const LEAN: Readonly<Record<PlacedPart, number>> = {
-  extra: 6,
-  eyes: -6,
-  eyewear: 2,
-  headwear: -8,
-  mark: 4,
-  mouth: -4,
-  neck: -2,
-  rank: 8,
+export const SIDES: Readonly<Record<Side, readonly PlacedPart[]>> = {
+  left: ["headwear", "eyes", "mouth", "neck"],
+  right: ["rank", "eyewear", "mark", "extra"],
 };
 
-const PER_SIDE = PLACED_PARTS.length / 2;
+const sideOf = (part: PlacedPart): Side =>
+  SIDES.left.includes(part) ? "left" : "right";
 
-export const sidesOf = (avatar: Avatar): Sides => {
-  const reaches = PLACED_PARTS.map((part) => {
-    const reach = reachOfPart(avatar.species, part);
-
-    return {
-      across: reach.x + reach.width / 2 + LEAN[part],
-      down: reach.y + reach.height / 2,
-      part,
-    };
-  });
-
-  const across = reaches.toSorted((one, other) => one.across - other.across);
-
-  const down = (side: typeof reaches) =>
-    side
-      .toSorted((one, other) => one.down - other.down)
-      .map(({ part }) => part);
-
-  return {
-    left: down(across.slice(0, PER_SIDE)),
-    right: down(across.slice(PER_SIDE)),
-  };
-};
+export interface CalloutPoint {
+  readonly part: PlacedPart;
+  readonly x: number;
+  readonly y: number;
+  readonly worn: boolean;
+}
 
 const NEAR_EDGE = 0.14;
 
-export const calloutPoint = (
-  avatar: Avatar,
-  part: PlacedPart,
-  side: Side
-): readonly [number, number] => {
-  const box = placeOn(avatar, part);
+export const DOTS_APART = 7;
 
-  return [
-    box.x + box.width * (side === "left" ? NEAR_EDGE : 1 - NEAR_EDGE),
-    box.y + box.height / 2,
-  ];
+const apart = (one: CalloutPoint, other: CalloutPoint) =>
+  Math.hypot(one.x - other.x, one.y - other.y);
+
+const clearOf = (point: CalloutPoint, placed: readonly CalloutPoint[]) =>
+  placed.every((other) => apart(point, other) >= DOTS_APART);
+
+const awayFrom = (
+  point: CalloutPoint,
+  placed: readonly CalloutPoint[]
+): CalloutPoint => {
+  const crowding = placed.find((other) => apart(point, other) < DOTS_APART);
+
+  if (crowding === undefined) {
+    return point;
+  }
+
+  const distance = apart(point, crowding);
+
+  const [dx, dy] =
+    distance === 0 ? [0, 1] : [point.x - crowding.x, point.y - crowding.y];
+
+  const reach = DOTS_APART / (distance === 0 ? 1 : distance);
+
+  return awayFrom(
+    {
+      ...point,
+      x: crowding.x + dx * reach + (dx < 0 ? -0.01 : 0.01),
+      y: crowding.y + dy * reach + (dy < 0 ? -0.01 : 0.01),
+    },
+    placed.filter((other) => other !== crowding)
+  );
+};
+
+const wornPoints = (
+  avatar: Avatar,
+  part: PlacedPart
+): readonly CalloutPoint[] =>
+  spotsOfPart(avatar, part)
+    .toSorted(([one], [other]) =>
+      sideOf(part) === "left" ? one - other : other - one
+    )
+    .map(([x, y]) => ({ part, worn: true, x, y }));
+
+const emptyPoint = (avatar: Avatar, part: PlacedPart): CalloutPoint => {
+  const reach = reachOfPart(avatar.species, part);
+
+  return {
+    part,
+    worn: false,
+    x:
+      reach.x +
+      reach.width * (sideOf(part) === "left" ? NEAR_EDGE : 1 - NEAR_EDGE),
+    y: reach.y + reach.height / 2,
+  };
+};
+
+export const calloutPoints = (avatar: Avatar): readonly CalloutPoint[] => {
+  const worn = PLACED_PARTS.filter((part) => avatar[part] !== "None");
+  const empty = PLACED_PARTS.filter((part) => avatar[part] === "None");
+  const placed: CalloutPoint[] = [];
+
+  for (const part of worn) {
+    const spots = wornPoints(avatar, part);
+    const [first = emptyPoint(avatar, part)] = spots;
+
+    placed.push(
+      spots.find((spot) => clearOf(spot, placed)) ?? awayFrom(first, placed)
+    );
+  }
+
+  for (const part of empty) {
+    placed.push(awayFrom(emptyPoint(avatar, part), placed));
+  }
+
+  return placed;
 };

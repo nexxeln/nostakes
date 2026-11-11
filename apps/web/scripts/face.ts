@@ -1,5 +1,12 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
-import { choicesOf, codeFor, isPlaced, PARTS } from "@nostakes/avatar";
+import {
+  choicesOf,
+  codeFor,
+  HEADWEAR,
+  isPlaced,
+  PARTS,
+  SPECIES,
+} from "@nostakes/avatar";
 import type { Avatar, Part } from "@nostakes/avatar";
 import { Config, Console, Effect, Option, Schema } from "effect";
 import { chromium, webkit } from "playwright-core";
@@ -17,6 +24,10 @@ const SCRUB_STEP_PX = 34;
 const MOST_STEPS_A_SWIPE = 3;
 
 const MOST_TABS = 60;
+
+const PLACED: ReadonlySet<string> = new Set(
+  PARTS.filter((part) => isPlaced(part))
+);
 
 const PART_LABELS: Readonly<Record<Part, string>> = {
   colour: "Colour",
@@ -61,17 +72,36 @@ const WANTED: Avatar = {
 };
 
 const BUILD_ORDER: readonly Part[] = [
-  "species",
-  "colour",
-  "suit",
   "rank",
+  "mouth",
+  "eyes",
   "headwear",
   "eyewear",
-  "eyes",
-  "mouth",
   "neck",
   "mark",
   "extra",
+  "species",
+  "colour",
+  "suit",
+];
+
+const KEYBOARD_ORDER: readonly Part[] = [
+  "headwear",
+  "eyes",
+  "mouth",
+  "neck",
+  "rank",
+  "eyewear",
+  "mark",
+  "extra",
+  "species",
+  "colour",
+  "suit",
+];
+
+const DESKTOPS: readonly (readonly [number, number])[] = [
+  [1440, 900],
+  [1280, 720],
 ];
 
 class FaceCheckFailed extends Schema.TaggedError<
@@ -141,6 +171,15 @@ const openBuilder = (page: Page, origin: string, byKeyboard: boolean) =>
     yield* attempt("wait for the builder", () =>
       page.locator(".face-builder").waitFor({ timeout: 10_000 })
     );
+    yield* attempt("wait for the sheet to come to rest", () =>
+      page.waitForFunction(
+        () =>
+          document
+            .querySelector(".face-builder")
+            ?.getAnimations()
+            .every((animation) => animation.playState === "finished") === true
+      )
+    );
     yield* attempt("wait for the face to be drawn", () =>
       page.waitForFunction(
         () =>
@@ -193,12 +232,14 @@ const waitForHeld = (page: Page, part: Part) =>
 
 const GRID = 40;
 
-const BARE_COLUMNS = 14;
+const SWIPE_COLUMNS = 16;
 
-const pointOn = (page: Page, part: Part | null) =>
+type Spot = "Bare" | "OtherSheet" | Part;
+
+const pointOn = (page: Page, spot: Spot, held: Part | null) =>
   attempt("find a point on the face", () =>
     page.evaluate(
-      ([wanted, grid, columns]) => {
+      ([wanted, picked, grid, columns]) => {
         const root = document.querySelector("nostakes-face")?.shadowRoot;
         const box = root?.querySelector(".face")?.getBoundingClientRect();
 
@@ -215,7 +256,12 @@ const pointOn = (page: Page, part: Part | null) =>
               root.elementFromPoint(x, y)?.closest<SVGElement>("[data-part]")
                 ?.dataset.part ?? null;
 
-            if (under === wanted) {
+            const found =
+              (wanted === "Bare" && under === null) ||
+              (wanted === "OtherSheet" && under !== null && under !== picked) ||
+              under === wanted;
+
+            if (found) {
               return [x, y] as const;
             }
           }
@@ -223,7 +269,35 @@ const pointOn = (page: Page, part: Part | null) =>
 
         return null;
       },
-      [part, GRID, part === null ? BARE_COLUMNS : GRID - 3] as const
+      [
+        spot,
+        held,
+        GRID,
+        spot === "Bare" || spot === "OtherSheet" ? SWIPE_COLUMNS : GRID - 3,
+      ] as const
+    )
+  );
+
+const heldNow = (page: Page) =>
+  attempt("read which part is picked up", () =>
+    page.evaluate(
+      () =>
+        document.querySelector<HTMLElement>(".face-callout.is-held")?.dataset
+          .part ?? null
+    )
+  );
+
+const wornNow = (page: Page, part: Part) =>
+  attempt(`read what ${PART_LABELS[part]} says`, () =>
+    page
+      .locator(`.face-callout[data-part="${part}"]`)
+      .getAttribute("aria-label")
+  ).pipe(
+    Effect.map(
+      (label) =>
+        choicesOf(part).find(
+          (choice) => expectedLabel(part, choice) === label
+        ) ?? START[part]
     )
   );
 
@@ -236,11 +310,12 @@ const stepsBetween = (part: Part, from: string, to: string) => {
   );
 };
 
-const swipe = (
+const swipe = <E>(
   page: Page,
   context: BrowserContext,
   from: readonly [number, number],
-  steps: number
+  steps: number,
+  whileDown: Effect.Effect<unknown, E>
 ) =>
   Effect.gen(function* swipeAcross() {
     const [x, y] = from;
@@ -272,6 +347,7 @@ const swipe = (
         );
       }
 
+      yield* whileDown;
       yield* attempt("lift the finger", () =>
         session.send("Input.dispatchTouchEvent", {
           touchPoints: [],
@@ -289,13 +365,23 @@ const swipe = (
         );
       }
 
+      yield* whileDown;
       yield* attempt("let go", () => page.mouse.up());
     }
   });
 
 const pickUp = (page: Page, part: Part) =>
   Effect.gen(function* pickUpPart() {
-    const on = isPlaced(part) ? yield* pointOn(page, part) : null;
+    const held = yield* heldNow(page);
+
+    if (held === part) {
+      return false;
+    }
+
+    const faceTakesTaps = held === null || PLACED.has(held);
+
+    const on =
+      faceTakesTaps && isPlaced(part) ? yield* pointOn(page, part, null) : null;
 
     yield* on === null
       ? attempt(`tap ${PART_LABELS[part]} beside the face`, () =>
@@ -304,20 +390,15 @@ const pickUp = (page: Page, part: Part) =>
       : attempt(`tap the ${PART_LABELS[part]} on the face`, () =>
           page.touchscreen.tap(on[0], on[1])
         );
-
     yield* waitForHeld(page, part);
 
     return on !== null;
   });
 
-const flipByTouch = (
-  page: Page,
-  context: BrowserContext,
-  part: Part,
-  worn: string
-) =>
+const flipByTouch = (page: Page, context: BrowserContext, part: Part) =>
   Effect.gen(function* flip() {
-    let now = worn;
+    let now = yield* wornNow(page, part);
+    let fromOtherSheets = 0;
 
     while (now !== WANTED[part]) {
       const steps = Math.min(
@@ -325,11 +406,12 @@ const flipByTouch = (
         MOST_STEPS_A_SWIPE
       );
 
-      const from = yield* pointOn(page, null);
+      const onSheet = yield* pointOn(page, "OtherSheet", part);
+      const from = onSheet ?? (yield* pointOn(page, "Bare", part));
 
       if (from === null) {
         return yield* new FaceCheckFailed({
-          detail: "no bare spot on the face to swipe from",
+          detail: "no spot on the face to swipe from",
           step: `swipe to flip ${PART_LABELS[part]}`,
         });
       }
@@ -337,16 +419,19 @@ const flipByTouch = (
       const choices = choicesOf(part);
 
       now = choices[(choices.indexOf(now) + steps) % choices.length] ?? now;
-      yield* swipe(page, context, from, steps);
+      fromOtherSheets += onSheet === null ? 0 : 1;
+      yield* swipe(page, context, from, steps, waitForLabel(page, part, now));
       yield* waitForLabel(page, part, now);
+      yield* waitForHeld(page, part);
     }
 
-    return now;
+    return fromOtherSheets;
   });
 
 const buildByTouch = (page: Page, context: BrowserContext) =>
   Effect.gen(function* build() {
     const touched: Part[] = [];
+    let fromOtherSheets = 0;
 
     for (const part of BUILD_ORDER) {
       const onFace = yield* pickUp(page, part);
@@ -355,16 +440,80 @@ const buildByTouch = (page: Page, context: BrowserContext) =>
         touched.push(part);
       }
 
-      yield* isPlaced(part)
-        ? flipByTouch(page, context, part, START[part])
-        : attempt(`tap ${WANTED[part]} in the tray`, () =>
-            page.locator(`#face-choice-${part}-${WANTED[part]}`).tap()
-          );
-
+      fromOtherSheets += yield* flipByTouch(page, context, part);
       yield* waitForLabel(page, part, WANTED[part]);
     }
 
-    return touched;
+    return { fromOtherSheets, touched };
+  });
+
+const showTray = (page: Page, part: Part) =>
+  Effect.gen(function* show() {
+    const shown = yield* attempt("read the tray", () =>
+      page.evaluate(
+        () =>
+          document.querySelector<HTMLElement>(".face-choices")?.dataset.part ??
+          ""
+      )
+    );
+
+    if (shown !== part) {
+      yield* attempt(`tap ${PART_LABELS[part]} beside the face`, () =>
+        page.locator(`.face-callout[data-part="${part}"]`).tap()
+      );
+    }
+  });
+
+const artOverflow = (page: Page) =>
+  attempt("measure the face against the sheet", () =>
+    page.evaluate(() => {
+      const builder = document.querySelector(".face-builder");
+      const root = document.querySelector("nostakes-face")?.shadowRoot;
+      const sheets = [...(root?.querySelectorAll("g.sheet") ?? [])];
+
+      if (builder === null || sheets.length === 0) {
+        return ["the face is not drawn"];
+      }
+
+      const clip = builder.getBoundingClientRect();
+      const tops = sheets.map((sheet) => sheet.getBoundingClientRect().top);
+      const top = Math.min(...tops);
+
+      return top < Math.max(clip.top, 0)
+        ? [`runs ${Math.ceil(Math.max(clip.top, 0) - top)} px off the top`]
+        : [];
+    })
+  );
+
+const tallestFaces = (page: Page, name: string) =>
+  Effect.gen(function* tallest() {
+    const problems: string[] = [];
+
+    for (const species of SPECIES) {
+      yield* showTray(page, "species");
+      yield* attempt(`tap ${species} in the tray`, () =>
+        page.locator(`#face-choice-species-${species}`).tap()
+      );
+      yield* waitForLabel(page, "species", species);
+      yield* showTray(page, "headwear");
+
+      for (const headwear of HEADWEAR) {
+        yield* attempt(`tap ${headwear} in the tray`, () =>
+          page.locator(`#face-choice-headwear-${headwear}`).tap()
+        );
+        yield* waitForLabel(page, "headwear", headwear);
+        problems.push(
+          ...(yield* artOverflow(page)).map(
+            (problem) => `${species} in ${headwear}: ${problem}`
+          )
+        );
+      }
+    }
+
+    yield* failWith(
+      `${name}: fit every fish in every hat, with its card`,
+      problems
+    );
   });
 
 const smallTargets = (page: Page) =>
@@ -408,7 +557,7 @@ const savedCode = (page: Page) =>
     page.evaluate(() => localStorage.getItem("nostakes.profile") ?? "")
   ).pipe(
     Effect.map((stored) =>
-      Schema.decodeUnknownOption(
+      Schema.decodeOption(
         Schema.fromJsonString(Schema.Struct({ avatar: Schema.String }))
       )(stored).pipe(
         Option.map(({ avatar }) => avatar),
@@ -488,7 +637,9 @@ const checkByTouch = (engine: BrowserType, origin: string) =>
       ...(yield* smallTargets(page)),
     ]);
 
-    const touched = yield* buildByTouch(page, context);
+    yield* tallestFaces(page, name);
+
+    const { fromOtherSheets, touched } = yield* buildByTouch(page, context);
     const built = yield* sheetState(page);
 
     yield* failWith(`${name}: build a face`, [
@@ -498,6 +649,11 @@ const checkByTouch = (engine: BrowserType, origin: string) =>
       ...(touched.length >= 2
         ? []
         : [`only ${touched.join(", ")} could be picked up on the face itself`]),
+      ...(fromOtherSheets >= 3
+        ? []
+        : [
+            `only ${fromOtherSheets} swipes could start on another part's sheet`,
+          ]),
       ...(yield* smallTargets(page)),
     ]);
 
@@ -513,7 +669,7 @@ const checkByTouch = (engine: BrowserType, origin: string) =>
     yield* policy.held;
     yield* attempt("close the phone", () => context.close());
     yield* Console.log(
-      `${name}: built a face from scratch (${touched.length} parts picked up on the face), every target at least ${SMALLEST_TARGET_PX} px, Done saved it`
+      `${name}: every fish fits in every hat, built a face from scratch (${touched.length} parts picked up on the face, ${fromOtherSheets} swipes started on another part's sheet, labels followed each drag before release), every target at least ${SMALLEST_TARGET_PX} px, Done saved it`
     );
   }).pipe(Effect.scoped);
 
@@ -560,15 +716,51 @@ const tabTo = (
     });
   });
 
-const checkByKeyboard = (engine: BrowserType, origin: string) =>
+const trayProblems = (page: Page) =>
+  attempt("measure the tray", () =>
+    page.evaluate(() => {
+      const tray = document
+        .querySelector(".face-tray")
+        ?.getBoundingClientRect();
+
+      const builder = document.querySelector(".face-builder");
+
+      const done = document
+        .querySelector(".face-done")
+        ?.getBoundingClientRect();
+
+      const cut = [...document.querySelectorAll(".face-choice")].filter(
+        (choice) =>
+          tray === undefined ||
+          choice.getBoundingClientRect().bottom > tray.bottom + 1 ||
+          choice.getBoundingClientRect().bottom > innerHeight
+      );
+
+      return [
+        ...(cut.length === 0 ? [] : [`${cut.length} choices are cut off`]),
+        ...(builder !== null && builder.scrollHeight > builder.clientHeight + 1
+          ? ["the sheet scrolls"]
+          : []),
+        ...(done === undefined || done.bottom > innerHeight
+          ? ["Done is not on the screen"]
+          : []),
+      ];
+    })
+  );
+
+const checkByKeyboard = (
+  engine: BrowserType,
+  origin: string,
+  [width, height]: readonly [number, number]
+) =>
   Effect.gen(function* keyboard() {
-    const name = `${engine.name()} 1440x900 by keyboard`;
+    const name = `${engine.name()} ${width}x${height} by keyboard`;
     const tab = engine.name() === "webkit" ? "Alt+Tab" : "Tab";
     const browser = yield* mutedBrowser(engine);
     const policy = policyBreaks();
 
     const context = yield* attempt("open a desktop", () =>
-      browser.newContext({ viewport: { height: 900, width: 1440 } })
+      browser.newContext({ viewport: { height, width } })
     );
 
     yield* watchPolicy(context);
@@ -579,9 +771,14 @@ const checkByKeyboard = (engine: BrowserType, origin: string) =>
     policy.listen(page, name);
     yield* openBuilder(page, origin, true);
 
+    yield* failWith(`${name}: show every fish in the tray at once`, [
+      ...(yield* trayProblems(page)),
+      ...(yield* artOverflow(page)),
+    ]);
+
     const escaped: string[] = [];
 
-    for (const part of BUILD_ORDER) {
+    for (const part of KEYBOARD_ORDER) {
       escaped.push(
         ...(yield* tabTo(
           page,
@@ -618,7 +815,7 @@ const checkByKeyboard = (engine: BrowserType, origin: string) =>
     yield* policy.held;
     yield* attempt("close the desktop", () => context.close());
     yield* Console.log(
-      `${name}: reached all ${BUILD_ORDER.length} parts with ${tab}, flipped each with the arrow keys, focus never left the sheet, Done saved the face`
+      `${name}: all eight fish fit the tray, reached all ${KEYBOARD_ORDER.length} parts with ${tab}, flipped each with the arrow keys, focus never left the sheet, Done saved the face`
     );
   }).pipe(Effect.scoped);
 
@@ -643,7 +840,10 @@ const program = Effect.gen(function* checkFaceBuilder() {
 
   for (const engine of chosen) {
     yield* checkByTouch(engine, origin);
-    yield* checkByKeyboard(engine, origin);
+
+    for (const desktop of DESKTOPS) {
+      yield* checkByKeyboard(engine, origin, desktop);
+    }
   }
 });
 

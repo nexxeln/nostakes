@@ -13,7 +13,7 @@ import {
   choiceName,
   PART_LABELS,
   shortName,
-  sidesOf,
+  SIDES,
   toldOf,
   wearing,
 } from "./face/parts.js";
@@ -217,7 +217,7 @@ const callout = (
   draft: Avatar,
   part: PlacedPart,
   side: Side,
-  held: Part,
+  held: Part | null,
   theme: Theme,
   h: H
 ): Html =>
@@ -282,7 +282,7 @@ const token = (draft: Avatar, part: Part, theme: Theme, h: H): Html => {
       );
 };
 
-const plate = (draft: Avatar, held: Part, theme: Theme, h: H): Html =>
+const plate = (draft: Avatar, held: Part | null, theme: Theme, h: H): Html =>
   h.div(
     [h.Class("face-plate"), h.Role("group"), h.AriaLabel("The fish itself")],
     PLACELESS_PARTS.map((part) =>
@@ -302,28 +302,33 @@ const plate = (draft: Avatar, held: Part, theme: Theme, h: H): Html =>
     )
   );
 
+const heldPart = (model: Model): Part | null =>
+  model.faceHolding ? model.facePart : null;
+
 const stage = (model: Model, draft: Avatar, theme: Theme, h: H): Html => {
   const element = faceElement.withMessage(h);
-  const sides = sidesOf(draft);
+  const held = heldPart(model);
 
   return element(
     [
       h.Class("face-stage"),
       element.Face(draft),
-      element.Held(model.facePart),
+      element.Held(held),
       element.Hint(!model.faceLearned),
       element.Mood(model.faceMood),
       element.Shuffles(model.faceShuffles),
       element.Theme(theme),
       element.OnHold(({ part }) => Messages.ChoseFacePart({ part })),
       element.OnFlip(({ by, part }) => Messages.FlippedFacePart({ by, part })),
+      element.OnScrub(({ by, part }) =>
+        Messages.ScrubbedFacePart({ by, part })
+      ),
+      element.OnSettle(({ kept }) => Messages.SettledFaceScrub({ kept })),
     ],
     [
-      ...sides.left.map((part) =>
-        callout(draft, part, "left", model.facePart, theme, h)
-      ),
-      ...sides.right.map((part) =>
-        callout(draft, part, "right", model.facePart, theme, h)
+      ...SIDES.left.map((part) => callout(draft, part, "left", held, theme, h)),
+      ...SIDES.right.map((part) =>
+        callout(draft, part, "right", held, theme, h)
       ),
     ]
   );
@@ -458,7 +463,7 @@ export const faceSheet = (model: Model, draft: Avatar, h: H): Html => {
             [h.Class("face-main")],
             [
               stage(model, draft, theme, h),
-              plate(draft, model.facePart, theme, h),
+              plate(draft, heldPart(model), theme, h),
             ]
           ),
           h.div(

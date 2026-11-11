@@ -2,6 +2,7 @@ import { describe, expect, it } from "@effect/vitest";
 import {
   AvatarSchema,
   avatarFor,
+  boxOfPart,
   choicesOf,
   codeFor,
   DEFAULT_AVATAR,
@@ -25,8 +26,10 @@ import { attr, findAll, getAllByRole } from "foldkit/scene";
 import { SaveProfile } from "../src/client/commands.js";
 import { choiceId, rovedTo } from "../src/features/face-builder.js";
 import {
+  calloutPoints,
   choiceName,
-  sidesOf,
+  DOTS_APART,
+  SIDES,
   stepped,
   toldOf,
 } from "../src/features/face/parts.js";
@@ -411,12 +414,12 @@ describe("the face builder", () => {
         shownOn(sheetFor(avatar), ".face-callout", "aria-label").toSorted()
       ).toStrictEqual(PARTS.map((part) => toldOf(avatar, part)).toSorted());
 
-      const sides = sidesOf(avatar);
-
-      expect([...sides.left, ...sides.right].toSorted()).toStrictEqual(
-        [...PLACED_PARTS].toSorted()
-      );
-      expect(sides.left).toHaveLength(4);
+      expect(
+        shownOn(sheetFor(avatar), ".face-callout.is-held", "aria-label")
+      ).toStrictEqual([]);
+      expect(
+        shownOn(sheetFor(avatar), ".face-choices", "aria-label")
+      ).toStrictEqual(["Fish"]);
     },
     { arbitrary: { runs: 20 } }
   );
@@ -493,9 +496,7 @@ describe("the face builder", () => {
           ])
         ).toStrictEqual(namesOfFace(stepped(changed, part, -1)));
         expect(heldAfter(start, rights.slice(0, 1))).toStrictEqual(
-          presses === 0
-            ? [toldOf(avatar, "species")]
-            : [toldOf(stepped(avatar, part, 1), part)]
+          presses === 0 ? [] : [toldOf(stepped(avatar, part, 1), part)]
         );
 
         const choices = choicesOf(part);
@@ -527,6 +528,123 @@ describe("the face builder", () => {
       }
     },
     { arbitrary: { runs: 3 } }
+  );
+
+  it.prop(
+    "puts a part down when its own control is pressed again, and keeps its choices in the tray",
+    { avatar: avatars },
+    ({ avatar }) => {
+      for (const part of PARTS) {
+        const twice = [
+          Scene.click(calloutOf(part)),
+          Scene.click(calloutOf(part)),
+        ];
+
+        expect(heldAfter(sheetFor(avatar), twice)).toStrictEqual([]);
+        expect(
+          shownAfter(sheetFor(avatar), twice, ".face-choices", "data-part")
+        ).toStrictEqual([part]);
+        expect(namedAfter(sheetFor(avatar), twice)).toStrictEqual(
+          namesOfFace(avatar)
+        );
+      }
+    },
+    { arbitrary: { runs: 5 } }
+  );
+
+  it.prop(
+    "follows a drag live on the labels and the tray, and makes the whole drag one step to undo",
+    {
+      avatar: avatars,
+      part: Arbitrary.schema(PartSchema),
+      path: Arbitrary.schema(
+        Schema.Array(
+          Schema.Int.check(Schema.isBetween({ maximum: 9, minimum: -9 }))
+        ).check(Schema.isMinLength(1))
+      ),
+    },
+    ({ avatar, part, path }) => {
+      const start = sheetFor(avatar);
+      let current = start;
+
+      for (const by of path) {
+        current = update(
+          current,
+          Messages.ScrubbedFacePart({ by, part })
+        ).model;
+
+        const shown = stepped(avatar, part, by);
+
+        expect(draftOf(current)).toStrictEqual(shown);
+        expect(namedAfter(current, [])).toStrictEqual(namesOfFace(shown));
+        expect(checkedLabels(current)).toStrictEqual([
+          choiceName(part, shown[part]),
+        ]);
+        expect(heldAfter(current, [])).toStrictEqual([toldOf(shown, part)]);
+        expect(current.facePast).toStrictEqual([]);
+      }
+
+      const kept = update(
+        current,
+        Messages.SettledFaceScrub({ kept: true })
+      ).model;
+
+      expect(draftOf(kept)).toStrictEqual(draftOf(current));
+      expect(kept.facePast).toStrictEqual(
+        codeFor(draftOf(current)) === codeFor(avatar) ? [] : [{ ...avatar }]
+      );
+      expect(
+        draftOf(update(kept, Messages.ClickedUndoFace()).model)
+      ).toStrictEqual({ ...avatar });
+
+      const dropped = update(
+        current,
+        Messages.SettledFaceScrub({ kept: false })
+      ).model;
+
+      expect(draftOf(dropped)).toStrictEqual({ ...avatar });
+      expect(dropped.facePast).toStrictEqual([]);
+    },
+    { arbitrary: { runs: 25 } }
+  );
+
+  it.prop(
+    "keeps every part's line on its own side for every fish, ends it on that part, and never lands two dots together",
+    { avatar: avatars },
+    ({ avatar }) => {
+      const points = calloutPoints(avatar);
+
+      expect(points.map(({ part }) => part).toSorted()).toStrictEqual(
+        [...PLACED_PARTS].toSorted()
+      );
+      expect([...SIDES.left, ...SIDES.right].toSorted()).toStrictEqual(
+        [...PLACED_PARTS].toSorted()
+      );
+
+      for (const point of points) {
+        for (const other of points) {
+          if (other !== point) {
+            expect(
+              Math.hypot(point.x - other.x, point.y - other.y)
+            ).toBeGreaterThanOrEqual(DOTS_APART - 0.001);
+          }
+        }
+
+        expect(point.worn).toBe(avatar[point.part] !== "None");
+
+        for (const box of Option.toArray(boxOfPart(avatar, point.part))) {
+          expect(point.x).toBeGreaterThanOrEqual(box.x - 2 * DOTS_APART);
+          expect(point.x).toBeLessThanOrEqual(
+            box.x + box.width + 2 * DOTS_APART
+          );
+          expect(point.y).toBeGreaterThanOrEqual(box.y - 2 * DOTS_APART);
+          expect(point.y).toBeLessThanOrEqual(
+            box.y + box.height + 2 * DOTS_APART
+          );
+        }
+      }
+    },
+    { arbitrary: { runs: 200 } }
   );
 
   it.prop(
