@@ -117,6 +117,8 @@ export const nativeAac = (spec: SoundSpec) =>
 
 const PROBE_FRAMES = 4096;
 
+const MICROSECONDS = 1_000_000;
+
 const cancelled = (output: Output) =>
   output.state === "finalized" || output.state === "canceled"
     ? Effect.void
@@ -239,25 +241,40 @@ const writerOf = (open: Opened, spec: WriterSpec): Mp4Writer => ({
   addPicture: (picture) =>
     Effect.acquireUseRelease(
       Effect.try({
-        catch: failedTo("wrap a picture"),
+        catch: failedTo("copy a picture into a frame"),
         try: () =>
-          new VideoSample(picture.i420, {
+          new VideoFrame(picture.i420, {
             codedHeight: spec.picture.height,
             codedWidth: spec.picture.width,
             colorSpace: picture.colour,
-            duration: picture.lasts,
+            duration: Math.round(picture.lasts * MICROSECONDS),
             format: "I420",
-            timestamp: picture.seconds,
+            timestamp: Math.round(picture.seconds * MICROSECONDS),
           }),
       }),
-      (sample) =>
-        Effect.tryPromise({
-          catch: failedTo("encode a picture"),
-          try: () => open.pictures.add(sample),
-        }),
-      (sample) =>
+      (frame) =>
+        Effect.acquireUseRelease(
+          Effect.try({
+            catch: failedTo("wrap a picture"),
+            try: () =>
+              new VideoSample(frame, {
+                duration: picture.lasts,
+                timestamp: picture.seconds,
+              }),
+          }),
+          (sample) =>
+            Effect.tryPromise({
+              catch: failedTo("encode a picture"),
+              try: () => open.pictures.add(sample),
+            }),
+          (sample) =>
+            Effect.sync(() => {
+              sample.close();
+            })
+        ),
+      (frame) =>
         Effect.sync(() => {
-          sample.close();
+          frame.close();
         })
     ),
   addSound: (sound) => {
