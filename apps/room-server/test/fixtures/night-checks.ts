@@ -1735,6 +1735,13 @@ const checkStorage = (checker: Checker, evidence: NightEvidence) => {
     report(checker, "stored sequence numbers are not 1..n");
   }
 
+  if (!evidence.memoryMatchesLog) {
+    report(
+      checker,
+      "the object's state differs from the replay of the log it loaded"
+    );
+  }
+
   if (evidence.ending === "Halted") {
     return;
   }
@@ -1748,10 +1755,6 @@ const checkStorage = (checker: Checker, evidence: NightEvidence) => {
       checker,
       `the room refused the server's own answer to its next deadline at ${evidence.refusedAlarms} alarm runs`
     );
-  }
-
-  if (!evidence.memoryMatchesLog) {
-    report(checker, "the object's state differs from the replay of its log");
   }
 };
 

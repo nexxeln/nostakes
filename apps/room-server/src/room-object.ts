@@ -1209,13 +1209,15 @@ export const roomObject = <T extends RoomTypes, Tally>(
                 })
               ),
               memoryMatchesLog: snapshot.pipe(
-                Option.exists(({ state: inMemory }) =>
+                Option.exists(({ headSeq, state: inMemory }) =>
                   Equal.equals(
                     inMemory,
                     core.replay(
-                      rows.map((row) =>
-                        Option.getOrThrow(host).codec.decodeEvent(row.event)
-                      )
+                      rows
+                        .filter(({ seq }) => seq <= headSeq)
+                        .map((row) =>
+                          Option.getOrThrow(host).codec.decodeEvent(row.event)
+                        )
                     )
                   )
                 )

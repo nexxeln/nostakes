@@ -17,7 +17,12 @@ import {
   replyTo,
 } from "./fixtures/room-client.js";
 import type { RoomClient } from "./fixtures/room-client.js";
-import { inspect, restart, ToyStack } from "./fixtures/stack.js";
+import {
+  inspect,
+  loseStoredEvent,
+  restart,
+  ToyStack,
+} from "./fixtures/stack.js";
 import { ToyMemberCommandSchema } from "./fixtures/toy-room.js";
 
 const { afterAll, beforeAll, deploy, destroy, test } = Test.make({
@@ -278,5 +283,46 @@ test(
     );
 
     expect(refused.status).toBe(410);
+  }).pipe(Effect.provide(FetchHttpClient.layer))
+);
+
+test(
+  "lost row: a room whose stored log lost an event halts at the rows before it, and its memory equals the replay of those rows, not of the rows after the gap",
+  Effect.gen(function* lostRow() {
+    const base = yield* baseUrl;
+    const [anaPass] = yield* openRoomWith(base, ["Ana", "Ben"]);
+
+    if (anaPass === undefined) {
+      return;
+    }
+
+    const ana = yield* joinAs(base, anaPass, "ana");
+
+    for (const id of ["i1", "i2", "i3"]) {
+      yield* ana.client.send(
+        command(id, Commands.Increment.make({ times: 1 }))
+      );
+      yield* ana.client.next(`reply ${id}`, replyTo(id));
+    }
+
+    yield* ana.client.disconnect;
+
+    const before = yield* inspect(base, anaPass.code);
+
+    yield* loseStoredEvent(base, anaPass.code, before.headSeq - 1);
+
+    const after = yield* inspect(base, anaPass.code);
+
+    expect({
+      halted: Option.isSome(after.halted),
+      headSeq: after.headSeq,
+      memoryMatchesLog: after.memoryMatchesLog,
+      seqs: after.seqs,
+    }).toStrictEqual({
+      halted: true,
+      headSeq: before.headSeq - 2,
+      memoryMatchesLog: true,
+      seqs: [...contiguous(before.headSeq - 2), before.headSeq],
+    });
   }).pipe(Effect.provide(FetchHttpClient.layer))
 );
