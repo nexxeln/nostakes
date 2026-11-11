@@ -66,12 +66,27 @@ jobs:
         if: matrix.target == 'web'
         timeout-minutes: 25
         run: |
+          install() { pnpm --filter @nostakes/web exec playwright-core install "$@" --only-shell chromium; }
+          launches() {
+            (cd apps/web && node --input-type=module -e "
+              import { chromium } from 'playwright-core';
+              const browser = await chromium.launch({ args: ['--mute-audio'], headless: true });
+              const page = await browser.newPage();
+              await page.goto('about:blank');
+              await browser.close();
+            ")
+          }
+          if (install || install) && launches; then
+            echo "The headless shell launches with the runner's own libraries"
+            exit 0
+          fi
+          echo "::warning::The headless shell did not launch without system packages; installing them with apt"
           printf 'Acquire::Retries "3";\nAcquire::http::Timeout "30";\nAcquire::https::Timeout "30";\n' | sudo tee /etc/apt/apt.conf.d/80-retries > /dev/null
           for attempt in 1 2 3; do
-            if pnpm --filter @nostakes/web exec playwright-core install --with-deps --only-shell chromium; then
+            if install --with-deps && launches; then
               exit 0
             fi
-            echo "::warning::Installing the headless Chromium failed (attempt $attempt of 3)"
+            echo "::warning::Installing the headless Chromium with its system packages failed (attempt $attempt of 3)"
             sleep $((attempt * 30))
           done
           exit 1
