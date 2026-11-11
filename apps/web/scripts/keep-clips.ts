@@ -349,7 +349,6 @@ interface Told {
   readonly channels: number;
   readonly longest: number;
   readonly mostBytes: number;
-  readonly opensOnTitle: boolean;
   readonly shortest: number;
 }
 
@@ -360,10 +359,9 @@ interface Expected {
 }
 
 const SHORT_CLIP: Told = {
-  channels: 1,
+  channels: 2,
   longest: LONGEST_SECONDS,
   mostBytes: MOST_BYTES,
-  opensOnTitle: true,
   shortest: SHORTEST_SECONDS,
 };
 
@@ -371,7 +369,6 @@ const REPLAY: Told = {
   channels: 2,
   longest: 25.2,
   mostBytes: 6_000_000,
-  opensOnTitle: false,
   shortest: 11.9,
 };
 
@@ -485,9 +482,9 @@ const playbackProblems = (
     problems.push(`the video plays at ${judged.width}x${judged.height}`);
   }
 
-  if (expected.seconds.opensOnTitle && judged.titleFar > TITLE_FAR) {
+  if (judged.titleFar < TITLE_FAR) {
     problems.push(
-      `the first frame does not open on the title: ${(judged.titleFar * 100).toFixed(1)}% of the title's pixels differ from the still`
+      `the first frame gives the ending away: only ${(judged.titleFar * 100).toFixed(1)}% of the title's pixels differ from the still, so the title is already there`
     );
   }
 

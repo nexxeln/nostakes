@@ -6,46 +6,37 @@ import { Effect, Option } from "effect";
 import type { Deck, Theme } from "../../features/model.js";
 import {
   BASE_ROLE,
-  clipFrames,
   CLIP_FPS,
-  CLIP_STAGING,
-  poseOf,
-  stingStartMs,
+  SHORT_CLIP,
+  shortHook,
+  shortPose,
+  shortSheet,
   tagPose,
 } from "../../features/moments/clip-plan.js";
-import type { Layer } from "../../features/moments/clip-plan.js";
 import { frameTime, sampledKeys } from "../../features/moments/film.js";
 import type {
   Film,
   FilmRate,
-  Mix,
   Pose,
   Shot,
 } from "../../features/moments/film.js";
 import type { MomentPicture } from "../../features/moments/picture.js";
 import { spriteMarkup } from "../../features/moments/replay-art.js";
-import { replayPlan } from "../../features/moments/replay-plan.js";
+import { outcomeOf, replayPlan } from "../../features/moments/replay-plan.js";
 import type {
   ReplayPlan,
   ReplaySeat,
 } from "../../features/moments/replay-plan.js";
-import {
-  FAMILIES,
-  momentScore,
-  scoreLength,
-  shiftedScore,
-} from "../../features/moments/score.js";
-import type { SoundStep } from "../../features/moments/score.js";
+import { FAMILIES } from "../../features/moments/score.js";
 import { FRAME_SIZES, paletteFor } from "../../features/pictures/paper.js";
 import type { KeptFrame } from "../../features/pictures/paper.js";
-import { cardParts, ClipUnavailable, failedAt } from "./clip-layers.js";
+import { cardParts, ClipUnavailable } from "./clip-layers.js";
 import type { CardPart } from "./clip-layers.js";
 import type { PartBox } from "./clip-measure.js";
 import { CLIP_AUDIO_CODEC } from "./clip-wire.js";
 import { clipWorker, filmFile, filmOn } from "./film-file.js";
 import type { ClipSupport, ClipTooSlow, ClipWorker } from "./film-file.js";
 import { mixedOffThread } from "./soundtrack.js";
-import { renderScore } from "./synth.js";
 
 export { ClipUnavailable } from "./clip-layers.js";
 
@@ -180,23 +171,6 @@ const idleFor = (pace: ClipPace): Effect.Effect<void> =>
 export const slotFor = (pace: ClipPace): Effect.Effect<void> =>
   "requestIdleCallback" in globalThis ? idleFor(pace) : afterPaint;
 
-const mixOf = (
-  steps: readonly SoundStep[],
-  seconds: number,
-  slot: Effect.Effect<void>
-): Effect.Effect<Mix, ClipUnavailable> =>
-  renderScore(
-    steps,
-    { channels: 1, sampleRate: SOUND_RATE, seconds },
-    slot
-  ).pipe(
-    Effect.map((sound) => ({
-      channels: [sound.getChannelData(0)],
-      sampleRate: SOUND_RATE,
-    })),
-    Effect.mapError(failedAt("render the sound"))
-  );
-
 export const clipName = (picture: MomentPicture, frame: KeptFrame) =>
   `nostakes-${picture.title.toLowerCase().replaceAll(/[^a-z0-9]+/gu, "-")}${frame === "Story" ? "-story" : ""}.mp4`;
 
@@ -212,17 +186,6 @@ export interface ClipOrder {
 const motionOf = (picture: MomentPicture) => ({
   family: FAMILIES[picture.kind],
   tier: picture.tier,
-});
-
-const layerOf = (part: CardPart, from: number): Layer => ({
-  band: 0,
-  cell: part.cell,
-  centre: part.centre,
-  from,
-  index: part.index,
-  keys: [],
-  role: part.role,
-  source: { x: 0, y: 0 },
 });
 
 export const cardShots = (
@@ -241,43 +204,52 @@ export const cardShots = (
     pivot: part.centre,
   }));
 
+const DEALT_ROLES = new Set(["board", "lifted"]);
+
 export const cardFilm = (
   picture: MomentPicture,
+  look: { readonly deck: Deck; readonly theme: Theme },
   order: ClipOrder
 ): Effect.Effect<Film, ClipUnavailable> =>
   Effect.gen(function* clip() {
     const { frame, slot, support } = order;
     const size = FRAME_SIZES[frame];
     const parts = yield* cardParts(order.svg, order.boxes, size);
-    const motion = motionOf(picture);
-
-    const sting = shiftedScore(
-      momentScore(picture.kind, picture.tier),
-      stingStartMs(motion.family, CLIP_STAGING) / 1000
-    );
-
-    const frames = clipFrames(
-      parts.map((part) => layerOf(part, 0)),
-      motion,
-      scoreLength(sting) * 1000
-    );
+    const frames = Math.ceil((SHORT_CLIP.lengthMs * CLIP_FPS) / 1000);
+    const length = frameTime(frames, CLIP_FPS);
 
     yield* slot;
 
-    const shots = cardShots(parts, {
+    const card = cardShots(parts, {
       fps: CLIP_FPS,
       frames,
-      pose: (part, ms) => poseOf(layerOf(part, 0), ms, motion),
+      pose: shortPose,
+    });
+
+    const palette = paletteFor(look.theme, look.deck);
+
+    const hook = shortHook(picture.line, frame).map((sprite) => {
+      const drawn = spriteMarkup(palette, look.theme, sprite.art);
+
+      return { art: drawn.markup, box: drawn.box, keys: sprite.keys };
+    });
+
+    const shots = [...card, ...hook];
+
+    const sheet = shortSheet({
+      cards: parts.filter((part) => DEALT_ROLES.has(part.role)).length,
+      outcome: outcomeOf(picture.kind),
+      seed: picture.pot,
     });
 
     return {
       camera: [],
       fps: CLIP_FPS,
       height: size.height,
-      length: frameTime(frames, CLIP_FPS),
+      length,
       shots,
       sound: support.sound
-        ? yield* mixOf(sting, frames / CLIP_FPS, slot)
+        ? yield* mixedOffThread({ ...sheet, lengthMs: length })
         : null,
       width: size.width,
     };
@@ -285,9 +257,10 @@ export const cardFilm = (
 
 export const clipFile = (
   picture: MomentPicture,
+  look: { readonly deck: Deck; readonly theme: Theme },
   order: ClipOrder
 ): Effect.Effect<File, ClipUnavailable | ClipTooSlow> =>
-  cardFilm(picture, order).pipe(
+  cardFilm(picture, look, order).pipe(
     Effect.flatMap((film) =>
       filmFile(film, {
         budgetMs: order.budgetMs,

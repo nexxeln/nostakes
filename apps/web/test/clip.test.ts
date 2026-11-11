@@ -5,30 +5,17 @@ import * as Arbitrary from "effect/Arbitrary";
 import { SAMPLE_NAMES, samplePicture } from "../scripts/moments/samples.js";
 import {
   bandsOf,
-  CLIP_FPS,
-  CLIP_STAGING,
-  potLandsAt,
-  CLIP_HOLD_MS,
-  CLIP_LONGEST_MS,
-  clipFrames,
-  frameMs,
   packCells,
   placementOf,
-  poseOf,
-  settledFrame,
+  SHORT_CLIP,
+  shortHook,
+  shortPose,
+  shortSheet,
 } from "../src/features/moments/clip-plan.js";
 import type { Layer } from "../src/features/moments/clip-plan.js";
 import { pictureSvg } from "../src/features/moments/picture.js";
-import {
-  FAMILIES,
-  momentScore,
-  scoreLength,
-} from "../src/features/moments/score.js";
-import {
-  partPose,
-  REST,
-  TABLE_STAGING,
-} from "../src/features/moments/timeline.js";
+import { poseAtKeys } from "../src/features/moments/replay-plan.js";
+import { partPose, REST } from "../src/features/moments/timeline.js";
 
 const PART = /data-part="(?<role>[a-z]+)" data-index="(?<index>\d+)"/gu;
 
@@ -51,18 +38,6 @@ const layersOf = (name: string): readonly Layer[] =>
     source: { x: 0, y: 0 },
   }));
 
-const motionOf = (name: string) => {
-  const picture = samplePicture(name);
-
-  return { family: FAMILIES[picture.kind], tier: picture.tier };
-};
-
-const stingMsOf = (name: string) => {
-  const picture = samplePicture(name);
-
-  return scoreLength(momentScore(picture.kind, picture.tier)) * 1000;
-};
-
 const rounded = (value: number) => Math.round(value * 1000) / 1000;
 
 const roundedPose = (pose: typeof REST) => ({
@@ -74,138 +49,159 @@ const roundedPose = (pose: typeof REST) => ({
   turn: rounded(pose.turn),
 });
 
-const orderOf = (times: readonly number[]) =>
-  times
-    .map((at, index) => ({ at, index }))
-    .toSorted((one, other) => one.at - other.at || one.index - other.index)
-    .map((time) => time.index);
+const STEP = 10;
 
-describe("a moment's clip", () => {
-  it("ends every sample moment with every part at rest, the frame the still picture shows", () => {
-    const ends = SAMPLE_NAMES.map((name) => {
-      const layers = layersOf(name);
+const HOOK_ROLES = new Set(["face", "felt", "hole", "mark"]);
 
-      const last = frameMs(
-        clipFrames(layers, motionOf(name), stingMsOf(name)) - 1
-      );
+const HELD_MS = 700;
+
+const TWO_FRAMES = 67;
+
+const firstSeen = (layer: Layer) => {
+  for (let ms = 0; ms <= SHORT_CLIP.lengthMs; ms += STEP) {
+    if (shortPose(layer, ms).opacity > 0) {
+      return ms;
+    }
+  }
+
+  return SHORT_CLIP.lengthMs;
+};
+
+const lastMoved = (layer: Layer) => {
+  const resting = JSON.stringify(roundedPose(REST));
+  let moved = 0;
+
+  for (let ms = 0; ms <= SHORT_CLIP.lengthMs; ms += STEP) {
+    if (JSON.stringify(roundedPose(shortPose(layer, ms))) !== resting) {
+      moved = ms + STEP;
+    }
+  }
+
+  return moved;
+};
+
+describe("a moment's short clip", () => {
+  it("opens every sample on the hook: the felt, the faces, and their cards at rest, and none of the card's own words", () => {
+    const opened = SAMPLE_NAMES.map((name) => ({
+      name,
+      shown: [
+        ...new Set(
+          layersOf(name)
+            .filter((layer) => shortPose(layer, 0).opacity > 0)
+            .map((layer) => layer.role)
+        ),
+      ].toSorted(),
+      unrested: layersOf(name).filter(
+        (layer) =>
+          HOOK_ROLES.has(layer.role) &&
+          JSON.stringify(roundedPose(shortPose(layer, 0))) !==
+            JSON.stringify(roundedPose(REST))
+      ).length,
+    }));
+
+    expect(opened).toStrictEqual(
+      opened.map(({ name, shown }) => ({
+        name,
+        shown: shown.filter((role) => HOOK_ROLES.has(role)),
+        unrested: 0,
+      }))
+    );
+  });
+
+  it("says the picture's line large from the first frame and takes it away as the title lands", () => {
+    const hooks = SAMPLE_NAMES.map((name) => {
+      const [hook] = shortHook(samplePicture(name).line, "Story");
 
       return {
         name,
-        poses: layers.map((layer) =>
-          roundedPose(poseOf(layer, last, motionOf(name)))
+        said:
+          hook?.art.kind === "Caption"
+            ? hook.art.lines.join(" ")
+            : "no caption",
+        seen: [0, SHORT_CLIP.pauseMs, SHORT_CLIP.hitMs].map(
+          (ms) => poseAtKeys(hook?.keys ?? [], ms).opacity
         ),
       };
     });
 
-    expect(ends).toStrictEqual(
-      ends.map(({ name, poses }) => ({
+    expect(hooks).toStrictEqual(
+      SAMPLE_NAMES.map((name) => ({
         name,
-        poses: poses.map(() => roundedPose(REST)),
+        said: samplePicture(name).line,
+        seen: [1, 1, 0],
       }))
     );
   });
 
-  it("opens every sample clip with the card and the title landed, starts every other part in the table's order and lands it no earlier, and lands the last about two seconds in", () => {
-    const STEP = 10;
-    const LONGEST = 6000;
-    const REVEAL_SHORTEST = 1700;
-    const REVEAL_LONGEST = 2400;
-    const tableStaging = { landed: new Set<string>(), spread: 1 };
-    const resting = JSON.stringify(roundedPose(REST));
-
-    const timesOf = (pose: (ms: number) => typeof REST) => {
-      let rests = 0;
-      let shows = LONGEST;
-
-      for (let ms = 0; ms <= LONGEST; ms += STEP) {
-        const at = pose(ms);
-
-        if (JSON.stringify(roundedPose(at)) !== resting) {
-          rests = ms + STEP;
-        }
-
-        if (at.opacity > 0) {
-          shows = Math.min(shows, ms);
-        }
-      }
-
-      return { rests, shows };
-    };
-
-    const found = SAMPLE_NAMES.map((name) => {
-      const motion = motionOf(name);
+  it("deals the board in the build, holds one beat of nothing, and lands the title on the hit's frame with the pot after it", () => {
+    const beats = SAMPLE_NAMES.map((name) => {
       const layers = layersOf(name);
 
-      const moving = layers.filter(
-        (layer) => !CLIP_STAGING.landed.has(layer.role)
-      );
+      const seenAt = (role: string) =>
+        layers.filter((layer) => layer.role === role).map(firstSeen);
 
-      const table = moving.map((layer) =>
-        timesOf((ms) =>
-          partPose(
-            layer.role,
-            layer.index,
-            ms,
-            motion.family,
-            motion.tier,
-            tableStaging
-          )
-        )
-      );
-
-      const clip = moving.map((layer) =>
-        timesOf((ms) => poseOf(layer, ms, motion))
-      );
-
-      const startsOf = (times: readonly { readonly shows: number }[]) =>
-        times.flatMap((time, index) =>
-          moving[index]?.role === "scrap" ? [] : [time.shows]
-        );
-
-      const lastLands = Math.max(
-        ...clip
-          .filter((_, index) => moving[index]?.role !== "scrap")
-          .map((time) => time.rests)
-      );
+      const board = [...seenAt("board"), ...seenAt("lifted")];
 
       return {
-        early: clip.filter(
-          (time, index) => time.rests < (table[index]?.rests ?? 0)
-        ).length,
-        firstFrame: layers
-          .filter((layer) => CLIP_STAGING.landed.has(layer.role))
-          .map((layer) => ({
-            pose: roundedPose(poseOf(layer, 0, motion)),
-            role: layer.role,
-          })),
-        lastLandsInTime:
-          lastLands >= REVEAL_SHORTEST && lastLands <= REVEAL_LONGEST,
+        boardInTheBuild: board.every(
+          (ms) => ms >= SHORT_CLIP.boardMs && ms < SHORT_CLIP.pauseMs
+        ),
         name,
-        order: orderOf(startsOf(clip)),
-        tableOrder: orderOf(startsOf(table)),
+        nothingStartsInThePause: layers.every((layer) => {
+          const seen = firstSeen(layer);
+
+          return (
+            seen < SHORT_CLIP.pauseMs || seen >= SHORT_CLIP.hitMs - TWO_FRAMES
+          );
+        }),
+        pot: seenAt("pot").every((ms) => ms > SHORT_CLIP.hitMs + STEP),
+        title: seenAt("title").map(
+          (ms) => ms > SHORT_CLIP.hitMs - TWO_FRAMES && ms <= SHORT_CLIP.hitMs
+        ),
       };
     });
 
-    expect(found).toStrictEqual(
-      found.map(({ name, tableOrder }) => ({
-        early: 0,
-        firstFrame: [
-          { pose: roundedPose(REST), role: "felt" },
-          { pose: roundedPose(REST), role: "title" },
-        ],
-        lastLandsInTime: true,
+    expect(beats).toStrictEqual(
+      SAMPLE_NAMES.map((name) => ({
+        boardInTheBuild: true,
         name,
-        order: tableOrder,
-        tableOrder,
+        nothingStartsInThePause: true,
+        pot: true,
+        title: [true],
       }))
     );
   });
 
-  it("lands the pot about two seconds into a clip and well under one on the table", () => {
+  it("ends every sample at rest, the frame the still picture shows, and holds it", () => {
+    const ends = SAMPLE_NAMES.map((name) => ({
+      held:
+        SHORT_CLIP.lengthMs - Math.max(...layersOf(name).map(lastMoved)) >=
+        HELD_MS,
+      name,
+    }));
+
+    expect(ends).toStrictEqual(
+      SAMPLE_NAMES.map((name) => ({ held: true, name }))
+    );
+  });
+
+  it("scores itself in order: the pause, the hit, the result, and no ident after a card that is already there", () => {
+    const sheet = shortSheet({ cards: 5, outcome: "Loss", seed: 3 });
+
     expect({
-      clip: potLandsAt(CLIP_STAGING),
-      table: potLandsAt(TABLE_STAGING),
-    }).toStrictEqual({ clip: 1790, table: 860 });
+      cuesInTheBuild: sheet.cues
+        .filter((cue) => cue.kind === "Card")
+        .every((cue) => cue.atMs < SHORT_CLIP.pauseMs),
+      ordered:
+        (sheet.pauseMs ?? 0) < (sheet.hitMs ?? 0) &&
+        (sheet.hitMs ?? 0) < sheet.resultMs &&
+        sheet.resultMs < sheet.lengthMs,
+      tagAtTheEnd: sheet.tagMs === sheet.lengthMs,
+    }).toStrictEqual({
+      cuesInTheBuild: true,
+      ordered: true,
+      tagAtTheEnd: true,
+    });
   });
 
   it("leaves the table's own staging alone, so the table still brings the title in", () => {
@@ -220,34 +216,6 @@ describe("a moment's clip", () => {
       { family: "Groan", opacity: 0, scale: 1 },
       { family: "Reveal", opacity: 0, scale: 1.4 },
     ]);
-  });
-
-  it("holds the still for two seconds after the last part lands, outlasts the sting, and stays within four seconds", () => {
-    const timings = SAMPLE_NAMES.map((name) => {
-      const layers = layersOf(name);
-      const frames = clipFrames(layers, motionOf(name), stingMsOf(name));
-
-      const held =
-        frameMs(frames) - frameMs(settledFrame(layers, motionOf(name)));
-
-      return {
-        heldLongEnough:
-          held >= CLIP_HOLD_MS || frameMs(frames) >= CLIP_LONGEST_MS,
-        name,
-        outlastsSting:
-          frameMs(frames) >= Math.min(CLIP_LONGEST_MS, stingMsOf(name)),
-        withinLongest: frames <= (CLIP_LONGEST_MS * CLIP_FPS) / 1000,
-      };
-    });
-
-    expect(timings).toStrictEqual(
-      SAMPLE_NAMES.map((name) => ({
-        heldLongEnough: true,
-        name,
-        outlastsSting: true,
-        withinLongest: true,
-      }))
-    );
   });
 
   it("draws a part at rest exactly where the picture has it", () => {

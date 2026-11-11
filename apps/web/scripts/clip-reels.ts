@@ -49,6 +49,7 @@ const program = Effect.gen(function* reels() {
   const files = yield* FileSystem.FileSystem;
   const dir = yield* Config.String("REELS_DIR");
   const hands = yield* listOf("REEL_HANDS", "AcesCracked");
+  const samples = yield* listOf("REEL_SAMPLES", "");
   const themes = yield* listOf("REEL_THEMES", "Light");
 
   const frame = yield* Config.String("REEL_FRAME").pipe(
@@ -80,14 +81,19 @@ const program = Effect.gen(function* reels() {
     )
   );
 
-  for (const hand of hands) {
+  const told = [
+    ...hands.map((name) => ({ name, query: `hand=${name}` })),
+    ...samples.map((name) => ({ name, query: `sample=${name}` })),
+  ];
+
+  for (const { name: hand, query } of told) {
     for (const theme of themes) {
       const label = `${hand}-${theme.toLowerCase()}${frame === "Chat" ? "-chat" : ""}`;
       const page = yield* attempt("open a page", () => opened.newPage());
 
       yield* attempt("open the reel stage", () =>
         page.goto(
-          `${origin}${STAGE}?hand=${hand}&theme=${theme}&frame=${frame}&make=${make}`
+          `${origin}${STAGE}?${query}&theme=${theme}&frame=${frame}&make=${make}`
         )
       );
       yield* attempt("wait for the reel", () =>

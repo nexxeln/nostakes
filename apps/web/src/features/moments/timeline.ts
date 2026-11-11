@@ -196,6 +196,65 @@ export const partPose = (
   return poses.get(role)?.() ?? REST;
 };
 
+const SHORT_LANDED = new Set(["face", "hole", "mark"]);
+
+const JOLT_FOR = 240;
+
+const jolt = (ms: number, from: number) =>
+  ms > from && ms < from + JOLT_FOR
+    ? Math.sin((ms - from + SHAKE_FROM) / 18) * 6 * (1 - (ms - from) / JOLT_FOR)
+    : 0;
+
+const TITLE_LEAD = 60;
+
+const CARD_EVERY = 110;
+
+const ROW_EVERY = 60;
+
+const BOARD_SIZE = 5;
+
+export interface ShortTiming {
+  readonly boardMs: number;
+  readonly hitMs: number;
+}
+
+export const shortClipPose = (
+  role: string,
+  index: number,
+  ms: number,
+  timing: ShortTiming
+): Pose => {
+  if (SHORT_LANDED.has(role)) {
+    return REST;
+  }
+
+  const card =
+    timing.boardMs +
+    (index % BOARD_SIZE) * CARD_EVERY +
+    Math.floor(index / BOARD_SIZE) * ROW_EVERY;
+
+  const hit = timing.hitMs;
+
+  const poses = new Map<string, () => Pose>([
+    ["also", () => fade(ms, hit + 500, hit + 700)],
+    ["board", () => fade(ms, card, card + 180)],
+    ["felt", () => ({ ...REST, dx: jolt(ms, hit) })],
+    [
+      "lifted",
+      () => ({
+        ...rise(ms, card, 26),
+        opacity: fade(ms, card, card + 180).opacity,
+      }),
+    ],
+    ["line", () => fade(ms, hit + 380, hit + 680)],
+    ["pot", () => stamp(ms, hit + 300)],
+    ["scrap", () => fall(ms, index, hit + index * 14)],
+    ["title", () => ({ ...stamp(ms, hit - TITLE_LEAD), dx: jolt(ms, hit) })],
+  ]);
+
+  return poses.get(role)?.() ?? REST;
+};
+
 export const transformOf = (pose: Pose) =>
   `translate(${pose.dx.toFixed(1)}px, ${pose.dy.toFixed(1)}px) rotate(${pose.turn.toFixed(2)}deg) scale(${(pose.scale * pose.squeeze).toFixed(3)}, ${pose.scale.toFixed(3)})`;
 

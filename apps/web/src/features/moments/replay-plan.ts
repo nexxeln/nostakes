@@ -1402,6 +1402,9 @@ const OUTCOMES: Readonly<Record<Family, Outcome>> = {
   Reveal: "Win",
 };
 
+export const outcomeOf = (kind: MomentKind): Outcome =>
+  OUTCOMES[FAMILIES[kind]];
+
 export const BEAT_GRID_MS = 100;
 
 const LAYERS: Readonly<Record<ReplaySprite["art"]["kind"], number>> = {
@@ -1572,7 +1575,7 @@ export const replayPlan = (replay: Replay, facts: ReplayFacts): ReplayPlan => {
       cues: cues.toSorted((one, other) => one.atMs - other.atMs),
       hitMs: pause === null ? null : hit,
       lengthMs: cardAt + TAG_MS,
-      outcome: OUTCOMES[FAMILIES[facts.kind]],
+      outcome: outcomeOf(facts.kind),
       pauseMs: hit === null ? null : pause,
       resultMs: Math.min(cardAt, marks.get("Result") ?? cardAt),
       seed: replay.handNumber,

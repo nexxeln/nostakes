@@ -113,6 +113,9 @@ const captionOf = (
   ];
 };
 
+export const hookCaption = (text: string, top: number): Placed | null =>
+  captionOf(captionLines(text), top)[0]?.[1] ?? null;
+
 const label = (
   text: string,
   place: {

@@ -184,7 +184,7 @@ export class Clipper {
     };
 
     const replay = replayOrderOf(this.#art.story);
-    const short = clipFile(this.#picture, order);
+    const short = clipFile(this.#picture, this.#art.look, order);
 
     Effect.runFork(
       (replay !== null &&
