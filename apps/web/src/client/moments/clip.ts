@@ -1,5 +1,10 @@
+import type { SeatIndex } from "@nostakes/engine";
+import { oddsAskedBy, replayOf } from "@nostakes/room";
+import type { SeenTableEvent } from "@nostakes/room";
 import { Effect, Option, Schema } from "effect";
+import type { Scope } from "effect";
 
+import type { Deck, Theme } from "../../features/model.js";
 import {
   clipFrames,
   CLIP_FPS,
@@ -7,19 +12,33 @@ import {
   stingStartMs,
 } from "../../features/moments/clip-plan.js";
 import type { MomentPicture } from "../../features/moments/picture.js";
+import { spriteMarkup } from "../../features/moments/replay-art.js";
+import { replayPlan } from "../../features/moments/replay-plan.js";
+import type {
+  ReplayPlan,
+  ReplaySeat,
+} from "../../features/moments/replay-plan.js";
 import {
   FAMILIES,
   momentScore,
   scoreLength,
   shiftedScore,
 } from "../../features/moments/score.js";
-import { FRAME_SIZES } from "../../features/pictures/paper.js";
+import type { SoundStep } from "../../features/moments/score.js";
+import { FRAME_SIZES, paletteFor } from "../../features/pictures/paper.js";
 import type { KeptFrame } from "../../features/pictures/paper.js";
 import { EMBEDDED_FONTS } from "../pictures/png.js";
-import { atlasOf, ClipUnavailable, failedAt } from "./clip-layers.js";
+import {
+  atlasOf,
+  ClipUnavailable,
+  failedAt,
+  replayAtlas,
+  spriteAtlas,
+} from "./clip-layers.js";
+import type { Sprite } from "./clip-layers.js";
 import type { PartBox } from "./clip-measure.js";
 import { CLIP_AUDIO_CODEC, ClipReplySchema } from "./clip-wire.js";
-import type { ClipRequest } from "./clip-wire.js";
+import type { ClipReply, ClipRequest, WorkerRequest } from "./clip-wire.js";
 import { renderScore } from "./synth.js";
 
 export { ClipUnavailable } from "./clip-layers.js";
@@ -29,6 +48,11 @@ export type { PartBox } from "./clip-measure.js";
 const VIDEO_CODECS = ["avc1.640028", "avc1.4D4028", "avc1.42E028"];
 
 const VIDEO_BITRATE = 3_000_000;
+
+const REPLAY_BITRATE = 2_000_000;
+
+const startsTheReplay = (role: string) =>
+  role === "base" || CLIP_STAGING.landed.has(role);
 
 const SOUND_RATE = 48_000;
 
@@ -94,7 +118,7 @@ export const clipSupport = (
           codec.pipe(Option.map((found) => ({ codec: found, sound })))
         )
       )
-    : Effect.succeed(Option.none());
+    : Effect.succeedNone;
 
 export type ClipPace = "Asked" | "Quiet";
 
@@ -151,24 +175,32 @@ const idleFor = (pace: ClipPace): Effect.Effect<void> =>
 export const slotFor = (pace: ClipPace): Effect.Effect<void> =>
   "requestIdleCallback" in globalThis ? idleFor(pace) : afterPaint;
 
-const stingOf = (
-  picture: MomentPicture,
-  timing: { readonly seconds: number; readonly startMs: number },
+const rendered = (
+  steps: readonly SoundStep[],
+  seconds: number,
   slot: Effect.Effect<void>
 ) =>
   renderScore(
-    shiftedScore(
-      momentScore(picture.kind, picture.tier),
-      timing.startMs / 1000
-    ),
-    { channels: 1, sampleRate: SOUND_RATE, seconds: timing.seconds },
+    steps,
+    { channels: 1, sampleRate: SOUND_RATE, seconds },
     slot
   ).pipe(
-    Effect.map((rendered) => rendered.getChannelData(0)),
-    Effect.mapError(failedAt("render the sting"))
+    Effect.map((sound) => ({
+      bitrate: SOUND_BITRATE,
+      pcm: sound.getChannelData(0),
+      sampleRate: SOUND_RATE,
+    })),
+    Effect.mapError(failedAt("render the sound"))
   );
 
-const worked = (request: ClipRequest, transfer: readonly Transferable[]) =>
+interface ClipWorker {
+  readonly ask: (
+    request: WorkerRequest,
+    transfer: readonly Transferable[]
+  ) => Effect.Effect<ClipReply, ClipUnavailable>;
+}
+
+const clipWorker: Effect.Effect<ClipWorker, ClipUnavailable, Scope.Scope> =
   Effect.acquireRelease(
     Effect.try({
       catch: failedAt("start the clip worker"),
@@ -183,31 +215,65 @@ const worked = (request: ClipRequest, transfer: readonly Transferable[]) =>
         worker.terminate();
       })
   ).pipe(
-    Effect.flatMap((worker) =>
-      Effect.callback<unknown, ClipUnavailable>((resume) => {
-        worker.addEventListener("message", (event) => {
-          resume(Effect.succeed(event.data));
-        });
-        worker.addEventListener("error", (event) => {
-          resume(Effect.fail(failedAt("run the clip worker")(event.message)));
-        });
-        worker.postMessage(request, { transfer: [...transfer] });
-      })
-    ),
-    Effect.flatMap((reply) =>
-      Schema.decodeUnknownEffect(ClipReplySchema)(reply).pipe(
-        Effect.mapError(failedAt("read the clip worker's reply"))
-      )
-    ),
-    Effect.flatMap((reply) =>
-      reply.tag === "Made"
-        ? Effect.succeed(reply.bytes)
-        : Effect.fail(
-            new ClipUnavailable({ detail: reply.detail, step: reply.step })
+    Effect.map((worker) => ({
+      ask: (request: WorkerRequest, transfer: readonly Transferable[]) =>
+        Effect.callback<unknown, ClipUnavailable>((resume) => {
+          const heard = (event: MessageEvent<unknown>) => {
+            resume(Effect.succeed(event.data));
+          };
+
+          const broke = (event: ErrorEvent) => {
+            resume(Effect.fail(failedAt("run the clip worker")(event.message)));
+          };
+
+          worker.addEventListener("message", heard, { once: true });
+          worker.addEventListener("error", broke, { once: true });
+          worker.postMessage(request, { transfer: [...transfer] });
+
+          return Effect.sync(() => {
+            worker.removeEventListener("message", heard);
+            worker.removeEventListener("error", broke);
+          });
+        }).pipe(
+          Effect.flatMap((reply) =>
+            Schema.decodeUnknownEffect(ClipReplySchema)(reply).pipe(
+              Effect.mapError(failedAt("read the clip worker's reply"))
+            )
+          ),
+          Effect.flatMap((reply) =>
+            reply.tag === "Failed"
+              ? Effect.fail(
+                  new ClipUnavailable({
+                    detail: reply.detail,
+                    step: reply.step,
+                  })
+                )
+              : Effect.succeed(reply)
           )
-    ),
-    Effect.scoped
+        ),
+    }))
   );
+
+const encoded = (worker: ClipWorker, request: Omit<ClipRequest, "kind">) =>
+  worker
+    .ask(
+      { ...request, kind: "Frames" },
+      request.sound === null
+        ? request.bands
+        : [...request.bands, request.sound.pcm.buffer]
+    )
+    .pipe(
+      Effect.flatMap((reply) =>
+        reply.tag === "Made"
+          ? Effect.succeed(reply.bytes)
+          : Effect.fail(
+              new ClipUnavailable({
+                detail: "the worker answered something else",
+                step: "encode the clip",
+              })
+            )
+      )
+    );
 
 export const clipName = (picture: MomentPicture, frame: KeptFrame) =>
   `nostakes-${picture.title.toLowerCase().replaceAll(/[^a-z0-9]+/gu, "-")}${frame === "Story" ? "-story" : ""}.mp4`;
@@ -220,57 +286,171 @@ export interface ClipOrder {
   readonly svg: string;
 }
 
+const motionOf = (picture: MomentPicture) => ({
+  family: FAMILIES[picture.kind],
+  tier: picture.tier,
+});
+
 export const clipFile = (
   picture: MomentPicture,
   order: ClipOrder
 ): Effect.Effect<File, ClipUnavailable> =>
   Effect.gen(function* clip() {
-    const { frame, support } = order;
+    const { frame, slot, support } = order;
     const size = FRAME_SIZES[frame];
-    const { slot } = order;
 
     const atlas = yield* atlasOf(
       order.svg,
-      { boxes: order.boxes, fonts: EMBEDDED_FONTS, size },
+      { boxes: order.boxes, fonts: EMBEDDED_FONTS, from: () => 0, size },
       slot
     );
 
-    const motion = { family: FAMILIES[picture.kind], tier: picture.tier };
+    const motion = motionOf(picture);
     const stingAt = stingStartMs(motion.family, CLIP_STAGING);
 
-    const stingMs =
-      stingAt + scoreLength(momentScore(picture.kind, picture.tier)) * 1000;
+    const sting = shiftedScore(
+      momentScore(picture.kind, picture.tier),
+      stingAt / 1000
+    );
 
-    const frames = clipFrames(atlas.layers, motion, stingMs);
+    const frames = clipFrames(atlas.layers, motion, scoreLength(sting) * 1000);
 
     const sound = support.sound
-      ? yield* stingOf(
-          picture,
-          { seconds: frames / CLIP_FPS, startMs: stingAt },
+      ? yield* rendered(sting, frames / CLIP_FPS, slot)
+      : null;
+
+    const worker = yield* clipWorker;
+
+    const bytes = yield* encoded(worker, {
+      bands: atlas.bands,
+      bitrate: VIDEO_BITRATE,
+      codec: support.codec,
+      frames,
+      height: size.height,
+      layers: atlas.layers,
+      motion,
+      sound,
+      width: size.width,
+    });
+
+    return new File([bytes], clipName(picture, frame), { type: "video/mp4" });
+  }).pipe(Effect.scoped);
+
+export interface ReplayOrder extends ClipOrder {
+  readonly lead: SeatIndex;
+  readonly record: readonly SeenTableEvent[];
+  readonly seats: readonly ReplaySeat[];
+}
+
+const SPRITES_PER_SLOT = 6;
+
+const chancesOf = (worker: ClipWorker, record: readonly SeenTableEvent[]) =>
+  Option.match(oddsAskedBy(record), {
+    onNone: () => Effect.succeed<readonly number[]>([]),
+    onSome: (asked) =>
+      worker
+        .ask({ board: asked.board, holes: asked.holes, kind: "Chances" }, [])
+        .pipe(
+          Effect.map((reply) => (reply.tag === "Chances" ? reply.percents : []))
+        ),
+  });
+
+const markupsOf = (
+  plan: ReplayPlan,
+  look: { readonly deck: Deck; readonly theme: Theme },
+  slot: Effect.Effect<void>
+) =>
+  Effect.gen(function* drawSprites() {
+    const palette = paletteFor(look.theme, look.deck);
+    const sprites: Sprite[] = [];
+
+    for (const [index, sprite] of plan.sprites.entries()) {
+      if (index % SPRITES_PER_SLOT === 0) {
+        yield* slot;
+      }
+
+      sprites.push({
+        ...spriteMarkup(palette, look.theme, sprite.art),
+        keys: sprite.keys,
+      });
+    }
+
+    return sprites;
+  });
+
+export const replayFile = (
+  picture: MomentPicture,
+  look: { readonly deck: Deck; readonly theme: Theme },
+  order: ReplayOrder
+): Effect.Effect<File, ClipUnavailable> =>
+  Effect.gen(function* replayClip() {
+    const { frame, slot, support } = order;
+    const size = FRAME_SIZES[frame];
+    const worker = yield* clipWorker;
+    const percents = yield* chancesOf(worker, order.record);
+
+    yield* slot;
+
+    const replay = yield* Effect.fromOption(
+      replayOf(order.record, () => percents)
+    ).pipe(
+      Effect.mapError(
+        () =>
+          new ClipUnavailable({
+            detail: "the hand did not end in what this device saw",
+            step: "tell the hand",
+          })
+      )
+    );
+
+    const plan = replayPlan(replay, { lead: order.lead, seats: order.seats });
+
+    const card = yield* atlasOf(
+      order.svg,
+      {
+        boxes: order.boxes,
+        fonts: EMBEDDED_FONTS,
+        from: (role) => (startsTheReplay(role) ? 0 : plan.cardAt),
+        size,
+      },
+      slot
+    );
+
+    const sprites = yield* spriteAtlas(
+      yield* markupsOf(plan, look, slot),
+      EMBEDDED_FONTS,
+      slot
+    );
+
+    const atlas = replayAtlas(card, sprites);
+    const motion = motionOf(picture);
+    const frames = Math.ceil((plan.length * CLIP_FPS) / 1000);
+
+    const sound = support.sound
+      ? yield* rendered(
+          [
+            ...plan.cues,
+            ...shiftedScore(
+              momentScore(picture.kind, picture.tier),
+              (plan.cardAt + stingStartMs(motion.family, CLIP_STAGING)) / 1000
+            ),
+          ],
+          frames / CLIP_FPS,
           slot
-        ).pipe(
-          Effect.map((pcm) => ({
-            bitrate: SOUND_BITRATE,
-            pcm,
-            sampleRate: SOUND_RATE,
-          }))
         )
       : null;
 
-    const bytes = yield* worked(
-      {
-        bands: atlas.bands,
-        bitrate: VIDEO_BITRATE,
-        codec: support.codec,
-        frames,
-        height: size.height,
-        layers: atlas.layers,
-        motion,
-        sound,
-        width: size.width,
-      },
-      sound === null ? atlas.bands : [...atlas.bands, sound.pcm.buffer]
-    );
+    const bytes = yield* encoded(worker, {
+      bands: atlas.bands,
+      bitrate: REPLAY_BITRATE,
+      codec: support.codec,
+      frames,
+      height: size.height,
+      layers: atlas.layers,
+      motion,
+      sound,
+      width: size.width,
+    });
 
     return new File([bytes], clipName(picture, frame), { type: "video/mp4" });
-  });
+  }).pipe(Effect.scoped);

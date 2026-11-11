@@ -6,10 +6,12 @@ import { defineMoment } from "../../src/client/moments/element.js";
 import type { MomentScene } from "../../src/client/moments/element.js";
 import { EMBEDDED_FONTS, pngFile } from "../../src/client/pictures/png.js";
 import { MOMENT_TAG } from "../../src/features/moments/element.js";
+import type { MomentHand } from "../../src/features/moments/element.js";
 import { pictureSvg } from "../../src/features/moments/picture.js";
 import { fileNameOf } from "../../src/features/pictures/paper.js";
 import type { KeptFrame } from "../../src/features/pictures/paper.js";
 import { BLUFF_HAND } from "./bluff-hand.js";
+import { replayHand } from "./replay-hands.js";
 import { SAMPLE_NAMES, samplePicture } from "./samples.js";
 
 const params = new URLSearchParams(globalThis.location.search);
@@ -29,12 +31,32 @@ document.body.style.margin = "0";
 const root = document.querySelector("#stage");
 
 interface MomentHost extends HTMLElement {
+  hand: MomentHand | null;
   present: (scene: MomentScene) => void;
   sound: boolean;
 }
 
 const isMomentHost = (node: Element): node is MomentHost =>
   node.tagName.toLowerCase() === MOMENT_TAG;
+
+const told = (into: Element) => {
+  defineMoment();
+  const stage = document.createElement("div");
+  const host = document.createElement(MOMENT_TAG);
+
+  Object.assign(stage.style, {
+    background: "var(--color-page)",
+    height: "100vh",
+    position: "relative",
+  });
+  stage.append(host);
+  into.append(stage);
+
+  if (isMomentHost(host)) {
+    host.sound = false;
+    host.hand = replayHand(params.get("hand") ?? "", { deck, theme });
+  }
+};
 
 const live = (into: Element) => {
   defineMoment();
@@ -103,6 +125,8 @@ if (root !== null) {
     }
   } else if (view === "live") {
     live(root);
+  } else if (view === "hand") {
+    told(root);
   } else if (view === "late") {
     definedLate(root);
   } else if (view === "png") {

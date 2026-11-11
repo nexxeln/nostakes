@@ -56,7 +56,7 @@ const burst = (
   sweepTo = freq
 ): SoundStep => ({ at, dur, freq, gain, kind: "Burst", q, sweepTo });
 
-const chips = (
+export const chips = (
   at: number,
   count: number,
   soft: number,
@@ -86,7 +86,7 @@ const slap = (at: number): readonly SoundStep[] => [
   burst(at, 700, 0.06, 0.32, 0.9, 260),
 ];
 
-const flip = (at: number): readonly SoundStep[] => [
+export const flip = (at: number): readonly SoundStep[] => [
   burst(at, 3200, 0.02, 0.3, 4),
   burst(at + 0.015, 1400, 0.07, 0.12, 1.5, 3000),
 ];

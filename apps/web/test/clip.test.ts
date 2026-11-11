@@ -44,7 +44,9 @@ const layersOf = (name: string): readonly Layer[] =>
     band: 0,
     cell: { height: 100, width: 100, x: 0, y: 0 },
     centre: { x: 50, y: 50 },
+    from: 0,
     index: Number(found.groups?.index ?? "0"),
+    keys: [],
     role: found.groups?.role ?? "",
     source: { x: 0, y: 0 },
   }));
@@ -253,7 +255,9 @@ describe("a moment's clip", () => {
       band: 0,
       cell: { height: 40, width: 120, x: 300, y: 500 },
       centre: { x: 361.5, y: 519.25 },
+      from: 0,
       index: 0,
+      keys: [],
       role: "pot",
       source: { x: 0, y: 0 },
     };
@@ -270,7 +274,9 @@ describe("a moment's clip", () => {
       band: 0,
       cell: { height: 100, width: 100, x: 0, y: 0 },
       centre: { x: 50, y: 50 },
+      from: 0,
       index: 0,
+      keys: [],
       role: "hole",
       source: { x: 0, y: 0 },
     };

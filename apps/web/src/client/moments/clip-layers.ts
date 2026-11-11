@@ -11,6 +11,7 @@ import type {
   Layer,
   Packed,
 } from "../../features/moments/clip-plan.js";
+import type { Key } from "../../features/moments/replay-plan.js";
 import { indexOf, isGraphic, roleOf, topParts } from "./clip-measure.js";
 import type { PartBox } from "./clip-measure.js";
 
@@ -219,11 +220,56 @@ const bandBitmap = (svg: string, band: Band, slot: Effect.Effect<void>) => {
   );
 };
 
+interface Rasterized {
+  readonly bands: readonly ImageBitmap[];
+  readonly places: readonly {
+    readonly band: number;
+    readonly source: { readonly x: number; readonly y: number };
+  }[];
+}
+
+const rasterized = (
+  measured: readonly Measured[],
+  fonts: string,
+  slot: Effect.Effect<void>
+): Effect.Effect<Rasterized, ClipUnavailable> =>
+  Effect.gen(function* drawAtlas() {
+    const cells = measured.map((layer) => layer.cell);
+    const packed = packCells(cells);
+    const bands = bandsOf(cells, packed);
+    const bitmaps: ImageBitmap[] = [];
+
+    for (const band of bands) {
+      yield* slot;
+      bitmaps.push(
+        yield* bandBitmap(bandSvg(fonts, measured, packed, band), band, slot)
+      );
+    }
+
+    return {
+      bands: bitmaps,
+      places: measured.map((_, index) => {
+        const band = Math.max(
+          0,
+          bands.findIndex((each) => each.members.includes(index))
+        );
+
+        const source = packed.sources[index] ?? { x: 0, y: 0 };
+
+        return {
+          band,
+          source: { x: source.x, y: source.y - (bands[band]?.top ?? 0) },
+        };
+      }),
+    };
+  });
+
 export const atlasOf = (
   svg: string,
   look: {
     readonly boxes: readonly PartBox[];
     readonly fonts: string;
+    readonly from: (role: string) => number;
     readonly size: { readonly height: number; readonly width: number };
   },
   slot: Effect.Effect<void>
@@ -236,42 +282,89 @@ export const atlasOf = (
       try: () => layersIn(svg, look.boxes, look.size),
     });
 
-    const cells = measured.map((layer) => layer.cell);
-    const packed = packCells(cells);
-    const bands = bandsOf(cells, packed);
-    const bitmaps: ImageBitmap[] = [];
-
-    for (const band of bands) {
-      yield* slot;
-      bitmaps.push(
-        yield* bandBitmap(
-          bandSvg(look.fonts, measured, packed, band),
-          band,
-          slot
-        )
-      );
-    }
-
-    const bandOf = (index: number) =>
-      Math.max(
-        0,
-        bands.findIndex((band) => band.members.includes(index))
-      );
+    const drawn = yield* rasterized(measured, look.fonts, slot);
 
     return {
-      bands: bitmaps,
-      layers: measured.map((layer, index) => {
-        const band = bandOf(index);
-        const source = packed.sources[index] ?? { x: 0, y: 0 };
+      bands: drawn.bands,
+      layers: measured.map((layer, index) => ({
+        band: drawn.places[index]?.band ?? 0,
+        cell: layer.cell,
+        centre: layer.centre,
+        from: look.from(layer.role),
+        index: layer.index,
+        keys: [],
+        role: layer.role,
+        source: drawn.places[index]?.source ?? { x: 0, y: 0 },
+      })),
+    };
+  });
+
+export interface Sprite {
+  readonly box: Box;
+  readonly keys: readonly Key[];
+  readonly markup: string;
+}
+
+export const SPRITE_ROLE = "sprite";
+
+export const spriteAtlas = (
+  sprites: readonly Sprite[],
+  fonts: string,
+  slot: Effect.Effect<void>
+): Effect.Effect<Atlas, ClipUnavailable> =>
+  Effect.gen(function* buildSprites() {
+    const unique = [...new Set(sprites.map((sprite) => sprite.markup))];
+    const boxes = new Map(sprites.map((sprite) => [sprite.markup, sprite.box]));
+
+    const measured: readonly Measured[] = unique.map((markup, index) => {
+      const cell = boxes.get(markup) ?? { height: 1, width: 1, x: 0, y: 0 };
+
+      return {
+        cell,
+        centre: { x: cell.x + cell.width / 2, y: cell.y + cell.height / 2 },
+        index,
+        local: { x: cell.x, y: cell.y },
+        markup,
+        role: SPRITE_ROLE,
+      };
+    });
+
+    const drawn = yield* rasterized(measured, fonts, slot);
+
+    return {
+      bands: drawn.bands,
+      layers: sprites.map((sprite, index) => {
+        const art = unique.indexOf(sprite.markup);
+        const cell = measured[art]?.cell ?? sprite.box;
 
         return {
-          band,
-          cell: layer.cell,
-          centre: layer.centre,
-          index: layer.index,
-          role: layer.role,
-          source: { x: source.x, y: source.y - (bands[band]?.top ?? 0) },
+          band: drawn.places[art]?.band ?? 0,
+          cell,
+          centre: { x: cell.x + cell.width / 2, y: cell.y + cell.height / 2 },
+          from: 0,
+          index,
+          keys: sprite.keys,
+          role: SPRITE_ROLE,
+          source: drawn.places[art]?.source ?? { x: 0, y: 0 },
         };
       }),
     };
   });
+
+const UNDER_SPRITES = new Set([BASE_ROLE, "felt"]);
+
+export const replayAtlas = (card: Atlas, sprites: Atlas): Atlas => {
+  const shifted = sprites.layers.map((layer) => ({
+    ...layer,
+    band: layer.band + card.bands.length,
+  }));
+
+  return {
+    bands: [...card.bands, ...sprites.bands],
+    layers: [
+      ...card.layers.filter((layer) => UNDER_SPRITES.has(layer.role)),
+      ...shifted,
+      ...card.layers.filter((layer) => !UNDER_SPRITES.has(layer.role)),
+    ],
+  };
+};

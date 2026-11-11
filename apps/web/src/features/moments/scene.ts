@@ -212,6 +212,7 @@ export const pictureOf = (
 export interface ShownMoment {
   readonly id: string;
   readonly picture: MomentPicture;
+  readonly seats: readonly SeatIndex[];
 }
 
 export const shownMomentOf = (hand: MomentHand): Option.Option<ShownMoment> => {
@@ -235,6 +236,7 @@ export const shownMomentOf = (hand: MomentHand): Option.Option<ShownMoment> => {
         found.lead.seats.join(","),
       ].join(":"),
       picture: pictureOf(hand.people, hand.lastHand, found),
+      seats: found.lead.seats,
     }))
   );
 };

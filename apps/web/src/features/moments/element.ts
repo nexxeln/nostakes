@@ -10,6 +10,7 @@ import { Schema } from "effect";
 import { CustomElement } from "foldkit";
 
 import { DeckSchema, ThemeSchema } from "../model.js";
+import { SeatStackSchema } from "./watch.js";
 
 export const MOMENT_TAG = "nostakes-moment";
 
@@ -27,6 +28,7 @@ export const MomentHandSchema = Schema.Struct({
   lastHand: LastHandViewSchema,
   people: Schema.Array(PersonSchema),
   record: Schema.Array(SeenTableEventSchema),
+  stacks: Schema.optionalKey(Schema.Array(SeatStackSchema)),
   theme: ThemeSchema,
 });
 

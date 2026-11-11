@@ -1,16 +1,7 @@
+import { tableChances } from "@nostakes/room";
 import { Effect, Schema } from "effect";
 
-import {
-  CLIP_FPS,
-  frameMs,
-  placementOf,
-  poseOf,
-} from "../../features/moments/clip-plan.js";
-import type {
-  Layer,
-  Motion,
-  Placement,
-} from "../../features/moments/clip-plan.js";
+import { CLIP_FPS, frameMs } from "../../features/moments/clip-plan.js";
 import {
   i420Size,
   LIMITED_BT709,
@@ -18,13 +9,14 @@ import {
 } from "../../features/moments/i420.js";
 import { aacConfig, mp4Of } from "../../features/moments/mp4.js";
 import type { AudioTrack, Sample } from "../../features/moments/mp4.js";
+import { drawFrame, placementsAt } from "./clip-draw.js";
 import {
-  ClipRequestSchema,
   CLIP_AUDIO_CODEC,
   KEY_FRAME_EVERY,
   VIDEO_TIMESCALE,
+  WorkerRequestSchema,
 } from "./clip-wire.js";
-import type { ClipReply, ClipRequest } from "./clip-wire.js";
+import type { ClipReply, ClipRequest, WorkerRequest } from "./clip-wire.js";
 
 class ClipFailed extends Schema.TaggedError<
   ClipFailed,
@@ -40,48 +32,6 @@ const failedAt = (step: string) => (cause: unknown) =>
 const MICROS = 1_000_000;
 
 const QUEUE_DEPTH = 3;
-
-const placementsAt = (
-  layers: readonly Layer[],
-  motion: Motion,
-  ms: number
-): readonly Placement[] =>
-  layers.map((layer) => placementOf(layer, poseOf(layer, ms, motion)));
-
-const draw = (
-  ctx: OffscreenCanvasRenderingContext2D,
-  bands: readonly ImageBitmap[],
-  layers: readonly Layer[],
-  placements: readonly Placement[]
-) => {
-  for (const [index, layer] of layers.entries()) {
-    const placed = placements[index];
-    const source = bands[layer.band];
-
-    if (placed === undefined) {
-      continue;
-    }
-
-    if (placed.alpha > 0 && source !== undefined) {
-      ctx.globalAlpha = placed.alpha;
-      ctx.setTransform(...placed.matrix);
-      ctx.drawImage(
-        source,
-        layer.source.x,
-        layer.source.y,
-        layer.cell.width,
-        layer.cell.height,
-        placed.at.x,
-        placed.at.y,
-        layer.cell.width,
-        layer.cell.height
-      );
-    }
-  }
-
-  ctx.setTransform(1, 0, 0, 1, 0, 0);
-  ctx.globalAlpha = 1;
-};
 
 const bytesOf = (chunk: EncodedAudioChunk | EncodedVideoChunk) => {
   const bytes = new Uint8Array(chunk.byteLength);
@@ -213,7 +163,7 @@ const videoTrack = (request: ClipRequest) =>
           const key = JSON.stringify(placements);
 
           if (key !== drawn.key) {
-            draw(ctx, request.bands, request.layers, placements);
+            drawFrame(ctx, request.bands, request.layers, placements);
             writeI420(
               ctx.getImageData(0, 0, request.width, request.height).data,
               request.width,
@@ -365,22 +315,41 @@ const reply = (message: ClipReply, transfer: readonly Transferable[]) => {
   globalThis.postMessage(message, { transfer: [...transfer] });
 };
 
+const answered = (request: WorkerRequest) =>
+  request.kind === "Chances"
+    ? Effect.sync(() => {
+        reply(
+          {
+            percents: tableChances({
+              board: request.board,
+              holes: request.holes,
+            }),
+            tag: "Chances",
+          },
+          []
+        );
+      })
+    : made(request).pipe(
+        Effect.flatMap((bytes) =>
+          Effect.sync(() => {
+            reply({ bytes, tag: "Made" }, [bytes.buffer]);
+          })
+        )
+      );
+
 globalThis.addEventListener("message", (event: MessageEvent<unknown>) => {
   Effect.runFork(
-    Schema.decodeUnknownEffect(ClipRequestSchema)(event.data).pipe(
+    Schema.decodeUnknownEffect(WorkerRequestSchema)(event.data).pipe(
       Effect.mapError(failedAt("read the request")),
-      Effect.flatMap(made),
-      Effect.match({
-        onFailure: (failure) => {
+      Effect.flatMap(answered),
+      Effect.catchTag("ClipFailed", (failure) =>
+        Effect.sync(() => {
           reply(
             { detail: failure.detail, step: failure.step, tag: "Failed" },
             []
           );
-        },
-        onSuccess: (bytes) => {
-          reply({ bytes, tag: "Made" }, [bytes.buffer]);
-        },
-      })
+        })
+      )
     )
   );
 });

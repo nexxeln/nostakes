@@ -81,7 +81,7 @@ import type {
   RoomRecord,
   RulesSheet,
 } from "./model.js";
-import { NO_MOMENTS, watchedMoments } from "./moments/watch.js";
+import { NO_MOMENTS, seatStacksOf, watchedMoments } from "./moments/watch.js";
 import { enteredName, nameRefusal } from "./names.js";
 import { considerUpdate } from "./page-update.js";
 import { rejectionText } from "./rejections.js";
@@ -1256,7 +1256,7 @@ export const update = (model: Model, message: Message): Return =>
                 -KEPT_CLOCK_SAMPLES
               )
             : room.clockSamples,
-          moments: watchedMoments(room.moments, events),
+          moments: watchedMoments(room.moments, events, seatStacksOf(view)),
           resumed: Option.orElse(
             Option.fromUndefinedOr(
               events.findLast(

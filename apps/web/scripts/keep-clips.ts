@@ -157,6 +157,7 @@ const CLIP_TOOLS = `
       const count = () => { shown.count += 1; video.requestVideoFrameCallback(count); };
       video.requestVideoFrameCallback(count);
     }
+    video.playbackRate = 2;
     await video.play();
     await Promise.race([ended, new Promise((resolve, reject) => setTimeout(() => reject(new Error("the clip never reached its end")), 20000))]);
     const last = new OffscreenCanvas(width, height).getContext("2d");
@@ -342,8 +343,13 @@ const probed = (path: string) =>
 
 interface Expected {
   readonly frame: Frame;
+  readonly seconds: { readonly longest: number; readonly shortest: number };
   readonly sound: boolean;
 }
+
+const SHORT_CLIP = { longest: LONGEST_SECONDS, shortest: SHORTEST_SECONDS };
+
+const REPLAY = { longest: 15.2, shortest: 7.9 };
 
 type Probed = typeof ProbeSchema.Type;
 
@@ -371,7 +377,10 @@ const atomProblems = (bytes: Uint8Array, expected: Expected) => {
     );
   }
 
-  if (atoms.seconds < SHORTEST_SECONDS || atoms.seconds > LONGEST_SECONDS) {
+  if (
+    atoms.seconds < expected.seconds.shortest ||
+    atoms.seconds > expected.seconds.longest
+  ) {
     problems.push(`the clip lasts ${atoms.seconds.toFixed(2)} s`);
   }
 
@@ -804,7 +813,7 @@ const liveClip = (
       page,
       settings,
       { clip: clipIndex, label, still: stillIndex, title },
-      { frame: "Chat", sound }
+      { frame: "Chat", seconds: SHORT_CLIP, sound }
     );
 
     return {
@@ -1078,6 +1087,160 @@ const abandonedClip = (engine: BrowserType) =>
     };
   }).pipe(Effect.scoped);
 
+const replayedClip = (
+  engine: BrowserType,
+  settings: Settings,
+  look: { readonly hand: string; readonly theme: string }
+) =>
+  Effect.gen(function* keepReplay() {
+    const origin = yield* StageOrigin;
+    const opened = yield* mutedBrowser(engine);
+
+    const context = yield* attempt("open a phone-sized context", () =>
+      opened.newContext({
+        hasTouch: true,
+        viewport: { height: 844, width: 390 },
+      })
+    );
+
+    yield* attempt("stub the share sheet", () =>
+      Promise.all([
+        context.addInitScript(SHARE_STUB),
+        context.addInitScript(CLIP_TOOLS),
+      ])
+    );
+
+    const page = yield* attempt("open a page", () => context.newPage());
+    const label = `${engine.name()}-${look.hand}-${look.theme.toLowerCase()}-replay`;
+
+    yield* throttled(page, engine, settings.throttle);
+    yield* attempt("open the stage", () =>
+      page.goto(
+        `${origin}${STAGE}/stage.html?view=hand&hand=${look.hand}&theme=${look.theme}`
+      )
+    );
+    yield* attempt("wait for the moment", () =>
+      page
+        .locator("nostakes-moment[data-moment]")
+        .waitFor({ state: "attached", timeout: 60_000 })
+    );
+
+    const title = yield* attempt("measure the title on the card", () =>
+      page.locator("nostakes-moment").evaluate((node) => {
+        const part = node.shadowRoot?.querySelector('[data-part="title"]');
+
+        const box =
+          part instanceof SVGGraphicsElement
+            ? part.getBBox()
+            : { height: 0, width: 0, x: 0, y: 0 };
+
+        return JSON.stringify({
+          height: box.height,
+          width: box.width,
+          x: box.x,
+          y: box.y,
+        });
+      })
+    ).pipe(Effect.flatMap(decoded(TitleBoxSchema, "measure the title")));
+
+    const sound = yield* attempt("ask whether this browser encodes AAC", () =>
+      page.evaluate<boolean>("window.__aac()")
+    );
+
+    yield* attempt("wait for the pictures", () =>
+      page
+        .locator('nostakes-moment[data-drawn="Chat Story"]')
+        .waitFor({ state: "attached", timeout: 60_000 })
+    );
+    yield* attempt("tap the moment away", () =>
+      page.locator("nostakes-moment .card").click()
+    );
+
+    const before = yield* read(
+      page,
+      "JSON.stringify(window.__frames)",
+      FramesSchema,
+      "count frames"
+    );
+
+    const started = performance.now();
+
+    yield* attempt("wait for the replay to be made or refused", () =>
+      page
+        .locator(
+          'nostakes-moment[data-clip="Ready"], nostakes-moment[data-clip="Unavailable"]'
+        )
+        .waitFor({ state: "attached", timeout: 240_000 })
+    );
+
+    const readyMs = Math.round(performance.now() - started);
+
+    const after = yield* read(
+      page,
+      "JSON.stringify(window.__frames)",
+      FramesSchema,
+      "count frames"
+    );
+
+    const state = yield* stateOf(page);
+
+    if (state !== "Ready") {
+      return {
+        label,
+        line: `${label}: no replay on this browser (${state})`,
+        problems:
+          settings.require === "nothing"
+            ? []
+            : [`${label}: no replay was made`],
+      };
+    }
+
+    yield* attempt("tap Keep", () =>
+      page.locator("nostakes-moment .keep").click()
+    );
+    yield* attempt("tap Clip", () =>
+      page.locator("nostakes-moment .clip").click()
+    );
+    yield* attempt("wait for both taps to reach the share sheet", () =>
+      page.waitForFunction("window.__shared.length >= 2", undefined, {
+        timeout: 15_000,
+      })
+    );
+
+    const shared = yield* read(
+      page,
+      "JSON.stringify(window.__shared)",
+      SharedSchema,
+      "read what was shared"
+    );
+
+    const clipIndex = shared.findIndex((entry) => entry.type === "video/mp4");
+    const stillIndex = shared.findIndex((entry) => entry.type === "image/png");
+
+    if (clipIndex === -1 || stillIndex === -1) {
+      return {
+        label,
+        line: `${label}: the share sheet got ${shared.map((entry) => entry.type).join(", ")}`,
+        problems: [
+          `${label}: the replay or the still never reached the share sheet`,
+        ],
+      };
+    }
+
+    const verdict = yield* judged(
+      page,
+      settings,
+      { clip: clipIndex, label, still: stillIndex, title },
+      { frame: "Chat", seconds: REPLAY, sound }
+    );
+
+    return {
+      label,
+      line: `${label}: ${verdict.bytes} bytes, ready ${readyMs} ms after the moment left, ${after.late - before.late} late frames of ${after.frames - before.frames}, title on frame 0 off by ${((verdict.played?.titleFar ?? 1) * 100).toFixed(1)}%, last frame mean difference ${verdict.played?.mean.toFixed(2) ?? "?"} with ${((verdict.played?.far ?? 0) * 100).toFixed(2)}% far off, ${verdict.played?.duration.toFixed(2) ?? "?"} s${sound ? ", with sound" : ", silent"}; ${verdict.colours}`,
+      problems: verdict.problems.map((problem) => `${label}: ${problem}`),
+    };
+  }).pipe(Effect.scoped);
+
 const StagedSchema = Schema.Struct({
   failure: Schema.optional(Schema.String),
   lateBefore: Schema.optional(Schema.Int),
@@ -1152,7 +1315,7 @@ const stagedClip = (
       page,
       settings,
       { clip: 1, label, still: 0, title: staged.title ?? NO_TITLE },
-      { frame: look.frame, sound: staged.support.sound }
+      { frame: look.frame, seconds: SHORT_CLIP, sound: staged.support.sound }
     );
 
     return {
@@ -1168,9 +1331,26 @@ const listOf = (name: string, fallback: string) =>
     Config.map((text) => text.split(",").filter((each) => each.length > 0))
   );
 
+const reported = (checked: {
+  readonly line: string;
+  readonly problems: readonly string[];
+}) =>
+  Effect.gen(function* reportClip() {
+    yield* Console.log(
+      `${checked.problems.length === 0 ? "ok  " : "FAIL"} ${checked.line}`
+    );
+
+    for (const problem of checked.problems) {
+      yield* Console.log(`     ${problem}`);
+    }
+
+    return checked.problems;
+  });
+
 const checks = Effect.gen(function* checkClips() {
   const engines = yield* listOf("CLIP_ENGINES", "chromium,webkit");
   const samples = yield* listOf("CLIP_SAMPLES", "BigHand-2,BadBeat-1");
+  const hands = yield* listOf("CLIP_HANDS", "AcesCracked");
   const themes = yield* listOf("CLIP_THEMES", "Light");
   const frames = yield* listOf("CLIP_FRAMES", "Chat");
 
@@ -1197,19 +1377,26 @@ const checks = Effect.gen(function* checkClips() {
 
   const problems: string[] = [];
 
+  const quietChat = pace === "Quiet" && frames.includes("Chat");
+
   for (const engine of chosen) {
-    if (pace === "Quiet" && frames.includes("Chat")) {
+    if (quietChat) {
       for (const flow of [
         refusedClip(engine),
         askedClip(engine, settings),
         abandonedClip(engine),
       ]) {
-        const checked = yield* flow;
+        problems.push(...(yield* reported(yield* flow)));
+      }
 
-        yield* Console.log(
-          `${checked.problems.length === 0 ? "ok  " : "FAIL"} ${checked.line}`
-        );
-        problems.push(...checked.problems);
+      for (const hand of hands) {
+        for (const theme of themes) {
+          problems.push(
+            ...(yield* reported(
+              yield* replayedClip(engine, settings, { hand, theme })
+            ))
+          );
+        }
       }
     }
 
@@ -1226,15 +1413,7 @@ const checks = Effect.gen(function* checkClips() {
                   theme,
                 });
 
-          yield* Console.log(
-            `${checked.problems.length === 0 ? "ok  " : "FAIL"} ${checked.line}`
-          );
-
-          for (const problem of checked.problems) {
-            yield* Console.log(`     ${problem}`);
-          }
-
-          problems.push(...checked.problems);
+          problems.push(...(yield* reported(checked)));
         }
       }
     }

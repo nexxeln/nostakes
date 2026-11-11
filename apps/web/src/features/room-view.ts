@@ -547,6 +547,7 @@ const tableView = (
                 lastHand,
                 people: peopleOf(view),
                 record: room.moments.record,
+                stacks: room.moments.stacks,
                 theme: pageTheme(model),
               })),
               Option.getOrNull

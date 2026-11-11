@@ -33,6 +33,8 @@ export const CARD_RATIO = CARD_HEIGHT / 100;
 
 export interface Palette {
   readonly card: string;
+  readonly cardBack: string;
+  readonly cardBackLine: string;
   readonly dimCard: string;
   readonly cardInk: string;
   readonly cardMuted: string;
@@ -60,6 +62,8 @@ export const paletteFor = (theme: Theme, deck: Deck): Palette => {
   return {
     brandShadow: light ? "#f4b93c" : "#3c67e8",
     card: light ? "#ffffff" : "#f7f3ea",
+    cardBack: light ? "#1f1c31" : "#2b2738",
+    cardBackLine: "rgb(255 255 255 / 0.28)",
     cardInk,
     cardMuted: light ? "#716a79" : "#6c6575",
     cardRed,

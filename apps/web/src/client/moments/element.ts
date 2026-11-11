@@ -1,3 +1,4 @@
+import type { SeatIndex } from "@nostakes/engine";
 import { Effect, Option } from "effect";
 
 import type { Deck, Theme } from "../../features/model.js";
@@ -73,10 +74,16 @@ const CLIP_LABELS: Readonly<Record<ClipState, string>> = {
   Waiting: "Clip",
 };
 
+export interface SceneStory {
+  readonly hand: MomentHand;
+  readonly seats: readonly SeatIndex[];
+}
+
 export interface MomentScene {
   readonly deck: Deck;
   readonly id: string;
   readonly picture: MomentPicture;
+  readonly story?: SceneStory;
   readonly theme: Theme;
 }
 
@@ -206,6 +213,7 @@ class NostakesMoment extends HTMLElement {
         deck: hand.deck,
         id: found.value.id,
         picture: found.value.picture,
+        story: { hand, seats: found.value.seats },
         theme: hand.theme,
       });
     }
@@ -287,6 +295,8 @@ class NostakesMoment extends HTMLElement {
                     scene.picture,
                     {
                       boxes,
+                      look: { deck: scene.deck, theme: scene.theme },
+                      story: scene.story ?? null,
                       svg: pictureSvg(scene.picture, {
                         deck: scene.deck,
                         fonts: "",

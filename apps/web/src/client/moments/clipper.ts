@@ -1,10 +1,14 @@
+import { Events } from "@nostakes/engine";
 import { Effect, Option } from "effect";
 
+import type { Deck, Theme } from "../../features/model.js";
 import type { MomentPicture } from "../../features/moments/picture.js";
+import { replaySeatsOf } from "../../features/moments/replay-plan.js";
 import { offer } from "../pictures/keeper.js";
 import type { PartBox } from "./clip-measure.js";
-import { clipFile, clipSupport, slotFor } from "./clip.js";
+import { clipFile, clipSupport, replayFile, slotFor } from "./clip.js";
 import type { ClipPace, ClipSupport } from "./clip.js";
+import type { SceneStory } from "./element.js";
 
 export type ClipState =
   | "Asked"
@@ -17,8 +21,30 @@ export type ClipState =
 
 export interface ClipArt {
   readonly boxes: readonly PartBox[];
+  readonly look: { readonly deck: Deck; readonly theme: Theme };
+  readonly story: SceneStory | null;
   readonly svg: string;
 }
+
+const replayOrderOf = (story: SceneStory | null) => {
+  if (story === null) {
+    return null;
+  }
+
+  const [first] = story.hand.record;
+
+  const lead =
+    story.seats[0] ??
+    (first !== undefined && Events.$is("HandStarted")(first)
+      ? first.button
+      : undefined);
+
+  return lead === undefined
+    ? null
+    : { lead, record: story.hand.record, seats: replaySeatsOf(story.hand) };
+};
+
+export const REPLAY_TIER = 2;
 
 const activationLasts = () =>
   globalThis.navigator.userActivation?.isActive ?? false;
@@ -145,14 +171,22 @@ export class Clipper {
     const making = new AbortController();
 
     this.#making = making;
+
+    const order = {
+      boxes: this.#art.boxes,
+      frame: "Chat" as const,
+      slot: Effect.suspend(() => slotFor(this.#pace)),
+      support,
+      svg: this.#art.svg,
+    };
+
+    const replay = replayOrderOf(this.#art.story);
+
     Effect.runFork(
-      clipFile(this.#picture, {
-        boxes: this.#art.boxes,
-        frame: "Chat",
-        slot: Effect.suspend(() => slotFor(this.#pace)),
-        support,
-        svg: this.#art.svg,
-      }).pipe(
+      (replay !== null && this.#picture.tier >= REPLAY_TIER
+        ? replayFile(this.#picture, this.#art.look, { ...order, ...replay })
+        : clipFile(this.#picture, order)
+      ).pipe(
         Effect.match({
           onFailure: () => {
             this.#finished(making, null);

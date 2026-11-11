@@ -1,8 +1,10 @@
 import type { Tier } from "@nostakes/room";
 
+import { poseAtKeys } from "./replay-plan.js";
+import type { Key } from "./replay-plan.js";
 import { STING_HITS } from "./score.js";
 import type { Family } from "./score.js";
-import { partPose } from "./timeline.js";
+import { partPose, REST } from "./timeline.js";
 import type { Pose, Staging } from "./timeline.js";
 
 export const CLIP_FPS = 30;
@@ -32,7 +34,9 @@ export interface Layer {
   readonly band: number;
   readonly centre: { readonly x: number; readonly y: number };
   readonly cell: Box;
+  readonly from: number;
   readonly index: number;
+  readonly keys: readonly Key[];
   readonly role: string;
   readonly source: { readonly x: number; readonly y: number };
 }
@@ -71,15 +75,29 @@ export const potLandsAt = (staging: Staging) =>
 export const stingStartMs = (family: Family, staging: Staging) =>
   Math.max(0, potLandsAt(staging) - STING_HITS[family] * 1000);
 
-export const poseOf = (layer: Layer, ms: number, motion: Motion): Pose =>
-  partPose(
+const HIDDEN: Pose = { ...REST, opacity: 0 };
+
+const startsLanded = (role: string) =>
+  role === BASE_ROLE || CLIP_STAGING.landed.has(role);
+
+export const poseOf = (layer: Layer, ms: number, motion: Motion): Pose => {
+  if (layer.keys.length > 0) {
+    return poseAtKeys(layer.keys, ms);
+  }
+
+  if (ms < layer.from && !startsLanded(layer.role)) {
+    return HIDDEN;
+  }
+
+  return partPose(
     layer.role,
     layer.index,
-    ms,
+    Math.max(0, ms - layer.from),
     motion.family,
     motion.tier,
     CLIP_STAGING
   );
+};
 
 const LAST_FRAME_SEARCHED = (CLIP_LONGEST_MS * CLIP_FPS) / 1000;
 
