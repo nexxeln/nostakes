@@ -25,7 +25,7 @@ jobs:
         with:
           node-version: 24.18.0
       - name: Enable corepack pnpm
-        run: corepack enable && corepack prepare pnpm@11.3.0 --activate
+        run: corepack enable && corepack prepare pnpm@11.28.11 --activate
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
       - name: Check, test, and build
@@ -54,7 +54,7 @@ jobs:
         with:
           node-version: 24.18.0
       - name: Enable corepack pnpm
-        run: corepack enable && corepack prepare pnpm@11.3.0 --activate
+        run: corepack enable && corepack prepare pnpm@11.28.11 --activate
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
       - name: Build every package and the web app
