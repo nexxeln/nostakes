@@ -86,6 +86,35 @@ export const boxOfPart = (
 ): Option.Option<Box> =>
   around(piecesOfPart(stacked(avatar, expression, part), part).map(boxOfPiece));
 
+const LARGE_SHARE = 0.35;
+
+const spotOn = (piece: Piece): Point => {
+  const box = boxOfPiece(piece);
+  const across = box.x + box.width / 2;
+
+  if (piece.kind !== "Cut" || piece.hole.length === 0) {
+    return [across, box.y + box.height / 2];
+  }
+
+  const hole = boxOfPoints(piece.hole);
+
+  return [across, box.y + (hole.y - box.y) / 2];
+};
+
+export const spotsOfPart = (
+  avatar: Avatar,
+  part: PlacedPart,
+  expression: Expression = "Resting"
+): readonly Point[] => {
+  const pieces = piecesOfPart(stacked(avatar, expression, part), part);
+  const areas = pieces.map(boxOfPiece).map((box) => box.width * box.height);
+  const largest = Math.max(0, ...areas);
+
+  return pieces.flatMap((piece, index) =>
+    (areas[index] ?? 0) >= largest * LARGE_SHARE ? [spotOn(piece)] : []
+  );
+};
+
 const plainFace = (species: Species): Avatar => ({
   colour: "BlueYellow",
   extra: "None",

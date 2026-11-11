@@ -59,6 +59,7 @@ export {
   isPlaced,
   placeOfPart,
   reachOfPart,
+  spotsOfPart,
 } from "./parts.js";
 
 export type { Box } from "./parts.js";

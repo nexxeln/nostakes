@@ -16,6 +16,7 @@ import {
   reachOfPart,
   render,
   SPECIES,
+  spotsOfPart,
 } from "../src/index.js";
 import type { Avatar, Box, PlacedPart, Species } from "../src/index.js";
 
@@ -163,6 +164,29 @@ describe("the parts of a face", () => {
 
         for (const box of Option.toArray(boxOfPart(avatar, part))) {
           expect(holds(reach, box), `${part} of ${avatar.species}`).toBe(true);
+        }
+      }
+    },
+    { arbitrary: { runs: 40 } }
+  );
+
+  it.prop(
+    "names spots on a worn part's own sheets, and none for a part not worn",
+    { avatar: avatars },
+    ({ avatar }) => {
+      for (const part of PLACED_PARTS) {
+        const spots = spotsOfPart(avatar, part);
+        const box = boxOfPart(avatar, part);
+
+        expect(spots.length > 0).toBe(Option.isSome(box));
+
+        for (const [x, y] of spots) {
+          expect(
+            Option.exists(box, (held) =>
+              holds(held, { height: 0, width: 0, x, y })
+            ),
+            `${part} of ${avatar.species}`
+          ).toBe(true);
         }
       }
     },
