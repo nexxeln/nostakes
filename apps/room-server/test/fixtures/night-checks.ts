@@ -282,6 +282,7 @@ export interface HaltStandings {
 
 export interface HaltEvidence {
   readonly lost: { readonly seq: number; readonly event: string };
+  readonly soundSeq: number;
   readonly standings: readonly HaltStandings[];
 }
 
@@ -1704,7 +1705,7 @@ const checkHalt = (
     return;
   }
 
-  const { lost, standings } = evidence.halt.value;
+  const { lost, soundSeq, standings } = evidence.halt.value;
   const expected = `stored event ${lost.seq} has sequence number ${lost.seq + 1}`;
   const sound = events.slice(0, lost.seq - 1);
   const ledger = ledgerFromLog(sound);
@@ -1723,7 +1724,11 @@ const checkHalt = (
   for (const { label, status, view } of standings) {
     const problems = Option.match(view, {
       onNone: () => [`answered ${status} with no standings`],
-      onSome: (json) => standingsProblems(haltedViewOf(json), ledger),
+      onSome: (json) =>
+        standingsProblems(haltedViewOf(json), ledger, {
+          ledger: sound.length,
+          standings: soundSeq,
+        }),
     });
 
     for (const problem of problems) {

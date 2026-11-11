@@ -439,9 +439,14 @@ test(
     expect(before.halted).toStrictEqual(Option.none());
     expect(sound.length).toBe(called);
     expect(unfinishedHand(sound)).toBe(true);
-    expect(views.flatMap((view) => standingsProblems(view, ledger))).toEqual(
-      []
-    );
+    expect(
+      views.flatMap((view) =>
+        standingsProblems(view, ledger, {
+          ledger: sound.length,
+          standings: after.headSeq,
+        })
+      )
+    ).toEqual([]);
     expect(
       ledger.map(({ net }) => net).toSorted((left, right) => left - right)
     ).toEqual([-1, 1]);

@@ -860,7 +860,15 @@ export const playNight = (base: string, opened: OpenedNight) =>
     );
 
     const halt = halting
-      ? Option.some(yield* haltMidHand(base, plan.code, opened.passes, note))
+      ? Option.some(
+          yield* haltMidHand(
+            base,
+            plan.code,
+            opened.passes,
+            randomSource(plan.seed * 17 + 3).between,
+            note
+          )
+        )
       : Option.none<HaltEvidence>();
 
     const halted = yield* inspect(base, plan.code);

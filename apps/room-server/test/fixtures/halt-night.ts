@@ -19,7 +19,8 @@ const isHandEnd = (event: RoomEvent) =>
   (RoomEvents.$is("Table")(event) && Events.$is("HandEnded")(event.event));
 
 export const rowToLose = (
-  events: readonly RoomEvent[]
+  events: readonly RoomEvent[],
+  pick: (low: number, high: number) => number
 ): Option.Option<number> => {
   const started = events.findLastIndex(isHandStart) + 1;
   const head = events.length;
@@ -30,9 +31,9 @@ export const rowToLose = (
 
   const ended = events.slice(started).findIndex(isHandEnd);
   const handEnd = ended === -1 ? head + 1 : started + ended + 1;
-  const lost = Math.max(started + 1, Math.min(head - 1, handEnd - 1));
+  const last = Math.min(head - 1, handEnd - 1);
 
-  return lost < head && lost < handEnd ? Option.some(lost) : Option.none();
+  return last > started ? Option.some(pick(started + 1, last)) : Option.none();
 };
 
 const standingsOf = (base: string, pass: RoomPass) =>
@@ -57,6 +58,7 @@ export const haltMidHand = (
   base: string,
   code: RoomCode,
   passes: readonly RoomPass[],
+  pick: (low: number, high: number) => number,
   note: (line: string) => void
 ) =>
   Effect.gen(function* haltTheRoom() {
@@ -64,7 +66,8 @@ export const haltMidHand = (
       Effect.map((inspection) => ({
         inspection,
         lost: rowToLose(
-          inspection.events.map((text) => pokerCodec.decodeEvent(text))
+          inspection.events.map((text) => pokerCodec.decodeEvent(text)),
+          pick
         ),
       })),
       Effect.repeat({
@@ -84,9 +87,11 @@ export const haltMidHand = (
       passes.map((pass) => standingsOf(base, pass))
     );
 
+    const { headSeq: soundSeq } = yield* inspect(base, code);
+
     note(
       `read the standings of the halted room for ${standings.length} members: ${standings.map(({ status }) => status).join(", ")}`
     );
 
-    return { lost: { event, seq }, standings } satisfies HaltEvidence;
+    return { lost: { event, seq }, soundSeq, standings } satisfies HaltEvidence;
   });

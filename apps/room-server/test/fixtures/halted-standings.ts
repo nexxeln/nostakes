@@ -1,8 +1,8 @@
 import { Events, Seats } from "@nostakes/engine";
 import type { PlayerId } from "@nostakes/engine";
 import { RoomEvents, RoomStates, RoomViews, replay } from "@nostakes/room";
-import type { RoomEvent, RoomView } from "@nostakes/room";
-import { Array as Arr, Order, Schema } from "effect";
+import type { RoomEvent, RoomState, RoomView } from "@nostakes/room";
+import { Array as Arr, Option, Order, Schema } from "effect";
 
 import { pokerRoom } from "../../src/poker-room.js";
 import { pokerCodec } from "./poker-socket.js";
@@ -41,30 +41,58 @@ const unfinished = (events: readonly RoomEvent[], started: number) =>
         (RoomEvents.$is("Table")(event) && Events.$is("HandEnded")(event.event))
     );
 
-const stacksBefore = (events: readonly RoomEvent[]) => {
+const stateOf = (events: readonly RoomEvent[]) => {
+  const [opened, ...rest] = events;
+
+  return opened !== undefined && RoomEvents.$is("RoomOpened")(opened)
+    ? Option.some(replay([opened, ...rest]))
+    : Option.none();
+};
+
+const occupied = (state: Option.Option<RoomState>) =>
+  state.pipe(
+    Option.filter(RoomStates.$is("Open")),
+    Option.map(({ table }) =>
+      table.seats.flatMap((seat, index) =>
+        Seats.$is("Occupied")(seat)
+          ? [{ player: seat.player, seat: index, stack: seat.stack }]
+          : []
+      )
+    ),
+    Option.getOrElse(
+      (): readonly {
+        readonly player: PlayerId;
+        readonly seat: number;
+        readonly stack: number;
+      }[] => []
+    )
+  );
+
+const heldAtTheEnd = (events: readonly RoomEvent[]) => {
   const started = handStartedAt(events);
+  const start = events[started];
 
-  const [opened, ...rest] = unfinished(events, started)
-    ? events.slice(0, started)
-    : events;
+  const dealtIn =
+    unfinished(events, started) &&
+    start !== undefined &&
+    RoomEvents.$is("Table")(start) &&
+    Events.$is("HandStarted")(start.event)
+      ? new Set<number>(start.event.dealtIn)
+      : new Set<number>();
 
-  const stacks = new Map<PlayerId, number>();
+  const atTheDeal = new Map(
+    occupied(stateOf(events.slice(0, started))).map(({ seat, stack }) => [
+      seat,
+      stack,
+    ])
+  );
 
-  if (opened === undefined || !RoomEvents.$is("RoomOpened")(opened)) {
-    return stacks;
-  }
-
-  const state = replay([opened, ...rest]);
-
-  if (RoomStates.$is("Open")(state)) {
-    for (const seat of state.table.seats) {
-      if (Seats.$is("Occupied")(seat)) {
-        stacks.set(seat.player, seat.stack);
-      }
-    }
-  }
-
-  return stacks;
+  return new Map(
+    occupied(stateOf(events)).map(({ player, seat, stack }) => [
+      player,
+      dealtIn.has(seat) ? (atTheDeal.get(seat) ?? stack) : stack,
+    ])
+  );
 };
 
 export const ledgerFromLog = (
@@ -83,7 +111,7 @@ export const ledgerFromLog = (
     }
   }
 
-  const stacks = stacksBefore(events);
+  const stacks = heldAtTheEnd(events);
 
   return Arr.sort(
     [...new Set([...bought.keys(), ...paid.keys(), ...stacks.keys()])],
@@ -98,9 +126,39 @@ export const ledgerFromLog = (
 
 export const haltedViewOf = Schema.decodeSync(pokerRoom.schemas.view);
 
+export interface SoundSeqs {
+  readonly standings: number;
+  readonly ledger: number;
+}
+
+const entryText = (row: LedgerRow | undefined) =>
+  row === undefined
+    ? "absent"
+    : `in ${row.boughtIn}, left with ${row.cashedOut}, net ${row.net}`;
+
+const differences = (
+  rows: readonly LedgerRow[],
+  ledger: readonly LedgerRow[],
+  seqs: SoundSeqs
+) =>
+  Arr.sort(
+    [...new Set([...rows, ...ledger].map(({ player }) => player))],
+    Order.String
+  ).flatMap((player) => {
+    const shown = rows.find((row) => row.player === player);
+    const logged = ledger.find((row) => row.player === player);
+
+    return JSON.stringify(shown) === JSON.stringify(logged)
+      ? []
+      : [
+          `${player}: ${entryText(shown)} in the standings at sound seq ${seqs.standings}, ${entryText(logged)} in the log's ledger at sound seq ${seqs.ledger}`,
+        ];
+  });
+
 export const standingsProblems = (
   view: RoomView,
-  ledger: readonly LedgerRow[]
+  ledger: readonly LedgerRow[],
+  seqs: SoundSeqs
 ): readonly string[] => {
   if (!RoomViews.$is("Closed")(view)) {
     return ["the standings are not a settled room"];
@@ -135,11 +193,12 @@ export const standingsProblems = (
 
   return [
     ...(total === 0 ? [] : [`the nets add up to ${total}`]),
-    ...(JSON.stringify(rows) === JSON.stringify(ledger)
+    ...(seqs.standings === seqs.ledger
       ? []
       : [
-          `the standings ${JSON.stringify(rows)} differ from the log's ledger ${JSON.stringify(ledger)}`,
+          `the server settled at sound seq ${seqs.standings} and the log's ledger at ${seqs.ledger}`,
         ]),
+    ...differences(rows, ledger, seqs),
     ...squared,
   ];
 };
