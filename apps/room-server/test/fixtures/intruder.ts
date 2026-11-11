@@ -1,4 +1,5 @@
 import {
+  CloseReasonSchema,
   CommandIdSchema,
   StandingsRequestSchema,
   revokedStandings,
@@ -143,33 +144,73 @@ const COMEBACK_TRIES = 6;
 
 const COMEBACK_GAP_MS = 1000;
 
-const answered = (greeting: {
-  readonly greeting: Greeting;
-  readonly socket: PokerSocket;
-}) =>
-  greeting.greeting !== "Other" || Option.isSome(closingOf(greeting.socket));
+const decodeCloseReason = Schema.decodeUnknownOption(CloseReasonSchema);
+
+const serverReason = (socket: PokerSocket) =>
+  closingOf(socket).pipe(
+    Option.orElse(() =>
+      socket
+        .closed()
+        .pipe(Option.flatMap(({ reason }) => decodeCloseReason(reason)))
+    )
+  );
+
+const answerOf = (socket: PokerSocket): Option.Option<string> =>
+  greeted(socket) ? Option.some("Welcomed") : serverReason(socket);
+
+const attemptOf = (socket: PokerSocket) => {
+  if (greeted(socket)) {
+    return "Welcomed";
+  }
+
+  return Option.match(closingOf(socket), {
+    onNone: () =>
+      Option.match(socket.closed(), {
+        onNone: () => "no answer within 10 s",
+        onSome: ({ code, reason }) => `closed ${code} ${reason}`,
+      }),
+    onSome: (reason) => `Closing ${reason}`,
+  });
+};
 
 const helloThroughRestarts = (base: string, pass: RoomPass, label: string) =>
   Effect.gen(function* comeBackThroughRestarts() {
-    let attempt = 1;
+    const attempts: string[] = [];
+    const sockets: PokerSocket[] = [];
+    let answer = Option.none<string>();
 
-    let back = yield* hello(base, pass, `${label} #${attempt}`).pipe(
-      Effect.option
-    );
-
-    while (attempt < COMEBACK_TRIES && !Option.exists(back, answered)) {
-      for (const dropped of Option.toArray(back)) {
-        yield* dropped.socket.disconnect;
-      }
-
-      yield* Effect.sleep(Duration.millis(COMEBACK_GAP_MS));
-      attempt += 1;
-      back = yield* hello(base, pass, `${label} #${attempt}`).pipe(
+    for (
+      let attempt = 1;
+      attempt <= COMEBACK_TRIES && Option.isNone(answer);
+      attempt += 1
+    ) {
+      const tried = yield* hello(base, pass, `${label} #${attempt}`).pipe(
         Effect.option
       );
+
+      for (const { socket } of Option.toArray(tried)) {
+        sockets.push(socket);
+        attempts.push(attemptOf(socket));
+        answer = answerOf(socket);
+      }
+
+      if (Option.isNone(tried)) {
+        attempts.push("could not open");
+      }
+
+      if (Option.isNone(answer) && attempt < COMEBACK_TRIES) {
+        yield* Effect.sleep(Duration.millis(COMEBACK_GAP_MS));
+      }
     }
 
-    return back;
+    return {
+      cameBack: Option.match(answer, {
+        onNone: () => `no answer (${attempts.join("; ")})`,
+        onSome: (reason) =>
+          reason === "Removed" ? reason : `${reason} (${attempts.join("; ")})`,
+      }),
+      sockets,
+    };
   });
 
 export const comeBackAndRead = (
@@ -192,21 +233,12 @@ export const comeBackAndRead = (
       standings = yield* readStandings(base, pass);
     }
 
-    for (const socket of [
-      ...sockets,
-      ...Option.toArray(back).map(({ socket: last }) => last),
-    ]) {
+    for (const socket of [...sockets, ...back.sockets]) {
       yield* socket.disconnect;
     }
 
     return {
-      cameBack: Option.match(back, {
-        onNone: () => "could not open",
-        onSome: (last) =>
-          greeted(last.socket)
-            ? "Welcomed"
-            : Option.getOrElse(closingOf(last.socket), () => last.greeting),
-      }),
+      cameBack: back.cameBack,
       standings: Option.some(standings),
     };
   });
