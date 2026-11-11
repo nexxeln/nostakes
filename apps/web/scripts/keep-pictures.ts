@@ -15,6 +15,8 @@ const STAGE_PORT = 5194;
 
 const STAGE = `http://localhost:${STAGE_PORT}/scripts/moments/stage.html`;
 
+const NIGHT_STAGE = `http://localhost:${STAGE_PORT}/scripts/night/stage.html`;
+
 const SMALLEST_PNG_BYTES = 20_000;
 
 const SHARES = 2;
@@ -199,6 +201,75 @@ const checkEngine = (engine: BrowserType, dir: Option.Option<string>) =>
       problems.push(`the download fallback saved ${download}`);
     }
 
+    const settled = yield* attempt("open a settled screen's keep row", () =>
+      context.newPage()
+    );
+
+    yield* attempt("open the night stage", () =>
+      settled.goto(
+        `${NIGHT_STAGE}?view=keep&card=settle&sample=nine&theme=Light`
+      )
+    );
+    yield* attempt("draw the settle-up at both sizes before any tap", () =>
+      settled
+        .locator('nostakes-keep[data-drawn="Chat Story"]')
+        .waitFor({ state: "attached", timeout: 30_000 })
+    );
+    yield* attempt("tap Share as a picture", () =>
+      settled.locator("nostakes-keep .keep").click()
+    );
+    yield* attempt("tap Story beside it", () =>
+      settled.locator("nostakes-keep .story").click()
+    );
+    yield* attempt(
+      "wait for both settle-up taps to reach the share sheet",
+      () =>
+        settled.waitForFunction(
+          `window.__shared.length >= ${SHARES}`,
+          undefined,
+          {
+            timeout: 15_000,
+          }
+        )
+    );
+
+    const settledFound = yield* shared(settled);
+
+    for (const [name, width, height] of [
+      ["nostakes-settle-up.png", 1080, 1350],
+      ["nostakes-settle-up-story.png", 1080, 1920],
+    ] as const) {
+      Option.match(keptAs(settledFound, name), {
+        onNone: () => {
+          problems.push(`${name} was never offered to the share sheet`);
+        },
+        onSome: (entry) => {
+          if (
+            !entry.sameTask ||
+            entry.width !== width ||
+            entry.height !== height ||
+            entry.type !== "image/png"
+          ) {
+            problems.push(
+              `${name} reached the share sheet ${entry.sameTask ? "in" : "after"} the tap as ${entry.type} ${entry.width}x${entry.height}`
+            );
+          }
+        },
+      });
+    }
+
+    if (Option.isSome(dir)) {
+      yield* savedPictures(settled, dir.value, engine.name());
+    }
+
+    yield* Console.log(
+      `${problems.length === 0 ? "ok  " : "FAIL"} ${engine.name()}: settle-up ${settledFound
+        .map(
+          (entry) =>
+            `${entry.name} ${entry.width}x${entry.height} in the tap ${String(entry.sameTask)}`
+        )
+        .join("; ")}`
+    );
     yield* Console.log(
       `${problems.length === 0 ? "ok  " : "FAIL"} ${engine.name()}: ${found
         .map(

@@ -2,7 +2,12 @@ import "../../src/client/tokens.css";
 import "../../src/client/app.css";
 import { Effect } from "effect";
 
+import { defineKeep } from "../../src/client/pictures/element.js";
 import { EMBEDDED_FONTS, pngFile } from "../../src/client/pictures/png.js";
+import {
+  KEEP_TAG,
+  KeepPictureSchema,
+} from "../../src/features/pictures/keep.js";
 import { fileNameOf } from "../../src/features/pictures/paper.js";
 import type { KeptFrame } from "../../src/features/pictures/paper.js";
 import { recapSvg } from "../../src/features/pictures/recap-card.js";
@@ -46,10 +51,30 @@ const png = (into: Element) =>
     })
   );
 
+const keepRow = (into: Element) => {
+  defineKeep();
+
+  const host = document.createElement(KEEP_TAG);
+
+  into.append(host);
+  Object.assign(host, {
+    deck: "TwoColour",
+    label: "Share as a picture",
+    picture:
+      card === "recap"
+        ? KeepPictureSchema.cases.Recap.make(sampleRecap(sample))
+        : KeepPictureSchema.cases.SettleUp.make(sampleSettleUp(sample)),
+    theme,
+    tone: "Primary",
+  });
+};
+
 if (root !== null) {
   const view = params.get("view") ?? "svg";
 
-  if (view === "names") {
+  if (view === "keep") {
+    keepRow(root);
+  } else if (view === "names") {
     if (root instanceof HTMLElement) {
       root.dataset.result = JSON.stringify(NIGHT_NAMES);
     }
