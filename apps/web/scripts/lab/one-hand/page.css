@@ -208,27 +208,28 @@ body {
 }
 
 .who .hop {
-  animation: idle 3.4s ease-in-out infinite alternate;
+  animation: idle var(--idle, 3.4s) ease-in-out var(--idle-from, 0s) infinite
+    alternate;
 }
 
-#maya .hop {
-  animation-delay: -1.1s;
-  animation-duration: 2.9s;
+#maya {
+  --idle: 2.9s;
+  --idle-from: -1.1s;
 }
 
-#jonas .hop {
-  animation-delay: -2.3s;
-  animation-duration: 4.3s;
+#jonas {
+  --idle: 4.3s;
+  --idle-from: -2.3s;
 }
 
-#priya .hop {
-  animation-delay: -0.6s;
-  animation-duration: 3.1s;
+#priya {
+  --idle: 3.1s;
+  --idle-from: -0.6s;
 }
 
-#dev .hop {
-  animation-delay: -1.8s;
-  animation-duration: 5.2s;
+#dev {
+  --idle: 5.2s;
+  --idle-from: -1.8s;
 }
 
 @keyframes idle {
