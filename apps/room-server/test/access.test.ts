@@ -2,6 +2,7 @@ import * as Cloudflare from "@alchemy.run/cloudflare";
 import * as Test from "@alchemy.run/test/Vitest";
 import { expect } from "@effect/vitest";
 import {
+  FRAME_ALLOWANCE,
   HELLO_TIMEOUT_MS,
   HttpRefusalSchema,
   MAX_FRAME_BYTES,
@@ -79,6 +80,8 @@ const baseUrl = deployed.pipe(
 );
 
 const Commands = ToyMemberCommandSchema.cases;
+
+const FLOOD = FRAME_ALLOWANCE.burst + 20;
 
 const isEvent = ToyRedactedSchema.guards;
 
@@ -447,7 +450,7 @@ test(
 
     const chatty = yield* joinAs(base, anaPass, "chatty");
 
-    for (let frame = 0; frame < 30; frame += 1) {
+    for (let frame = 0; frame < FLOOD; frame += 1) {
       yield* chatty.client.sendText(paddedPing(PING_FRAME.length + 1));
     }
 
@@ -455,26 +458,26 @@ test(
 
     const heartbeat = yield* joinAs(base, anaPass, "exact pings");
 
-    for (let frame = 0; frame < 30; frame += 1) {
+    for (let frame = 0; frame < FLOOD; frame += 1) {
       yield* heartbeat.client.sendText(PING_FRAME);
     }
 
-    for (let frame = 0; frame < 30; frame += 1) {
+    for (let frame = 0; frame < FLOOD; frame += 1) {
       yield* heartbeat.client.next(`pong ${frame}`, isPong);
     }
 
     expect(yield* heartbeat.client.closed).toEqual(Option.none());
     expect(
       heartbeat.client.frames.filter((text) => text === PONG_FRAME)
-    ).toHaveLength(30);
+    ).toHaveLength(FLOOD);
 
     const pongs = chatty.client.messages.filter(
       codec.server.guards.Pong
     ).length;
 
     expect(tooMany.reason).toBe("TooManyFrames");
-    expect(pongs).toBeGreaterThanOrEqual(8);
-    expect(pongs).toBeLessThan(30);
+    expect(pongs).toBeGreaterThanOrEqual(FRAME_ALLOWANCE.burst - 2);
+    expect(pongs).toBeLessThan(FLOOD);
 
     const sockets = yield* pipe(
       Array.from({ length: MAX_SOCKETS - 1 }, (_, index) => index),

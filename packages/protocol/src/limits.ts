@@ -4,6 +4,8 @@ export const FRAMES_PER_SECOND = 20;
 
 export const FRAME_BURST = 10;
 
+export const ROOM_STALL_TOLERANCE_MS = 3000;
+
 export const SIGNALS_PER_SECOND = 4;
 
 export const SIGNAL_BURST = 6;

@@ -3,6 +3,7 @@ import { Option } from "effect";
 import {
   FRAME_BURST,
   FRAMES_PER_SECOND,
+  ROOM_STALL_TOLERANCE_MS,
   SIGNAL_BURST,
   SIGNALS_PER_SECOND,
 } from "./limits.js";
@@ -15,7 +16,7 @@ export interface Allowance {
 }
 
 export const FRAME_ALLOWANCE: Allowance = {
-  burst: FRAME_BURST,
+  burst: FRAME_BURST + (FRAMES_PER_SECOND * ROOM_STALL_TOLERANCE_MS) / MILLI,
   perSecond: FRAMES_PER_SECOND,
 };
 

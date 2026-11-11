@@ -12,7 +12,7 @@ import type {
   RoomClient,
   SocketEvent,
 } from "@nostakes/client";
-import { FRAME_BURST, TokenSchema } from "@nostakes/protocol";
+import { FRAME_ALLOWANCE, TokenSchema } from "@nostakes/protocol";
 import type { RoomPass } from "@nostakes/protocol";
 import { Effect, Layer, Result, Schema, Stream } from "effect";
 
@@ -141,7 +141,7 @@ export const tappedWire = (label: string) => {
     floodFromClient: Effect.sync(() => {
       const tapped = latest();
 
-      for (let frame = 0; frame <= FRAME_BURST + 2; frame += 1) {
+      for (let frame = 0; frame <= FRAME_ALLOWANCE.burst + 2; frame += 1) {
         tapped?.raw.send(WAKING_PING_FRAME);
       }
     }),

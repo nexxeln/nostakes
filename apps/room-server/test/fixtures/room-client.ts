@@ -37,7 +37,13 @@ const encodeClientFrame = Schema.encodeSync(
 export class ClientFailed extends Schema.TaggedError<
   ClientFailed,
   { readonly brand: unique symbol }
->()("ClientFailed", { label: Schema.String, waitingFor: Schema.String }) {}
+>()("ClientFailed", { label: Schema.String, waitingFor: Schema.String }) {
+  override get message() {
+    return `${this.label} was waiting for ${this.waitingFor}.`;
+  }
+}
+
+const isClosingFrame = codec.server.guards.Closing;
 
 export interface Closed {
   readonly code: number;
@@ -131,12 +137,31 @@ export const connect = (
             return found;
           }
 
+          const closing = messages.find(isClosingFrame);
+
+          if (closing !== undefined) {
+            return yield* new ClientFailed({
+              label,
+              waitingFor: `${waitingFor}, but the room closed this socket as ${closing.reason}`,
+            });
+          }
+
           yield* Queue.take(inbox);
         }
       }).pipe(
         Effect.timeoutOrElse({
           duration: Duration.seconds(10),
-          orElse: () => Effect.fail(new ClientFailed({ label, waitingFor })),
+          orElse: () =>
+            Effect.fail(
+              new ClientFailed({
+                label,
+                waitingFor: Option.match(closed, {
+                  onNone: () => `${waitingFor} within 10 s`,
+                  onSome: (shut) =>
+                    `${waitingFor}, but the socket closed with ${shut.code} ${shut.reason}`,
+                }),
+              })
+            ),
         })
       );
 
