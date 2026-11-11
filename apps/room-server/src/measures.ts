@@ -38,7 +38,7 @@ export const MEASURES = {
     doubles: ["hands", "players", "durationMs", "transfers"],
     from: "Server",
   },
-  PageVisit: { blobs: ["page"], doubles: [], from: "Server" },
+  PageVisit: { blobs: ["page", "source"], doubles: [], from: "Server" },
   RateLimited: { blobs: ["action"], doubles: [], from: "Server" },
   RoomOpened: { blobs: ["rules"], doubles: [], from: "Server" },
   RulesChanged: { blobs: ["rules"], doubles: [], from: "Server" },

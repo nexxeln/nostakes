@@ -97,9 +97,22 @@ const points: readonly StampedPoint[] = [
   ...night("room0000000000r3", T0 + 3 * DAY, ["a", "b", "d"], 3, 30, 3, true),
   ...night("room0000000000r4", T0 + DAY, ["e"], 1, 0, 0, false),
   ...night("room0000000000r5", T0 + 1.5 * DAY, ["f", "g"], 2, 1, 2, false),
-  stamp(SITE_SCOPE, T0, measure("PageVisit", { page: "Home" })),
-  stamp(SITE_SCOPE, T0 + 1, measure("PageVisit", { page: "Home" })),
-  stamp(SITE_SCOPE, T0 + 2, measure("PageVisit", { page: "Invite" })),
+  stamp(SITE_SCOPE, T0, measure("PageVisit", { page: "Home", source: "x" })),
+  stamp(
+    SITE_SCOPE,
+    T0 + 1,
+    measure("PageVisit", { page: "Home", source: "hn" })
+  ),
+  stamp(
+    SITE_SCOPE,
+    T0 + 2,
+    measure("PageVisit", { page: "Invite", source: "none" })
+  ),
+  stamp(
+    SITE_SCOPE,
+    T0 + 3,
+    measure("PageVisit", { page: "Home", source: "x" })
+  ),
   stamp(
     "room0000000000r1",
     T0 + 5,
@@ -150,7 +163,7 @@ describe("the stats report", () => {
       seated: 3,
       settled: 1,
       twentyHands: 1,
-      visits: 3,
+      visits: 4,
     });
   });
 
@@ -163,7 +176,9 @@ describe("the stats report", () => {
       ...reportedLines(funnel),
     ]).toEqual([
       "funnel",
-      "  visits               3 (home 2, invite 1)",
+      "  visits               4 (home 3, invite 1)",
+      "  home came from       x 2, hn 1",
+      "  invite came from     none 1",
       "  rooms created        4",
       "  2+ seated            3",
       "  first hand           3",

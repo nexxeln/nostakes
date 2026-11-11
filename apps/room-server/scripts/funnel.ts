@@ -68,10 +68,17 @@ export interface CountRow {
   readonly total: number;
 }
 
+export interface SourceRow {
+  readonly page: string;
+  readonly source: string;
+  readonly weight: number;
+}
+
 export interface Grouped {
   readonly rooms: readonly RoomRow[];
   readonly devices: readonly DeviceRow[];
   readonly counts: readonly CountRow[];
+  readonly sources: readonly SourceRow[];
 }
 
 export const roomsSince = (period: Period) => period.from;
@@ -138,6 +145,21 @@ const addCount = (
   });
 };
 
+export const blobOf = (point: StampedPoint, kind: MeasureKind, name: string) =>
+  point.point.blobs[blobPosition(kind, name) - 1] ?? "";
+
+const addSource = (sources: Map<string, SourceRow>, stamped: StampedPoint) => {
+  const page = blobOf(stamped, "PageVisit", "page");
+  const source = blobOf(stamped, "PageVisit", "source");
+  const key = `${page} ${source}`;
+
+  sources.set(key, {
+    page,
+    source,
+    weight: (sources.get(key)?.weight ?? 0) + 1,
+  });
+};
+
 export const groupPoints = (
   points: readonly StampedPoint[],
   period: Period
@@ -145,6 +167,7 @@ export const groupPoints = (
   const rooms = new Map<string, RoomRow>();
   const devices = new Map<string, DeviceRow>();
   const counts = new Map<string, CountRow>();
+  const sources = new Map<string, SourceRow>();
 
   for (const stamped of points) {
     const inRoom = stamped.point.indexes[0] !== SITE_SCOPE;
@@ -172,6 +195,10 @@ export const groupPoints = (
       ) {
         addCount(counts, stamped, kind);
       }
+
+      if (kind === "PageVisit" && within(stamped.at, period.from, period.to)) {
+        addSource(sources, stamped);
+      }
     }
   }
 
@@ -179,6 +206,7 @@ export const groupPoints = (
     counts: [...counts.values()],
     devices: [...devices.values()],
     rooms: [...rooms.values()],
+    sources: [...sources.values()],
   };
 };
 
@@ -227,6 +255,20 @@ export const countsQuery = (dataset: string, period: Period) =>
     "GROUP BY kind, detail FORMAT JSON",
   ].join(" ");
 
+const blobColumn = (kind: MeasureKind, name: string) =>
+  `blob${blobPosition(kind, name)}`;
+
+export const sourcesQuery = (dataset: string, period: Period) =>
+  [
+    `SELECT ${blobColumn("PageVisit", "page")} AS page,`,
+    `${blobColumn("PageVisit", "source")} AS source,`,
+    "sum(_sample_interval) AS weight",
+    `FROM ${dataset}`,
+    `WHERE timestamp >= ${sqlTime(period.from)} AND timestamp < ${sqlTime(period.to)}`,
+    "AND blob1 = 'PageVisit'",
+    "GROUP BY page, source FORMAT JSON",
+  ].join(" ");
+
 const NumberLike = Schema.Union([Schema.Finite, Schema.FiniteFromString]);
 
 const SECOND_MS = 1000;
@@ -267,6 +309,25 @@ export const CountRowsSchema = Schema.Struct({
     })
   ),
 });
+
+export const SourceRowsSchema = Schema.Struct({
+  data: Schema.Array(
+    Schema.Struct({
+      page: Schema.String,
+      source: Schema.String,
+      weight: NumberLike,
+    })
+  ),
+});
+
+export const sourceRowsFrom = (
+  rows: typeof SourceRowsSchema.Type
+): readonly SourceRow[] =>
+  rows.data.map((row) => ({
+    page: row.page,
+    source: row.source,
+    weight: row.weight,
+  }));
 
 export const roomRowsFrom = (
   rows: typeof RoomRowsSchema.Type
@@ -343,6 +404,7 @@ export interface Funnel {
   readonly handsMedian: Option.Option<number>;
   readonly abandoned: number;
   readonly counts: ReadonlyMap<string, ReadonlyMap<string, CountRow>>;
+  readonly sources: ReadonlyMap<string, ReadonlyMap<string, number>>;
 }
 
 const median = (values: readonly number[]) => {
@@ -442,6 +504,22 @@ const countsByKind = (rows: readonly CountRow[]) => {
   return byKind;
 };
 
+const sourcesByPage = (rows: readonly SourceRow[]) => {
+  const byPage = new Map<string, Map<string, number>>();
+
+  for (const row of rows) {
+    const sources = byPage.get(row.page) ?? new Map<string, number>();
+
+    sources.set(
+      row.source || "unrecorded",
+      (sources.get(row.source || "unrecorded") ?? 0) + row.weight
+    );
+    byPage.set(row.page, sources);
+  }
+
+  return byPage;
+};
+
 const sumWeight = (
   rooms: readonly RoomFacts[],
   keep: (facts: RoomFacts) => boolean
@@ -484,6 +562,7 @@ export const funnelOf = (grouped: Grouped, period: Period): Funnel => {
       reached(facts, "SeatTaken", "seated", SEATED_FOR_A_GAME)
     ),
     settled: sumWeight(rooms, (facts) => facts.kinds.has("NightSettled")),
+    sources: sourcesByPage(grouped.sources),
     twentyHands: sumWeight(rooms, (facts) =>
       reached(facts, "HandFinished", "hand", REAL_NIGHT_HANDS)
     ),
@@ -541,6 +620,17 @@ const ruleKeys = (funnel: Funnel) => {
         .join(", ");
 };
 
+const fromText = (sources: ReadonlyMap<string, number> | undefined) => {
+  const rows = [...(sources?.entries() ?? [])].toSorted(
+    ([leftSource, left], [rightSource, right]) =>
+      right - left || leftSource.localeCompare(rightSource)
+  );
+
+  return rows.length === 0
+    ? "n/a"
+    : rows.map(([source, weight]) => `${source} ${plural(weight)}`).join(", ");
+};
+
 const line = (label: string, value: string) => `  ${label.padEnd(20)} ${value}`;
 
 const total = (rows: ReadonlyMap<string, CountRow> | undefined) =>
@@ -566,6 +656,8 @@ export const funnelLines = (funnel: Funnel) => [
     "visits",
     `${plural(funnel.visits)} (home ${plural(funnel.homeVisits)}, invite ${plural(funnel.inviteVisits)})`
   ),
+  line("home came from", fromText(funnel.sources.get("Home"))),
+  line("invite came from", fromText(funnel.sources.get("Invite"))),
   line("rooms created", plural(funnel.created)),
   line("2+ seated", plural(funnel.seated)),
   line("first hand", plural(funnel.firstHand)),
@@ -636,6 +728,3 @@ export const reportedLines = (funnel: Funnel) => [
   line("forced reloads", listed(reported(funnel, "ForcedReload"))),
   line("reconnects", plural(total(reported(funnel, "ClientReconnects")))),
 ];
-
-export const blobOf = (point: StampedPoint, kind: MeasureKind, name: string) =>
-  point.point.blobs[blobPosition(kind, name) - 1] ?? "";

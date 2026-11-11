@@ -273,6 +273,10 @@ describe("the preview clip", () => {
   );
 });
 
+const from = (referer: string) => ({
+  headers: { referer, "sec-fetch-dest": "document" },
+});
+
 describe("counting visits", () => {
   it.effect(
     "counts a page a browser opens as a document, by page and nothing else, and not a link preview's fetch",
@@ -293,9 +297,46 @@ describe("counting visits", () => {
         yield* answer("/preview/clip.mp4", opened, record);
 
         expect(counted).toEqual([
-          measure("PageVisit", { page: "Home" }),
-          measure("PageVisit", { page: "Invite" }),
+          measure("PageVisit", { page: "Home", source: "none" }),
+          measure("PageVisit", { page: "Invite", source: "none" }),
         ]);
+      })
+  );
+
+  it.effect(
+    "records where a visit came from only as a name from the table, never the address it came from",
+    () =>
+      Effect.gen(function* countSources() {
+        const counted: Measure[] = [];
+
+        const record: Recorder = (measures) =>
+          Effect.sync(() => {
+            counted.push(...measures);
+          });
+
+        yield* answer("/", from(`${STAGE}/r/Q8MZ4T?name=Wren`), record);
+        yield* answer(
+          "/r/K7P2XZ",
+          from("https://news.ycombinator.com/item?id=4417"),
+          record
+        );
+        yield* answer("/", from("https://t.co/Q8MZ4T"), record);
+        yield* answer("/", from("https://wren.example/r/Q8MZ4T"), record);
+
+        expect({
+          counted,
+          leaked: ["Q8MZ4T", "Wren", "4417", "example"].filter((secret) =>
+            JSON.stringify(counted).includes(secret)
+          ),
+        }).toEqual({
+          counted: [
+            measure("PageVisit", { page: "Home", source: "own" }),
+            measure("PageVisit", { page: "Invite", source: "hn" }),
+            measure("PageVisit", { page: "Home", source: "x" }),
+            measure("PageVisit", { page: "Home", source: "other" }),
+          ],
+          leaked: [],
+        });
       })
   );
 });

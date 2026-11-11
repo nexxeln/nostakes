@@ -6,6 +6,7 @@ import * as HttpServerResponse from "effect/http/HttpServerResponse";
 import type { Recorder } from "./analytics.js";
 import { measure } from "./measures.js";
 import { siteOrigin } from "./site.js";
+import { visitSourceOf } from "./visit-source.js";
 
 export interface AssetFetcher {
   readonly fetch: (request: Request) => Promise<Response>;
@@ -136,7 +137,12 @@ const page = <R>(
     }
 
     if (visited(request)) {
-      yield* record([measure("PageVisit", { page: kind })]);
+      yield* record([
+        measure("PageVisit", {
+          page: kind,
+          source: visitSourceOf(request.headers.get("referer"), url.origin),
+        }),
+      ]);
     }
 
     const html = new TextEncoder().encode(

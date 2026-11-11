@@ -33,6 +33,9 @@ import {
   RoomRowsSchema,
   roomRowsFrom,
   roomsQuery,
+  SourceRowsSchema,
+  sourceRowsFrom,
+  sourcesQuery,
 } from "./funnel.ts";
 import type { Period } from "./funnel.ts";
 
@@ -186,7 +189,7 @@ const report = Effect.gen(function* report() {
 
   const dataset = datasetName(stage);
 
-  const [rooms, devices, counts] = yield* Effect.all([
+  const [rooms, devices, counts, sources] = yield* Effect.all([
     run(account, token, roomsQuery(dataset, period)).pipe(
       Effect.flatMap(rowsOf(RoomRowsSchema))
     ),
@@ -196,6 +199,9 @@ const report = Effect.gen(function* report() {
     run(account, token, countsQuery(dataset, period)).pipe(
       Effect.flatMap(rowsOf(CountRowsSchema))
     ),
+    run(account, token, sourcesQuery(dataset, period)).pipe(
+      Effect.flatMap(rowsOf(SourceRowsSchema))
+    ),
   ]);
 
   const funnel = funnelOf(
@@ -203,6 +209,7 @@ const report = Effect.gen(function* report() {
       counts: countRowsFrom(counts),
       devices: deviceRowsFrom(devices),
       rooms: roomRowsFrom(rooms),
+      sources: sourceRowsFrom(sources),
     },
     period
   );
