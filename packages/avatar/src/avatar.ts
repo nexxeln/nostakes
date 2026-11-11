@@ -150,6 +150,61 @@ export const AvatarSchema = Schema.Struct({
 
 export type Avatar = typeof AvatarSchema.Type;
 
+export const PARTS = [
+  "species",
+  "colour",
+  "suit",
+  "rank",
+  "eyes",
+  "mouth",
+  "headwear",
+  "eyewear",
+  "neck",
+  "mark",
+  "extra",
+] as const satisfies readonly (keyof Avatar)[];
+
+export const PLACED_PARTS = [
+  "rank",
+  "eyes",
+  "mouth",
+  "headwear",
+  "eyewear",
+  "neck",
+  "mark",
+  "extra",
+] as const satisfies readonly (keyof Avatar)[];
+
+export const PLACELESS_PARTS = [
+  "species",
+  "colour",
+  "suit",
+] as const satisfies readonly (keyof Avatar)[];
+
+export const PartSchema = Schema.Literals(PARTS);
+
+export const PlacedPartSchema = Schema.Literals(PLACED_PARTS);
+
+export type Part = typeof PartSchema.Type;
+
+export type PlacedPart = typeof PlacedPartSchema.Type;
+
+export const CHOICES = {
+  colour: COLOURS,
+  extra: EXTRAS,
+  eyes: EYES,
+  eyewear: EYEWEAR,
+  headwear: HEADWEAR,
+  mark: MARKS,
+  mouth: MOUTHS,
+  neck: NECKWEAR,
+  rank: RANKS,
+  species: SPECIES,
+  suit: SUITS,
+} as const satisfies { readonly [Name in Part]: readonly Avatar[Name][] };
+
+export const choicesOf = (part: Part): readonly string[] => CHOICES[part];
+
 export const DEFAULT_AVATAR: Avatar = {
   colour: "BlueYellow",
   extra: "None",

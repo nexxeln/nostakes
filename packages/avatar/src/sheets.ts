@@ -1,4 +1,4 @@
-import type { Rank, Suit, Theme } from "./avatar.js";
+import type { PlacedPart, Rank, Suit, Theme } from "./avatar.js";
 import { BLUE, GREEN, GROUNDS, INK, PINK, RED, YELLOW } from "./palette.js";
 import type { Pair } from "./palette.js";
 import {
@@ -37,6 +37,7 @@ export interface Cut {
   readonly seed: number;
   readonly pinned: ReadonlySet<number>;
   readonly rise: number;
+  readonly part?: PlacedPart;
 }
 
 export interface Pip {
@@ -46,6 +47,7 @@ export interface Pip {
   readonly size: number;
   readonly paint: Paint;
   readonly turn: number;
+  readonly part?: PlacedPart;
 }
 
 export interface Glyph {
@@ -55,6 +57,7 @@ export interface Glyph {
   readonly size: number;
   readonly paint: Paint;
   readonly turn: number;
+  readonly part?: PlacedPart;
 }
 
 export type Piece = Cut | Pip | Glyph;
@@ -123,6 +126,11 @@ export const cornerIndex = (
   glyph(rank, at, size, suitPaint(suit)),
   pip(suit, [at[0], at[1] + size * 0.95], size * 0.8, suitPaint(suit)),
 ];
+
+export const ofPart = (
+  pieces: readonly Piece[],
+  part: PlacedPart
+): readonly Piece[] => pieces.map((piece): Piece => ({ ...piece, part }));
 
 export const scaled = (points: Polygon, centre: Point, size: number): Polygon =>
   points.map(([x, y]): Point => [centre[0] + x * size, centre[1] + y * size]);
@@ -343,3 +351,36 @@ const drawPiece = (piece: Piece, stage: Stage): string => {
 
 export const drawPieces = (pieces: readonly Piece[], stage: Stage): string =>
   pieces.map((piece) => drawPiece(piece, stage)).join("");
+
+interface Run {
+  readonly part: PlacedPart | undefined;
+  readonly drawn: string;
+}
+
+const runsOf = (pieces: readonly Piece[], stage: Stage): readonly Run[] => {
+  const runs: Run[] = [];
+
+  for (const piece of pieces) {
+    const drawn = drawPiece(piece, stage);
+    const last = runs.at(-1);
+
+    if (last !== undefined && last.part === piece.part) {
+      runs[runs.length - 1] = { drawn: last.drawn + drawn, part: last.part };
+    } else {
+      runs.push({ drawn, part: piece.part });
+    }
+  }
+
+  return runs;
+};
+
+export const drawRuns = (
+  pieces: readonly Piece[],
+  stage: Stage,
+  opened: (part: PlacedPart) => string
+): string =>
+  runsOf(pieces, stage)
+    .map(({ drawn, part }) =>
+      part === undefined || drawn === "" ? drawn : `${opened(part)}${drawn}</g>`
+    )
+    .join("");

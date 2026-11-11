@@ -2,7 +2,7 @@ import type { Rank, Species, Suit } from "./avatar.js";
 import type { BrowAnchor, EyeAnchor, MouthAnchor } from "./features.js";
 import { circle } from "./paper.js";
 import type { Point, Polygon } from "./paper.js";
-import { cornerIndex, cut, flat, turned } from "./sheets.js";
+import { cornerIndex, cut, flat, ofPart, turned } from "./sheets.js";
 import type { Piece } from "./sheets.js";
 
 export interface GlassesAnchor {
@@ -44,21 +44,24 @@ export interface Build {
 const nothing = (): readonly Piece[] => [];
 
 const finTab = (rank: Rank, suit: Suit, dx: number): readonly Piece[] =>
-  turned(
-    [
-      cut(
-        [
-          [39 + dx, 24],
-          [55 + dx, -1],
-          [61 + dx, -2],
-          [68 + dx, 24],
-        ],
-        "Stock"
-      ),
-      ...cornerIndex(rank, suit, [58.6 + dx, 5], 5.4),
-    ],
-    -8,
-    [60 + dx, 12]
+  ofPart(
+    turned(
+      [
+        cut(
+          [
+            [39 + dx, 24],
+            [55 + dx, -1],
+            [61 + dx, -2],
+            [68 + dx, 24],
+          ],
+          "Stock"
+        ),
+        ...cornerIndex(rank, suit, [58.6 + dx, 5], 5.4),
+      ],
+      -8,
+      [60 + dx, 12]
+    ),
+    "rank"
   );
 
 const tuckedCard = (
@@ -69,21 +72,24 @@ const tuckedCard = (
 ): readonly Piece[] => {
   const [x, y] = corner;
 
-  return turned(
-    [
-      cut(
-        [
-          [x, y],
-          [x + 16, y],
-          [x + 16, y + 20],
-          [x, y + 20],
-        ],
-        "Stock"
-      ),
-      ...cornerIndex(rank, suit, [x + 4.4, y + 4.6], 5),
-    ],
-    turn,
-    [x + 8, y + 10]
+  return ofPart(
+    turned(
+      [
+        cut(
+          [
+            [x, y],
+            [x + 16, y],
+            [x + 16, y + 20],
+            [x, y + 20],
+          ],
+          "Stock"
+        ),
+        ...cornerIndex(rank, suit, [x + 4.4, y + 4.6], 5),
+      ],
+      turn,
+      [x + 8, y + 10]
+    ),
+    "rank"
   );
 };
 
@@ -185,8 +191,10 @@ const FISH_CREST: Polygon = [
 
 const goldfish: Build = {
   behind: (rank, suit) => [
-    cut(FISH_CREST, "Stock"),
-    ...cornerIndex(rank, suit, [41.5, 9.5], 6),
+    ...ofPart(
+      [cut(FISH_CREST, "Stock"), ...cornerIndex(rank, suit, [41.5, 9.5], 6)],
+      "rank"
+    ),
     flat(
       [
         [57, 3],
@@ -316,21 +324,24 @@ const octopus: Build = {
         "Fin"
       )
     ),
-    ...turned(
-      [
-        cut(
-          [
-            [77, 37],
-            [95, 37],
-            [95, 61],
-            [77, 61],
-          ],
-          "Stock"
-        ),
-        ...cornerIndex(rank, suit, [81.6, 41.6], 5.6),
-      ],
-      14,
-      [86, 50]
+    ...ofPart(
+      turned(
+        [
+          cut(
+            [
+              [77, 37],
+              [95, 37],
+              [95, 61],
+              [77, 61],
+            ],
+            "Stock"
+          ),
+          ...cornerIndex(rank, suit, [81.6, 41.6], 5.6),
+        ],
+        14,
+        [86, 50]
+      ),
+      "rank"
     ),
   ],
   body: [cut(OCTO_HEAD, "Body")],
@@ -391,21 +402,24 @@ const whale: Build = {
   eyes: { left: 26, right: 74, size: 9.5, y: 47 },
   fold: 38,
   front: (rank, suit) =>
-    turned(
-      [
-        cut(
-          [
-            [8, 13],
-            [24, 13],
-            [24, 33],
-            [8, 33],
-          ],
-          "Stock"
-        ),
-        ...cornerIndex(rank, suit, [12.4, 17.6], 5),
-      ],
-      -14,
-      [16, 24]
+    ofPart(
+      turned(
+        [
+          cut(
+            [
+              [8, 13],
+              [24, 13],
+              [24, 33],
+              [8, 33],
+            ],
+            "Stock"
+          ),
+          ...cornerIndex(rank, suit, [12.4, 17.6], 5),
+        ],
+        -14,
+        [16, 24]
+      ),
+      "rank"
     ),
   glasses: { height: 13, inner: 21, outer: 18, y: 46 },
   hat: { tilt: 0, width: 50, x: 50, y: 21 },
@@ -676,21 +690,24 @@ const angler: Build = {
       ],
       "Body"
     ),
-    ...turned(
-      [
-        cut(
-          [
-            [71.5, 6],
-            [84.5, 6],
-            [84.5, 23],
-            [71.5, 23],
-          ],
-          "Stock"
-        ),
-        ...cornerIndex(rank, suit, [75.4, 10], 4.6),
-      ],
-      6,
-      [78, 6]
+    ...ofPart(
+      turned(
+        [
+          cut(
+            [
+              [71.5, 6],
+              [84.5, 6],
+              [84.5, 23],
+              [71.5, 23],
+            ],
+            "Stock"
+          ),
+          ...cornerIndex(rank, suit, [75.4, 10], 4.6),
+        ],
+        6,
+        [78, 6]
+      ),
+      "rank"
     ),
     cut(circle([78.6, 3.6], 2.8), "Gold"),
   ],

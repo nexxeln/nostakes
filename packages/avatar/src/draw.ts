@@ -1,12 +1,15 @@
-import type { Avatar, Expression, Suit, Theme } from "./avatar.js";
-import { browsFor, eyesFor, mouthFor } from "./features.js";
-import { marksFor } from "./marks.js";
+import { Option } from "effect";
+
+import type { Avatar, Expression, Part, PlacedPart, Theme } from "./avatar.js";
+import { layersOf } from "./layers.js";
 import { PAIRS } from "./palette.js";
 import { cutPath, fmt, foldDown } from "./paper.js";
+import type { Point } from "./paper.js";
+import { asideFrom, boxOfPart, coversOfPart, placeOfPart } from "./parts.js";
+import type { Box } from "./parts.js";
 import {
-  cut,
   drawPieces,
-  flat,
+  drawRuns,
   keptBelow,
   paintOf,
   pip,
@@ -14,122 +17,20 @@ import {
   sheet,
   shifted,
   suitPaint,
-  turned,
 } from "./sheets.js";
 import type { Piece, Stage } from "./sheets.js";
 import { BUILDS } from "./species.js";
 import type { Build } from "./species.js";
-import {
-  extraFor,
-  eyewearFor,
-  glassesHideEyes,
-  headwearFor,
-  neckwearFor,
-} from "./wardrobe.js";
 
 export interface RenderOptions {
   readonly expression: Expression;
   readonly size: number;
   readonly theme?: Theme;
   readonly layers?: boolean;
+  readonly parts?: boolean;
+  readonly lifted?: Part;
+  readonly window?: Box;
 }
-
-const heldCard = (left: number, turn: number, suit: Suit): readonly Piece[] =>
-  turned(
-    [
-      cut(
-        [
-          [left, 70],
-          [left + 17, 70],
-          [left + 17, 95],
-          [left, 95],
-        ],
-        "Stock"
-      ),
-      flat(
-        [
-          [left + 2.4, 72.4],
-          [left + 14.6, 72.4],
-          [left + 14.6, 92.6],
-          [left + 2.4, 92.6],
-        ],
-        "Ink"
-      ),
-      pip(suit, [left + 8.5, 82.5], 6, "Stock"),
-    ],
-    turn,
-    [left + 8.5 - turn * 0.1, 84]
-  );
-
-const heldCards = (suit: Suit): readonly Piece[] => [
-  ...heldCard(33, -12, suit),
-  ...heldCard(50, 10, suit),
-];
-
-interface Mood {
-  readonly rise: number;
-  readonly dy: number;
-}
-
-const MOODS: Partial<Record<Expression, Mood>> = {
-  Gutted: { dy: 1.2, rise: 0.7 },
-  Happy: { dy: -1.6, rise: 1.45 },
-};
-
-const STILL: Mood = { dy: 0, rise: 1 };
-
-const moved = (pieces: readonly Piece[], mood: Mood): readonly Piece[] =>
-  raised(shifted(pieces, 0, mood.dy), mood.rise);
-
-const shadesDown = (avatar: Avatar, expression: Expression) =>
-  avatar.eyewear === "Shades" && expression === "LookingDown";
-
-const layersOf = (
-  avatar: Avatar,
-  expression: Expression,
-  build: Build
-): readonly (readonly Piece[])[] => {
-  const hat = headwearFor(avatar.headwear, build.hat, avatar.suit);
-  const mood = MOODS[expression] ?? STILL;
-
-  const eyes = glassesHideEyes(avatar.eyewear, expression)
-    ? []
-    : eyesFor(
-        avatar.eyes,
-        avatar.suit,
-        shadesDown(avatar, expression) ? "Resting" : expression,
-        build.eyes
-      );
-
-  const brows = shadesDown(avatar, expression)
-    ? []
-    : browsFor(expression, build.eyes, build.brows);
-
-  return [
-    build.behind(avatar.rank, avatar.suit),
-    hat.behind,
-    build.body,
-    marksFor(avatar, build),
-    build.front(avatar.rank, avatar.suit),
-    moved(eyes, mood),
-    moved(brows, mood),
-    moved(
-      eyewearFor(
-        avatar.eyewear,
-        expression,
-        build.eyes,
-        build.glasses,
-        build.hat.y - 1
-      ),
-      mood
-    ),
-    moved(mouthFor(avatar.mouth, expression, build.mouth), mood),
-    neckwearFor(avatar.neck, avatar.suit, build.neck),
-    moved(hat.front, mood),
-    moved(extraFor(avatar.extra, expression, build.mouth), mood),
-    expression === "LookingDown" ? heldCards(avatar.suit) : [],
-  ];
-};
 
 const FLAP_LIFT = 1;
 
@@ -158,9 +59,91 @@ const marked = (layer: number, art: string, layers: boolean) =>
     ? `<g class="sheet" style="--sheet:${layer}">${art}</g>`
     : art;
 
+interface Handling {
+  readonly shift: Point;
+  readonly rise: number;
+  readonly faded: boolean;
+}
+
+type Handlings = ReadonlyMap<PlacedPart, Handling>;
+
+const NO_HANDLINGS: Handlings = new Map();
+
+const LIFT_RISE = 1.9;
+
+const LIFT_SHIFT: Point = [-1.6, -2.9];
+
+const ASIDE_OPACITY = 0.3;
+
+const handlingsFor = (
+  avatar: Avatar,
+  expression: Expression,
+  lifted: PlacedPart
+): Handlings =>
+  new Map<PlacedPart, Handling>([
+    ...Option.match(boxOfPart(avatar, lifted, expression), {
+      onNone: () => [],
+      onSome: (held) =>
+        coversOfPart(avatar, lifted, expression).flatMap((cover) =>
+          Option.toArray(boxOfPart(avatar, cover, expression)).map(
+            (box): readonly [PlacedPart, Handling] => [
+              cover,
+              { faded: true, rise: 1, shift: asideFrom(held, box) },
+            ]
+          )
+        ),
+    }),
+    [lifted, { faded: false, rise: LIFT_RISE, shift: LIFT_SHIFT }],
+  ]);
+
+const handled = (
+  pieces: readonly Piece[],
+  handlings: Handlings
+): readonly Piece[] =>
+  handlings.size === 0
+    ? pieces
+    : pieces.flatMap((piece) => {
+        const handling =
+          piece.part === undefined ? undefined : handlings.get(piece.part);
+
+        return handling === undefined
+          ? [piece]
+          : raised(
+              shifted([piece], handling.shift[0], handling.shift[1]),
+              handling.rise
+            );
+      });
+
+const opened = (handlings: Handlings) => (part: PlacedPart) => {
+  const handling = handlings.get(part);
+
+  if (handling === undefined) {
+    return `<g data-part="${part}">`;
+  }
+
+  const shift = `${fmt(handling.shift[0])} ${fmt(handling.shift[1])}`;
+
+  return handling.faded
+    ? `<g data-part="${part}" data-shift="${shift}" opacity="${ASIDE_OPACITY}">`
+    : `<g data-part="${part}" data-shift="${shift}">`;
+};
+
+const frameOf = (size: number, window: Box | undefined) =>
+  window === undefined
+    ? `viewBox="0 0 100 100" width="${fmt(size)}" height="${fmt(size)}"`
+    : `viewBox="${fmt(window.x)} ${fmt(window.y)} ${fmt(window.width)} ${fmt(window.height)}" preserveAspectRatio="xMidYMid slice"`;
+
 export const render = (
   avatar: Avatar,
-  { expression, layers = false, size, theme = "Light" }: RenderOptions
+  {
+    expression,
+    layers = false,
+    lifted,
+    parts = false,
+    size,
+    theme = "Light",
+    window,
+  }: RenderOptions
 ): string => {
   const build = BUILDS[avatar.species];
 
@@ -172,14 +155,27 @@ export const render = (
 
   const folded = expression === "Folded";
 
-  const drawn = layersOf(avatar, expression, build).map((pieces) =>
-    drawPieces(folded ? keptBelow(pieces, build.fold) : pieces, stage)
-  );
+  const held =
+    lifted === undefined
+      ? undefined
+      : Option.getOrUndefined(placeOfPart(lifted));
+
+  const handlings =
+    held === undefined ? NO_HANDLINGS : handlingsFor(avatar, expression, held);
+
+  const open = opened(handlings);
+
+  const drawn = layersOf(avatar, expression, build, held).map((layer) => {
+    const pieces = handled(layer, handlings);
+    const kept = folded ? keptBelow(pieces, build.fold) : pieces;
+
+    return parts ? drawRuns(kept, stage, open) : drawPieces(kept, stage);
+  });
 
   const flap = folded ? [flapOf(avatar, build, stage)] : [];
 
   const sheets = [...drawn, ...flap].filter((layer) => layer !== "");
   const art = sheets.map((layer, index) => marked(index, layer, layers));
 
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="${fmt(size)}" height="${fmt(size)}" overflow="visible">${art.join("")}</svg>`;
+  return `<svg xmlns="http://www.w3.org/2000/svg" ${frameOf(size, window)} overflow="visible">${art.join("")}</svg>`;
 };

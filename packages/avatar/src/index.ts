@@ -1,5 +1,7 @@
 export {
   AvatarSchema,
+  CHOICES,
+  choicesOf,
   COLOURS,
   DEFAULT_AVATAR,
   EXPRESSIONS,
@@ -11,6 +13,11 @@ export {
   MARKS,
   MOUTHS,
   NECKWEAR,
+  PARTS,
+  PartSchema,
+  PLACED_PARTS,
+  PlacedPartSchema,
+  PLACELESS_PARTS,
   RANKS,
   SPECIES,
   SUITS,
@@ -28,6 +35,8 @@ export type {
   Mark,
   Mouth,
   Neckwear,
+  Part,
+  PlacedPart,
   Rank,
   Species,
   Suit,
@@ -37,6 +46,22 @@ export type {
 export { AvatarFromCode, avatarFor, codeFor, parseAvatar } from "./code.js";
 
 export { render } from "./draw.js";
+
+export { PAIRS } from "./palette.js";
+
+export type { Pair } from "./palette.js";
+
+export {
+  boxOfPart,
+  closeUpOf,
+  coversOfPart,
+  FACE_BOX,
+  isPlaced,
+  placeOfPart,
+  reachOfPart,
+} from "./parts.js";
+
+export type { Box } from "./parts.js";
 
 export type { RenderOptions } from "./draw.js";
 
