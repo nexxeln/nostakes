@@ -1,4 +1,6 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "@effect/vitest";
+import { Schema } from "effect";
+import * as Arbitrary from "effect/Arbitrary";
 
 import {
   applyCommandPolicy,
@@ -6,12 +8,78 @@ import {
   NONINTERACTIVE_VCS_ENV,
 } from "../../../scripts/vcs-command-policy.js";
 
+const blocked = { action: "block", reason: HOOK_BYPASS_REASON } as const;
+
+const bypasses = [
+  "git commit --no-verify -m wip",
+  "git commit --no-verif -m wip",
+  "git push --no-verify",
+  "git merge --no-verify feature",
+  "cd sub && git commit -m 'wip' --no-verify",
+  "/usr/bin/git commit --no-verify",
+  "git commit -n -m wip",
+  "git commit -nm wip",
+  "git commit -anm wip",
+  "git commit -m wip -n",
+  "git add . && git commit -m nope -n",
+  "git -C . commit -n",
+  "git -c core.hooksPath=/dev/null commit -m wip",
+  "git -c core.hookspath=/dev/null commit -m wip",
+  "git -c core.hooksPath /dev/null commit -m nope",
+  "git config core.hooksPath .nohooks",
+  "git config set core.hooksPath .nohooks",
+  "LEFTHOOK=0 git commit -m wip",
+  "LEFTHOOK=false git commit -m wip",
+  "env LEFTHOOK=0 git commit -m wip",
+  "export LEFTHOOK=0",
+  "HUSKY=0 git commit -m wip",
+  "LEFTHOOK_EXCLUDE=check git commit -m wip",
+  "pnpm exec lefthook uninstall",
+  "rm -rf .git/hooks",
+  "echo exit 0 > .git/hooks/pre-commit",
+  "cat noop >> .git/hooks/pre-commit",
+  "chmod -x .git/hooks/pre-commit",
+  'bash -c "git commit --no-verify"',
+  "sh -c 'git commit -n -m wip'",
+];
+
+const ordinary = [
+  "git status",
+  "/usr/bin/git status",
+  "git commit -m 'add -n flag docs'",
+  "git commit -m '--no-verify is banned'",
+  "git commit -m wip",
+  "git commit -am wip",
+  "git commit -F msg.txt -- -n",
+  "git commit --message -nope",
+  "git commit --author -n -m wip",
+  "git -C repo commit -m ready",
+  "git log -n 5",
+  "git push -n origin main",
+  "git merge -n feature",
+  "git add -n .",
+  "git config --get core.hooksPath",
+  "ls .git/hooks",
+  "cat .git/hooks/pre-commit",
+  "LEFTHOOK=1 git commit -m wip",
+  "LEFTHOOK_VERBOSE=1 git commit -m ready",
+];
+
+const quoted = (text: string) => `'${text.replaceAll("'", "'\\''")}'`;
+
+const messages = Arbitrary.schema(Schema.String);
+
 describe("vcs command policy", () => {
   it("leaves unrelated shell commands unchanged", () => {
-    expect(applyCommandPolicy("pnpm test")).toEqual({
-      action: "allow",
-      command: "pnpm test",
-    });
+    expect(
+      ["pnpm check", "grep -rn no-verify docs", "some-tool --no-verify"].map(
+        applyCommandPolicy
+      )
+    ).toEqual([
+      { action: "allow", command: "pnpm check" },
+      { action: "allow", command: "grep -rn no-verify docs" },
+      { action: "allow", command: "some-tool --no-verify" },
+    ]);
   });
 
   it("prevents Git from opening an editor", () => {
@@ -28,53 +96,44 @@ describe("vcs command policy", () => {
     });
   });
 
-  it("recognizes an absolute Git executable", () => {
-    expect(applyCommandPolicy("/usr/bin/git status")).toEqual({
-      action: "allow",
-      command: `${NONINTERACTIVE_VCS_ENV}/usr/bin/git status`,
-    });
+  it("blocks every way to skip or disable the hooks", () => {
+    expect(
+      bypasses.filter(
+        (command) => applyCommandPolicy(command).action !== "block"
+      )
+    ).toEqual([]);
   });
 
-  it("blocks hook bypass attempts", () => {
-    expect(applyCommandPolicy("git commit --no-verify -m nope")).toEqual({
-      action: "block",
-      reason: HOOK_BYPASS_REASON,
-    });
+  it("allows ordinary commands that only look like a bypass", () => {
+    expect(
+      ordinary.filter(
+        (command) => applyCommandPolicy(command).action !== "allow"
+      )
+    ).toEqual([]);
   });
 
-  it.each([
-    "git commit -n -m nope",
-    "git commit -anm nope",
-    "git add . && git commit -m nope -n",
-    "LEFTHOOK=0 git commit -m nope",
-    "LEFTHOOK=false git commit -m nope",
-    "git -c core.hooksPath=/dev/null commit -m nope",
-    "git -c core.hooksPath /dev/null commit -m nope",
-    "git push --no-verify",
-  ])("blocks the hook bypass in %s", (command) => {
-    expect(applyCommandPolicy(command)).toEqual({
-      action: "block",
-      reason: HOOK_BYPASS_REASON,
-    });
-  });
+  it.prop(
+    "never blocks a commit for the words in its message",
+    [messages],
+    ([message]) => {
+      expect(
+        applyCommandPolicy(`git commit -m ${quoted(message)}`).action
+      ).toBe("allow");
+    }
+  );
 
-  it.each([
-    "git log -n 5",
-    "git push -n origin main",
-    "git merge -n feature",
-    "git -C repo commit -m ready",
-    "LEFTHOOK_VERBOSE=1 git commit -m ready",
-  ])("allows %s", (command) => {
-    expect(applyCommandPolicy(command)).toEqual({
-      action: "allow",
-      command: `${NONINTERACTIVE_VCS_ENV}${command}`,
-    });
-  });
-
-  it("does not block an unrelated no-verify option", () => {
-    expect(applyCommandPolicy("some-tool --no-verify")).toEqual({
-      action: "allow",
-      command: "some-tool --no-verify",
-    });
-  });
+  it.prop(
+    "blocks a hook bypass whatever the commit message says",
+    [messages],
+    ([message]) => {
+      expect(
+        [
+          `git commit -n -m ${quoted(message)}`,
+          `git commit -m ${quoted(message)} --no-verify`,
+          `LEFTHOOK=0 git commit -m ${quoted(message)}`,
+          `bash -c ${quoted(`git commit -nm ${quoted(message)}`)}`,
+        ].map(applyCommandPolicy)
+      ).toEqual([blocked, blocked, blocked, blocked]);
+    }
+  );
 });

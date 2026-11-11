@@ -31,7 +31,7 @@ Adapted:
 - `oxlint.config.ts`: no Foldkit or `@xstate/effect` plugins, no site or web overrides, and the dropped rules below.
 - `scripts/oxlint-plugin-patterns.ts` is `nostakes-patterns`. `scripts/oxlint-plugin-boundaries.ts` is `nostakes-boundaries`. `scripts/oxlint-plugin-debt-ledger.ts` is `nostakes-debt`, read by `pnpm debt` instead of a site page.
 - `nostakes-boundaries/no-cross-layer-imports` keeps only the rule that a package cannot import app code.
-- `scripts/vcs-command-policy.js` also blocks `commit -n`, `LEFTHOOK=0`, and `core.hooksPath` overrides.
+- `scripts/vcs-command-policy.js` is rat-stack's later policy from its commit `2417db8` ("fence: block every hook bypass, not only --no-verify"), unchanged: it reads the command with shell quoting and blocks `--no-verify` and its abbreviations, `commit -n`, `LEFTHOOK=0`, `LEFTHOOK_EXCLUDE`, `HUSKY=0`, `core.hooksPath` overrides, `lefthook uninstall`, and writes under `.git/hooks`, also inside `sh -c`. `tools/fence/test/vcs-command-policy.test.ts` holds rat-stack's cases and properties with ours added.
 - `lefthook.yml` drops its header comments.
 - `.github/workflows/ci.yml` drops the remote cache, the source fetch, the concurrency cap, and the full-history checkout.
 - The patterns and boundaries tests keep the cases for the kept rules, with nostakes paths.
