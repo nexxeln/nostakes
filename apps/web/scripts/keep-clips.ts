@@ -811,6 +811,91 @@ const refusedClip = (engine: BrowserType) =>
     };
   }).pipe(Effect.scoped);
 
+const HELD_MS = 4000;
+
+const stateOf = (page: Page) =>
+  attempt("read the clip state", () =>
+    page
+      .locator("nostakes-moment")
+      .evaluate((node) =>
+        node instanceof HTMLElement ? (node.dataset.clip ?? "none") : "none"
+      )
+  );
+
+const turnTo = (page: Page, yours: boolean) =>
+  attempt("deal the player in", () =>
+    page.locator("nostakes-moment").evaluate((node, dealing) => {
+      Reflect.set(node, "dealing", dealing);
+    }, yours)
+  );
+
+const abandonedClip = (engine: BrowserType) =>
+  Effect.gen(function* abandonClip() {
+    const opened = yield* mutedBrowser(engine);
+
+    const page = yield* attempt("open a page", () =>
+      opened.newPage({ viewport: { height: 844, width: 390 } })
+    );
+
+    const label = `${engine.name()}-your-turn`;
+
+    yield* attempt("open the stage", () =>
+      page.goto(`${STAGE}/stage.html?view=live&sample=Cooler-2&theme=Light`)
+    );
+    yield* attempt("wait for the pictures", () =>
+      page
+        .locator('nostakes-moment[data-drawn="Chat Story"]')
+        .waitFor({ state: "attached", timeout: 60_000 })
+    );
+    yield* attempt("tap the moment away", () =>
+      page.locator("nostakes-moment .card").click()
+    );
+
+    const started = yield* attempt("wait for the clip to start", () =>
+      page
+        .locator('nostakes-moment[data-clip="Making"]')
+        .waitFor({ state: "attached", timeout: 30_000 })
+    ).pipe(
+      Effect.as(true),
+      Effect.catchTag("ClipCheckFailed", () => Effect.succeed(false))
+    );
+
+    if (!started) {
+      return { label, line: `${label}: no clip on this browser`, problems: [] };
+    }
+
+    yield* turnTo(page, true);
+    yield* attempt("let the turn run", () => page.waitForTimeout(HELD_MS));
+
+    const during = yield* stateOf(page);
+
+    yield* turnTo(page, false);
+
+    const resumed = yield* attempt("wait for the clip after the turn", () =>
+      page
+        .locator('nostakes-moment[data-clip="Ready"]')
+        .waitFor({ state: "attached", timeout: 60_000 })
+    ).pipe(
+      Effect.as(true),
+      Effect.catchTag("ClipCheckFailed", () => Effect.succeed(false))
+    );
+
+    return {
+      label,
+      line: `${label}: ${during} through ${HELD_MS} ms of the player's turn, ${resumed ? "made after it" : "never made after it"}`,
+      problems: [
+        ...(during === "Waiting"
+          ? []
+          : [
+              `${label}: the clip went on to ${during} during the player's turn`,
+            ]),
+        ...(resumed
+          ? []
+          : [`${label}: the clip was not made once the turn passed`]),
+      ],
+    };
+  }).pipe(Effect.scoped);
+
 const StagedSchema = Schema.Struct({
   failure: Schema.optional(Schema.String),
   lateBefore: Schema.optional(Schema.Int),
@@ -929,7 +1014,11 @@ const program = Effect.gen(function* checkClips() {
 
   for (const engine of chosen) {
     if (pace === "Quiet" && frames.includes("Chat")) {
-      for (const flow of [refusedClip(engine), askedClip(engine, settings)]) {
+      for (const flow of [
+        refusedClip(engine),
+        askedClip(engine, settings),
+        abandonedClip(engine),
+      ]) {
         const checked = yield* flow;
 
         yield* Console.log(
