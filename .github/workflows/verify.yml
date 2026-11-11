@@ -39,16 +39,16 @@ jobs:
             run: pnpm --filter @nostakes/engine differential --seed 20261110 --hands 100000
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7.0.1
       - name: Use Node.js 24.22.2
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7.1.0
         with:
           node-version: 24.22.2
       - name: Enable corepack pnpm
         run: corepack enable && corepack prepare pnpm@11.28.11 --activate
       - name: Install uv
         if: matrix.target == 'differential'
-        uses: astral-sh/setup-uv@v5
+        uses: astral-sh/setup-uv@v10.3.3
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
       - name: Install a headless Chromium
@@ -58,7 +58,7 @@ jobs:
         run: ${{ matrix.run }}
       - name: Upload saved logs from a failed soak
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: verify-${{ matrix.target }}-logs
           path: |
@@ -78,9 +78,9 @@ jobs:
       SOAK_CONCURRENCY: "3"
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7.0.1
       - name: Use Node.js 24.22.2
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7.1.0
         with:
           node-version: 24.22.2
       - name: Enable corepack pnpm
@@ -93,7 +93,7 @@ jobs:
         run: pnpm --filter @nostakes/room-server exec vitest run --config vitest.verify.config.ts --silent=false scripts/soak.verify.ts
       - name: Upload saved logs from a failed soak
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: verify-full-soak-logs
           path: |

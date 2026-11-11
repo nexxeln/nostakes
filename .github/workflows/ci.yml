@@ -19,9 +19,9 @@ jobs:
       TURBO_RUN_SUMMARY: "true"
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7.0.1
       - name: Use Node.js 24.22.2
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7.1.0
         with:
           node-version: 24.22.2
       - name: Enable corepack pnpm
@@ -32,7 +32,7 @@ jobs:
         run: pnpm turbo run check test build --concurrency=2
       - name: Upload Turbo run summaries
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: turbo-runs
           path: .turbo/runs/*.json
@@ -48,9 +48,9 @@ jobs:
       NO_COLOR: "1"
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7.0.1
       - name: Use Node.js 24.22.2
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7.1.0
         with:
           node-version: 24.22.2
       - name: Enable corepack pnpm
