@@ -21,7 +21,12 @@ import {
   legalOf,
   roomOf,
 } from "../src/features/room.js";
-import { happeningsOf, KEPT_EVENTS } from "../src/features/table/from-room.js";
+import {
+  betFacedIn,
+  facingEach,
+  happeningsOf,
+  KEPT_EVENTS,
+} from "../src/features/table/from-room.js";
 import { TableIntentSchema } from "../src/features/table/snapshot.js";
 import type { TableIntent } from "../src/features/table/snapshot.js";
 import { init, update } from "../src/features/update.js";
@@ -232,7 +237,12 @@ describe("the table's view and events", () => {
           expect(roomIn(model).events).toStrictEqual(
             [
               ...before.events,
-              ...applied.flatMap(({ event, seq }) => happeningsOf(seq, event)),
+              ...facingEach(
+                betFacedIn(before.shown.pipe(Option.map(({ view }) => view))),
+                applied
+              ).flatMap(({ event, facing, seq }) =>
+                happeningsOf(seq, event, facing)
+              ),
             ].slice(-KEPT_EVENTS)
           );
         }

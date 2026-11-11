@@ -151,7 +151,7 @@ const tableHappenings = (
 export const happeningsOf = (
   seq: number,
   event: SeenEvent,
-  facing = 0
+  facing: number
 ): readonly TableEvent[] =>
   SeenEvents.$is("Table")(event)
     ? tableHappenings(event.event, facing).map((happening, index) => ({
@@ -197,16 +197,29 @@ const betAfter = (facing: number, event: SeenEvent): number => {
   );
 };
 
+export const facingEach = <Entry extends { readonly event: SeenEvent }>(
+  facingFirst: number,
+  applied: readonly Entry[]
+): readonly (Entry & { readonly facing: number })[] => {
+  const faced: (Entry & { readonly facing: number })[] = [];
+  let facing = facingFirst;
+
+  for (const entry of applied) {
+    faced.push({ ...entry, facing });
+    facing = betAfter(facing, entry.event);
+  }
+
+  return faced;
+};
+
 export const happeningsFrom = (
   facingFirst: number,
   applied: readonly { readonly event: SeenEvent; readonly seq: number }[]
 ): readonly TableEvent[] => {
   const happenings: TableEvent[] = [];
-  let facing = facingFirst;
 
-  for (const { event, seq } of applied) {
+  for (const { event, facing, seq } of facingEach(facingFirst, applied)) {
     happenings.push(...happeningsOf(seq, event, facing));
-    facing = betAfter(facing, event);
   }
 
   return happenings;
