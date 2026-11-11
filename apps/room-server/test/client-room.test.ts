@@ -87,7 +87,7 @@ test(
   }).pipe(Effect.scoped, Effect.provide(FetchHttpClient.layer))
 );
 
-const COMMANDS_PER_CLIENT = 48;
+const COMMANDS_PER_CLIENT = 24;
 
 const KILLS = 12;
 

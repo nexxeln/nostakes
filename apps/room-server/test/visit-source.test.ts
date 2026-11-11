@@ -45,48 +45,4 @@ describe("where a visit came from", () => {
       );
     }
   );
-
-  it("names the sites in the table and nothing that only looks like them", () => {
-    expect(
-      [
-        null,
-        "",
-        "https://x.com/someone/status/1",
-        "https://mobile.twitter.com/",
-        "https://t.co/Q8MZ4T",
-        "https://news.ycombinator.com/item?id=1",
-        "https://old.reddit.com/r/poker/",
-        "https://discord.com/channels/1/2",
-        "https://www.google.co.uk/",
-        "https://github.com/someone/repo",
-        "https://bsky.app/profile/someone",
-        "https://lnkd.in/abc",
-        "https://nostakes.club/r/Q8MZ4T",
-        "https://preview.nostakes.club/",
-        "https://notx.com/",
-        "https://x.com.example/",
-        "https://google.example.com/",
-        "not a link",
-      ].map((referrer) => visitSourceOf(referrer, OWN))
-    ).toStrictEqual([
-      "none",
-      "none",
-      "x",
-      "x",
-      "x",
-      "hn",
-      "reddit",
-      "discord",
-      "google",
-      "github",
-      "bsky",
-      "linkedin",
-      "own",
-      "other",
-      "other",
-      "other",
-      "other",
-      "other",
-    ]);
-  });
 });

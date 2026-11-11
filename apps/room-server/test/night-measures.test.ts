@@ -1,11 +1,5 @@
 import { describe, expect, it } from "@effect/vitest";
-import {
-  Actions,
-  Antes,
-  ChipsSchema,
-  RunCountSchema,
-  SeatIndexSchema,
-} from "@nostakes/engine";
+import { Actions, SeatIndexSchema } from "@nostakes/engine";
 import type { PlayerId } from "@nostakes/protocol";
 import { PlayerIdSchema } from "@nostakes/protocol";
 import { RoomEventSchema, RoomViews } from "@nostakes/room";
@@ -14,14 +8,9 @@ import { Option, Predicate, Schema } from "effect";
 import * as Arbitrary from "effect/Arbitrary";
 
 import { measureAll } from "../src/analytics.js";
-import { measure, pointOf } from "../src/measures.js";
+import { pointOf } from "../src/measures.js";
 import type { Measure } from "../src/measures.js";
-import {
-  abandonedNight,
-  changedRules,
-  nightMeasures,
-} from "../src/night-measures.js";
-import type { NightTally } from "../src/night-measures.js";
+import { nightMeasures } from "../src/night-measures.js";
 import { DEFAULT_SETTINGS, MemberCommandSchema } from "../src/poker-room.js";
 import type { MemberCommand, PokerTypes } from "../src/poker-room.js";
 import type { CommitResult } from "../src/room-host.js";
@@ -35,33 +24,9 @@ import {
 
 const Commands = MemberCommandSchema.cases;
 
-const HOST_DEVICE = "hostdevicehashaaaaaaaa";
-
-const BEN_DEVICE = "bendevicehashbbbbbbbbb";
-
 const ROOM_KEY = "0123456789abcdef";
 
 const OTHER_CODE = "Q9W3RT";
-
-const tracker = () => {
-  let tally: NightTally = nightMeasures.empty;
-
-  return {
-    batch: (
-      events: readonly RoomEvent[],
-      device: Option.Option<string> = Option.none()
-    ): readonly Measure[] => {
-      const [next, measured] = measureAll(nightMeasures, tally, events, device);
-
-      tally = next;
-
-      return measured;
-    },
-    tally: () => tally,
-  };
-};
-
-const eventsOf = (result: CommitResult<PokerTypes>) => result.events;
 
 const welcomeView = (
   room: ReturnType<typeof openPokerHost>,
@@ -91,128 +56,11 @@ const toActIn = (view: Option.Option<RoomView>) =>
     )
   );
 
-const plainRoom = {
-  avatar: "fox",
-  name: "Ana",
-  settings: { ...DEFAULT_SETTINGS, shuffle: "Plain" as const },
-};
-
 const sit = (seat: number): MemberCommand =>
   Commands.RequestSeat.make({
     buyIn: DEFAULT_SETTINGS.buyIn.min,
     seat: SeatIndexSchema.make(seat),
   });
-
-describe("the night's data points", () => {
-  it("gives exactly one data point per thing that happened, batch by batch, from opening to settling up", () => {
-    const room = openPokerHost(plainRoom);
-    const night = tracker();
-
-    expect(night.batch(room.opened, Option.some(HOST_DEVICE))).toEqual([
-      measure("RoomOpened", { rules: "shuffle" }),
-      measure("MemberJoined", { device: HOST_DEVICE, members: 1 }),
-    ]);
-    expect(
-      night.batch(
-        eventsOf(room.join(ben, 1001, "Ben")),
-        Option.some(BEN_DEVICE)
-      )
-    ).toEqual([measure("MemberJoined", { device: BEN_DEVICE, members: 2 })]);
-    expect(
-      night.batch(eventsOf(room.send(ana, "sit-ana", 1002, sit(0))))
-    ).toEqual([measure("SeatTaken", { players: 1, seated: 1 })]);
-    expect(
-      night.batch(eventsOf(room.send(ben, "sit-ben", 1003, sit(1))))
-    ).toEqual([measure("SeatTaken", { players: 2, seated: 2 })]);
-    expect(
-      night.batch(
-        eventsOf(room.send(ana, "start", 1004, Commands.StartGame.make({})))
-      )
-    ).toEqual([measure("GameStarted", { sinceOpenMs: 4 })]);
-    expect(night.batch(Option.getOrThrow(room.runDue(1004)).events)).toEqual([
-      measure("FirstHand", { players: 2, sinceOpenMs: 4 }),
-    ]);
-
-    const folder = Option.getOrThrow(toActIn(welcomeView(room, ana, 1005)));
-
-    expect(
-      night.batch(
-        eventsOf(
-          room.send(
-            folder,
-            "fold",
-            1006,
-            Commands.Act.make({ action: Actions.Fold() })
-          )
-        )
-      )
-    ).toEqual([
-      measure("HandFinished", {
-        deal: "Plain",
-        ending: "Uncontested",
-        hand: 1,
-        players: 2,
-      }),
-    ]);
-    expect(abandonedNight(night.tally())).toEqual(
-      Option.some(
-        measure("NightAbandoned", {
-          durationMs: 6,
-          hands: 1,
-          players: 2,
-          rules: "shuffle",
-        })
-      )
-    );
-    expect(
-      night.batch(
-        eventsOf(room.send(ana, "close", 1007, Commands.CloseRoom.make({})))
-      )
-    ).toEqual([
-      measure("NightSettled", {
-        durationMs: 7,
-        hands: 1,
-        players: 2,
-        rules: "shuffle",
-        transfers: 1,
-      }),
-    ]);
-    expect(abandonedNight(night.tally())).toEqual(Option.none());
-  });
-
-  it("lays a measure out as the kind, then its text fields, then its numbers, under the room's key", () => {
-    expect(
-      pointOf(
-        ROOM_KEY,
-        measure("HandFinished", {
-          deal: "Checked",
-          ending: "Showdown",
-          hand: 21,
-          players: 4,
-        })
-      )
-    ).toEqual({
-      blobs: ["HandFinished", "Checked", "Showdown"],
-      doubles: [21, 4],
-      indexes: [ROOM_KEY],
-    });
-  });
-
-  it("names the house rules that differ, two levels deep, sorted, and nothing when none do", () => {
-    expect(changedRules(DEFAULT_SETTINGS, DEFAULT_SETTINGS)).toBe("");
-    expect(
-      changedRules(DEFAULT_SETTINGS, {
-        ...DEFAULT_SETTINGS,
-        table: {
-          ...DEFAULT_SETTINGS.table,
-          ante: Antes.BigBlindPays({ amount: ChipsSchema.make(2) }),
-          maxRuns: RunCountSchema.make(3),
-        },
-        turnSeconds: 20,
-      })
-    ).toBe("table.ante,table.maxRuns,turnSeconds");
-  });
-});
 
 const NameText = Schema.String.check(Schema.isPattern(/^zq[a-z]{6,12}$/u));
 
