@@ -14,6 +14,7 @@
           "effect/http/FetchHttpClient",
           "effect/http/HttpBody",
           "effect/http/HttpClient",
+          "effect/http/HttpClientError",
           "effect/http/HttpClientRequest",
           "effect/http/HttpClientResponse",
           "effect/http/HttpRouter",

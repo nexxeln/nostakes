@@ -13,7 +13,6 @@ import {
   Result,
   Schema,
 } from "effect";
-import * as FetchHttpClient from "effect/http/FetchHttpClient";
 
 import { siteAnalytics } from "../test/fixtures/analytics-checks.js";
 import type { Temper } from "../test/fixtures/bot.js";
@@ -48,6 +47,7 @@ import type {
 import { wallClock } from "../test/fixtures/poker-socket.js";
 import { PokerStack } from "../test/fixtures/poker-stack.js";
 import { inspect, refusedAlarms } from "../test/fixtures/stack.js";
+import { answeringAfterStalls } from "../test/fixtures/stale-sockets.js";
 import { funnelLines, funnelOf, groupPoints, healthLines } from "./funnel.ts";
 import { SoakHeapLimit } from "./soak-heap-limit.ts";
 
@@ -736,6 +736,6 @@ test(
           })
         )
       : Effect.void;
-  }).pipe(Effect.provide([FetchHttpClient.layer, NodeFileSystem.layer])),
+  }).pipe(Effect.provide([answeringAfterStalls, NodeFileSystem.layer])),
   { timeout: VITEST_LIMIT_MS }
 );
