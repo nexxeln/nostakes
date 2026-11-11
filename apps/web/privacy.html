@@ -7,7 +7,6 @@
       content="width=device-width, initial-scale=1, viewport-fit=cover"
     />
     <meta name="color-scheme" content="light dark" />
-    <meta name="robots" content="noindex" />
     <title>Privacy · nostakes</title>
     <link rel="icon" href="/favicon.ico" sizes="48x48" />
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
@@ -69,8 +68,9 @@
         <p>
           Each count from a room is filed under a one-way hash of the room's
           internal identifier, the same for every count from that room. The
-          room's code cannot be read back from it. Counts are kept for three
-          months.
+          room's code cannot be read back from it. Cloudflare stores the counts
+          for three months, which is how long its Workers Analytics Engine keeps
+          all data. It is Cloudflare's rule, not a setting of ours.
         </p>
       </section>
 
@@ -157,13 +157,21 @@
         <h2>What we never record</h2>
         <ul>
           <li>
-            Anyone's cards, names, or faces, a room's code, anything you type,
-            or how many chips anyone won or lost.
+            Outside the room itself, our code never records anyone's cards,
+            names, or faces, a room's code, anything you type, or how many chips
+            anyone won or lost: not in our counts and not in our log lines. The
+            room keeps them for its players until it deletes itself.
+          </li>
+          <li>
+            Cloudflare, which runs our server, handles every request, and a
+            room's link holds its code. As the log section says, Cloudflare does
+            not say what it adds to our log lines, so a room's code could reach
+            one that way.
           </li>
           <li>
             No ads, no cookies, no tracking scripts from other companies, no
-            screen recordings. Nothing is sold or shared. Everything stays in
-            nostakes's own Cloudflare account, which runs the servers.
+            screen recordings. Nothing is sold or shared. Everything we keep
+            stays in nostakes's own Cloudflare account, which runs the servers.
           </li>
         </ul>
       </section>
