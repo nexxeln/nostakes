@@ -37,7 +37,7 @@ const roomLinks = RoomConnection.get.pipe(
     client.states.pipe(
       Stream.mapEffect((state) =>
         Clock.currentTimeMillis.pipe(
-          Effect.map((at) => Messages.GotLink({ link: linkOf(state, at) }))
+          Effect.map((at) => Messages.ReceivedLink({ link: linkOf(state, at) }))
         )
       )
     )
@@ -59,7 +59,7 @@ const roomUpdates = RoomConnection.get.pipe(
       Stream.mapEffect(({ activity, seq, view }) =>
         Clock.currentTimeMillis.pipe(
           Effect.map((receivedAt) =>
-            Messages.GotUpdate({
+            Messages.ReceivedUpdate({
               events: appliedEvents(activity),
               receivedAt,
               seq,

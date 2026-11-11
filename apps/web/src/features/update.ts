@@ -183,12 +183,14 @@ const roomFor = (
   const door =
     rooms.find(({ record }) => record.code === code)?.record.door ?? "Inside";
 
-  return door === "Inside"
-    ? { commands: [], room: freshRoom(code, player) }
-    : {
-        commands: [ReadKnock({ code })],
-        room: atTheDoor(code, player, KnockAnswers.Asking()),
-      };
+  const knocking = door !== "Inside";
+
+  return {
+    commands: knocking ? [ReadKnock({ code })] : [],
+    room: knocking
+      ? atTheDoor(code, player, KnockAnswers.Asking())
+      : freshRoom(code, player),
+  };
 };
 
 const KEPT_FAIR_HANDS = 30;
@@ -478,7 +480,7 @@ const knockedAt = (
 
 const gotKnock = (
   model: Model,
-  message: Extract<Message, { readonly _tag: "GotKnock" }>
+  message: Extract<Message, { readonly _tag: "ReceivedKnock" }>
 ): Return =>
   inRoom(model, (room) => {
     const door = doorOf(message.knock.answer);
@@ -1412,72 +1414,6 @@ export const update = (model: Model, message: Message): Return =>
       },
     }),
     FlippedFacePart: ({ by, part }) => flipFacePart(model, part, by),
-    GotKnock: (knocked) => gotKnock(model, knocked),
-    GotLink: ({ link }) =>
-      askForStandings(
-        editRoomThenUpdate(
-          {
-            ...model,
-            now: link.receivedAt,
-            reporting: droppedLine(model, link)
-              ? {
-                  ...model.reporting,
-                  reconnects: model.reporting.reconnects + 1,
-                }
-              : model.reporting,
-          },
-          (room) => ({
-            ...room,
-            link: Option.some(link),
-          })
-        )
-      ),
-    GotOwnResult: ({ result }) =>
-      editRoom(model, (room) => ({
-        ...room,
-        removed: Option.some(RemovedResults.Shown({ result })),
-      })),
-    GotReply: ({ key, outcome }) =>
-      editRoom(model, (room) => settle(room, key, outcome)),
-    GotStandings: ({ view }) =>
-      editRoom(model, (room) => ({
-        ...room,
-        halted: Option.some(HaltedStandings.Shown({ view })),
-      })),
-    GotTableIntent: ({ intent }) => fromTable(model, intent),
-    GotUpdate: ({ events, receivedAt, seq, view }) =>
-      noteRoom(
-        editRoomThenUpdate({ ...model, now: receivedAt }, (room) =>
-          reportedClear({
-            ...remember(room, events),
-            clockSamples: RoomViews.$is("Open")(view)
-              ? [...room.clockSamples, clockSampleOf(view, receivedAt)].slice(
-                  -KEPT_CLOCK_SAMPLES
-                )
-              : room.clockSamples,
-            moments: watchedMoments(room.moments, events, seatStacksOf(view)),
-            resumed: Option.orElse(
-              Option.fromUndefinedOr(
-                events.findLast(
-                  ({ event }) =>
-                    SeenEvents.$is("TableAttended")(event) &&
-                    Option.isSome(event.quietSince)
-                )
-              ).pipe(
-                Option.flatMap(({ event }) =>
-                  SeenEvents.$is("TableAttended")(event)
-                    ? Option.some({ player: event.player, receivedAt })
-                    : Option.none()
-                )
-              ),
-              () => room.resumed
-            ),
-            shown: Option.some({ receivedAt, seq, view }),
-          })
-        ),
-        view,
-        receivedAt
-      ),
     HeardSignal: ({ from, receivedAt, signal }) =>
       inRoom(model, (room) => ({
         model: {
@@ -1549,6 +1485,72 @@ export const update = (model: Model, message: Message): Return =>
         stillWaiting(room)
           ? { commands: [ReadKnock({ code: room.code })], model }
           : { model }
+      ),
+    ReceivedKnock: (knocked) => gotKnock(model, knocked),
+    ReceivedLink: ({ link }) =>
+      askForStandings(
+        editRoomThenUpdate(
+          {
+            ...model,
+            now: link.receivedAt,
+            reporting: droppedLine(model, link)
+              ? {
+                  ...model.reporting,
+                  reconnects: model.reporting.reconnects + 1,
+                }
+              : model.reporting,
+          },
+          (room) => ({
+            ...room,
+            link: Option.some(link),
+          })
+        )
+      ),
+    ReceivedOwnResult: ({ result }) =>
+      editRoom(model, (room) => ({
+        ...room,
+        removed: Option.some(RemovedResults.Shown({ result })),
+      })),
+    ReceivedReply: ({ key, outcome }) =>
+      editRoom(model, (room) => settle(room, key, outcome)),
+    ReceivedStandings: ({ view }) =>
+      editRoom(model, (room) => ({
+        ...room,
+        halted: Option.some(HaltedStandings.Shown({ view })),
+      })),
+    ReceivedTableIntent: ({ intent }) => fromTable(model, intent),
+    ReceivedUpdate: ({ events, receivedAt, seq, view }) =>
+      noteRoom(
+        editRoomThenUpdate({ ...model, now: receivedAt }, (room) =>
+          reportedClear({
+            ...remember(room, events),
+            clockSamples: RoomViews.$is("Open")(view)
+              ? [...room.clockSamples, clockSampleOf(view, receivedAt)].slice(
+                  -KEPT_CLOCK_SAMPLES
+                )
+              : room.clockSamples,
+            moments: watchedMoments(room.moments, events, seatStacksOf(view)),
+            resumed: Option.orElse(
+              Option.fromUndefinedOr(
+                events.findLast(
+                  ({ event }) =>
+                    SeenEvents.$is("TableAttended")(event) &&
+                    Option.isSome(event.quietSince)
+                )
+              ).pipe(
+                Option.flatMap(({ event }) =>
+                  SeenEvents.$is("TableAttended")(event)
+                    ? Option.some({ player: event.player, receivedAt })
+                    : Option.none()
+                )
+              ),
+              () => room.resumed
+            ),
+            shown: Option.some({ receivedAt, seq, view }),
+          })
+        ),
+        view,
+        receivedAt
       ),
     ReleasedConnection: () =>
       editRoom(model, (room) => ({ ...room, connected: false })),

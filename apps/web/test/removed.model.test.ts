@@ -46,7 +46,7 @@ const opened = init({
 }).model;
 
 const refused = (reason: CloseReason) =>
-  Messages.GotLink({
+  Messages.ReceivedLink({
     link: {
       newBuild: Option.none(),
       phase: "Refused",
@@ -111,7 +111,7 @@ describe("a member the host removed", () => {
   it("shows only their own line and the transfers that involve them, and checks again on a tap", () => {
     const shown = update(
       update(opened, refused("Removed")).model,
-      Messages.GotOwnResult({ result: RESULT })
+      Messages.ReceivedOwnResult({ result: RESULT })
     );
 
     const text = shownText(shown.model);

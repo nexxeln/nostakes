@@ -72,7 +72,7 @@ const inRoom = (worn: Avatar, table: OpenView): Model =>
         systemTheme: "Light",
         theme: Option.none(),
       }).model,
-      Messages.GotLink({
+      Messages.ReceivedLink({
         link: {
           newBuild: Option.none(),
           phase: "Live",
@@ -83,7 +83,7 @@ const inRoom = (worn: Avatar, table: OpenView): Model =>
         },
       })
     ).model,
-    Messages.GotUpdate({
+    Messages.ReceivedUpdate({
       events: [],
       receivedAt: 0,
       seq: 1,

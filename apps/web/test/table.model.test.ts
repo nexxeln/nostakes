@@ -80,9 +80,9 @@ const messagesFor = (
   issued: readonly number[]
 ): readonly Message[] =>
   StepSchema.match(step, {
-    Intent: ({ intent }) => [Messages.GotTableIntent({ intent })],
+    Intent: ({ intent }) => [Messages.ReceivedTableIntent({ intent })],
     Link: ({ legal, live }) => [
-      Messages.GotLink({
+      Messages.ReceivedLink({
         link: {
           newBuild: Option.none(),
           phase: live ? "Live" : "Waiting",
@@ -92,7 +92,7 @@ const messagesFor = (
           retryDelayMs: Option.none(),
         },
       }),
-      Messages.GotUpdate({
+      Messages.ReceivedUpdate({
         events: [],
         receivedAt: 0,
         seq: 1,
@@ -100,7 +100,7 @@ const messagesFor = (
       }),
     ],
     Reply: ({ accepted, pick }) => [
-      Messages.GotReply({
+      Messages.ReceivedReply({
         key: issued[pick % Math.max(1, issued.length)] ?? 404,
         outcome: accepted
           ? ReplyOutcomes.Accepted({ seq: 1 })
@@ -111,7 +111,7 @@ const messagesFor = (
     ],
   });
 
-const isIntent = Schema.is(Messages.GotTableIntent);
+const isIntent = Schema.is(Messages.ReceivedTableIntent);
 
 const actionOf = (intent: TableIntent): Option.Option<Action> =>
   Match.value(intent).pipe(
@@ -137,7 +137,7 @@ const actionOf = (intent: TableIntent): Option.Option<Action> =>
     })
   );
 
-const isReply = Schema.is(Messages.GotReply);
+const isReply = Schema.is(Messages.ReceivedReply);
 
 type Issued = NonNullable<ReturnType<typeof update>["commands"]>;
 
@@ -194,7 +194,7 @@ describe("the table's view and events", () => {
         if (LinkOrUpdateSchema.guards.Link(arrival)) {
           ({ model } = update(
             model,
-            Messages.GotLink({
+            Messages.ReceivedLink({
               link: {
                 newBuild: Option.none(),
                 phase: arrival.live ? "Live" : "Waiting",
@@ -219,7 +219,7 @@ describe("the table's view and events", () => {
           head += applied.length;
           ({ model } = update(
             model,
-            Messages.GotUpdate({
+            Messages.ReceivedUpdate({
               events: applied,
               receivedAt: arrival.receivedAt,
               seq: head,

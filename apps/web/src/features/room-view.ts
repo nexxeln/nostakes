@@ -536,7 +536,7 @@ const tableView = (
           h.AriaLabel("Table"),
           table.Snapshot(tableSnapshot(room, view, presence, model.learned)),
           table.Sound(model.sound),
-          table.OnIntent((intent) => Messages.GotTableIntent({ intent })),
+          table.OnIntent((intent) => Messages.ReceivedTableIntent({ intent })),
         ],
         []
       ),

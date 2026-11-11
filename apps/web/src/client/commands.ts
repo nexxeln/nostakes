@@ -227,14 +227,14 @@ export const SendToRoom = Command.define("SendToRoom", {
       Effect.flatMap((client) => client.send(command)),
       Effect.match({
         onFailure: (failure) =>
-          Messages.GotReply({
+          Messages.ReceivedReply({
             key,
             outcome: ReplyOutcomes.Lost({
               reason: `${LOST_TEXT[failure._tag]}.`,
             }),
           }),
         onSuccess: (result) =>
-          Messages.GotReply({
+          Messages.ReceivedReply({
             key,
             outcome: Match.valueTags(result, {
               Accepted: ({ seq }) => ReplyOutcomes.Accepted({ seq }),
@@ -246,7 +246,7 @@ export const SendToRoom = Command.define("SendToRoom", {
           }),
       })
     ),
-  messages: [Messages.GotReply],
+  messages: [Messages.ReceivedReply],
 });
 
 const standingsBody = haltedStandings(Schema.toCodecJson(RoomViewSchema));
@@ -287,10 +287,10 @@ export const ReadStandings = Command.define("ReadStandings", {
     askedStandings(code, standingsBody).pipe(
       Effect.match({
         onFailure: (reason) => Messages.MissedStandings({ reason }),
-        onSuccess: ({ view }) => Messages.GotStandings({ view }),
+        onSuccess: ({ view }) => Messages.ReceivedStandings({ view }),
       })
     ),
-  messages: [Messages.GotStandings, Messages.MissedStandings],
+  messages: [Messages.ReceivedStandings, Messages.MissedStandings],
 });
 
 export const ReadOwnResult = Command.define("ReadOwnResult", {
@@ -299,10 +299,11 @@ export const ReadOwnResult = Command.define("ReadOwnResult", {
     askedStandings(code, ownResultBody).pipe(
       Effect.match({
         onFailure: (reason) => Messages.MissedOwnResult({ reason }),
-        onSuccess: ({ removed }) => Messages.GotOwnResult({ result: removed }),
+        onSuccess: ({ removed }) =>
+          Messages.ReceivedOwnResult({ result: removed }),
       })
     ),
-  messages: [Messages.GotOwnResult, Messages.MissedOwnResult],
+  messages: [Messages.ReceivedOwnResult, Messages.MissedOwnResult],
 });
 
 const DoorAnswerSchema = Schema.Union([
@@ -315,7 +316,7 @@ type DoorAnswerBody = typeof DoorAnswerSchema.Type;
 
 const doorMessage = (answer: DoorAnswerBody, at: number) => {
   if ("knock" in answer) {
-    return Messages.GotKnock({ at, knock: answer.knock });
+    return Messages.ReceivedKnock({ at, knock: answer.knock });
   }
 
   if ("view" in answer || answer.refusal === "RoomOpen") {
@@ -338,7 +339,7 @@ export const ReadKnock = Command.define("ReadKnock", {
         )
       )
     ),
-  messages: [Messages.GotKnock, Messages.LetInside, Messages.MissedKnock],
+  messages: [Messages.ReceivedKnock, Messages.LetInside, Messages.MissedKnock],
 });
 
 export const SignalRoom = Command.define("SignalRoom", {

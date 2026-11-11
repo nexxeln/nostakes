@@ -62,7 +62,7 @@ const seenBy = (
         systemTheme: "Light",
         theme: Option.none(),
       }).model,
-      Messages.GotUpdate({
+      Messages.ReceivedUpdate({
         events: [],
         receivedAt: 1000,
         seq: 1,

@@ -30,7 +30,7 @@ const opened = init({
 }).model;
 
 const refused = (reason: CloseReason) =>
-  Messages.GotLink({
+  Messages.ReceivedLink({
     link: {
       newBuild: Option.none(),
       phase: "Refused",
@@ -96,7 +96,7 @@ describe("a room the server halted", () => {
   it("shows each player's buy-in, what they left with, and their net, and copies the standings under the line that says why", () => {
     const shown = update(
       asked(opened, "RoomHalted").model,
-      Messages.GotStandings({ view: STANDINGS })
+      Messages.ReceivedStandings({ view: STANDINGS })
     ).model;
 
     const copied = update(shown, Messages.ClickedCopySettlement());

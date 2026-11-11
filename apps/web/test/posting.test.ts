@@ -141,8 +141,8 @@ const shownWith = (view: OpenView, live: boolean) => {
   let current = start;
 
   for (const message of [
-    Messages.GotUpdate({ events: [], receivedAt: 0, seq: 1, view }),
-    Messages.GotLink({
+    Messages.ReceivedUpdate({ events: [], receivedAt: 0, seq: 1, view }),
+    Messages.ReceivedLink({
       link: {
         newBuild: Option.none(),
         phase: live ? "Live" : "Waiting",
@@ -189,7 +189,9 @@ describe("waiting for the big blind or posting to come in", () => {
 
       const sent = update(
         shownWith(view, live),
-        Messages.GotTableIntent({ intent: TableIntents.Posting.make({ post }) })
+        Messages.ReceivedTableIntent({
+          intent: TableIntents.Posting.make({ post }),
+        })
       );
 
       expect(choicesSent(sent.commands)).toStrictEqual(live ? [post] : []);

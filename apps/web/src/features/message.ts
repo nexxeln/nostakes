@@ -88,20 +88,6 @@ export const Messages = defineMessageUnion({
   FailedConnection: { problem: Schema.String },
   FailedEntry: { problem: Schema.String },
   FlippedFacePart: { by: Schema.Int, part: PartSchema },
-  GotKnock: { at: Schema.Int, knock: KnockViewSchema },
-  GotLink: { link: LinkSchema },
-  GotOwnResult: { result: RemovedViewSchema },
-  GotReply: { key: Schema.Int, outcome: ReplyOutcomes },
-  GotStandings: { view: RoomViewSchema },
-  GotTableIntent: { intent: TableIntentSchema },
-  GotUpdate: {
-    events: Schema.Array(
-      Schema.Struct({ event: SeenEventSchema, seq: Schema.Int })
-    ),
-    receivedAt: Schema.Int,
-    seq: Schema.Int,
-    view: RoomViewSchema,
-  },
   HeardSignal: {
     from: PlayerIdSchema,
     receivedAt: Schema.Int,
@@ -120,6 +106,20 @@ export const Messages = defineMessageUnion({
   MissedStandings: { reason: Schema.String },
   PickedAvatar: { avatar: AvatarSchema },
   PolledDoor: {},
+  ReceivedKnock: { at: Schema.Int, knock: KnockViewSchema },
+  ReceivedLink: { link: LinkSchema },
+  ReceivedOwnResult: { result: RemovedViewSchema },
+  ReceivedReply: { key: Schema.Int, outcome: ReplyOutcomes },
+  ReceivedStandings: { view: RoomViewSchema },
+  ReceivedTableIntent: { intent: TableIntentSchema },
+  ReceivedUpdate: {
+    events: Schema.Array(
+      Schema.Struct({ event: SeenEventSchema, seq: Schema.Int })
+    ),
+    receivedAt: Schema.Int,
+    seq: Schema.Int,
+    view: RoomViewSchema,
+  },
   ReleasedConnection: {},
   ScrolledToTop: {},
   ScrubbedFacePart: { by: Schema.Int, part: PartSchema },

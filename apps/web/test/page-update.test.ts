@@ -51,7 +51,7 @@ const opened = (reloadedFor: Option.Option<ReloadTarget>) =>
   }).model;
 
 const link = (phase: ConnectionPhase, newBuild: Option.Option<BuildId>) =>
-  Messages.GotLink({
+  Messages.ReceivedLink({
     link: {
       newBuild,
       phase,
@@ -63,7 +63,7 @@ const link = (phase: ConnectionPhase, newBuild: Option.Option<BuildId>) =>
   });
 
 const shown = (table: OpenView, hand: Option.Option<HandView>) =>
-  Messages.GotUpdate({
+  Messages.ReceivedUpdate({
     events: [],
     receivedAt: 0,
     seq: 1,
