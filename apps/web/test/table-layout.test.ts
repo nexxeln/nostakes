@@ -10,6 +10,9 @@ import {
   handHint,
   handHintGround,
   HINT_LINES,
+  pileBox,
+  placeSeats,
+  restingScale,
   POST_TAG_WIDTHS,
   potTabOf,
   postTagBox,
@@ -17,9 +20,18 @@ import {
   postTagSides,
   runLanes,
   runLanesBox,
+  seatBoxes,
   tableObstacles,
 } from "../src/client/table/layout.js";
-import type { Box, ButtonSpot, Pt } from "../src/client/table/layout.js";
+import type {
+  Box,
+  ButtonRide,
+  ButtonSpot,
+  ButtonSpots,
+  Geo,
+  Pt,
+  SeatPlace,
+} from "../src/client/table/layout.js";
 
 const VISIBLE_PX = 1;
 
@@ -342,5 +354,189 @@ describe("the hint by your cards", () => {
     ).toStrictEqual(
       sizes.flatMap(() => SEATS_AROUND_YOU.map(() => HINT_PLACED_WELL))
     );
+  });
+});
+
+const ActingSchema = Schema.Struct({
+  bets: Schema.Array(between(0, 7)),
+  button: between(0, 8),
+  folded: Schema.Array(between(0, 7)),
+  heroBet: Schema.Boolean,
+  others: between(1, 8),
+});
+
+type Acting = typeof ActingSchema.Type;
+
+const actings = Arbitrary.schema(ActingSchema);
+
+interface Drawn {
+  readonly geo: Geo;
+  readonly spots: ButtonSpots;
+}
+
+const drawn = (width: number, height: number, others: number): Drawn => {
+  const geo = computeGeo(width, height, others);
+
+  return { geo, spots: buttonSpots(geo) };
+};
+
+const rideOf = (
+  { geo, spots }: Drawn,
+  owner: number,
+  places: readonly (SeatPlace & { readonly index: number })[]
+): ButtonSpot => {
+  const spot = spots.seats[owner];
+  const place = places.find(({ index }) => index === owner);
+  const home = geo.seats[owner];
+
+  if (spot === undefined || place === undefined || home === undefined) {
+    return spots.self;
+  }
+
+  return {
+    r: spot.r,
+    x: place.x + (spot.x - home.x) * place.scale,
+    y: place.y + (spot.y - home.y) * place.scale,
+  };
+};
+
+const coveredBy = (
+  table: Drawn,
+  acting: Acting,
+  actor: number,
+  acts: boolean
+) => {
+  const { geo, spots } = table;
+  const owner = acting.button < acting.others ? acting.button : null;
+
+  const button: ButtonRide = {
+    owner,
+    spot: owner === null ? spots.self : (spots.seats[owner] ?? spots.self),
+  };
+
+  const seats = Array.from({ length: acting.others }, (__, index) => ({
+    active: acts && index === actor,
+    folded: index !== actor && acting.folded.includes(index),
+    index,
+    winner: false,
+  }));
+
+  const places = placeSeats(geo, {
+    bets: acting.bets.filter((index) => index < acting.others),
+    button,
+    heroBet: acting.heroBet,
+    seats,
+    someoneElse: true,
+  });
+
+  const grown = places.find(({ index }) => index === actor);
+
+  if (grown === undefined) {
+    return ["the actor was not placed"];
+  }
+
+  const ground: readonly (readonly [string, Box])[] = [
+    ...places
+      .filter(({ index }) => index !== actor)
+      .flatMap((place) =>
+        seatBoxes(geo, place).map(
+          (box, part) =>
+            [
+              `seat ${place.index} ${part === 0 ? "face" : "name"}`,
+              box,
+            ] as const
+        )
+      ),
+    ["your face and name", tableObstacles(geo)[geo.seats.length] ?? geo.strip],
+    ...acting.bets
+      .filter((index) => index < acting.others && index !== actor)
+      .flatMap((index) => {
+        const bet = geo.seats[index]?.bet;
+
+        return bet === undefined
+          ? []
+          : [[`seat ${index} bet`, pileBox(bet)] as const];
+      }),
+    ...(acting.heroBet ? [["your bet", pileBox(geo.heroBet)] as const] : []),
+    ...(owner === actor
+      ? []
+      : [
+          [
+            "the dealer button",
+            buttonBox(
+              owner === null ? spots.self : rideOf(table, owner, places)
+            ),
+          ] as const,
+        ]),
+  ];
+
+  return [
+    ...(grown.scale < restingScale(true)
+      ? [`shrank to ${grown.scale}, below the faces around it`]
+      : []),
+    ...seatBoxes(geo, grown).flatMap((box) =>
+      ground.flatMap(([what, other]) => (covers(box, other) ? [what] : []))
+    ),
+  ];
+};
+
+const TABLE_BOXES = [
+  { height: 592, width: 360 },
+  { height: 632, width: 390 },
+  { height: 796, width: 390 },
+  { height: 342, width: 844 },
+];
+
+const SIX_SEATS_AS_REPORTED: Acting = {
+  bets: [],
+  button: 0,
+  folded: [2],
+  heroBet: false,
+  others: 5,
+};
+
+const addedByActing = (table: Drawn, acting: Acting, actor: number) => {
+  const atRest = coveredBy(table, acting, actor, false);
+
+  return coveredBy(table, acting, actor, true).filter(
+    (what) => !atRest.includes(what)
+  );
+};
+
+describe("the seat whose turn it is", () => {
+  it.prop(
+    "grows without its face, name, or stack covering anything it did not already cover at rest: another seat's face, name, stack, or bet, your face, or the dealer button, whoever acts",
+    { acting: actings, screen: screens },
+    ({ acting, screen }) => {
+      const actors = Array.from({ length: acting.others }, (__, at) => at);
+      const table = drawn(screen.width, screen.height, acting.others);
+
+      expect(
+        actors.map((actor) => addedByActing(table, acting, actor))
+      ).toStrictEqual(actors.map(() => []));
+    },
+    { arbitrary: { runs: 200 } }
+  );
+
+  it("covers nothing on the boxes the app gives the table, with two to nine seats and each one acting", () => {
+    const found = TABLE_BOXES.flatMap(({ height, width }) =>
+      [1, 2, 3, 4, 5, 6, 7, 8].flatMap((others) => {
+        const table = drawn(width, height, others);
+
+        return Array.from({ length: others }, (__, actor) =>
+          coveredBy(
+            table,
+            { ...SIX_SEATS_AS_REPORTED, others },
+            actor,
+            true
+          ).map(
+            (what) =>
+              `${width}x${height}, ${others + 1} seats, seat ${actor}: ${what}`
+          )
+        ).flat();
+      })
+    );
+
+    expect(found).toStrictEqual([]);
   });
 });

@@ -34,12 +34,20 @@ import {
   computeGeo,
   deadButtonSpot,
   handHint,
+  placeSeats,
   POST_TAG_WIDTHS,
   potTabOf,
   postTagSides,
   runLanes,
 } from "./layout.js";
-import type { ButtonSpot, ButtonSpots, Geo, Pt, TagSide } from "./layout.js";
+import type {
+  ButtonRide,
+  ButtonSpot,
+  ButtonSpots,
+  Geo,
+  Pt,
+  TagSide,
+} from "./layout.js";
 import { paintAvatar } from "./markup.js";
 import { TableSound } from "./sound.js";
 import { Spring } from "./spring.js";
@@ -557,24 +565,6 @@ const expireStatus = (status: Status, now: number) => {
   }
 };
 
-const tileScale = (state: {
-  readonly winner: boolean;
-  readonly active: boolean;
-  readonly folded: boolean;
-  readonly activeScale: number;
-  readonly baseScale: number;
-}) => {
-  if (state.winner) {
-    return 1.12;
-  }
-
-  if (state.active) {
-    return state.activeScale;
-  }
-
-  return state.folded ? 0.8 : state.baseScale;
-};
-
 const dimmedOpacity = (folded: boolean) => (folded ? 0.45 : 0.72);
 
 const selfScaleFor = (winning: boolean, mine: boolean) => {
@@ -583,83 +573,6 @@ const selfScaleFor = (winning: boolean, mine: boolean) => {
   }
 
   return mine ? 1.08 : 1;
-};
-
-interface Placement {
-  x: number;
-  y: number;
-  scale: number;
-  fixed: boolean;
-  axis: "x" | "y";
-}
-
-const pushApart = (
-  a: Placement,
-  b: Placement,
-  tileSize: number,
-  caption: number,
-  keepIn: (box: Placement) => void
-) => {
-  const reach = (((a.scale + b.scale) * tileSize) / 2) * 0.9 + 4;
-  const overlapX = reach - Math.abs(a.x - b.x);
-  const overlapY = reach + caption - Math.abs(a.y - b.y);
-
-  if (overlapX <= 0 || overlapY <= 0) {
-    return;
-  }
-
-  const movers = [a, b].filter((box) => !box.fixed);
-  const share = movers.length === 2 ? 0.5 : 1;
-
-  for (const mover of movers) {
-    const other = mover === a ? b : a;
-
-    if (mover.axis === "x") {
-      mover.x += Math.sign(mover.x - other.x || 1) * overlapX * share;
-    } else {
-      mover.y += Math.sign(mover.y - other.y || 1) * overlapY * share;
-    }
-
-    keepIn(mover);
-  }
-};
-
-const separate = <B extends Placement>(
-  boxes: readonly B[],
-  geo: Geo
-): readonly B[] => {
-  const tileSize = geo.tile;
-  const placed = boxes.map((box) => ({ ...box }));
-
-  const keepIn = (box: Placement) => {
-    const half = (tileSize * box.scale) / 2 + (box.fixed ? 14 : 8);
-
-    box.x = clamp(box.x, half, geo.w - half);
-    box.y = clamp(
-      box.y,
-      geo.zone.top + half,
-      geo.zone.bottom - geo.caption - half + (box.fixed ? 30 : 0)
-    );
-  };
-
-  for (const box of placed) {
-    keepIn(box);
-  }
-
-  for (let round = 0; round < 4; round += 1) {
-    for (let first = 0; first < placed.length; first += 1) {
-      for (let second = first + 1; second < placed.length; second += 1) {
-        const a = placed[first];
-        const b = placed[second];
-
-        if (a !== undefined && b !== undefined && !(a.fixed && b.fixed)) {
-          pushApart(a, b, tileSize, geo.caption, keepIn);
-        }
-      }
-    }
-  }
-
-  return placed;
 };
 
 const bettingKeys = (legal: HeroLegal, me: SeatSnapshot | undefined) => {
@@ -4193,18 +4106,11 @@ export class NostakesTable extends HTMLElement {
     clock: { readonly fraction: number; readonly tanking: boolean }
   ) {
     const { tile } = geo;
-    const activeScale = Math.min(1.26, 176 / tile);
 
     const someoneElse =
       snapshot.toAct !== null && snapshot.toAct !== snapshot.heroSeat;
 
-    const boxes = this.#targets(
-      snapshot,
-      geo,
-      activeScale,
-      someoneElse,
-      clock.tanking
-    );
+    const boxes = this.#targets(snapshot, geo, someoneElse, clock.tanking);
 
     for (const box of boxes) {
       const info = this.#seat(box.tile.seat);
@@ -4281,50 +4187,62 @@ export class NostakesTable extends HTMLElement {
   #targets(
     snapshot: TableSnapshot,
     geo: Geo,
-    activeScale: number,
     someoneElse: boolean,
     tanking: boolean
   ) {
-    const tileSize = geo.tile;
-
-    const boxes = [...this.#tiles.values()].flatMap((tile) => {
+    const seats = [...this.#tiles.values()].flatMap((tile) => {
       const info = this.#seat(tile.seat);
-      const spot = geo.seats[tile.index];
 
-      if (info === undefined || spot === undefined) {
+      if (info === undefined) {
         return [];
       }
 
       const active = snapshot.toAct === tile.seat;
       const folded = info.status === "Folded";
-      const shrink = folded ? 0.07 : 0;
-      const lean = active ? 0.05 : 0;
-      const baseScale = someoneElse ? 0.95 : 1;
-
-      const scale = tileScale({
-        active,
-        activeScale,
-        baseScale,
-        folded,
-        winner: this.#winner === tile.seat,
-      });
-
       const dimmed = tanking && !active ? dimmedOpacity(folded) : 1;
 
       return [
         {
-          axis: spot.side === "top" ? ("x" as const) : ("y" as const),
-          fixed: active,
+          active,
+          folded,
+          index: tile.index,
           opacity: folded && !tanking ? 0.85 : dimmed,
-          scale,
           tile,
-          x: spot.x + spot.nx * tileSize * (lean - shrink),
-          y: spot.y + spot.ny * tileSize * (lean * 0.8 - shrink),
+          winner: this.#winner === tile.seat,
         },
       ];
     });
 
-    return separate(boxes, geo);
+    const betting = snapshot.seats.filter(({ bet }) => bet > 0);
+
+    return placeSeats(geo, {
+      bets: betting.flatMap(({ seat }) => {
+        const tile = this.#tiles.get(seat);
+
+        return tile === undefined ? [] : [tile.index];
+      }),
+      button: this.#buttonRide(snapshot, geo),
+      heroBet: betting.some(({ seat }) => seat === snapshot.heroSeat),
+      seats,
+      someoneElse,
+    });
+  }
+
+  #buttonRide(snapshot: TableSnapshot, geo: Geo): ButtonRide | null {
+    const seat = snapshot.buttonSeat ?? this.#dealerSeat;
+    const spot = seat === null ? null : this.#buttonSpotOf(seat, snapshot, geo);
+
+    if (seat === null || spot === null) {
+      return null;
+    }
+
+    return {
+      owner:
+        seat === snapshot.heroSeat
+          ? null
+          : (this.#tiles.get(seat)?.index ?? null),
+      spot,
+    };
   }
 
   #frameSelf(

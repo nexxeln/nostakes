@@ -278,7 +278,60 @@ const showdownTurn = (muck: boolean): TableSnapshot => ({
   toAct: 0,
 });
 
+const ACTING_NAMES = [
+  "Sam",
+  "Maya",
+  "Jonas",
+  "Priya",
+  "Dev",
+  "Lou",
+  "Kit",
+  "Ana",
+  "Ben",
+];
+
+const ACTING_STACKS = [1100, 620, 1180, 940, 1010, 600, 720, 1320, 380];
+
+const ACTING_FOLDED = 3;
+
+const actor = Math.min(
+  players - 1,
+  Math.max(0, Number(params.get("actor") ?? "2"))
+);
+
+const actingSeat = (index: number): SeatSnapshot => {
+  const folded = index === ACTING_FOLDED && index !== actor;
+
+  return {
+    ...seatOf(index),
+    cardsHeld: folded ? 0 : 2,
+    name: ACTING_NAMES[index] ?? `Seat ${index + 1}`,
+    peeking: index === actor,
+    shown: [],
+    stack: ACTING_STACKS[index] ?? 1000,
+    status: folded ? "Folded" : "In",
+  };
+};
+
+const acting: TableSnapshot = {
+  ...showdown,
+  boards: [["Ah", "Kd", "7s", "2c"]],
+  buttonSeat: 1 % players,
+  clock: {
+    key: `acting-${actor}`,
+    remainingMs: 17_000,
+    seat: actor,
+    totalMs: 30_000,
+  },
+  heroCards: ["Ad", "Kh"],
+  legal: actor === 0 ? turn.legal : null,
+  pots: [960],
+  seats: Array.from({ length: players }, (_, index) => actingSeat(index)),
+  toAct: actor,
+};
+
 const SCENES = new Map<string, TableSnapshot>([
+  ["acting", acting],
   ["after", afterHand([], false)],
   ["after-one", afterHand(["Kh"], false)],
   ["after-all", afterHand(HERO_CARDS, false)],

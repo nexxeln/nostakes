@@ -1082,7 +1082,7 @@ const footprintOf = (centre: Pt, size: number): Footprint => {
   };
 };
 
-const pileBox = (point: Pt): Box => ({
+export const pileBox = (point: Pt): Box => ({
   h: PILE_BOX.h,
   w: PILE_BOX.w,
   x: point.x - PILE_BOX.w / 2,
@@ -1726,6 +1726,425 @@ const liftedForHint = (w: number, h: number, count: number): Geo => {
   }
 
   return level;
+};
+
+export interface SeatPlan {
+  readonly index: number;
+  readonly active: boolean;
+  readonly folded: boolean;
+  readonly winner: boolean;
+}
+
+export interface SeatPlace extends Pt {
+  readonly scale: number;
+}
+
+export interface ButtonRide {
+  readonly owner: number | null;
+  readonly spot: ButtonSpot;
+}
+
+export interface SeatsAtRest<Plan extends SeatPlan> {
+  readonly seats: readonly Plan[];
+  readonly someoneElse: boolean;
+  readonly bets: readonly number[];
+  readonly heroBet: boolean;
+  readonly button: ButtonRide | null;
+}
+
+const ACTIVE_SCALE_MAX = 1.26;
+
+const ACTIVE_TILE_MAX = 176;
+
+const WINNER_SCALE = 1.12;
+
+const FOLDED_SCALE = 0.8;
+
+const WAITING_SCALE = 0.95;
+
+const ACTOR_SCALE_STEP = 0.01;
+
+const ROOM_GAP = 2;
+
+export const activeScaleFor = (tile: number) =>
+  Math.min(ACTIVE_SCALE_MAX, ACTIVE_TILE_MAX / tile);
+
+export const restingScale = (someoneElse: boolean) =>
+  someoneElse ? WAITING_SCALE : 1;
+
+const tileScale = (plan: SeatPlan, tile: number, someoneElse: boolean) => {
+  if (plan.winner) {
+    return WINNER_SCALE;
+  }
+
+  if (plan.active) {
+    return activeScaleFor(tile);
+  }
+
+  if (plan.folded) {
+    return FOLDED_SCALE;
+  }
+
+  return restingScale(someoneElse);
+};
+
+const boxesOf = (
+  geo: Geo,
+  place: SeatPlace,
+  rising: number
+): readonly Box[] => {
+  const size = geo.tile * place.scale;
+  const half = size / 2;
+  const captionHalf = Math.max(size * 0.65, half);
+  const rise = size * rising;
+
+  return [
+    { h: size + rise, w: size, x: place.x - half, y: place.y - half - rise },
+    {
+      h: CAPTION_DEPTH * place.scale,
+      w: captionHalf * 2,
+      x: place.x - captionHalf,
+      y: place.y + half,
+    },
+  ];
+};
+
+export const seatBoxes = (geo: Geo, place: SeatPlace) => boxesOf(geo, place, 0);
+
+const roomyBoxes = (geo: Geo, place: SeatPlace) =>
+  boxesOf(geo, place, FACE_RISE);
+
+interface Placement {
+  fixed: boolean;
+  axis: "x" | "y";
+  scale: number;
+  x: number;
+  y: number;
+}
+
+const keptIn = (geo: Geo, box: Placement) => {
+  const half = (geo.tile * box.scale) / 2 + (box.fixed ? 14 : 8);
+
+  box.x = clamp(box.x, half, geo.w - half);
+  box.y = clamp(
+    box.y,
+    geo.zone.top + half,
+    geo.zone.bottom - geo.caption - half + (box.fixed ? 30 : 0)
+  );
+};
+
+const pushApart = (a: Placement, b: Placement, geo: Geo) => {
+  const reach = (((a.scale + b.scale) * geo.tile) / 2) * 0.9 + 4;
+  const overlapX = reach - Math.abs(a.x - b.x);
+  const overlapY = reach + geo.caption - Math.abs(a.y - b.y);
+
+  if (overlapX <= 0 || overlapY <= 0) {
+    return;
+  }
+
+  const movers = [a, b].filter((box) => !box.fixed);
+  const share = movers.length === 2 ? 0.5 : 1;
+
+  for (const moving of movers) {
+    const other = moving === a ? b : a;
+
+    if (moving.axis === "x") {
+      moving.x += Math.sign(moving.x - other.x || 1) * overlapX * share;
+    } else {
+      moving.y += Math.sign(moving.y - other.y || 1) * overlapY * share;
+    }
+
+    keptIn(geo, moving);
+  }
+};
+
+const separate = (placed: readonly Placement[], geo: Geo) => {
+  for (const box of placed) {
+    keptIn(geo, box);
+  }
+
+  for (let round = 0; round < 4; round += 1) {
+    for (let first = 0; first < placed.length; first += 1) {
+      for (let second = first + 1; second < placed.length; second += 1) {
+        const a = placed[first];
+        const b = placed[second];
+
+        if (a !== undefined && b !== undefined && !(a.fixed && b.fixed)) {
+          pushApart(a, b, geo);
+        }
+      }
+    }
+  }
+};
+
+const clearOf = (
+  still: readonly Box[],
+  moving: readonly Box[],
+  axis: "x" | "y",
+  direction: number
+) => {
+  const lane = (a: Box, b: Box) =>
+    axis === "y"
+      ? a.x < b.x + b.w && b.x < a.x + a.w
+      : a.y < b.y + b.h && b.y < a.y + a.h;
+
+  const needed = still.flatMap((fixed) =>
+    moving.flatMap((box) => {
+      if (!lane(fixed, box)) {
+        return [];
+      }
+
+      const [low, size, otherLow, otherSize] =
+        axis === "y"
+          ? [fixed.y, fixed.h, box.y, box.h]
+          : [fixed.x, fixed.w, box.x, box.w];
+
+      return [
+        direction > 0
+          ? low + size + ROOM_GAP - otherLow
+          : otherLow + otherSize + ROOM_GAP - low,
+      ];
+    })
+  );
+
+  return Math.max(0, ...needed);
+};
+
+const touches = (mine: readonly Box[], theirs: readonly Box[]) =>
+  mine.some((box) => theirs.some((other) => overlap(box, other) > 0));
+
+const makeRoom = (
+  geo: Geo,
+  placed: readonly Placement[],
+  actor: number,
+  piles: readonly Box[]
+) => {
+  const acting = placed[actor];
+
+  if (acting === undefined) {
+    return;
+  }
+
+  const grown = roomyBoxes(geo, acting);
+
+  for (const [which, mover] of placed.entries()) {
+    if (which !== actor && touches(roomyBoxes(geo, mover), grown)) {
+      const others = [
+        ...placed.flatMap((place, other) =>
+          other === which || other === actor ? [] : roomyBoxes(geo, place)
+        ),
+        ...piles,
+      ];
+
+      const moves = (["x", "y"] as const)
+        .map((axis) => {
+          const ahead = axis === "x" ? mover.x - acting.x : mover.y - acting.y;
+          const direction = Math.sign(ahead || 1);
+          const shift = clearOf(grown, roomyBoxes(geo, mover), axis, direction);
+
+          const moved = {
+            ...mover,
+            x: axis === "x" ? mover.x + direction * shift : mover.x,
+            y: axis === "y" ? mover.y + direction * shift : mover.y,
+          };
+
+          keptIn(geo, moved);
+
+          return { moved, shift };
+        })
+        .toSorted((left, right) => left.shift - right.shift);
+
+      const safe = moves.find(
+        ({ moved }) =>
+          (moved.x !== mover.x || moved.y !== mover.y) &&
+          !touches(roomyBoxes(geo, moved), others)
+      );
+
+      if (safe !== undefined) {
+        mover.x = safe.moved.x;
+        mover.y = safe.moved.y;
+      }
+    }
+  }
+};
+
+const ridingButton = (
+  geo: Geo,
+  button: ButtonRide,
+  placed: readonly Placement[],
+  plans: readonly SeatPlan[]
+): Box => {
+  const ridden = plans.findIndex(({ index }) => index === button.owner);
+  const owner = placed[ridden];
+  const home = geo.seats[button.owner ?? -1];
+
+  if (owner === undefined || home === undefined) {
+    return buttonBox(button.spot);
+  }
+
+  return buttonBox({
+    r: button.spot.r,
+    x: owner.x + (button.spot.x - home.x) * owner.scale,
+    y: owner.y + (button.spot.y - home.y) * owner.scale,
+  });
+};
+
+type BoxesOf = (geo: Geo, place: SeatPlace) => readonly Box[];
+
+const actorGround = (
+  geo: Geo,
+  rest: SeatsAtRest<SeatPlan>,
+  placed: readonly Placement[],
+  actor: number,
+  boxes: BoxesOf
+): readonly Box[] => {
+  const owner = rest.seats[actor]?.index;
+
+  return [
+    ...placed.flatMap((place, which) =>
+      which === actor ? [] : boxes(geo, place)
+    ),
+    ...footprintOf(geo.self, geo.self.size).seat,
+    ...rest.bets
+      .filter((index) => index !== owner)
+      .flatMap((index) => {
+        const bet = geo.seats[index]?.bet;
+
+        return bet === undefined ? [] : [pileBox(bet)];
+      }),
+    ...(rest.heroBet ? [pileBox(geo.heroBet)] : []),
+    ...(rest.button === null || rest.button.owner === owner
+      ? []
+      : [ridingButton(geo, rest.button, placed, rest.seats)]),
+  ];
+};
+
+const fitActor = (
+  geo: Geo,
+  place: Placement,
+  ground: readonly Box[],
+  boxes: BoxesOf,
+  floor: number
+): number | undefined => {
+  const clear = (scale: number) =>
+    boxes(geo, { ...place, scale }).every((box) =>
+      ground.every((other) => overlap(box, other) === 0)
+    );
+
+  const steps = Math.max(
+    0,
+    Math.floor((place.scale - floor) / ACTOR_SCALE_STEP + 1e-9)
+  );
+
+  const scales = Array.from(
+    { length: steps + 1 },
+    (__, step) => place.scale - step * ACTOR_SCALE_STEP
+  );
+
+  return scales.find(clear);
+};
+
+interface Fit {
+  readonly boxes: BoxesOf;
+  readonly spot: Pt;
+}
+
+const firstFit = (
+  fits: readonly Fit[],
+  scaleAt: (fit: Fit) => number | undefined
+): { readonly scale: number; readonly spot: Pt } | null => {
+  for (const fit of fits) {
+    const scale = scaleAt(fit);
+
+    if (scale !== undefined) {
+      return { scale, spot: fit.spot };
+    }
+  }
+
+  return null;
+};
+
+export const placeSeats = <Plan extends SeatPlan>(
+  geo: Geo,
+  rest: SeatsAtRest<Plan>
+): readonly (Plan & SeatPlace)[] => {
+  const homes = rest.seats.flatMap((plan) => {
+    const spot = geo.seats[plan.index];
+
+    return spot === undefined ? [] : [{ plan, spot }];
+  });
+
+  const seats = homes.map(({ plan }) => plan);
+
+  const settle = (lit: boolean) => {
+    const placed = homes.map(({ plan, spot }): Placement => {
+      const active = lit && plan.active;
+      const shrink = plan.folded ? 0.07 : 0;
+      const lean = active ? 0.05 : 0;
+
+      return {
+        axis: spot.side === "top" ? "x" : "y",
+        fixed: active,
+        scale: tileScale({ ...plan, active }, geo.tile, rest.someoneElse),
+        x: spot.x + spot.nx * geo.tile * (lean - shrink),
+        y: spot.y + spot.ny * geo.tile * (lean * 0.8 - shrink),
+      };
+    });
+
+    separate(placed, geo);
+
+    return placed;
+  };
+
+  const actor = seats.findIndex((plan) => plan.active && !plan.winner);
+  const lit = settle(true);
+
+  makeRoom(
+    geo,
+    lit,
+    actor,
+    rest.bets.flatMap((index) => {
+      const bet = geo.seats[index]?.bet;
+
+      return bet === undefined ? [] : [pileBox(bet)];
+    })
+  );
+
+  const acting = lit[actor];
+  const home = geo.seats[seats[actor]?.index ?? -1];
+
+  const fitted =
+    acting === undefined || home === undefined
+      ? null
+      : firstFit(
+          [{ x: acting.x, y: acting.y }, home].flatMap((spot) =>
+            [roomyBoxes, seatBoxes].map((boxes) => ({ boxes, spot }))
+          ),
+          ({ boxes, spot }) =>
+            fitActor(
+              geo,
+              { ...acting, x: spot.x, y: spot.y },
+              actorGround(geo, { ...rest, seats }, lit, actor, boxes),
+              boxes,
+              Math.min(acting.scale, restingScale(rest.someoneElse))
+            )
+        );
+
+  if (acting !== undefined && fitted !== null) {
+    acting.scale = fitted.scale;
+    acting.x = fitted.spot.x;
+    acting.y = fitted.spot.y;
+  }
+
+  const placed = acting === undefined || fitted !== null ? lit : settle(false);
+
+  return seats.flatMap((plan, which) => {
+    const place = placed[which];
+
+    return place === undefined
+      ? []
+      : [{ ...plan, scale: place.scale, x: place.x, y: place.y }];
+  });
 };
 
 export const computeGeo = (w: number, h: number, count: number): Geo =>
