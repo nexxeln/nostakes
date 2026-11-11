@@ -173,10 +173,12 @@ export const awaitArrival = <A extends PokerServerMessage>(
         }
       }
 
-      if (Option.isSome(socket.closed())) {
+      const closed = socket.closed();
+
+      if (Option.isSome(closed)) {
         return yield* new SocketFailed({
           label: socket.label,
-          stage: `receive ${waitingFor} before the socket closed`,
+          stage: `receive ${waitingFor} before the socket closed with ${closed.value.code} ${closed.value.reason}`,
         });
       }
 

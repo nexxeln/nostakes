@@ -89,6 +89,8 @@ test(
 
 const COMMANDS_PER_CLIENT = 48;
 
+const KILLS = 12;
+
 const decodeEvent = Schema.decodeUnknownSync(
   Schema.fromJsonString(ToyEventSchema)
 );
@@ -182,12 +184,19 @@ test(
 
     const killer = yield* Effect.forkScoped(
       Effect.gen(function* killRepeatedly() {
-        for (let round = 0; round < 12; round += 1) {
+        for (let round = 0; round < KILLS; round += 1) {
           yield* Effect.sleep("300 millis");
 
           const target = players[round % players.length];
 
           if (target !== undefined) {
+            const killsBefore = Math.floor(round / players.length);
+
+            yield* until(
+              target,
+              ({ connection }) =>
+                connection === "Live" && target.wire.opened() > killsBefore
+            );
             yield* round % 2 === 0
               ? target.wire.closeFromClient
               : target.wire.floodFromClient;
@@ -202,12 +211,21 @@ test(
       concurrency: "unbounded",
     }).pipe(Effect.timeout("60 seconds"), Effect.orDie);
 
-    yield* Fiber.interrupt(killer);
+    yield* Fiber.join(killer);
+
+    for (const player of players) {
+      yield* until(
+        player,
+        ({ connection }) =>
+          connection === "Live" && player.wire.opened() > KILLS / players.length
+      );
+    }
+
     yield* exactlyOnce(base, code, players, start, replies);
 
     expect(
       players.reduce((opened, player) => opened + player.wire.opened(), 0)
-    ).toBeGreaterThan(players.length + 4);
+    ).toBeGreaterThanOrEqual(players.length + KILLS);
   }).pipe(Effect.scoped, Effect.provide(FetchHttpClient.layer)),
   { timeout: 90_000 }
 );
