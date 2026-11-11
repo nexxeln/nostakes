@@ -7,7 +7,10 @@ import {
   NameSchema,
   NameTaken,
   RoomCommands,
+  RoomEvents,
   RoomStates,
+  evolveAll,
+  invariants,
   lookAlikes,
   nameKey,
   nameProblem,
@@ -22,6 +25,7 @@ import {
   dan,
   ms,
   openedBy,
+  player,
   rejection,
   run,
   runAll,
@@ -245,6 +249,49 @@ const rename = (who: PlayerId, name: string) =>
 
 const sams = runAll(openedBy(ann), [join(bob, "Sam", 10)]);
 
+const NAMES_THAT_MAY_CLASH = [
+  "Bill",
+  "BiII",
+  "bill",
+  "Bi\u200Dll",
+  "ABC",
+  "\u0410\u0412\u0421",
+  "abc",
+  "Sam",
+  "Sam K",
+  "Sam  K",
+  "Zo\u00EB",
+  "Ana",
+] as const;
+
+const crowds = Arbitrary.schema(
+  Schema.Array(Schema.Literals(NAMES_THAT_MAY_CLASH)).check(
+    Schema.isMaxLength(9)
+  )
+);
+
+const crowdOf = (chosen: readonly string[]) =>
+  chosen.map((name, index) => ({ name, player: player(`guest-${index}`) }));
+
+const roomHolding = (crowd: ReturnType<typeof crowdOf>) =>
+  evolveAll(
+    openedBy(ann),
+    crowd.map(({ name, player: who }) =>
+      RoomEvents.MemberJoined({
+        at: ms(10),
+        avatar: "club",
+        name: NameSchema.make(name),
+        player: who,
+      })
+    )
+  );
+
+const namedAsClashing = (state: RoomState) =>
+  invariants(state)
+    .filter(({ invariant }) => invariant === "NamesAreDistinct")
+    .flatMap(({ detail }) => detail.split(","))
+    .toSorted();
+
 describe("names in a room", () => {
   it("refuses a join or a rename to a name another person already holds, however it is written", () => {
     expect([
@@ -259,6 +306,25 @@ describe("names in a room", () => {
       new NameTaken({ wanted: "SAM" }),
     ]);
   });
+
+  it.prop(
+    "holds as an invariant that no two people share a name, naming exactly the people some other person's name reads the same as",
+    { names: crowds },
+    ({ names: chosen }) => {
+      const crowd = crowdOf(chosen);
+
+      expect(namedAsClashing(roomHolding(crowd))).toStrictEqual(
+        crowd
+          .filter(({ name, player: who }) =>
+            crowd.some(
+              (other) => other.player !== who && sameName(other.name, name)
+            )
+          )
+          .map(({ player: who }): string => who)
+          .toSorted()
+      );
+    }
+  );
 
   it("refuses a name in another script that reads the same as one already here", () => {
     const abc = run(sams, join(cat, "ABC", 20)).state;

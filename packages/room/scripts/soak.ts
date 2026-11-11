@@ -1071,13 +1071,15 @@ const churn = (run: Run, open: Open) => {
   );
 
   if (members.length < 3) {
+    const late = run.random.pick(POOL) ?? HOST;
+
     send(
       run,
       RoomCommands.Join({
         at: at(run),
         avatar: "",
-        by: member(run.random.pick(POOL) ?? HOST),
-        name: "late",
+        by: member(late),
+        name: late,
       })
     );
   } else if (roll < 4 && standing.length > 0) {

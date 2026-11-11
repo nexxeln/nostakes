@@ -7,7 +7,7 @@ import { bombPotsOn } from "./dealing.js";
 import { MOST_KNOCKS, MOST_WAITING } from "./door.js";
 import { MOST_PEOPLE } from "./members.js";
 import { chipsOnTable, allEntries } from "./money.js";
-import { sameName } from "./names.js";
+import { nameKey, nameSkeleton } from "./names.js";
 import { sameTableRules } from "./rules.js";
 import { seatsTakenFrom } from "./seats.js";
 import {
@@ -55,14 +55,42 @@ const seatedPlayers = (state: Open) =>
 const isSeated = (state: Open, player: PlayerId) =>
   Option.isSome(seatOf(state, player));
 
-const clashingNames = (state: Open) =>
-  namedPeople(state)
-    .filter(({ name, player }) =>
-      namedPeople(state).some(
-        (other) => other.player !== player && sameName(other.name, name)
-      )
+const holdersBy = (
+  people: readonly { readonly player: PlayerId }[],
+  marks: readonly string[]
+) => {
+  const holders = new Map<string, PlayerId[]>();
+
+  for (const [index, { player }] of people.entries()) {
+    const mark = marks[index] ?? "";
+
+    holders.set(mark, [...(holders.get(mark) ?? []), player]);
+  }
+
+  return holders;
+};
+
+const heldByAnother = (
+  holders: ReadonlyMap<string, readonly PlayerId[]>,
+  mark: string,
+  player: PlayerId
+) => (holders.get(mark) ?? []).some((other) => other !== player);
+
+const clashingNames = (state: Open) => {
+  const people = namedPeople(state);
+  const keys = people.map(({ name }) => nameKey(name));
+  const skeletons = people.map(({ name }) => nameSkeleton(name));
+  const sameKey = holdersBy(people, keys);
+  const sameSkeleton = holdersBy(people, skeletons);
+
+  return people
+    .filter(
+      ({ player }, index) =>
+        heldByAnother(sameKey, keys[index] ?? "", player) ||
+        heldByAnother(sameSkeleton, skeletons[index] ?? "", player)
     )
     .map(({ player }) => player);
+};
 
 const peopleViolations = (state: Open) => [
   ...check(
