@@ -22,7 +22,6 @@
     "test": "vitest run",
     "build": "tsc -p tsconfig.build.json",
     "check": "pnpm run typecheck",
-    "pretest": "pnpm run --silent build",
     "verify": "node scripts/soak.ts && node scripts/moments.ts && vitest run --config vitest.verify.config.ts"
   },
   "dependencies": {

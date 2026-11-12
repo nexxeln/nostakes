@@ -23,7 +23,6 @@
     "build": "tsc -p tsconfig.build.json",
     "check": "pnpm run typecheck",
     "differential": "sh ../../tools/differential/run.sh",
-    "pretest": "pnpm run --silent build",
     "verify": "node scripts/exhaustive-evaluator.ts && node scripts/simulate.ts && vitest run --config vitest.verify.config.ts"
   },
   "dependencies": {

@@ -47,7 +47,7 @@ Workspace `package.json` files declare the pinned stack. Keep every dependency e
 - `pnpm install`: install the workspace. `prepare` patches TypeScript and installs the git hooks.
 - `pnpm dev`: run the room server on local workerd at `http://localhost:1337`, or the next free port when that one is taken, and the web app at `http://localhost:5173`. `apps/web/scripts/dev.ts` starts the server, reads the address it reports as ready, and points Vite's `/rooms` proxy there through `ROOM_SERVER_URL`. The server allows the origin in `ALLOWED_ORIGINS`, `http://localhost:5173` by default. It reads no Cloudflare credentials. `scripts/local.run.ts` keeps Alchemy's state in `.alchemy/state`, so a room survives restarting the room server.
 - `pnpm check`: lockfile check, strict typecheck, type-aware lint, and format check
-- `pnpm test`: build each package and run every Vitest suite once
+- `pnpm test`: build each package and run every Vitest suite once. Turbo builds a package before its tests (`test` depends on `build`), so no package has a `pretest` that builds: one rebuilt `dist` while the web build was reading it and failed CI. Run one package's tests with `pnpm turbo run test --filter=<name>`, not `pnpm --filter <name> test`, which builds nothing
 - `pnpm build`: compile each package to `dist`
 - `pnpm typecheck`: strict effect-tsrs over every workspace and the root scripts
 - `pnpm typecheck:tsc`: patched `tsc`. Run it when a checker pin changes.

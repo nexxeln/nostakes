@@ -22,7 +22,6 @@
     "test": "vitest run",
     "build": "tsc -p tsconfig.build.json",
     "check": "pnpm run typecheck",
-    "pretest": "pnpm run --silent build",
     "verify": "node scripts/settle-timing.ts"
   },
   "dependencies": {

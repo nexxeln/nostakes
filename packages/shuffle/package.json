@@ -22,7 +22,6 @@
     "test": "vitest run",
     "build": "tsc -p tsconfig.build.json",
     "check": "pnpm run typecheck",
-    "pretest": "pnpm run --silent build",
     "verify": "node scripts/sha256-against-web-crypto.ts && node scripts/order-uniformity.ts && vitest run --config vitest.verify.config.ts"
   },
   "dependencies": {
