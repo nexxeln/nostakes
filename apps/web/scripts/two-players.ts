@@ -611,8 +611,6 @@ const showsABluff = (ana: Page, ben: Page) =>
 
 const AWARDED = `${TABLE} [data-awarded]`;
 
-const AWARD_SETTLES = "3 seconds";
-
 const tablesWhenAsked = (pages: readonly Page[], watcher: Page) =>
   Effect.gen(function* tableOnce() {
     for (const page of pages) {
@@ -690,13 +688,48 @@ const pageBuild = (page: Page) =>
       .getAttribute("content", { timeout: 1000 })
   ).pipe(Effect.orElseSucceed(() => null));
 
-const stackOf = (page: Page, who: string) =>
-  attempt(`read ${who}'s stack`, () =>
-    page.locator(`${TABLE} .self .st`).textContent()
+interface ChipTable extends HTMLElement {
+  readonly snapshot: {
+    readonly pots: readonly number[];
+    readonly seats: readonly {
+      readonly bet: number;
+      readonly stack: number;
+    }[];
+  } | null;
+}
+
+const chipsOnTheTable = (page: Page, who: string) =>
+  attempt(`count the chips on ${who}'s table`, () =>
+    page.evaluate(() => {
+      const drawn =
+        globalThis.document.querySelector<ChipTable>("nostakes-table")
+          ?.snapshot ?? null;
+
+      return drawn === null
+        ? null
+        : drawn.seats.reduce(
+            (chips, seat) => chips + seat.stack + seat.bet,
+            drawn.pots.reduce((chips, pot) => chips + pot, 0)
+          );
+    })
   ).pipe(
-    Effect.map((text) => Number((text ?? "").replaceAll(",", ""))),
-    Effect.delay("1 second")
+    Effect.flatMap((chips) =>
+      chips === null
+        ? Effect.fail(
+            new NightFailed({
+              detail: `${who}'s table had nothing to draw`,
+              step: "count every stack, bet, and pot on one table at one moment",
+            })
+          )
+        : Effect.succeed(chips)
+    )
   );
+
+const chipsOnBothTables = (ana: Page, ben: Page) =>
+  Effect.all({
+    ana: chipsOnTheTable(ana, "Ana"),
+    ben: chipsOnTheTable(ben, "Ben"),
+  });
 
 const onBuild = (page: Page, who: string, build: string) =>
   pageBuild(page).pipe(
@@ -957,16 +990,13 @@ const night = Effect.gen(function* playOneHand() {
   yield* Console.log(
     "a called river bet went into the pot before either hint showed the hands"
   );
-  yield* Effect.sleep(AWARD_SETTLES);
-
-  const chipsBefore =
-    (yield* stackOf(ana, "Ana")) + (yield* stackOf(ben, "Ben"));
-
   yield* whoseTurn([ana, ben]);
   yield* Console.log("the next hand is dealt");
   yield* click(ana, "Ana opens the menu", "Menu");
   yield* click(ana, "Ana pauses after this hand", "Pause after this hand");
   yield* click(ana, "Ana closes the menu", "Close");
+
+  const chipsBefore = yield* chipsOnBothTables(ana, ben);
 
   yield* Scope.close(firstDeploy, Exit.void);
   yield* Console.log(`deploying ${SECOND_BUILD} in the middle of hand 2`);
@@ -1001,18 +1031,20 @@ const night = Effect.gen(function* playOneHand() {
   yield* seated(ana, "Ana");
   yield* seated(ben, "Ben");
 
-  const chipsAfter =
-    (yield* stackOf(ana, "Ana")) + (yield* stackOf(ben, "Ben"));
+  const chipsAfter = yield* chipsOnBothTables(ana, ben);
 
   yield* holds(
-    chipsAfter === chipsBefore && chipsBefore > 0,
+    chipsBefore.ana > 0 &&
+      [chipsBefore.ben, chipsAfter.ana, chipsAfter.ben].every(
+        (chips) => chips === chipsBefore.ana
+      ),
     new NightFailed({
-      detail: `the seats held ${chipsBefore} chips before the new build and ${chipsAfter} after`,
+      detail: `stacks, bets, and pots came to ${chipsBefore.ana} chips on Ana's table and ${chipsBefore.ben} on Ben's in the hand the restart interrupted, and to ${chipsAfter.ana} and ${chipsAfter.ben} after the new build`,
       step: "keep every chip through the reload",
     })
   );
   yield* Console.log(
-    `both players are back in their seats with ${chipsAfter} chips between them`
+    `both players are back in their seats with ${chipsAfter.ana} chips on the table, as before the restart`
   );
   yield* click(ana, "Ana starts the game again", "Start the game");
   yield* whoseTurn([ana, ben]);
