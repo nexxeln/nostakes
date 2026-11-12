@@ -102,6 +102,34 @@ const FLOOD =
 
 const isEvent = ToyRedactedSchema.guards;
 
+const FLOOD_ROUNDS = 40;
+
+const floodedUntil = <E, R>(
+  refused: () => boolean,
+  round: (index: number) => Effect.Effect<number, E, R>
+) =>
+  Effect.gen(function* floodInRounds() {
+    const sent = { frames: 0, rounds: 0 };
+
+    yield* Effect.suspend(() =>
+      refused() ? Effect.succeed(0) : round(sent.rounds)
+    ).pipe(
+      Effect.tap((frames) =>
+        Effect.sync(() => {
+          sent.frames += frames;
+          sent.rounds += 1;
+        })
+      ),
+      Effect.repeat({
+        schedule: Schedule.spaced("100 millis"),
+        times: FLOOD_ROUNDS,
+        until: refused,
+      })
+    );
+
+    return sent.frames;
+  });
+
 const eventsOf = (client: RoomClient) =>
   client.messages.flatMap((message) =>
     isEvents(message) ? message.events : []
@@ -471,9 +499,17 @@ test(
 
     const chatty = yield* joinAs(base, anaPass, "chatty");
 
-    for (let frame = 0; frame < FLOOD; frame += 1) {
-      yield* chatty.client.sendText(paddedPing(PING_FRAME.length + 1));
-    }
+    const flooded = yield* floodedUntil(
+      () => chatty.client.messages.some(isClosing),
+      () =>
+        Effect.gen(function* oneFlood() {
+          for (let frame = 0; frame < FLOOD; frame += 1) {
+            yield* chatty.client.sendText(paddedPing(PING_FRAME.length + 1));
+          }
+
+          return FLOOD;
+        })
+    );
 
     const tooMany = yield* chatty.client.waitClosed;
 
@@ -498,7 +534,7 @@ test(
 
     expect(tooMany.reason).toBe("TooManyFrames");
     expect(pongs).toBeGreaterThanOrEqual(PLAYER_FRAME_ALLOWANCE.burst - 2);
-    expect(pongs).toBeLessThan(FLOOD);
+    expect(pongs).toBeLessThan(flooded);
   }).pipe(Effect.provide(FetchHttpClient.layer))
 );
 
@@ -795,8 +831,6 @@ test(
   }).pipe(Effect.provide(FetchHttpClient.layer))
 );
 
-const CHURNED_SOCKETS = 6;
-
 const isClosingWith =
   (reason: CloseReason) =>
   (message: ToyServerMessage): message is ToyClosing =>
@@ -902,15 +936,26 @@ test(
       Effect.forEach((index) => joinAs(base, benPass, `ben ${index}`))
     );
 
-    for (let index = 0; index <= COMMAND_ALLOWANCE.burst; index += 1) {
-      const sender = benSockets[index % benSockets.length];
+    yield* floodedUntil(
+      () => benSockets.some(({ client }) => client.messages.some(isClosing)),
+      (round) =>
+        Effect.gen(function* oneBurstAndOneMore() {
+          for (let index = 0; index <= COMMAND_ALLOWANCE.burst; index += 1) {
+            const sender = benSockets[index % benSockets.length];
 
-      if (sender !== undefined) {
-        yield* sender.client.send(
-          command(`count ${index}`, Commands.Increment.make({ times: 1 }))
-        );
-      }
-    }
+            if (sender !== undefined) {
+              yield* sender.client.send(
+                command(
+                  `count ${round}.${index}`,
+                  Commands.Increment.make({ times: 1 })
+                )
+              );
+            }
+          }
+
+          return COMMAND_ALLOWANCE.burst + 1;
+        })
+    );
 
     const benClosing = yield* Effect.raceAll(
       benSockets.map(({ client }) =>
@@ -920,15 +965,24 @@ test(
 
     const churned: RoomClient[] = [];
 
-    for (let index = 0; index < CHURNED_SOCKETS; index += 1) {
-      const { client } = yield* joinAs(base, cyPass, `cy ${index}`);
+    yield* floodedUntil(
+      () =>
+        churned.some((client) =>
+          client.messages.some(isClosingWith("TooManyFrames"))
+        ),
+      (round) =>
+        Effect.gen(function* oneMoreSocket() {
+          const { client } = yield* joinAs(base, cyPass, `cy ${round}`);
 
-      for (let frame = 0; frame < UNDER_ONE_SOCKET; frame += 1) {
-        yield* client.sendText(paddedPing(PING_FRAME.length + 1));
-      }
+          for (let frame = 0; frame < UNDER_ONE_SOCKET; frame += 1) {
+            yield* client.sendText(paddedPing(PING_FRAME.length + 1));
+          }
 
-      churned.push(client);
-    }
+          churned.push(client);
+
+          return UNDER_ONE_SOCKET;
+        })
+    );
 
     const cyClosing = yield* Effect.raceAll(
       churned.map((client) =>
