@@ -1170,6 +1170,17 @@ const turnTo = (page: Page, yours: boolean) =>
     }, yours)
   );
 
+const TURN_SETTLES_MS = 500;
+
+const madeOf = (page: Page) =>
+  attempt("read how much of the clip is made", () =>
+    page
+      .locator("nostakes-moment")
+      .evaluate((node) =>
+        node instanceof HTMLElement ? Number(node.dataset.made ?? "0") : 0
+      )
+  );
+
 const abandonedClip = (engine: BrowserType) =>
   Effect.gen(function* abandonClip() {
     const origin = yield* StageOrigin;
@@ -1211,10 +1222,28 @@ const abandonedClip = (engine: BrowserType) =>
       return { label, line: `${label}: no clip on this browser`, problems: [] };
     }
 
+    yield* attempt("wait for the first frames", () =>
+      page.waitForFunction(
+        () => {
+          const node = globalThis.document.querySelector("nostakes-moment");
+
+          return node instanceof HTMLElement && Number(node.dataset.made) > 0;
+        },
+        undefined,
+        { timeout: 30_000 }
+      )
+    );
     yield* turnTo(page, true);
+    yield* attempt("let a frame in flight land", () =>
+      page.waitForTimeout(TURN_SETTLES_MS)
+    );
+
+    const turnStarts = yield* madeOf(page);
+
     yield* attempt("let the turn run", () => page.waitForTimeout(HELD_MS));
 
     const during = yield* stateOf(page);
+    const turnEnds = yield* madeOf(page);
 
     yield* turnTo(page, false);
 
@@ -1229,12 +1258,12 @@ const abandonedClip = (engine: BrowserType) =>
 
     return {
       label,
-      line: `${label}: ${during} through ${HELD_MS} ms of the player's turn, ${resumed ? "made after it" : "never made after it"}`,
+      line: `${label}: ${during} at ${turnStarts}% through ${HELD_MS} ms of the player's turn and ${turnEnds}% at its end, ${resumed ? "made after it" : "never made after it"}`,
       problems: [
-        ...(during === "Waiting"
+        ...(during === "Making" && turnEnds === turnStarts
           ? []
           : [
-              `${label}: the clip went on to ${during} during the player's turn`,
+              `${label}: the clip went on to ${during}, ${turnStarts}% to ${turnEnds}%, during the player's turn`,
             ]),
         ...(resumed
           ? []
@@ -2283,12 +2312,19 @@ const replayedClip = (
       yield* attempt("choose Drift", () =>
         page.locator("nostakes-moment .style").click({ timeout: 60_000 })
       );
-      yield* attempt("wait for the choice to be taken", () =>
-        page
-          .locator(
-            'nostakes-moment[data-style="Drift"]:not([data-clip="Ready"])'
-          )
-          .waitFor({ state: "attached", timeout: 15_000 })
+      yield* attempt("wait for Drift to say it is being made", () =>
+        page.waitForFunction(
+          () =>
+            [
+              ...(globalThis.document
+                .querySelector("nostakes-moment")
+                ?.shadowRoot?.querySelectorAll(".clip, .style") ?? []),
+            ].some((button) =>
+              (button.textContent ?? "").startsWith("Making Drift")
+            ),
+          undefined,
+          { timeout: 15_000 }
+        )
       );
     }
 
@@ -2302,11 +2338,21 @@ const replayedClip = (
     const started = performance.now();
 
     yield* attempt("wait for the replay to be made or refused", () =>
-      page
-        .locator(
-          'nostakes-moment[data-clip="Ready"], nostakes-moment[data-clip="Unavailable"]'
-        )
-        .waitFor({ state: "attached", timeout: 240_000 })
+      page.waitForFunction(
+        () => {
+          const node = globalThis.document.querySelector("nostakes-moment");
+
+          return (
+            node instanceof HTMLElement &&
+            node.dataset.made === undefined &&
+            ["Failed", "Ready", "Share", "Unavailable"].includes(
+              node.dataset.clip ?? ""
+            )
+          );
+        },
+        undefined,
+        { timeout: 240_000 }
+      )
     );
 
     const readyMs = Math.round(performance.now() - started);
@@ -2320,7 +2366,7 @@ const replayedClip = (
 
     const state = yield* stateOf(page);
 
-    if (state !== "Ready") {
+    if (state !== "Ready" && state !== "Share") {
       return {
         label,
         line: `${label}: no replay on this browser (${state})`,
@@ -2496,6 +2542,7 @@ const namedFlows = (
   settings: Settings
 ) => [
   ...(only.includes("refused") ? [refusedClip(engine)] : []),
+  ...(only.includes("turn") ? [abandonedClip(engine)] : []),
   ...(only.includes("owed") ? [owedClip(engine, settings)] : []),
 ];
 

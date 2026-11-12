@@ -569,6 +569,13 @@ class NostakesMoment extends HTMLElement {
 
     this.dataset.clip = state;
     this.dataset.style = this.#style;
+
+    if (making === null) {
+      delete this.dataset.made;
+    } else {
+      this.dataset.made = String(Math.floor(making.made * 100));
+    }
+
     this.#clip.className =
       state === "Unavailable" || state === "Checking" ? "clip gone" : "clip";
     this.#drift.className =
