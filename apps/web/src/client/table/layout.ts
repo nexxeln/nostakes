@@ -1592,17 +1592,26 @@ const nearestClear = (
   return best?.box;
 };
 
-const hintAmong = (geo: Geo, blocked: readonly Box[]): HandHint => {
+type HintForm = "Together" | "Split" | "OnCards";
+
+const hintAmong = (
+  geo: Geo,
+  blocked: readonly Box[],
+  roomiest: HintForm = "Together"
+): HandHint => {
   const w = Math.min(HAND_HINT.w, geo.w - 16);
   const x = geo.hand.x - w / 2;
   const top = handTopOf(geo) - HAND_HINT.gap;
 
-  const together = nearestClear(
-    geo,
-    blocked,
-    { h: HAND_HINT.h, w, x, y: top - HAND_HINT.h },
-    HINT_RISE
-  );
+  const together =
+    roomiest === "Together"
+      ? nearestClear(
+          geo,
+          blocked,
+          { h: HAND_HINT.h, w, x, y: top - HAND_HINT.h },
+          HINT_RISE
+        )
+      : undefined;
 
   if (together !== undefined) {
     return {
@@ -1636,7 +1645,11 @@ const hintAmong = (geo: Geo, blocked: readonly Box[]): HandHint => {
   };
 
   const foot = nearestClear(geo, blocked, footAt, 0) ?? footAt;
-  const above = nearestClear(geo, blocked, sayAt, HINT_RISE);
+
+  const above =
+    roomiest === "OnCards"
+      ? undefined
+      : nearestClear(geo, blocked, sayAt, HINT_RISE);
 
   if (above !== undefined) {
     return { foot, onCards: false, say: above, stacked: false };
@@ -3963,8 +3976,12 @@ const yourPile = (
 const sameHint = (one: HandHint, other: HandHint) =>
   JSON.stringify(one) === JSON.stringify(other);
 
-const hintWith = (geo: Geo, button: ButtonSpot, ground: readonly Box[]) =>
-  hintAmong(geo, [...ground, buttonBox(button)]);
+const hintWith = (
+  geo: Geo,
+  button: ButtonSpot,
+  ground: readonly Box[],
+  roomiest: HintForm
+) => hintAmong(geo, [...ground, buttonBox(button)], roomiest);
 
 interface Laid extends Arrangement {
   readonly hint: HandHint;
@@ -4043,11 +4060,12 @@ const wideTagFits = (
 
 const lanesOf = (
   geo: Geo,
-  candidates: readonly (readonly Lane[])[] = lanesOfEverySeat(geo)
+  candidates: readonly (readonly Lane[])[],
+  roomiest: HintForm
 ): Laid => {
   const owners = ownersAt(geo, geo.seats);
   const fixed = fixedGround(geo, geo.seats);
-  const free = hintAmong(geo, hintFixedGround(geo));
+  const free = hintAmong(geo, hintFixedGround(geo), roomiest);
 
   const button = yourButton(
     geo,
@@ -4056,7 +4074,7 @@ const lanesOf = (
     [hintBoxOf(free)]
   );
 
-  const lines = hintWith(geo, button, hintFixedGround(geo));
+  const lines = hintWith(geo, button, hintFixedGround(geo), roomiest);
   const hint = hintBoxOf(lines);
   const middle = [buttonBox(button), lines.say, lines.foot];
 
@@ -4320,15 +4338,17 @@ export const computeGeo = (
 
   const laned = (
     rested: Geo,
-    candidates: readonly (readonly Lane[])[] = lanesOfEverySeat(rested)
+    candidates: readonly (readonly Lane[])[],
+    roomiest: HintForm
   ): Laned => {
-    const lanes = lanesOf(rested, candidates);
+    const lanes = lanesOf(rested, candidates, roomiest);
     const geo = withPiles(rested, lanes);
 
     const hint = hintWith(
       geo,
       lanes.buttons.at(-1) ?? { ...geo.self, r: MIN_BUTTON_RADIUS },
-      handHintGround(geo)
+      handHintGround(geo),
+      roomiest
     );
 
     const moved = sameHint(hint, lanes.hint) ? 0 : 1;
@@ -4351,7 +4371,11 @@ export const computeGeo = (
 
   const rounds = wide ? [0] : LANE_ROUNDS.map((share) => w * share);
 
-  const fitAmong = (caps: readonly number[], compact: boolean) =>
+  const fitAmong = (
+    caps: readonly number[],
+    compact: boolean,
+    roomiest: HintForm = "Together"
+  ) =>
     firstFitting(
       caps.flatMap((cap) =>
         rounds.flatMap((round) => spacingsAt(cap, compact, round))
@@ -4366,9 +4390,25 @@ export const computeGeo = (
           return null;
         }
 
-        return laned(rested, seatLanes.lanes);
+        return laned(rested, seatLanes.lanes, roomiest);
       }
     );
+
+  const lastResort = () => {
+    const attempt: Attempt = {
+      cap: FACE_FLOOR,
+      compact: true,
+      round: 0,
+      spacing: "Column",
+    };
+
+    const rested = restedAt(attempt);
+
+    return {
+      attempt,
+      result: laned(rested, lanesOfEverySeat(rested), "Together"),
+    };
+  };
 
   const coarse = capsDown(today.tile, LANE_COARSE);
   let coarseFit: ReturnType<typeof fitAmong> = null;
@@ -4394,20 +4434,12 @@ export const computeGeo = (
         )
       : null;
 
-  const fitted = (coarseFit === null
-    ? null
-    : (finer(coarseFit, above) ?? coarseFit)) ??
-    fitAmong([FACE_FLOOR], true) ?? {
-      attempt: { cap: FACE_FLOOR, compact: true, round: 0, spacing: "Column" },
-      result: laned(
-        restedAt({
-          cap: FACE_FLOOR,
-          compact: true,
-          round: 0,
-          spacing: "Column",
-        })
-      ),
-    };
+  const fitted =
+    (coarseFit === null ? null : (finer(coarseFit, above) ?? coarseFit)) ??
+    fitAmong([FACE_FLOOR], true) ??
+    fitAmong([FACE_FLOOR], true, "Split") ??
+    fitAmong([FACE_FLOOR], true, "OnCards") ??
+    lastResort();
 
   const { geo, hint, lanes } = fitted.result;
 
