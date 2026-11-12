@@ -146,6 +146,8 @@ const greetWith = (
     return client;
   });
 
+const MEMBER_WINS_WITHIN_MS = 2000;
+
 test(
   "7. clock race: the alarm acts, and when a member wins the race the late alarm writes nothing",
   Effect.gen(function* clockRace() {
@@ -174,7 +176,9 @@ test(
       "Committed"
     );
 
-    yield* ana.client.send(command("t2", Commands.StartTurn.make({ ms: 600 })));
+    yield* ana.client.send(
+      command("t2", Commands.StartTurn.make({ ms: MEMBER_WINS_WITHIN_MS }))
+    );
     yield* ana.client.next("reply t2", replyTo("t2"));
 
     const started = eventsOf(ana.client).findLast(isEvent.TurnStarted);
