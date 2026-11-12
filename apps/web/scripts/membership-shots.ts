@@ -93,6 +93,10 @@ const program = Effect.gen(function* takeMembershipShots() {
   yield* attempt("land in the room", () =>
     host.waitForURL(/\/r\/[2-9A-Z]{6}$/u)
   );
+  yield* attempt("the setup sheet opens for the host", () =>
+    host.locator(".setup-sheet").waitFor({ timeout: 15_000 })
+  );
+  yield* press(host, "Go to the table");
 
   const guest = yield* phone(opened);
 

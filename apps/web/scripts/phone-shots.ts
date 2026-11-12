@@ -132,6 +132,10 @@ const tableOf = (
     yield* attempt("land in the room", () =>
       host.waitForURL(/\/r\/[2-9A-Z]{6}$/u)
     );
+    yield* attempt("the setup sheet opens for the host", () =>
+      host.locator(".setup-sheet").waitFor({ timeout: 15_000 })
+    );
+    yield* button(host, "Go to the table");
 
     const guests = yield* pipe(
       Array.from({ length: size - 1 }, (_, index) => index),
