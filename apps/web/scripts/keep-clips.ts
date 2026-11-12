@@ -1258,6 +1258,8 @@ const sharedCount = (page: Page) =>
     page.evaluate<number>("window.__shared.length")
   );
 
+const DRIFT_ANSWERS_WITHIN_MS = 5000;
+
 const owedClip = (engine: BrowserType, settings: Settings) =>
   Effect.gen(function* oweClip() {
     const origin = yield* StageOrigin;
@@ -1327,7 +1329,17 @@ const owedClip = (engine: BrowserType, settings: Settings) =>
 
     const answered = yield* attempt("read the answer to Drift", () =>
       page
-        .waitForTimeout(500)
+        .waitForFunction(
+          () =>
+            [
+              ...(document
+                .querySelector("nostakes-moment")
+                ?.shadowRoot?.querySelectorAll(".clip, .style") ?? []),
+            ].some((button) => (button.textContent ?? "").includes("Drift")),
+          undefined,
+          { timeout: DRIFT_ANSWERS_WITHIN_MS }
+        )
+        .catch(() => null)
         .then(() =>
           moment.evaluate((node) =>
             [...(node.shadowRoot?.querySelectorAll(".clip, .style") ?? [])]

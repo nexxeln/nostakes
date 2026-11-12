@@ -335,6 +335,12 @@ const zoomHintShown = (page: Page) =>
     })
   );
 
+const tableTakes = (page: Page, touchAction: string) =>
+  waitFor(style(page, TABLE, "touch-action"), (found) => found === touchAction);
+
+const zoomHintIs = (page: Page, shown: boolean) =>
+  waitFor(zoomHintShown(page), (found) => found === shown);
+
 const visualScale = (page: Page) =>
   attempt("read the visual viewport's scale", () =>
     page.evaluate(() => globalThis.visualViewport?.scale ?? 1)
@@ -503,10 +509,8 @@ const zoomedModeCheck = <R>(
       yield* pretendZoom(page, ZOOMED_IN);
     }
 
-    yield* Effect.sleep("200 millis");
-
-    const zoomedTouch = yield* style(page, TABLE, "touch-action");
-    const zoomedHint = yield* zoomHintShown(page);
+    const zoomedTouch = yield* tableTakes(page, "manipulation");
+    const zoomedHint = yield* zoomHintIs(page, true);
     const zoomedUnder = pinchForbidden(yield* touchActionsUnder(page));
 
     yield* note(
@@ -517,10 +521,8 @@ const zoomedModeCheck = <R>(
 
     yield* realScale ? setPageScale(context, page, 1) : forgetPretendZoom(page);
 
-    yield* Effect.sleep("200 millis");
-
-    const restoredTouch = yield* style(page, TABLE, "touch-action");
-    const restoredHint = yield* zoomHintShown(page);
+    const restoredTouch = yield* tableTakes(page, "pinch-zoom");
+    const restoredHint = yield* zoomHintIs(page, false);
 
     yield* note(
       "zoomed in, the table pans and pinches like the page and says how to get back; at its own scale it takes its gestures again",
@@ -547,16 +549,13 @@ const pinchCheck = <R>(
 
       yield* setPageScale(context, page, 1);
       yield* letTablePanAndPinch(page, false);
-      yield* Effect.sleep("300 millis");
+      yield* tableTakes(page, "pinch-zoom");
 
       if (controlScale > PINCHED_ABOVE) {
         const pinchedIn = yield* pinchTable(context, page, ZOOMED_IN);
         const inScale = yield* scaleAfterPinch(page);
-
-        yield* Effect.sleep("200 millis");
-
-        const pinchedTouch = yield* style(page, TABLE, "touch-action");
-        const pinchedHint = yield* zoomHintShown(page);
+        const pinchedTouch = yield* tableTakes(page, "manipulation");
+        const pinchedHint = yield* zoomHintIs(page, true);
 
         yield* note(
           "a pinch that starts on the table zooms the page, and the zoomed table then pans and pinches and says how to get back",
@@ -885,9 +884,13 @@ const phoneChecks = (engine: BrowserType, app: string, watched: PageWatch) =>
       );
       yield* attempt("turn the phone", () => host.setViewportSize(LANDSCAPE));
       yield* insetsFor(hostContext, host, NOTCH_LANDSCAPE);
-      yield* Effect.sleep("300 millis");
 
-      const turned = yield* box(host, TABLE);
+      const turned = yield* waitFor(
+        box(host, TABLE),
+        ({ width, x }) =>
+          x >= NOTCH_LANDSCAPE.left - 1 &&
+          x + width <= LANDSCAPE.width - NOTCH_LANDSCAPE.right + 1
+      );
 
       yield* note(
         "landscape notch: the table keeps clear of both sides",
