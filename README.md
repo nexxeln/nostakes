@@ -50,3 +50,13 @@ Open `http://localhost:5173`, open a room, and join it from a private window to 
 - [`docs/deploying.md`](docs/deploying.md): the stages, credentials, deploys, and rolling back
 - [`AGENTS.md`](AGENTS.md): the rules for changing code here. Read it before you change anything.
 - [`PROVENANCE.md`](PROVENANCE.md): credit for borrowed code, fonts, and data
+
+## License
+
+nostakes is free software under the [GNU Affero General Public License, version 3](LICENSE). You may use, change, and host it. If you run a changed version as a service, you must offer its source to the people who use it.
+
+Copyright (C) 2026 Shoubhit Dash.
+
+The nostakes name and logo are not covered by that licence. A changed copy needs its own name.
+
+Third-party code and fonts keep their own licences, listed in [`PROVENANCE.md`](PROVENANCE.md).

@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "description": "Poker night with friends, in the browser.",
+  "license": "AGPL-3.0-only",
   "type": "module",
   "scripts": {
     "build": "turbo run build",
