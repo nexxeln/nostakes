@@ -328,7 +328,7 @@ test(
           Option.isSome(removedVia)
         )
       ).length
-    ).toBeGreaterThanOrEqual(1);
+    ).toBe(plans.filter((plan) => Option.isSome(plan.intruderAtHand)).length);
     expect(
       played.flatMap((night) =>
         Option.toArray(night.regular).map(({ handsDealt, removedVia }) => ({

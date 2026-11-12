@@ -30,6 +30,7 @@ import type {
   BotRecord,
   NightControl,
   OpenView,
+  PlannedScene,
   Random,
   Role,
   RuleChange,
@@ -42,7 +43,6 @@ import type { Timeline } from "./client-wire.js";
 import { haltMidHand } from "./halt-night.js";
 import { HeldArrival, KEPT_DECODED } from "./held-arrival.js";
 import {
-  DOOR_WAIT_MS,
   INTRUDER_NAME,
   KNOCKER_NAME,
   intrude,
@@ -733,15 +733,28 @@ export const playNight = (base: string, opened: OpenedNight) =>
     const { note } = opened.journal;
     const started = wallClock();
 
+    const planned: readonly (readonly [PlannedScene, Option.Option<number>])[] =
+      [
+        ["the knocks at the door", plan.knocksAtHand],
+        ["the regular's removal", plan.regularAtHand],
+        ["the stranger's removal", plan.intruderAtHand],
+      ];
+
     const control: NightControl = {
       approval: Option.none(),
+      closesWhileABotHoldsTheAction: false,
       closing: false,
       door: Option.none(),
       head: 0,
       heldClear: Option.none(),
+      holdingTheAction: new Set(),
       intruders: new Map(),
       knocks: new Map(),
-      knocksPending: Option.isSome(plan.knocksAtHand) ? KNOCK_PLANS.length : 0,
+      owed: new Set(
+        planned.flatMap(([scene, atHand]) =>
+          Option.isSome(atHand) ? [scene] : []
+        )
+      ),
       quiet: new Set(),
       raced: false,
       racer: Option.all({
@@ -881,9 +894,14 @@ export const playNight = (base: string, opened: OpenedNight) =>
         ? `, and these client bots were not yet live with nothing pending: ${unsettledClients().join("; ") || "none"}`
         : "";
 
+      const owed =
+        control.owed.size > 0
+          ? `, still owing ${[...control.owed].join(" and ")}, which it waits for before it closes`
+          : "";
+
       return now - started > plan.limitMs
         ? Option.some(
-            `the night reached ${handsReached} of ${plan.hands} hands in ${plan.limitMs} ms${unsettled}`
+            `the night reached ${handsReached} of ${plan.hands} hands in ${plan.limitMs} ms${owed}${unsettled}`
           )
         : Option.none();
     };
@@ -900,11 +918,9 @@ export const playNight = (base: string, opened: OpenedNight) =>
         endingSince = Option.some(since);
 
         if (plan.ending === "MidHand") {
-          return Option.isSome(open.hand) || now - since > MID_HAND_WAIT_MS
-            ? Option.some(
-                Option.isSome(open.hand) ? "mid-hand" : "a hand that never came"
-              )
-            : Option.none();
+          control.closesWhileABotHoldsTheAction = true;
+
+          return Option.some("once a bot holds the action in a hand");
         }
 
         if (plan.ending === "AsItComes") {
@@ -953,7 +969,14 @@ export const playNight = (base: string, opened: OpenedNight) =>
     };
 
     const mayClose = (hands: number) =>
-      hands >= plan.hands && !control.closing && control.knocksPending === 0;
+      hands >= plan.hands && !control.closing && control.owed.size === 0;
+
+    const noHeldActionCame = (open: OpenView, now: number) =>
+      control.closesWhileABotHoldsTheAction &&
+      !open.queued.close &&
+      endingSince.pipe(
+        Option.exists((since) => now - since > MID_HAND_WAIT_MS)
+      );
 
     const supervise = Effect.gen(function* superviseNight() {
       let progress = wallClock();
@@ -1017,6 +1040,13 @@ export const playNight = (base: string, opened: OpenedNight) =>
           }
         }
 
+        if (noHeldActionCame(open.value, now)) {
+          note(
+            `no bot held the action within ${MID_HAND_WAIT_MS} ms; the host closes as it comes`
+          );
+          control.closesWhileABotHoldsTheAction = false;
+        }
+
         if (jammed) {
           progress = now;
         }
@@ -1076,15 +1106,42 @@ export const playNight = (base: string, opened: OpenedNight) =>
       onSome: (atHand) =>
         joinRegular(base, plan.code).pipe(
           Effect.flatMap((pass) =>
-            playRegular(base, pass, control, atHand, control.seats, note)
+            playRegular(
+              base,
+              pass,
+              control,
+              atHand,
+              control.seats,
+              note,
+              () => {
+                control.owed.delete("the regular's removal");
+              }
+            )
           ),
           Effect.tap((record) =>
             Effect.sync(() => {
               regular = Option.some(record);
             })
+          ),
+          Effect.ensuring(
+            Effect.sync(() => {
+              control.owed.delete("the regular's removal");
+            })
           )
         ),
     });
+
+    const viewShows = (shown: (view: OpenView) => boolean) =>
+      Effect.gen(function* untilTheViewShows() {
+        while (
+          !control.stop &&
+          !freshest().pipe(
+            Option.exists((view) => RoomViews.$is("Open")(view) && shown(view))
+          )
+        ) {
+          yield* Effect.sleep(Duration.millis(100));
+        }
+      });
 
     const intruding = Option.match(plan.intruderAtHand, {
       onNone: () => Effect.void,
@@ -1092,44 +1149,35 @@ export const playNight = (base: string, opened: OpenedNight) =>
         Effect.gen(function* letAStrangerIn() {
           while (
             (handsNow() < atHand || lateJoined < plan.lateJoiners) &&
-            !control.closing &&
             !control.stop
           ) {
             yield* Effect.sleep(Duration.millis(100));
           }
 
-          if (control.closing || control.stop) {
-            return;
-          }
-
           const lockedFor = (locked: boolean) =>
-            Effect.gen(function* doorAt() {
+            Effect.suspend(() => {
               control.door = Option.some(locked);
 
-              const since = wallClock();
-
-              while (
-                !freshest().pipe(
-                  Option.exists(
-                    (view) =>
-                      RoomViews.$is("Open")(view) &&
-                      view.settings.locked === locked
-                  )
-                ) &&
-                wallClock() - since < DOOR_WAIT_MS &&
-                !control.stop
-              ) {
-                yield* Effect.sleep(Duration.millis(100));
-              }
+              return viewShows((view) => view.settings.locked === locked);
             });
 
           yield* lockedFor(true);
+
+          if (control.stop) {
+            return;
+          }
+
           note("the host locked the room; a stranger knocks");
 
           const knocked = yield* knockAt(base, plan.code);
 
           yield* lockedFor(false);
           control.door = Option.none();
+
+          if (control.stop) {
+            return;
+          }
+
           note("the host unlocked the room; the stranger joins");
 
           const pass = yield* joinIntruder(base, plan.code);
@@ -1144,7 +1192,13 @@ export const playNight = (base: string, opened: OpenedNight) =>
           );
 
           intruder = Option.some({ ...record, knocked });
-        }),
+        }).pipe(
+          Effect.ensuring(
+            Effect.sync(() => {
+              control.owed.delete("the stranger's removal");
+            })
+          )
+        ),
     });
 
     const knocking = Option.match(plan.knocksAtHand, {
@@ -1153,41 +1207,35 @@ export const playNight = (base: string, opened: OpenedNight) =>
         Effect.gen(function* knockAtTheDoor() {
           while (
             (handsNow() < atHand || lateJoined < plan.lateJoiners) &&
-            !control.closing &&
             !control.stop
           ) {
             yield* Effect.sleep(Duration.millis(100));
-          }
-
-          if (control.closing || control.stop) {
-            return;
           }
 
           control.approval = Option.some(true);
 
-          const since = wallClock();
+          yield* viewShows(
+            (view) =>
+              view.settings.approval.joins &&
+              view.settings.knockSeconds === MIN_KNOCK_SECONDS
+          );
 
-          while (
-            !freshest().pipe(
-              Option.exists(
-                (view) =>
-                  RoomViews.$is("Open")(view) &&
-                  view.settings.approval.joins &&
-                  view.settings.knockSeconds === MIN_KNOCK_SECONDS
-              )
-            ) &&
-            wallClock() - since < DOOR_WAIT_MS &&
-            !control.stop
-          ) {
-            yield* Effect.sleep(Duration.millis(100));
+          if (control.stop) {
+            return;
           }
 
           note("the host turned on join approval; three strangers knock");
 
+          let unanswered = KNOCK_PLANS.length;
+
           const answers = yield* Effect.all(
             KNOCK_PLANS.map((knockPlan) =>
               knockAndWait(base, plan.code, knockPlan, control, note, () => {
-                control.knocksPending -= 1;
+                unanswered -= 1;
+
+                if (unanswered === 0) {
+                  control.owed.delete("the knocks at the door");
+                }
               })
             ),
             { concurrency: "unbounded" }
@@ -1197,7 +1245,7 @@ export const playNight = (base: string, opened: OpenedNight) =>
         }).pipe(
           Effect.ensuring(
             Effect.sync(() => {
-              control.knocksPending = 0;
+              control.owed.delete("the knocks at the door");
             })
           )
         ),

@@ -6,7 +6,7 @@ import {
 import type { PlayerId, RoomPass } from "@nostakes/protocol";
 import { KnockViewSchema, RoomEvents } from "@nostakes/room";
 import type { KnockOutcome, RoomEvent } from "@nostakes/room";
-import { Duration, Effect, Option, Schema } from "effect";
+import { Duration, Effect, Function, Option, Schema } from "effect";
 
 import type { NightControl } from "./bot.js";
 import { hello } from "./intruder.js";
@@ -159,7 +159,15 @@ export const knockAndWait = (
     const inside =
       plan === "LetIn" && answer === "RoomOpen"
         ? Option.some(
-            yield* playRegular(base, pass, control, NEVER, control.seats, note)
+            yield* playRegular(
+              base,
+              pass,
+              control,
+              NEVER,
+              control.seats,
+              note,
+              Function.constVoid
+            )
           )
         : Option.none<RegularRecord>();
 

@@ -26,8 +26,6 @@ export const KNOCKER_NAME = "knocker";
 
 const REMOVAL_WAIT_MS = 90_000;
 
-export const DOOR_WAIT_MS = 30_000;
-
 const FINISHING_WAIT_MS = 30_000;
 
 export interface IntruderRecord {

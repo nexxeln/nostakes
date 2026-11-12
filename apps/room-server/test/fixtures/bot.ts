@@ -137,11 +137,18 @@ export interface NightControl {
   door: Option.Option<boolean>;
   approval: Option.Option<boolean>;
   readonly knocks: Map<PlayerId, KnockPlan>;
-  knocksPending: number;
+  readonly owed: Set<PlannedScene>;
   readonly racer: Option.Option<ClearRacer>;
   heldClear: Option.Option<HeldClear>;
   raced: boolean;
+  closesWhileABotHoldsTheAction: boolean;
+  readonly holdingTheAction: Set<PlayerId>;
 }
+
+export type PlannedScene =
+  | "the knocks at the door"
+  | "the regular's removal"
+  | "the stranger's removal";
 
 export interface ClearRacer {
   readonly player: PlayerId;
@@ -150,10 +157,7 @@ export interface ClearRacer {
 
 export interface HeldClear {
   readonly command: MemberCommand;
-  readonly since: number;
 }
-
-const RACE_WAIT_MS = 20_000;
 
 const RACE_PATIENCE_HANDS = 3;
 
@@ -282,6 +286,14 @@ const seatOf = (view: OpenView, player: PlayerId) =>
     view.seats.find((seat) =>
       seat.occupant.pipe(Option.exists((who) => who.player === player))
     )
+  );
+
+const actorOf = (open: OpenView) =>
+  open.hand.pipe(
+    Option.flatMap(({ toAct }) => toAct),
+    Option.flatMap((seat) => Option.fromUndefinedOr(open.seats[seat])),
+    Option.flatMap(({ occupant }) => occupant),
+    Option.map(({ player }) => player)
   );
 
 const decisionKey = (view: OpenView) =>
@@ -506,6 +518,25 @@ export const plannerFor = (setup: PlannerSetup) => {
     );
   };
 
+  const holdsForTheClose = (open: OpenView) =>
+    control.closing &&
+    control.closesWhileABotHoldsTheAction &&
+    !open.queued.close &&
+    Option.isNone(open.stalled);
+
+  const closeUnderAHeldAction = (open: OpenView): Option.Option<Intent> => {
+    if (Option.isSome(open.legal)) {
+      control.holdingTheAction.add(pass.player);
+    }
+
+    return open.host === pass.player &&
+      Option.exists(actorOf(open), (actor) =>
+        control.holdingTheAction.has(actor)
+      )
+      ? intent(Commands.CloseRoom.make({}))
+      : Option.none();
+  };
+
   const gameIntent = (
     open: OpenView,
     seated: number
@@ -542,15 +573,10 @@ export const plannerFor = (setup: PlannerSetup) => {
     clearsAlone: boolean
   ): Option.Option<Option.Option<Intent>> => {
     if (Option.isSome(control.heldClear)) {
-      const held = control.heldClear.value;
-
-      if (
-        open.members.some(({ player }) => player === racer) ||
-        wallClock() - held.since > RACE_WAIT_MS
-      ) {
+      if (open.members.some(({ player }) => player === racer)) {
         control.raced = true;
 
-        return Option.some(intent(held.command));
+        return Option.some(intent(control.heldClear.value.command));
       }
 
       return Option.some(Option.none());
@@ -559,7 +585,6 @@ export const plannerFor = (setup: PlannerSetup) => {
     if (clearsAlone && open.departed.some(({ player }) => player === racer)) {
       control.heldClear = Option.some({
         command: Commands.ClearRoom.make({ players: onlyThem }),
-        since: wallClock(),
       });
 
       return Option.some(Option.none());
@@ -683,7 +708,8 @@ export const plannerFor = (setup: PlannerSetup) => {
     const seated = open.seats.filter(({ occupant }) => Option.isSome(occupant));
 
     if (control.closing) {
-      return open.queued.close && Option.isNone(open.stalled)
+      return (open.queued.close && Option.isNone(open.stalled)) ||
+        holdsForTheClose(open)
         ? Option.none()
         : intent(Commands.CloseRoom.make({}));
     }
@@ -963,6 +989,29 @@ export const plannerFor = (setup: PlannerSetup) => {
     return Option.none();
   };
 
+  const plannedScene = (open: OpenView): Option.Option<Intent> =>
+    (open.host === pass.player && !control.closing
+      ? doorIntent(open).pipe(Option.orElse(() => regularIntent(open)))
+      : Option.none<Intent>()
+    ).pipe(Option.orElse(() => raceIntent(open)));
+
+  const beforeAnyTurn = (
+    open: OpenView
+  ): Option.Option<Option.Option<Intent>> => {
+    const closes = holdsForTheClose(open)
+      ? closeUnderAHeldAction(open)
+      : Option.none<Intent>();
+
+    if (
+      Option.isSome(closes) ||
+      (holdsForTheClose(open) && Option.isSome(open.legal))
+    ) {
+      return Option.some(closes);
+    }
+
+    return plannedScene(open).pipe(Option.map((scene) => Option.some(scene)));
+  };
+
   const standingIntent = (open: OpenView): Option.Option<Intent> => {
     const member = open.members.some(({ player }) => player === pass.player);
 
@@ -1055,20 +1104,10 @@ export const plannerFor = (setup: PlannerSetup) => {
 
   const choose = (open: OpenView): Option.Option<Intent> => {
     const me = seatOf(open, pass.player);
+    const first = beforeAnyTurn(open);
 
-    const regularOut =
-      open.host === pass.player && !control.closing
-        ? doorIntent(open).pipe(Option.orElse(() => regularIntent(open)))
-        : Option.none();
-
-    if (Option.isSome(regularOut)) {
-      return regularOut;
-    }
-
-    const race = raceIntent(open);
-
-    if (Option.isSome(race)) {
-      return race;
+    if (Option.isSome(first)) {
+      return first.value;
     }
 
     if (

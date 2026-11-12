@@ -169,7 +169,8 @@ export const playRegular = (
   control: NightControl,
   removeAtHand: number,
   firstSeat: number,
-  note: (line: string) => void
+  note: (line: string) => void,
+  removed: () => void
 ) =>
   Effect.gen(function* regularNight() {
     const sockets: PokerSocket[] = [];
@@ -184,7 +185,13 @@ export const playRegular = (
         )
       );
 
-    let live = (yield* greet()).socket;
+    const first = yield* greet();
+    let live = first.socket;
+
+    if (first.greeting === "Other") {
+      yield* live.disconnect;
+    }
+
     let removedVia = Option.none<"Live" | "Hello">();
     let decided = "";
     let sent = 0;
@@ -207,6 +214,11 @@ export const playRegular = (
         live = again.socket;
         removedVia =
           again.greeting === "Removed" ? Option.some("Hello") : Option.none();
+
+        if (again.greeting === "Other") {
+          yield* live.disconnect;
+          yield* Effect.sleep(Duration.millis(PLAY_EVERY_MS));
+        }
 
         continue;
       }
@@ -235,6 +247,7 @@ export const playRegular = (
               Option.map(({ occupant }) => occupant)
             ),
             view.requests,
+            view.lastHand.pipe(Option.map(({ handNumber }) => handNumber)),
           ]);
 
           if (key !== decided) {
@@ -269,6 +282,7 @@ export const playRegular = (
       };
     }
 
+    removed();
     note(
       `the regular was removed (${removedVia.value}) after ${handsDealt} hands`
     );
