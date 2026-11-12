@@ -1,115 +1,52 @@
+<p align="center">
+  <img src="apps/web/public/preview/card.png" alt="nostakes. Poker night. Pull up a chair." width="720">
+</p>
+
 # nostakes
 
-Poker night with friends, in the browser. Lives at nostakes.club.
+Poker night with your friends, in the browser.
 
-A group of friends opens a room, up to 9 players, and plays no-limit hold'em. nostakes keeps the chip count exact and says who owes whom at the end of the night.
+One person opens a room and drops the link in the group chat. Up to nine friends join, build a face, sit down, and play no-limit hold'em. When the night ends, nostakes says who pays whom.
 
-## Install
+It should feel like sitting in the same room, not like an online casino. There are no accounts, no ads, and no real money: the app keeps the count, and friends settle up outside it.
 
-nostakes needs Node `24.22.1` or later and pnpm `11.28.11`. pnpm 10 switches to `11.28.11` on its own through the `packageManager` field. Without pnpm, run `corepack enable` first.
+> Pre-release. [nostakes.club](https://nostakes.club) is not live yet.
+
+## What it does
+
+- **A room is a link.** No sign-up and nothing to install. A closed tab or a sleeping phone puts you back in your seat.
+- **Your friends' faces are the table.** Hold your cards to peek, tap the chip to call, drag it to raise, flick your cards away to fold. Faces look down at their cards, think, and react.
+- **It plays the way your group plays.** Antes, straddles, running it more than once, rabbit hunts, bomb pots, a seven-deuce bounty, showing one card. Everything outside core hold'em is a host setting.
+- **The chips are exact.** Every chip is an integer and is accounted for after every hand.
+- **The deck can be checked.** Each hand's deck is sealed before its order is known, the order comes from a public randomness beacon, and every player's device verifies the cards it was shown.
+- **Settling up is one glance.** Each player's net for the night and the fewest transfers that square everyone, as a picture for the group chat.
+- **Hands worth talking about get kept.** A bad beat or a bluff becomes a picture or a short clip, made on your own device.
+- **New to poker?** A guide teaches the game in five short hands.
+
+## How it is built
+
+- **Pure cores with no I/O.** `engine` holds the rules of a hand, `ledger` the money across a night, `room` one poker night as a reducer, and `shuffle` the sealed deck and its proofs. Commands go in, events come out, and state is rebuilt from events.
+- **Checked against an independent implementation.** The rules are compared with [PokerKit](https://pypi.org/project/pokerkit/) hand for hand, and bots play whole nights on every push.
+- **One Cloudflare Durable Object per room.** It hosts the room core, stores its event log, and speaks a small protocol over one WebSocket. Infrastructure is declared with [Alchemy](https://alchemy.run).
+- **A headless client and a [Foldkit](https://github.com/foldkit/foldkit) web app.** The client holds the connection and resumes after a drop without missing or repeating an event.
+- **[Effect](https://effect.website) throughout**, behind a type and lint fence that makes the easy path the right one. The conventions come from [rat-stack](https://ratstack.sh).
+
+[`VISION.md`](VISION.md) says what the product is for. [`packages/shuffle/DESIGN.md`](packages/shuffle/DESIGN.md) holds the fair shuffle's threat model, including what it does not prove.
+
+## Run it locally
+
+You need Node 24.22.1 or later and pnpm.
 
 ```sh
 pnpm install
-```
-
-## Play locally
-
-```sh
 pnpm dev
 ```
 
-This starts the room server on local workerd at `http://localhost:1337` and the web app at `http://localhost:5173`. Nothing is deployed and no Cloudflare account is needed.
+Open `http://localhost:5173`, open a room, and join it from a private window to play a hand against yourself. Nothing is deployed and no Cloudflare account is needed.
 
-To play a hand with yourself:
+## Documentation
 
-1. Open `http://localhost:5173`, type a name, pick a face, and select **Open a room**. The page moves to the room link, `http://localhost:5173/r/<CODE>`.
-2. Open the same link in a private window, so it keeps its own pass, and join as a second player.
-3. In each window, tap an empty seat (a dashed **Sit**), then select **Sit down**.
-4. In the first window, select **Start the game** in the middle of the table.
-5. Play with the table itself. Hold or hover your cards to see them. Tap the chip to check or call. Drag the chip up to bet or raise. Flick your cards up to fold. On a keyboard: Space peeks, **C** checks or calls, **R** opens the raise (type an amount or use the arrows, then Enter), **F** folds.
-
-Everything else is under **Menu**: your seat, the host's controls, who is here, sound, and the light or dark theme. A refresh puts a player back in their seat.
-
-The two-window check that CI runs plays a whole hand with those gestures and keys in headless, muted Chromium:
-
-```sh
-pnpm --filter @nostakes/web exec playwright-core install --only-shell chromium
-pnpm --filter @nostakes/web verify
-```
-
-## Smoke check
-
-The smoke check plays one short night against any running copy of the site: it loads the home page and a room link, opens a room, joins a second player, connects both sockets, plays one hand, closes the room, and reads the settlement twice.
-
-```sh
-pnpm smoke https://nostakes.club
-```
-
-It sends the base URL's own origin unless you pass `--origin=<origin>`. To run it against the production Worker on local workerd, as CI does:
-
-```sh
-pnpm build
-cd apps/room-server
-CLOUDFLARE_ACCOUNT_ID=00000000000000000000000000000000 pnpm exec alchemy dev --stage preview scripts/production.run.ts
-```
-
-Then, from the repository root in a second terminal, with the port that `alchemy dev` prints:
-
-```sh
-pnpm smoke http://localhost:1337 --origin=https://preview.nostakes.club
-```
-
-## Deploy
-
-Only the owner deploys. The site is one Cloudflare Worker on one origin. It serves the built web app as static assets and runs the room routes first for `/rooms` and `/rooms/*`, so the page, its HTTP calls, and its WebSocket share an origin. Each room is a Durable Object with SQLite storage. `apps/room-server/scripts/production.run.ts` declares it with Alchemy.
-
-| Stage        | Address                         | Worker                |
-| ------------ | ------------------------------- | --------------------- |
-| `production` | `https://nostakes.club`         | `nostakes-production` |
-| `preview`    | `https://preview.nostakes.club` | `nostakes-preview`    |
-
-Each stage accepts only its own origin, and workers.dev stays off. Alchemy keeps its state in a Cloudflare state store Worker, `nostakes-state`, which the first deploy creates. Its access token is cached in `~/.alchemy`.
-
-### Credentials
-
-The commands read `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` from the environment, or else from `cloudflare-api-token` and `cloudflare-account-id` in `~/.config/nostakes/`. Set `NOSTAKES_CREDENTIALS` to use another directory. They never print either value. The token needs:
-
-- Account: Workers Scripts Edit, and Secrets Store Edit for the state store
-- Zone `nostakes.club`: Workers Routes Edit, DNS Edit, and Zone Read
-
-### Plan, then deploy
-
-```sh
-pnpm plan:production --first
-```
-
-This builds everything and prints what the first deploy would create, planned against empty state. It never writes to Cloudflare. After the first deploy, drop `--first` to plan against the stored state.
-
-```sh
-pnpm deploy:production --confirm=production
-```
-
-This refuses to run without `--confirm` naming the same stage. It runs `pnpm turbo run check test build`, then `alchemy deploy`, which shows the plan and asks once more, then `pnpm smoke https://nostakes.club`. Use `pnpm plan:preview` and `pnpm deploy:preview --confirm=preview` for the preview stage.
-
-### Limits and lifetime
-
-- Each address may open 10 rooms, join 30 times, and open 120 sockets a minute. Past that, opening or joining answers 429 and a socket closes as `TooManySockets`. The existing caps stay: 64 members and 64 sockets a room, and the frame limits.
-- A room keeps its log, and a closed room keeps serving its settlement, for 30 days after its last event. Then its alarm closes any open socket and deletes all of its storage.
-
-### Roll back
-
-A deploy replaces the Worker's code, not the rooms' storage. If the smoke check fails after a deploy, open the Worker in the Cloudflare dashboard, choose Deployments, and roll back to the previous version. Or check out the last good commit and deploy it again.
-
-## Commands
-
-- `pnpm dev`: run the room server and the web app locally
-
-- `pnpm check`: typecheck, lint, and format check
-- `pnpm test`: build and run every test suite
-- `pnpm verify`: run the long-running verification scripts
-- `pnpm smoke <base-url>`: play one hand against a running site
-- `pnpm plan:production --first`: show what the first deploy would create
-- `pnpm deploy:production --confirm=production`: check, test, build, deploy, and smoke nostakes.club
-- `pnpm turbo run check test build`: the full gate that CI runs
-
-Read `AGENTS.md` before you change anything.
+- [`docs/development.md`](docs/development.md): setup, playing locally, the checks, and every command
+- [`docs/deploying.md`](docs/deploying.md): the stages, credentials, deploys, and rolling back
+- [`AGENTS.md`](AGENTS.md): the rules for changing code here. Read it before you change anything.
+- [`PROVENANCE.md`](PROVENANCE.md): credit for borrowed code, fonts, and data

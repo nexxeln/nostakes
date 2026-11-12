@@ -37,4 +37,4 @@ A group of friends who already play together, or would if they lived closer. The
 
 ## Status
 
-Pre-release. The backend plays whole nights under test. The web app plays a real hand locally. Nothing is deployed yet.
+Pre-release. Bots play whole nights against the server on every push, and a preview stage is deployed. Production is not live yet.
