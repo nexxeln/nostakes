@@ -8,6 +8,7 @@ import { mayCallBombPot } from "./bomb-pot.js";
 import { commandButton } from "./buttons.js";
 import { deviceToggles, learnInNewTab } from "./chrome.js";
 import { face } from "./face-builder.js";
+import { heirOf, heirsOf } from "./handover.js";
 import { Messages } from "./message.js";
 import type { Message } from "./message.js";
 import { pageTheme } from "./model.js";
@@ -773,9 +774,93 @@ const confirmText = (view: OpenView, confirm: Confirm) =>
     })
   );
 
+const NOBODY_HERE =
+  "Nobody else is here, so the room picks the next host. They can take over when they are back.";
+
+const heirLine = (
+  room: InRoom,
+  view: OpenView,
+  presence: readonly PlayerId[],
+  h: H
+): Html => {
+  const heirs = heirsOf(view, presence);
+  const heir = heirOf(view, presence, room.heir);
+
+  if (!isYou(view, view.host)) {
+    return h.empty;
+  }
+
+  if (heirs.length < 2) {
+    return h.p(
+      [h.Class("confirm-text")],
+      [
+        Option.match(heir, {
+          onNone: () => NOBODY_HERE,
+          onSome: (player) => `${nameOf(view, player)} takes over as host.`,
+        }),
+      ]
+    );
+  }
+
+  return h.div(
+    [h.Class("heir-line")],
+    [
+      h.span([h.Class("confirm-text")], ["Host next:"]),
+      h.div(
+        [
+          h.Class("segments heirs"),
+          h.Role("radiogroup"),
+          h.AriaLabel("Host next"),
+        ],
+        heirs.map((player) =>
+          h.button(
+            [
+              h.Type("button"),
+              h.Key(`heir-${player}`),
+              h.Class(
+                Option.contains(heir, player) ? "segment is-on" : "segment"
+              ),
+              h.Role("radio"),
+              h.AriaChecked(Option.contains(heir, player)),
+              h.OnClick(Messages.ChoseHeir({ player })),
+            ],
+            [nameOf(view, player)]
+          )
+        )
+      ),
+    ]
+  );
+};
+
+const confirmAction = (
+  room: InRoom,
+  confirm: Confirm,
+  text: { readonly action: string; readonly pending: string },
+  h: H
+): Html =>
+  MemberCommandSchema.guards.LeaveRoom(confirm)
+    ? h.button(
+        [
+          h.Type("button"),
+          h.Class("button danger"),
+          h.Disabled(!isLive(room)),
+          h.OnClick(Messages.ClickedLeave()),
+        ],
+        [text.action]
+      )
+    : commandButton(
+        h,
+        room,
+        confirm,
+        text.action,
+        text.pending,
+        "button danger"
+      );
+
 export const confirmSheet = (
   room: InRoom,
   view: OpenView,
+  presence: readonly PlayerId[],
   confirm: Confirm,
   h: H
 ): Html => {
@@ -783,7 +868,10 @@ export const confirmSheet = (
 
   return sheet(h, text.title, [
     h.p([h.Class("confirm-text")], [text.body]),
-    commandButton(h, room, confirm, text.action, text.pending, "button danger"),
+    MemberCommandSchema.guards.LeaveRoom(confirm)
+      ? heirLine(room, view, presence, h)
+      : h.empty,
+    confirmAction(room, confirm, text, h),
     h.button(
       [
         h.Type("button"),

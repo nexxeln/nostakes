@@ -69,6 +69,7 @@ import {
 } from "./door.js";
 import { PART_LABELS, stepped, toldOf } from "./face/parts.js";
 import { haltedText } from "./halted.js";
+import { heirOf } from "./handover.js";
 import { BRAND_LINE, INVITE_PREVIEW } from "./link-preview.js";
 import { Messages, ReplyOutcomes } from "./message.js";
 import type { Message, ReplyOutcome } from "./message.js";
@@ -167,6 +168,8 @@ const freshRoom = (code: InRoom["code"], player: InRoom["player"]): InRoom => ({
   fairness: [],
   fairnessOpen: false,
   halted: Option.none(),
+  heir: Option.none(),
+  leaveAfter: Option.none(),
   link: Option.none(),
   member: Option.none(),
   menu: false,
@@ -1180,6 +1183,54 @@ const settle = (room: InRoom, key: number, outcome: ReplyOutcome): InRoom => {
   });
 };
 
+const presenceOf = (room: InRoom) =>
+  Option.match(room.link, {
+    onNone: () => [],
+    onSome: ({ presence }) => presence,
+  });
+
+const leave = (model: Model): Return =>
+  inRoom(model, (room) => {
+    if (!isLive(room)) {
+      return { model };
+    }
+
+    const heir = openViewOf(room).pipe(
+      Option.flatMap((view) => heirOf(view, presenceOf(room), room.heir))
+    );
+
+    return Option.match(heir, {
+      onNone: () => send(model, room, Commands.LeaveRoom.make({}), "Leaving"),
+      onSome: (to) =>
+        send(
+          model,
+          {
+            ...room,
+            heir: Option.none(),
+            leaveAfter: Option.some(model.nextKey),
+          },
+          Commands.TransferHost.make({ to }),
+          "Handing over the host"
+        ),
+    });
+  });
+
+const answered = (model: Model, key: number, outcome: ReplyOutcome): Return =>
+  inRoom(model, (room) => {
+    const handedOver =
+      Option.contains(room.leaveAfter, key) &&
+      ReplyOutcomes.guards.Accepted(outcome);
+
+    const next = {
+      ...settle(answeredSetup(room, key, outcome), key, outcome),
+      leaveAfter: room.leaveAfter.pipe(Option.filter((after) => after !== key)),
+    };
+
+    return handedOver
+      ? send(model, next, Commands.LeaveRoom.make({}), "Leaving")
+      : { model: withRoom(model, next) };
+  });
+
 const ownMember = (room: InRoom) =>
   openViewOf(room).pipe(
     Option.flatMap((view) =>
@@ -1436,6 +1487,8 @@ export const update = (model: Model, message: Message): Return =>
     }),
     ChoseFaceMood: ({ mood }) => ({ model: { ...model, faceMood: mood } }),
     ChoseFacePart: ({ part }) => ({ model: holdFacePart(model, part) }),
+    ChoseHeir: ({ player }) =>
+      editRoom(model, (room) => ({ ...room, heir: Option.some(player) })),
     ChosePreset: ({ preset }) =>
       editRules(model, (sheet) => ({
         ...sheet,
@@ -1473,6 +1526,7 @@ export const update = (model: Model, message: Message): Return =>
       editRoom(model, (room) => ({
         ...room,
         confirm: Option.some(confirm),
+        heir: Option.none(),
         member: Option.none(),
         menu: false,
         picked: Option.none(),
@@ -1560,6 +1614,7 @@ export const update = (model: Model, message: Message): Return =>
           },
         }
       ),
+    ClickedLeave: () => leave(model),
     ClickedMember: ({ player }) =>
       editRoom(model, (room) => ({
         ...room,
@@ -1651,6 +1706,7 @@ export const update = (model: Model, message: Message): Return =>
           confirm: Option.none(),
           drafts: { ...room.drafts, seat: Option.none() },
           fairnessOpen: false,
+          heir: Option.none(),
           member: Option.none(),
           menu: false,
           picked: Option.none(),
@@ -1794,10 +1850,7 @@ export const update = (model: Model, message: Message): Return =>
         ...room,
         removed: Option.some(RemovedResults.Shown({ result })),
       })),
-    ReceivedReply: ({ key, outcome }) =>
-      editRoom(model, (room) =>
-        settle(answeredSetup(room, key, outcome), key, outcome)
-      ),
+    ReceivedReply: ({ key, outcome }) => answered(model, key, outcome),
     ReceivedStandings: ({ view }) =>
       editRoom(model, (room) => ({
         ...room,

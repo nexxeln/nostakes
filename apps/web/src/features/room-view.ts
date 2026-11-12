@@ -340,7 +340,7 @@ const activeSheet = (
   h: H
 ): Html => {
   if (Option.isSome(room.confirm)) {
-    return confirmSheet(room, view, room.confirm.value, h);
+    return confirmSheet(room, view, presence, room.confirm.value, h);
   }
 
   if (Option.isSome(room.rules)) {

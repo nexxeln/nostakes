@@ -207,6 +207,8 @@ export const InRoomSchema = Schema.Struct({
   fairness: Schema.Array(FairHandSchema),
   fairnessOpen: Schema.Boolean,
   halted: Schema.Option(HaltedStandings),
+  heir: Schema.Option(PlayerIdSchema),
+  leaveAfter: Schema.Option(Schema.Int),
   link: Schema.Option(LinkSchema),
   member: Schema.Option(PlayerIdSchema),
   menu: Schema.Boolean,
