@@ -27,7 +27,7 @@
     "night": "node scripts/night-pictures.ts"
   },
   "dependencies": {
-    "@effect/platform-browser": "4.1.2",
+    "@effect/platform-browser": "4.1.4",
     "@mediabunny/aac-encoder": "1.65.2",
     "@nostakes/avatar": "workspace:*",
     "@nostakes/client": "workspace:*",
@@ -35,13 +35,13 @@
     "@nostakes/protocol": "workspace:*",
     "@nostakes/room": "workspace:*",
     "@nostakes/shuffle": "workspace:*",
-    "effect": "4.1.2",
+    "effect": "4.1.4",
     "foldkit": "0.170.0",
     "mediabunny": "1.65.2"
   },
   "devDependencies": {
-    "@effect/platform-node": "4.1.2",
-    "@effect/vitest": "4.1.2",
+    "@effect/platform-node": "4.1.4",
+    "@effect/vitest": "4.1.4",
     "@foldkit/vite-plugin": "0.29.0",
     "@types/node": "24.19.2",
     "playwright-core": "1.65.0",
