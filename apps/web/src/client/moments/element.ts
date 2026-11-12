@@ -43,6 +43,9 @@ const STYLE = `
 .keeping b { color: var(--color-accent-ink, #d63a00); }
 .keeping .story, .keeping .clip, .keeping .hide, .keeping .style { color: var(--color-ink-muted, #716a79); font-weight: 600; padding: 8px 10px; }
 .keeping .style[aria-pressed="true"] { color: var(--color-on-accent, #fffaf3); background: var(--color-accent, #ef5326); }
+.keeping .break { display: none; }
+.keeping.carrying .break { display: block; flex-basis: 100%; height: 0; }
+.keeping .clip .hand { display: inline-block; max-width: 13em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: bottom; }
 .keeping .clip small { font: inherit; font-weight: 600; color: var(--color-ink-muted, #716a79); }
 .keeping:not(.lingering):not(.carrying) .hide, .keeping.lingering .keep, .keeping.lingering .story, .keeping.lingering .style, .keeping.carrying .style { display: none; }
 .keeping .clip[aria-busy="true"] { opacity: 0.8; }
@@ -114,6 +117,19 @@ const driftLabel = (making: ClipMaking | null, owed: boolean) =>
   making !== null && owed
     ? `Making ${styleText(making)}${madeText(making)}`
     : "Drift";
+
+const carriedLabel = (
+  state: ClipState,
+  making: ClipMaking | null
+): readonly [string, string] => {
+  if (state === "Failed") {
+    return ["Try again: ", ""];
+  }
+
+  return making === null || state === "Share" || state === "Ready"
+    ? ["Share ", ""]
+    : ["Making ", madeText(making)];
+};
 
 type Tab = "Card" | "Closed" | "Lingering" | "Offered";
 
@@ -231,9 +247,13 @@ class NostakesMoment extends HTMLElement {
     this.#drift.addEventListener("click", () => {
       this.#restyle(this.#style === "Drift" ? "Broadcast" : "Drift");
     });
+    const lineBreak = document.createElement("span");
+
+    lineBreak.className = "break";
     this.#keeping.append(
       this.#keep,
       this.#story,
+      lineBreak,
       this.#clip,
       this.#drift,
       this.#hide
@@ -511,6 +531,37 @@ class NostakesMoment extends HTMLElement {
     }
   }
 
+  #labelClip(
+    clipper: Clipper,
+    seen: {
+      readonly finished: boolean;
+      readonly lingering: boolean;
+      readonly told: boolean;
+    }
+  ) {
+    const { making, state } = clipper;
+
+    if (this.#carrying) {
+      const [before, after] = carriedLabel(state, making);
+      const hand = document.createElement("span");
+
+      hand.className = "hand";
+      hand.textContent = clipper.title;
+      this.#clip.replaceChildren(before, hand, after);
+
+      return;
+    }
+
+    this.#clip.textContent = clipLabel(state, making, seen.told);
+
+    if (seen.finished && making !== null && seen.lingering) {
+      const note = document.createElement("small");
+
+      note.textContent = ` · ${driftLabel(making, true)}`;
+      this.#clip.append(note);
+    }
+  }
+
   #renderClip(clipper: Clipper, lingering: boolean) {
     const { making, owed, state } = clipper;
     const told = lingering || this.#carrying || owed;
@@ -523,14 +574,8 @@ class NostakesMoment extends HTMLElement {
     this.#drift.className =
       clipper.offersDrift && state !== "Unavailable" ? "style" : "style gone";
     this.#drift.textContent = driftLabel(finished ? making : null, owed);
-    this.#clip.textContent = clipLabel(state, making, told);
 
-    if (finished && making !== null && (lingering || this.#carrying)) {
-      const note = document.createElement("small");
-
-      note.textContent = ` · ${driftLabel(making, true)}`;
-      this.#clip.append(note);
-    }
+    this.#labelClip(clipper, { finished, lingering, told });
 
     this.#clip.title = this.#carrying
       ? `A clip of ${clipper.title}`

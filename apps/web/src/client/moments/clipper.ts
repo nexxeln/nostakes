@@ -1,4 +1,4 @@
-import { Effect, Option, Schema } from "effect";
+import { Duration, Effect, Option, Schedule, Schema } from "effect";
 
 import type { Deck, Theme } from "../../features/model.js";
 import {
@@ -16,7 +16,7 @@ import {
 import type { KeptFrame } from "../../features/pictures/paper.js";
 import { offer } from "../pictures/keeper.js";
 import type { Kept } from "../pictures/keeper.js";
-import type { ClipUnavailable } from "./clip-layers.js";
+import { ClipUnavailable } from "./clip-layers.js";
 import type { PartBox } from "./clip-measure.js";
 import { clipFile, clipSupport, replayFile, slotFor } from "./clip.js";
 import type { ClipPace, ClipSupport, ClipTooSlow } from "./clip.js";
@@ -62,6 +62,8 @@ const deviceMemory = () =>
   Schema.decodeUnknownOption(ReportedMemorySchema)(globalThis.navigator).pipe(
     Option.map((reported) => reported.deviceMemory)
   );
+
+const MAKING_LIMIT_SECONDS = 120;
 
 const activationLasts = () =>
   globalThis.navigator.userActivation?.isActive ?? false;
@@ -346,6 +348,29 @@ export class Clipper {
     },
   };
 
+  #overrun(): Effect.Effect<never, ClipUnavailable> {
+    const worked = { seconds: 0 };
+
+    return Effect.sync(() => {
+      worked.seconds += this.#held ? 0 : 1;
+
+      return worked.seconds;
+    }).pipe(
+      Effect.repeat({
+        schedule: Schedule.spaced(Duration.seconds(1)),
+        until: (seconds) => seconds >= MAKING_LIMIT_SECONDS,
+      }),
+      Effect.andThen(
+        Effect.fail(
+          new ClipUnavailable({
+            detail: `still not made after ${MAKING_LIMIT_SECONDS} s of working time, turns not counted`,
+            step: "finish the clip",
+          })
+        )
+      )
+    );
+  }
+
   #make(pace: ClipPace) {
     const support = this.#support;
 
@@ -425,6 +450,7 @@ export class Clipper {
         ? cascade
         : short
       ).pipe(
+        Effect.raceFirst(this.#overrun()),
         Effect.matchCause({
           onFailure: () => {
             this.#finished(making, null);
