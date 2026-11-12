@@ -796,6 +796,15 @@ export const plannerFor = (setup: PlannerSetup) => {
       ? intent(Commands.ChoosePosting.make({ post: !occupant.posts }))
       : Option.none();
 
+  const raced = { back: false, left: false };
+
+  const racing = control.racer.pipe(
+    Option.filter(({ player }) => player === pass.player)
+  );
+
+  const leaveByChance = (): Option.Option<Intent> =>
+    Option.isSome(racing) ? Option.none() : intent(Commands.LeaveRoom.make({}));
+
   const seatedIntent = (
     open: OpenView,
     occupant: {
@@ -882,7 +891,7 @@ export const plannerFor = (setup: PlannerSetup) => {
     }
 
     if (roll < 82) {
-      return intent(Commands.LeaveRoom.make({}));
+      return leaveByChance();
     }
 
     if (roll < 90) {
@@ -921,12 +930,6 @@ export const plannerFor = (setup: PlannerSetup) => {
       })
     );
 
-  const raced = { back: false, left: false };
-
-  const racing = control.racer.pipe(
-    Option.filter(({ player }) => player === pass.player)
-  );
-
   const raceIntent = (open: OpenView): Option.Option<Intent> => {
     if (Option.isNone(racing)) {
       return Option.none();
@@ -949,6 +952,7 @@ export const plannerFor = (setup: PlannerSetup) => {
       !member &&
       raced.left &&
       !raced.back &&
+      Option.isNone(seatOf(open, pass.player)) &&
       Option.isSome(control.heldClear)
     ) {
       raced.back = true;
