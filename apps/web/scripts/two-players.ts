@@ -889,6 +889,76 @@ const sharesTheSettleUp = (page: Page) =>
     );
   });
 
+const FELT_RULES = "2/2 · 40–400";
+
+const POSTED = ["2", "2"];
+
+const setsTheBlinds = (host: Page) =>
+  Effect.gen(function* setUpTheGame() {
+    yield* attempt("Ana sees the setup sheet open by itself", () =>
+      host.locator(".setup-sheet").waitFor({ timeout: 15_000 })
+    );
+
+    yield* click(host, "Ana raises the small blind", "More small blind");
+    yield* attempt("the sheet shows the new small blind", () =>
+      host.waitForFunction(
+        () =>
+          globalThis.document.querySelector<HTMLInputElement>(
+            '.setup-sheet input[aria-label="Small blind"]'
+          )?.value === "2",
+        undefined,
+        { timeout: 15_000 }
+      )
+    );
+    yield* click(host, "Ana goes to the table", "Go to the table");
+  });
+
+const feltShows = (page: Page, who: string, rules: string) =>
+  attempt(`${who}'s felt shows ${rules}`, () =>
+    page.waitForFunction(
+      (wanted) =>
+        globalThis.document
+          .querySelector("nostakes-table")
+          ?.shadowRoot?.querySelector(".felt-rules:not(.gone) .felt-headline")
+          ?.textContent?.startsWith(wanted) === true,
+      rules,
+      { timeout: 15_000 }
+    )
+  );
+
+const postedBlinds = (page: Page) =>
+  Effect.gen(function* readThePostedBlinds() {
+    const handle = yield* attempt(
+      "see the blinds posted in the first hand",
+      () =>
+        page.waitForFunction(
+          () => {
+            const amounts = [
+              ...(globalThis.document
+                .querySelector("nostakes-table")
+                ?.shadowRoot?.querySelectorAll(".pile:not(.empty) .amt") ?? []),
+            ].map((amount) => amount.textContent ?? "");
+
+            return amounts.length === 2 ? amounts.toSorted() : false;
+          },
+          undefined,
+          { timeout: 30_000 }
+        )
+    );
+
+    const posted = yield* attempt("read the blinds posted", () =>
+      handle.jsonValue()
+    );
+
+    yield* holds(
+      JSON.stringify(posted) === JSON.stringify(POSTED),
+      new NightFailed({
+        detail: `the table posted ${JSON.stringify(posted)}, not ${JSON.stringify(POSTED)}`,
+        step: "post the blinds the host set before the start",
+      })
+    );
+  });
+
 const night = Effect.gen(function* playOneHand() {
   const firstDeploy = yield* Scope.make();
 
@@ -955,6 +1025,7 @@ const night = Effect.gen(function* playOneHand() {
   const link = ana.url();
 
   yield* Console.log(`room link ${link}`);
+  yield* setsTheBlinds(ana);
   yield* attempt("Ben opens the link", () => ben.goto(`${link}${MUTED_PAGE}`));
   yield* attempt("Ben types his name", () =>
     ben.getByPlaceholder("Name").fill("Ben")
@@ -962,7 +1033,13 @@ const night = Effect.gen(function* playOneHand() {
   yield* click(ben, "Ben joins", "Join the room");
   yield* sitDown(ana, "Ana");
   yield* sitDown(ben, "Ben");
+  yield* feltShows(ben, "Ben", FELT_RULES);
+  yield* Console.log(
+    `Ana set the blinds before the start and Ben's felt shows ${FELT_RULES}`
+  );
   yield* click(ana, "Ana starts the game", "Start the game");
+  yield* postedBlinds(ana);
+  yield* Console.log(`the first hand posted ${POSTED.join(" and ")}`);
   yield* watchesTheFelt(ana);
   yield* watchesTheFelt(ben);
 

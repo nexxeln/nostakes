@@ -19,6 +19,7 @@
     "learn": "LEARN_ENGINES=chromium,webkit node scripts/learn.ts",
     "shots": "node scripts/phone-shots.ts",
     "membership-shots": "node scripts/membership-shots.ts",
+    "onboarding-shots": "node scripts/onboarding-shots.ts",
     "rules-shots": "node scripts/rules-shots.ts",
     "moments": "node scripts/moment-pictures.ts",
     "keep": "node scripts/keep-pictures.ts",
