@@ -15,6 +15,7 @@ import type { InRoom } from "../model.js";
 import { entryOf, entryWords, waitingNote } from "../posting.js";
 import { isActing, isLive, isYou, peopleOf } from "../room.js";
 import type { OpenView } from "../room.js";
+import { feltRulesOf } from "../setup.js";
 import { isPeeking } from "../signals.js";
 import { HappeningSchema, Happenings } from "./snapshot.js";
 import type {
@@ -823,6 +824,16 @@ export const tableSnapshot = (
       reaction,
       seat: seatHeldBy(view, player),
     })),
+    rules: Option.getOrNull(
+      feltRulesOf(view).pipe(
+        Option.map((felt) => ({
+          ...felt,
+          action: isYou(view, view.host)
+            ? "Set up the game"
+            : "Read the house rules",
+        }))
+      )
+    ),
     runVote: free ? runVoteOf(view, heroSeat) : null,
     seats,
     waiting: waitingLine(room, view),

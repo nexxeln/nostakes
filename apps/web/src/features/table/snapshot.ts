@@ -155,6 +155,14 @@ export const HintSchema = Schema.Literals(["Peek", "Fold", "Raise", "Keys"]);
 
 export type Hint = typeof HintSchema.Type;
 
+export const FeltRulesSchema = Schema.Struct({
+  action: Schema.String,
+  extras: Schema.String,
+  headline: Schema.String,
+});
+
+export type FeltRulesShown = typeof FeltRulesSchema.Type;
+
 export const TableSnapshotSchema = Schema.Struct({
   afterHand: AfterHandSchema,
   bigBlind: Schema.Int,
@@ -173,6 +181,7 @@ export const TableSnapshotSchema = Schema.Struct({
   pots: Schema.Array(Schema.Int),
   rabbit: Schema.Array(CardTextSchema),
   reactions: Schema.Array(ShownReactionSchema),
+  rules: Schema.NullOr(FeltRulesSchema),
   runVote: Schema.NullOr(Schema.Int),
   seats: Schema.Array(SeatSnapshotSchema),
   toAct: Schema.NullOr(Schema.Int),
@@ -193,6 +202,7 @@ export const TableIntentSchema = Schema.TaggedUnion({
   Posting: { post: Schema.Boolean },
   Raise: { to: Schema.Int },
   React: { reaction: ReactionSchema },
+  Rules: {},
   Runs: { runs: Schema.Int },
   Show: {},
   ShowCards: { cards: Schema.Array(CardTextSchema) },

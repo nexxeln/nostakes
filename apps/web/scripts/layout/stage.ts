@@ -102,6 +102,7 @@ const showdown: TableSnapshot = {
   pots: [3600],
   rabbit: [],
   reactions: [],
+  rules: null,
   runVote: null,
   seats: Array.from({ length: players }, (_, index) => seatOf(index)),
   toAct: null,

@@ -11,6 +11,7 @@ import {
   MemberCommandSchema,
   ReactionSchema,
   RemovedViewSchema,
+  RequestedSettingsSchema,
   RoomViewSchema,
 } from "@nostakes/room";
 import { Effect, Option, Schema } from "effect";
@@ -101,6 +102,17 @@ export const RulesSheetSchema = Schema.Struct({
 
 export type RulesSheet = typeof RulesSheetSchema.Type;
 
+export const SetupSheetSchema = Schema.Struct({
+  awaitSeq: Schema.Option(Schema.Int),
+  edits: Schema.Option(SettingsDraftSchema),
+  help: Schema.Option(Schema.String),
+  inFlight: Schema.Option(Schema.Int),
+  token: Schema.Int,
+  waiting: Schema.Boolean,
+});
+
+export type SetupSheet = typeof SetupSheetSchema.Type;
+
 export const ConfirmSchema = Schema.Union([
   MemberCommandSchema.cases.ClearRoom,
   MemberCommandSchema.cases.CloseRoom,
@@ -121,6 +133,7 @@ export type Drafts = typeof DraftsSchema.Type;
 
 export const CopiedSchema = Schema.Literals([
   "Nothing",
+  "Shared",
   "Link",
   "Settlement",
   "Proof",
@@ -218,6 +231,7 @@ export const InRoomSchema = Schema.Struct({
     Schema.Struct({ player: PlayerIdSchema, receivedAt: Schema.Int })
   ),
   rules: Schema.Option(RulesSheetSchema),
+  setup: Schema.Option(SetupSheetSchema),
   shown: Schema.Option(ShownViewSchema),
   update: Schema.Option(PageUpdateSchema),
 });
@@ -293,9 +307,11 @@ export const ModelSchema = Schema.Struct({
   faceShuffles: Schema.Int,
   faceTold: Schema.String,
   joinCode: Schema.String,
+  lastRules: Schema.Option(RequestedSettingsSchema),
   learned: Schema.Array(HintSchema),
   nextKey: Schema.Int,
   now: Schema.Int,
+  origin: Schema.String,
   profile: ProfileSchema,
   reloadedFor: Schema.Option(ReloadTargets),
   reporting: ReportingSchema,
@@ -323,7 +339,9 @@ export const FlagsSchema = Schema.Struct({
   counting: Schema.optionalKey(Schema.Boolean),
   deck: DeckSchema,
   invite: Schema.Option(RoomCodeSchema),
+  lastRules: Schema.optionalKey(Schema.Option(RequestedSettingsSchema)),
   learned: Schema.Array(HintSchema),
+  origin: Schema.optionalKey(Schema.String),
   profile: ProfileSchema,
   reloadedFor: Schema.Option(ReloadTargets),
   rooms: Schema.Array(KnownRoomSchema),

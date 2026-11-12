@@ -44,6 +44,7 @@ export type RuleControl =
       readonly start: number;
       readonly step: (draft: SettingsDraft) => number;
       readonly unit: string;
+      readonly zero: Option.Option<string>;
     };
 
 export type CardPlace = "Headline" | "Always" | "WhenChanged";
@@ -81,13 +82,15 @@ const stepper = (
   unit: string,
   min: number,
   step: (draft: SettingsDraft) => number,
-  start = min
+  start = min,
+  zero?: string
 ): RuleControl => ({
   kind: "Stepper",
   min,
   start,
   step,
   unit,
+  zero: Option.fromUndefinedOr(zero),
 });
 
 const by = (amount: number) => () => amount;
@@ -264,8 +267,8 @@ export const RULES: readonly RuleCopy[] = [
     "table.bombPot.everyHands",
     "Blinds",
     "Bomb pot every",
-    stepper("hands", 0, by(1), 0),
-    { help: "0 means only when the host calls one from the menu." }
+    stepper("hands", 0, by(1), 0, "Host calls"),
+    { help: "Host calls: only when the host calls one from the menu." }
   ),
   rule("turnSeconds", "Clock", "Turn", stepper("s", 0, by(5)), {
     brief: (draft) =>

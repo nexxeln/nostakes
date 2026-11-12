@@ -10,12 +10,14 @@ import {
   RoomPassSchema,
   StandingsRequestSchema,
 } from "@nostakes/protocol";
-import type { RoomPass, UnavailableReason } from "@nostakes/protocol";
+import type { RoomCode, RoomPass, UnavailableReason } from "@nostakes/protocol";
 import {
   JoinRequestSchema,
   KnockViewSchema,
   MemberCommandSchema,
+  OpenRequestSchema,
   RemovedViewSchema,
+  RequestedSettingsSchema,
   RoomRejectionSchema,
   RoomSignalSchema,
   RoomViewSchema,
@@ -40,6 +42,7 @@ import {
 import { refusalText } from "../features/refusals.js";
 import { rejectionText } from "../features/rejections.js";
 import { ClientReportSchema, REPORTS_PATH } from "../features/reports.js";
+import { openWithRules, SETUP_SETTLE_MS } from "../features/setup.js";
 import { HintSchema } from "../features/table/snapshot.js";
 import { roomPath } from "../features/wire.js";
 import { RoomConnection } from "./connection.js";
@@ -55,11 +58,14 @@ import {
   storeProfile,
   storeRoomRecord,
   storeDeck,
+  storeLastRules,
   storeSound,
   storeTheme,
 } from "./storage.js";
 
 const encodeJoin = Schema.encodeSync(Schema.toCodecJson(JoinRequestSchema));
+
+const encodeOpen = Schema.encodeSync(Schema.toCodecJson(OpenRequestSchema));
 
 const EntryRefusalSchema = Schema.Union([
   joinRefused(Schema.toCodecJson(RoomRejectionSchema)),
@@ -99,12 +105,21 @@ class EntryRefused extends Schema.TaggedError<
   { readonly brand: unique symbol }
 >()("EntryRefused", { reason: Schema.String }) {}
 
-const passFrom = (url: string, request: JoinRequest) =>
+interface Arrival {
+  readonly opened: boolean;
+  readonly rulesDropped: boolean;
+}
+
+const JOINED: Arrival = { opened: false, rulesDropped: false };
+
+const OPENED: Arrival = { opened: true, rulesDropped: false };
+
+const entryFrom = (url: string, body: Schema.Json, request: JoinRequest) =>
   deviceHeaders.pipe(
     Effect.flatMap((headers) =>
       HttpClientRequest.post(new URL(url, globalThis.location.href)).pipe(
         HttpClientRequest.setHeaders(headers),
-        HttpClientRequest.bodyJsonUnsafe(encodeJoin(request)),
+        HttpClientRequest.bodyJsonUnsafe(body),
         HttpClient.execute
       )
     ),
@@ -137,16 +152,33 @@ const passFrom = (url: string, request: JoinRequest) =>
       )
     ),
     Effect.tap(({ pass }) => storePass(pass)),
-    Effect.tap(() => storeProfile(request)),
-    Effect.flatMap((entry) =>
-      Clock.currentTimeMillis.pipe(Effect.map((at) => ({ ...entry, at })))
+    Effect.tap(() => storeProfile(request))
+  );
+
+const arrived = <R>(
+  tried: Effect.Effect<
+    { readonly arrival: Arrival; readonly entry: Entry },
+    EntryRefused,
+    R
+  >
+) =>
+  tried.pipe(
+    Effect.flatMap(({ arrival, entry }) =>
+      Clock.currentTimeMillis.pipe(
+        Effect.map((at) => ({ ...entry, arrival, at }))
+      )
     ),
     Effect.match({
       onFailure: (failure) => Messages.FailedEntry({ problem: failure.reason }),
-      onSuccess: ({ at, knock, pass }) =>
+      onSuccess: ({ arrival, at, knock, pass }) =>
         Option.match(knock, {
           onNone: () =>
-            Messages.EnteredRoom({ code: pass.code, player: pass.player }),
+            Messages.EnteredRoom({
+              code: pass.code,
+              opened: arrival.opened,
+              player: pass.player,
+              rulesDropped: arrival.rulesDropped,
+            }),
           onSome: (answer) =>
             Messages.KnockedAtRoom({
               at,
@@ -176,9 +208,37 @@ const unlessPaused = <M, R>(
     })
   );
 
+const opening = (request: JoinRequest, settings: Option.Option<OpenSettings>) =>
+  entryFrom(
+    "/rooms",
+    encodeOpen(
+      Option.match(settings, {
+        onNone: () => request,
+        onSome: (chosen) => ({ ...request, settings: chosen }),
+      })
+    ),
+    request
+  );
+
+type OpenSettings = typeof RequestedSettingsSchema.Type;
+
 export const CreateRoom = Command.define("CreateRoom", {
-  args: { avatar: Schema.String, name: Schema.String },
-  execute: (request) => passFrom("/rooms", request),
+  args: {
+    avatar: Schema.String,
+    name: Schema.String,
+    settings: Schema.Option(RequestedSettingsSchema),
+  },
+  execute: ({ avatar, name, settings }) =>
+    arrived(
+      openWithRules(settings, (chosen) =>
+        opening({ avatar, name }, chosen)
+      ).pipe(
+        Effect.map(({ entry, rulesDropped }) => ({
+          arrival: { ...OPENED, rulesDropped },
+          entry,
+        }))
+      )
+    ),
   messages: [
     Messages.EnteredRoom,
     Messages.KnockedAtRoom,
@@ -196,7 +256,12 @@ export const JoinRoom = Command.define("JoinRoom", {
   execute: ({ avatar, code, name, pausedUntil }) =>
     unlessPaused(
       pausedUntil,
-      passFrom(`/rooms/${code}/members`, { avatar, name })
+      arrived(
+        entryFrom(`/rooms/${code}/members`, encodeJoin({ avatar, name }), {
+          avatar,
+          name,
+        }).pipe(Effect.map((entry) => ({ arrival: JOINED, entry })))
+      )
     ),
   messages: [
     Messages.EnteredRoom,
@@ -381,20 +446,71 @@ export const UseRoomHere = Command.define("UseRoomHere", {
   messages: [Messages.StartedReload],
 });
 
+const linkOf = (code: RoomCode) =>
+  new URL(roomPath(code), globalThis.location.href).toString();
+
+const copiedLink = (code: RoomCode) =>
+  Effect.tryPromise(() =>
+    globalThis.navigator.clipboard.writeText(linkOf(code))
+  ).pipe(
+    Effect.match({
+      onFailure: () => Messages.CompletedCopy({ copied: "Nothing" }),
+      onSuccess: () => Messages.CompletedCopy({ copied: "Link" }),
+    })
+  );
+
 export const CopyRoomLink = Command.define("CopyRoomLink", {
   args: { code: RoomCodeSchema },
-  execute: ({ code }) =>
-    Effect.tryPromise(() =>
-      globalThis.navigator.clipboard.writeText(
-        new URL(roomPath(code), globalThis.location.href).toString()
-      )
-    ).pipe(
-      Effect.match({
-        onFailure: () => Messages.CompletedCopy({ copied: "Nothing" }),
-        onSuccess: () => Messages.CompletedCopy({ copied: "Link" }),
-      })
-    ),
+  execute: ({ code }) => copiedLink(code),
   messages: [Messages.CompletedCopy],
+});
+
+const canShare = (data: ShareData) =>
+  "share" in globalThis.navigator &&
+  (!("canShare" in globalThis.navigator) ||
+    globalThis.navigator.canShare(data));
+
+const isAbort = (cause: unknown) =>
+  cause instanceof DOMException && cause.name === "AbortError";
+
+export const ShareRoomLink = Command.define("ShareRoomLink", {
+  args: { code: RoomCodeSchema, text: Schema.String, title: Schema.String },
+  execute: ({ code, text, title }) => {
+    const data: ShareData = { text, title, url: linkOf(code) };
+
+    return canShare(data)
+      ? Effect.tryPromise({
+          catch: isAbort,
+          try: () => globalThis.navigator.share(data),
+        }).pipe(
+          Effect.matchEffect({
+            onFailure: (cancelled) =>
+              cancelled
+                ? Effect.succeed(Messages.CompletedCopy({ copied: "Nothing" }))
+                : copiedLink(code),
+            onSuccess: () =>
+              Effect.succeed(Messages.CompletedCopy({ copied: "Shared" })),
+          })
+        )
+      : copiedLink(code);
+  },
+  messages: [Messages.CompletedCopy],
+});
+
+export const SettleSetup = Command.define("SettleSetup", {
+  args: { token: Schema.Int },
+  execute: ({ token }) =>
+    Effect.sleep(`${SETUP_SETTLE_MS} millis`).pipe(
+      Effect.as(Messages.SettledSetupEdit({ token }))
+    ),
+  messages: [Messages.SettledSetupEdit],
+});
+
+export const RememberRules = Command.define("RememberRules", {
+  args: { rules: Schema.Option(Schema.String) },
+  execute: ({ rules }) =>
+    storeLastRules(rules).pipe(Effect.as(Messages.CompletedPreference())),
+  messages: [Messages.CompletedPreference],
 });
 
 export const CopyText = Command.define("CopyText", {

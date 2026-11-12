@@ -5,6 +5,7 @@ import { computeGeo } from "../src/client/table/layout.js";
 import {
   everyoneBetting,
   fallbackOf,
+  feltRulesPlaced,
   flightsOverTheHint,
   hintPlaced,
   laneProblemsOn,
@@ -65,6 +66,9 @@ const lanesOn = (screen: Screen, others: number, sample: number) => {
     ...Object.entries(hint).flatMap(([part, well]) =>
       well ? [] : [`the hint's ${part} is not placed well`]
     ),
+    ...Object.entries(feltRulesPlaced(geo, screen)).flatMap(([part, well]) =>
+      well ? [] : [`the rules on the felt fail ${part}`]
+    ),
   ].map((problem) => `${where}: ${problem}`);
 };
 
@@ -79,7 +83,7 @@ const fallbackOn = (screen: Screen, others: number) => {
 };
 
 it.live(
-  "every lane, the hint, the chips flying past it, and the fallback hold on a grid of every table the app supports and below it",
+  "every lane, the hint, the rules on the felt, the chips flying past it, and the fallback hold on a grid of every table the app supports and below it",
   () =>
     Effect.gen(function* sweep() {
       const started = performance.now();

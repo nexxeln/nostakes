@@ -138,6 +138,20 @@ export const tableCss = `
 .slot.hunt[data-hint]::after { content: attr(data-hint); position: absolute; inset: 0; display: grid; place-items: center; font-size: var(--text-1); font-weight: var(--weight-strong); color: var(--color-ink-muted); }
 .card.rabbit { opacity: 0.55; }
 .runs { position: absolute; inset: 0; pointer-events: none; z-index: 1; }
+.felt-rules {
+  position: absolute; z-index: 3; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+  min-height: 44px; padding: 4px 12px; border: 0; border-radius: var(--radius-3); background: var(--color-raised); color: var(--color-ink);
+  box-shadow: var(--shadow-sheet-1); font: inherit; text-align: center; cursor: pointer; overflow: hidden;
+}
+.felt-rules:active { translate: var(--press-1); box-shadow: var(--shadow-sheet-0); }
+.felt-rules:focus-visible { outline: 2px solid var(--color-ink); outline-offset: 2px; }
+.felt-rules.gone, .felt-extras.gone { display: none; }
+.felt-headline {
+  font-family: var(--font-display); font-weight: var(--weight-display); font-variation-settings: var(--settings-display);
+  font-size: clamp(var(--text-3), calc(var(--cw) * 0.42), var(--text-5)); letter-spacing: -0.01em; line-height: 1.1;
+}
+.felt-extras { color: var(--color-ink-muted); font-size: var(--text-1); line-height: 1.25; }
+.felt-rules-on .slot, .felt-rules-on .strip { opacity: 0; }
 .runs .card { position: absolute; }
 .runs .card.shared { opacity: 0.45; }
 

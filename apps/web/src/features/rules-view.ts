@@ -13,15 +13,16 @@ import {
   groupSummary,
   isRelevant,
   linesIn,
-  openDraft,
   presetOf,
   presetsInOrder,
   pressed,
   rulesCardOf,
   valueText,
+  zeroText,
 } from "./rules.js";
 import type { CardPart, RuleLine } from "./rules.js";
 import { optionLabel, savesAs, settingsFrom } from "./settings.js";
+import { roomDraft, rulesInForce } from "./setup.js";
 import { icon, sheetLayer, sheetTop } from "./sheet.js";
 
 type H = HtmlBuilder<Message>;
@@ -35,7 +36,7 @@ const partsView = (parts: readonly CardPart[], h: H): readonly Html[] =>
   ]);
 
 export const rulesCard = (view: OpenView, h: H): Html => {
-  const { headline, rest } = rulesCardOf(openDraft(view.settings));
+  const { headline, rest } = rulesCardOf(roomDraft(view));
 
   return h.button(
     [
@@ -75,10 +76,17 @@ const optionsOf = (line: RuleLine): readonly string[] => {
   return [];
 };
 
-const change = (path: string, value: string) =>
+type Change = (path: string, value: string) => Message;
+
+const sheetChange: Change = (path, value) =>
   Messages.ChangedSetting({ path, value });
 
-const controlView = (line: RuleLine, draft: SettingsDraft, h: H): Html => {
+export const controlView = (
+  line: RuleLine,
+  draft: SettingsDraft,
+  h: H,
+  change: Change = sheetChange
+): Html => {
   const { control, label, path } = line.copy;
   const current = draft[path] ?? "";
 
@@ -129,16 +137,24 @@ const controlView = (line: RuleLine, draft: SettingsDraft, h: H): Html => {
         ],
         ["−"]
       ),
-      h.input([
-        h.Type("number"),
-        h.Class("step-value"),
-        h.InputMode("numeric"),
-        h.AriaLabel(label),
-        h.Min(String(control.min)),
-        h.Value(current),
-        h.OnInput((value) => change(path, value)),
-      ]),
-      control.unit.length > 0
+      Option.match(zeroText(control, current), {
+        onNone: () =>
+          h.input([
+            h.Type("number"),
+            h.Class("step-value"),
+            h.InputMode("numeric"),
+            h.AriaLabel(label),
+            h.Min(String(control.min)),
+            h.Value(current),
+            h.OnInput((value) => change(path, value)),
+          ]),
+        onSome: (text) =>
+          h.span(
+            [h.Class("step-value step-zero"), h.AriaLabel(`${label}: ${text}`)],
+            [text]
+          ),
+      }),
+      control.unit.length > 0 && Option.isNone(zeroText(control, current))
         ? h.span([h.Class("step-unit")], [control.unit])
         : h.empty,
       h.button(
@@ -270,7 +286,7 @@ const saveRow = (
   h: H
 ): Html => {
   const fits = Result.isSuccess(settingsFrom(draft));
-  const unchanged = savesAs(draft, view.settings);
+  const unchanged = savesAs(draft, rulesInForce(view));
 
   return h.div(
     [h.Class("rules-save")],
@@ -300,7 +316,7 @@ export const rulesSheet = (
   h: H
 ): Html => {
   const editing = isYou(view, view.host);
-  const draft = editing ? sheet.draft : openDraft(view.settings);
+  const draft = editing ? sheet.draft : roomDraft(view);
 
   return sheetLayer(h, "House rules", "rules-sheet", [
     sheetTop(h, h.h2([h.Class("sheet-title")], ["House rules"])),

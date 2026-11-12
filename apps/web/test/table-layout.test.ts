@@ -8,6 +8,8 @@ import {
   fallbackOf,
   flightsOverTheHint,
   gapToBox,
+  FELT_RULES_PLACED_WELL,
+  feltRulesPlaced,
   HINT_PLACED_WELL,
   hintPlaced,
   laneProblemsOf,
@@ -339,6 +341,41 @@ describe("the hint by your cards", () => {
     ).toStrictEqual(
       sizes.flatMap(() => SEATS_AROUND_YOU.map(() => HINT_PLACED_WELL))
     );
+  });
+});
+
+describe("the house rules on the empty felt", () => {
+  it.prop(
+    "cover no seat, name, or Sit tile, stay on the table, and are tall enough to tap, with two, six, or nine seats",
+    { screen: Schema.Union(SUPPORTED_TABLES) },
+    ({ screen }) => {
+      expect(
+        SEATS_AROUND_YOU.map((others) =>
+          feltRulesPlaced(
+            computeGeo(screen.width, screen.height, others),
+            screen
+          )
+        )
+      ).toStrictEqual(SEATS_AROUND_YOU.map(() => FELT_RULES_PLACED_WELL));
+    },
+    { arbitrary: { runs: 100 } }
+  );
+
+  it("cover nothing with nine seats on the phones the owner checks", () => {
+    const phones = [
+      { height: 592, width: 360 },
+      { height: 640, width: 360 },
+      { height: 796, width: 390 },
+      { height: 844, width: 390 },
+      { height: 342, width: 844 },
+      { height: 390, width: 844 },
+    ];
+
+    expect(
+      phones.map((screen) =>
+        feltRulesPlaced(computeGeo(screen.width, screen.height, 8), screen)
+      )
+    ).toStrictEqual(phones.map(() => FELT_RULES_PLACED_WELL));
   });
 });
 

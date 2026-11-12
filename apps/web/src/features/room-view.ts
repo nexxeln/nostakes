@@ -58,6 +58,8 @@ import {
 } from "./room.js";
 import type { ClosedView, OpenView } from "./room.js";
 import { rulesSheet } from "./rules-view.js";
+import { setupSheet } from "./setup-view.js";
+import { beforeFirstHand, PLAYERS_TO_DEAL, seatedCount } from "./setup.js";
 import { sheet } from "./sheet.js";
 import { stuckLine } from "./stuck-line.js";
 import { heroSeatOf, tableSnapshot } from "./table/from-room.js";
@@ -162,8 +164,8 @@ const header = (
       h.button(
         [
           h.Type("button"),
-          h.Class("bar-button"),
-          h.OnClick(Messages.ClickedCopyLink()),
+          h.Class("bar-button invite-button"),
+          h.OnClick(Messages.ClickedShareLink()),
         ],
         [room.copied === "Link" ? "Link copied" : "Invite"]
       ),
@@ -345,6 +347,14 @@ const activeSheet = (
     return rulesSheet(room, view, room.rules.value, h);
   }
 
+  if (
+    Option.isSome(room.setup) &&
+    isYou(view, view.host) &&
+    beforeFirstHand(view)
+  ) {
+    return setupSheet(model, room, view, room.setup.value, h);
+  }
+
   if (Option.isSome(room.drafts.seat)) {
     return sitSheet(room, view, room.drafts.seat.value, h);
   }
@@ -492,29 +502,56 @@ const hostRequests = (room: InRoom, view: OpenView, h: H): Html => {
     : h.div([h.Class("requests")], [...seats, ...chips]);
 };
 
-const waitingCall = (room: InRoom, view: OpenView, h: H): Html => {
-  if (Option.isNone(heroSeatOf(view))) {
-    return h.p([h.Class("muted")], ["Tap a seat to sit."]);
+const seatsWanted = (view: OpenView): Option.Option<string> => {
+  const missing = PLAYERS_TO_DEAL - seatedCount(view);
+
+  if (missing <= 0) {
+    return Option.none();
   }
 
-  return isYou(view, view.host)
-    ? commandButton(
+  return Option.some(
+    missing === PLAYERS_TO_DEAL
+      ? "Waiting for two players to sit."
+      : "Waiting for a second player to sit."
+  );
+};
+
+const wantedLine = (view: OpenView, h: H): Html =>
+  Option.match(seatsWanted(view), {
+    onNone: () => h.empty,
+    onSome: (text) => h.p([h.Class("muted")], [text]),
+  });
+
+const waitingCall = (room: InRoom, view: OpenView, h: H): readonly Html[] => {
+  if (isYou(view, view.host)) {
+    return [
+      commandButton(
         h,
         room,
         Commands.StartGame.make({}),
         "Start the game",
         "Starting",
         "button primary"
-      )
-    : h.p([h.Class("muted")], ["Waiting for the host to start."]);
+      ),
+      wantedLine(view, h),
+    ];
+  }
+
+  if (Option.isNone(heroSeatOf(view))) {
+    return [h.p([h.Class("muted")], ["Tap a seat to sit."])];
+  }
+
+  return [h.p([h.Class("muted")], ["Waiting for the host to start."])];
 };
 
 const tableCall = (room: InRoom, view: OpenView, h: H): Html => {
-  if (view.game !== "Waiting") {
-    return h.empty;
+  if (view.game === "Waiting") {
+    return h.div([h.Class("table-call")], waitingCall(room, view, h));
   }
 
-  return h.div([h.Class("table-call")], [waitingCall(room, view, h)]);
+  return Option.isNone(view.hand) && Option.isNone(view.lastHand)
+    ? h.div([h.Class("table-call")], [wantedLine(view, h)])
+    : h.empty;
 };
 
 const tableView = (

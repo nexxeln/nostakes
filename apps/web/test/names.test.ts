@@ -155,7 +155,7 @@ describe("typing a name", () => {
     ({ name }) => {
       expect(submitted(name)).toStrictEqual({
         problem: Option.none(),
-        sent: [{ avatar: "", name }],
+        sent: [{ avatar: "", name, settings: Option.none() }],
       });
     }
   );

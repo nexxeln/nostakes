@@ -12,7 +12,11 @@ import {
   buttonBox,
   computeGeo,
   flightControl,
+  FELT_RULES_TAP_PX,
+  feltRulesBox,
   handHintBox,
+  restingPlaces,
+  waitingCallBox,
   handHintGround,
   HINT_LINES,
   PIC_LIFT,
@@ -697,6 +701,30 @@ export const hintPlaced = (geo: Table, { height, width }: Screen) => {
     slipHoldsTheLongestLineInTwo:
       !hint.onCards || hint.say.w * 2 >= HINT_LINES.sayW,
   };
+};
+
+export const feltRulesPlaced = (geo: Table, screen: Screen) => {
+  const card = feltRulesBox(geo);
+  const call = waitingCallBox(geo);
+  const seats = seatsDrawn(geo, restingPlaces(geo)).flat();
+
+  return {
+    callClearOfEverySeat: seats.every((box) => !covers(call, box)),
+    callClearOfTheRules: !covers(call, card),
+    callOnScreen: onScreen(call, geo, screen),
+    clearOfEverySeat: seats.every((box) => !covers(card, box)),
+    onScreen: onScreen(card, geo, screen),
+    tallEnoughToTap: card.h >= FELT_RULES_TAP_PX,
+  };
+};
+
+export const FELT_RULES_PLACED_WELL = {
+  callClearOfEverySeat: true,
+  callClearOfTheRules: true,
+  callOnScreen: true,
+  clearOfEverySeat: true,
+  onScreen: true,
+  tallEnoughToTap: true,
 };
 
 export const HINT_PLACED_WELL = {

@@ -46,9 +46,12 @@ import {
   SaveProfile,
   ReadOwnResult,
   RememberRoom,
+  RememberRules,
   SaveSound,
   ScrollToTop,
   SendToRoom,
+  SettleSetup,
+  ShareRoomLink,
   ShowPath,
   ShuffleFace,
   SignalRoom,
@@ -66,6 +69,7 @@ import {
 } from "./door.js";
 import { PART_LABELS, stepped, toldOf } from "./face/parts.js";
 import { haltedText } from "./halted.js";
+import { BRAND_LINE, INVITE_PREVIEW } from "./link-preview.js";
 import { Messages, ReplyOutcomes } from "./message.js";
 import type { Message, ReplyOutcome } from "./message.js";
 import {
@@ -84,6 +88,8 @@ import type {
   Model,
   RoomRecord,
   RulesSheet,
+  SettingsDraft,
+  SetupSheet,
 } from "./model.js";
 import {
   NO_MOMENTS,
@@ -117,8 +123,17 @@ import {
   settlementText,
   viewOf,
 } from "./room.js";
-import { openDraft, withPreset } from "./rules.js";
+import type { OpenView } from "./room.js";
+import { withPreset } from "./rules.js";
 import { settingsFrom } from "./settings.js";
+import {
+  beforeFirstHand,
+  debounced,
+  roomDraft,
+  rulesToRemember,
+  setupChange,
+  setupPreset,
+} from "./setup.js";
 import { forgetExpired, heard, reacted } from "./signals.js";
 import {
   KEPT_CLOCK_SAMPLES,
@@ -165,6 +180,7 @@ const freshRoom = (code: InRoom["code"], player: InRoom["player"]): InRoom => ({
   removed: Option.none(),
   resumed: Option.none(),
   rules: Option.none(),
+  setup: Option.none(),
   shown: Option.none(),
   update: Option.none(),
 });
@@ -218,9 +234,11 @@ export const init = (flags: Flags): Return => {
     faceShuffles: 0,
     faceTold: "",
     joinCode: "",
+    lastRules: Option.flatten(Option.fromUndefinedOr(flags.lastRules)),
     learned: flags.learned,
     nextKey: 1,
     now: 0,
+    origin: flags.origin ?? "",
     profile: flags.profile,
     reloadedFor: flags.reloadedFor,
     reporting: { errors: 0, reconnects: 0 },
@@ -709,6 +727,242 @@ const editRules = (
     rules: room.rules.pipe(Option.map(edit)),
   }));
 
+const FRESH_SETUP: SetupSheet = {
+  awaitSeq: Option.none(),
+  edits: Option.none(),
+  help: Option.none(),
+  inFlight: Option.none(),
+  token: 0,
+  waiting: false,
+};
+
+export const setupDraft = (view: OpenView, setup: SetupSheet): SettingsDraft =>
+  Option.getOrElse(setup.edits, () => roomDraft(view));
+
+const withSetup = (room: InRoom, setup: SetupSheet): InRoom => ({
+  ...room,
+  setup: Option.some(setup),
+});
+
+const sendSetup = (
+  model: Model,
+  room: InRoom,
+  setup: SetupSheet,
+  draft: SettingsDraft
+): Return =>
+  Result.match(settingsFrom(draft), {
+    onFailure: () => ({
+      model: withRoom(model, withSetup(room, { ...setup, waiting: false })),
+    }),
+    onSuccess: (settings) =>
+      isLive(room)
+        ? send(
+            model,
+            withSetup(room, {
+              ...setup,
+              inFlight: Option.some(model.nextKey),
+              waiting: false,
+            }),
+            Commands.ChangeSettings.make({ settings }),
+            "Changing the rules"
+          )
+        : {
+            model: withRoom(
+              model,
+              withSetup(room, {
+                ...setup,
+                edits: Option.none(),
+                waiting: false,
+              })
+            ),
+          },
+  });
+
+const hostSetup = (
+  model: Model,
+  step: (room: InRoom, view: OpenView, setup: SetupSheet) => Return
+): Return =>
+  inRoom(model, (room) =>
+    Option.match(
+      Option.all([
+        openViewOf(room).pipe(
+          Option.filter(
+            (view) => isYou(view, view.host) && beforeFirstHand(view)
+          )
+        ),
+        room.setup,
+      ]),
+      {
+        onNone: () => ({ model }),
+        onSome: ([view, setup]) => step(room, view, setup),
+      }
+    )
+  );
+
+const editSetup = (
+  model: Model,
+  edit: (draft: SettingsDraft) => SettingsDraft,
+  wait: boolean
+): Return =>
+  hostSetup(model, (room, view, setup) => {
+    const draft = edit(setupDraft(view, setup));
+    const edited = { ...setup, edits: Option.some(draft) };
+
+    if (!wait) {
+      return sendSetup(model, room, edited, draft);
+    }
+
+    const token = setup.token + 1;
+
+    return {
+      commands: [SettleSetup({ token })],
+      model: withRoom(
+        model,
+        withSetup(room, { ...edited, token, waiting: true })
+      ),
+    };
+  });
+
+const settledSetup = (model: Model, token: number): Return =>
+  hostSetup(model, (room, view, setup) =>
+    setup.waiting && setup.token === token
+      ? sendSetup(model, room, setup, setupDraft(view, setup))
+      : { model }
+  );
+
+const flushSetup = (model: Model): Return =>
+  hostSetup(model, (room, view, setup) =>
+    setup.waiting
+      ? sendSetup(model, room, setup, setupDraft(view, setup))
+      : { model }
+  );
+
+const seenSeq = (room: InRoom) =>
+  room.shown.pipe(
+    Option.map(({ seq }) => seq),
+    Option.getOrElse(() => 0)
+  );
+
+const answeredSetup = (
+  room: InRoom,
+  key: number,
+  outcome: ReplyOutcome
+): InRoom =>
+  Option.match(
+    room.setup.pipe(
+      Option.filter(({ inFlight }) => Option.contains(inFlight, key))
+    ),
+    {
+      onNone: () => room,
+      onSome: (setup) => {
+        const answered = { ...setup, inFlight: Option.none() };
+
+        const reached =
+          ReplyOutcomes.guards.Accepted(outcome) && outcome.seq > seenSeq(room)
+            ? Option.some(outcome.seq)
+            : Option.none();
+
+        return withSetup(
+          room,
+          setup.waiting || Option.isSome(reached)
+            ? { ...answered, awaitSeq: reached }
+            : { ...answered, awaitSeq: Option.none(), edits: Option.none() }
+        );
+      },
+    }
+  );
+
+const caughtUpSetup = (room: InRoom): InRoom =>
+  Option.match(
+    room.setup.pipe(
+      Option.filter(
+        ({ awaitSeq, inFlight, waiting }) =>
+          !waiting &&
+          Option.isNone(inFlight) &&
+          Option.exists(awaitSeq, (seq) => seenSeq(room) >= seq)
+      )
+    ),
+    {
+      onNone: () => room,
+      onSome: (setup) =>
+        withSetup(room, {
+          ...setup,
+          awaitSeq: Option.none(),
+          edits: Option.none(),
+        }),
+    }
+  );
+
+const firstHandDealt = (before: InRoom, after: InRoom) =>
+  Option.exists(openViewOf(before), beforeFirstHand) &&
+  Option.exists(
+    openViewOf(after),
+    (view) => isYou(view, view.host) && !beforeFirstHand(view)
+  );
+
+const rememberFirstHand = (before: InRoom, step: Return): Return =>
+  Option.match(
+    roomOf(step.model).pipe(
+      Option.filter((after) => firstHandDealt(before, after)),
+      Option.flatMap(openViewOf)
+    ),
+    {
+      onNone: () => step,
+      onSome: (view) => ({
+        ...step,
+        commands: [
+          ...(step.commands ?? []),
+          RememberRules({ rules: Option.some(rulesToRemember(view)) }),
+        ],
+      }),
+    }
+  );
+
+const openHouseRules = (model: Model): Return => {
+  const flushed = flushSetup(model);
+
+  return {
+    ...flushed,
+    model: Option.match(roomOf(flushed.model), {
+      onNone: () => flushed.model,
+      onSome: (room) =>
+        withRoom(flushed.model, {
+          ...room,
+          menu: false,
+          rules: openViewOf(room).pipe(
+            Option.map((view) => ({
+              draft: Option.match(room.setup, {
+                onNone: () => roomDraft(view),
+                onSome: (setup) => setupDraft(view, setup),
+              }),
+              help: Option.none(),
+              open: Option.none(),
+            }))
+          ),
+          setup: Option.none(),
+        }),
+    }),
+  };
+};
+
+const openSetup = (model: Model): Return =>
+  editRoom(model, (room) => ({
+    ...room,
+    menu: false,
+    rules: Option.none(),
+    setup: Option.some(FRESH_SETUP),
+  }));
+
+const openRules = (model: Model): Return =>
+  inRoom(model, (room) =>
+    Option.exists(
+      openViewOf(room),
+      (view) => isYou(view, view.host) && beforeFirstHand(view)
+    )
+      ? openSetup(model)
+      : openHouseRules(model)
+  );
+
 const topUpRoom = (room: InRoom) =>
   Option.match(
     openViewOf(room).pipe(
@@ -835,6 +1089,7 @@ const fromTable = (model: Model, intent: TableIntent): Return =>
           onSome: (amount) => act(model, Actions.RaiseTo({ to: amount })),
         }),
       React: ({ reaction }) => react(model, reaction),
+      Rules: () => openRules(model),
       Runs: ({ runs }) =>
         Option.match(RunCountSchema.makeOption(runs), {
           onNone: () => ({ model }),
@@ -1162,6 +1417,12 @@ export const update = (model: Model, message: Message): Return =>
         ...sheet,
         draft: { ...sheet.draft, [path]: value },
       })),
+    ChangedSetupSetting: ({ path, value }) =>
+      editSetup(
+        model,
+        (draft) => setupChange(draft, path, value),
+        debounced(path)
+      ),
     ChangedSystemTheme: ({ theme }) => ({
       model: { ...model, systemTheme: theme },
     }),
@@ -1180,6 +1441,8 @@ export const update = (model: Model, message: Message): Return =>
         ...sheet,
         draft: withPreset(sheet.draft, preset),
       })),
+    ChoseSetupPreset: ({ preset }) =>
+      editSetup(model, (draft) => setupPreset(draft, preset), false),
     ChoseTheme: ({ theme }) => ({
       commands: [ApplyTheme({ theme: Option.some(theme) })],
       model: { ...model, theme: Option.some(theme) },
@@ -1278,18 +1541,7 @@ export const update = (model: Model, message: Message): Return =>
           },
         };
       }),
-    ClickedHouseRules: () =>
-      editRoom(model, (room) => ({
-        ...room,
-        menu: false,
-        rules: openViewOf(room).pipe(
-          Option.map(({ settings }) => ({
-            draft: openDraft(settings),
-            help: Option.none(),
-            open: Option.none(),
-          }))
-        ),
-      })),
+    ClickedHouseRules: () => openHouseRules(model),
     ClickedKnockAgain: () => knockAgain(model),
     ClickedKnownRoom: ({ code }) =>
       Option.match(
@@ -1368,31 +1620,62 @@ export const update = (model: Model, message: Message): Return =>
         })
       ),
     ClickedSeat: ({ seat }) => pickSeat(model, seat),
+    ClickedSetup: () => openSetup(model),
+    ClickedShareLink: () =>
+      inRoom(model, (room) => ({
+        commands: [
+          ShareRoomLink({
+            code: room.code,
+            text: INVITE_PREVIEW.description,
+            title: BRAND_LINE,
+          }),
+        ],
+        model,
+      })),
     ClickedShuffleFace: () => ({ commands: [ShuffleFace()], model }),
     ClickedSit: ({ seat }) => sit(model, seat),
+    ClickedStandardRules: () => ({
+      commands: [RememberRules({ rules: Option.none() })],
+      model: { ...model, lastRules: Option.none() },
+    }),
     ClickedUndoFace: () => undoFace(model),
     ClickedUseHere: () => ({ commands: [UseRoomHere()], model }),
-    ClosedSheet: () =>
-      editRoom(model, (room) => ({
-        ...room,
-        addingChips: false,
-        confirm: Option.none(),
-        drafts: { ...room.drafts, seat: Option.none() },
-        fairnessOpen: false,
-        member: Option.none(),
-        menu: false,
-        picked: Option.none(),
-        rules: Option.none(),
-      })),
+    ClosedSheet: () => {
+      const flushed = flushSetup(model);
+
+      return {
+        ...flushed,
+        model: editRoom(flushed.model, (room) => ({
+          ...room,
+          addingChips: false,
+          confirm: Option.none(),
+          drafts: { ...room.drafts, seat: Option.none() },
+          fairnessOpen: false,
+          member: Option.none(),
+          menu: false,
+          picked: Option.none(),
+          rules: Option.none(),
+          setup: Option.none(),
+        })).model,
+      };
+    },
     CompletedCopy: ({ copied }) =>
       editRoom(model, (room) => ({ ...room, copied })),
     CompletedForget: () => ({ model }),
     CompletedNavigation: () => ({ model }),
     CompletedPreference: () => ({ model }),
     CompletedWake: () => ({ model }),
-    EnteredRoom: ({ code, player }) => ({
+    EnteredRoom: ({ code, opened, player, rulesDropped }) => ({
       commands: [ShowPath({ path: roomPath(code) })],
-      model: withRoom(model, freshRoom(code, player)),
+      model: withRoom(model, {
+        ...freshRoom(code, player),
+        notice: rulesDropped
+          ? Option.some(
+              "Your last rules could not be used, so the room opened with the standard ones."
+            )
+          : Option.none(),
+        setup: opened ? Option.some(FRESH_SETUP) : Option.none(),
+      }),
     }),
     FailedConnection: ({ problem }) =>
       editRoom(model, (room) => notice(room, problem)),
@@ -1512,7 +1795,9 @@ export const update = (model: Model, message: Message): Return =>
         removed: Option.some(RemovedResults.Shown({ result })),
       })),
     ReceivedReply: ({ key, outcome }) =>
-      editRoom(model, (room) => settle(room, key, outcome)),
+      editRoom(model, (room) =>
+        settle(answeredSetup(room, key, outcome), key, outcome)
+      ),
     ReceivedStandings: ({ view }) =>
       editRoom(model, (room) => ({
         ...room,
@@ -1520,38 +1805,52 @@ export const update = (model: Model, message: Message): Return =>
       })),
     ReceivedTableIntent: ({ intent }) => fromTable(model, intent),
     ReceivedUpdate: ({ events, receivedAt, seq, view }) =>
-      noteRoom(
-        editRoomThenUpdate({ ...model, now: receivedAt }, (room) =>
-          reportedClear({
-            ...remember(room, events),
-            clockSamples: RoomViews.$is("Open")(view)
-              ? [...room.clockSamples, clockSampleOf(view, receivedAt)].slice(
-                  -KEPT_CLOCK_SAMPLES
-                )
-              : room.clockSamples,
-            moments: watchedMoments(room.moments, events, seatStacksOf(view)),
-            resumed: Option.orElse(
-              Option.fromUndefinedOr(
-                events.findLast(
-                  ({ event }) =>
-                    SeenEvents.$is("TableAttended")(event) &&
-                    Option.isSome(event.quietSince)
-                )
-              ).pipe(
-                Option.flatMap(({ event }) =>
-                  SeenEvents.$is("TableAttended")(event)
-                    ? Option.some({ player: event.player, receivedAt })
-                    : Option.none()
+      Option.match(roomOf(model), {
+        onNone: () => ({ model }),
+        onSome: (before) =>
+          rememberFirstHand(
+            before,
+            noteRoom(
+              editRoomThenUpdate({ ...model, now: receivedAt }, (room) =>
+                caughtUpSetup(
+                  reportedClear({
+                    ...remember(room, events),
+                    clockSamples: RoomViews.$is("Open")(view)
+                      ? [
+                          ...room.clockSamples,
+                          clockSampleOf(view, receivedAt),
+                        ].slice(-KEPT_CLOCK_SAMPLES)
+                      : room.clockSamples,
+                    moments: watchedMoments(
+                      room.moments,
+                      events,
+                      seatStacksOf(view)
+                    ),
+                    resumed: Option.orElse(
+                      Option.fromUndefinedOr(
+                        events.findLast(
+                          ({ event }) =>
+                            SeenEvents.$is("TableAttended")(event) &&
+                            Option.isSome(event.quietSince)
+                        )
+                      ).pipe(
+                        Option.flatMap(({ event }) =>
+                          SeenEvents.$is("TableAttended")(event)
+                            ? Option.some({ player: event.player, receivedAt })
+                            : Option.none()
+                        )
+                      ),
+                      () => room.resumed
+                    ),
+                    shown: Option.some({ receivedAt, seq, view }),
+                  })
                 )
               ),
-              () => room.resumed
-            ),
-            shown: Option.some({ receivedAt, seq, view }),
-          })
-        ),
-        view,
-        receivedAt
-      ),
+              view,
+              receivedAt
+            )
+          ),
+      }),
     ReleasedConnection: () =>
       editRoom(model, (room) => ({ ...room, connected: false })),
     ScrolledToTop: () => ({ model }),
@@ -1579,6 +1878,7 @@ export const update = (model: Model, message: Message): Return =>
           }))
         : { model },
     SettledFaceScrub: ({ kept }) => settleFaceScrub(model, kept),
+    SettledSetupEdit: ({ token }) => settledSetup(model, token),
     ShuffledFace: ({ avatar }) =>
       wearFace(model, { avatar, shuffled: true, told: "A new face" }),
     StartedReload: () => ({ model }),
@@ -1591,7 +1891,13 @@ export const update = (model: Model, message: Message): Return =>
 
       return Option.match(nameRefusal(name), {
         onNone: () => ({
-          commands: [CreateRoom({ avatar: model.profile.avatar, name })],
+          commands: [
+            CreateRoom({
+              avatar: model.profile.avatar,
+              name,
+              settings: model.lastRules,
+            }),
+          ],
           model: {
             ...model,
             profile: { ...model.profile, name },

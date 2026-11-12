@@ -38,7 +38,9 @@ import {
   placeSeats,
   POST_TAG_WIDTHS,
   postTagBox,
+  feltRulesBox,
   potTabOf,
+  waitingCallBox,
   ridingScale,
   runLanes,
 } from "./layout.js";
@@ -762,6 +764,9 @@ export class NostakesTable extends HTMLElement {
   #potSide!: HTMLDivElement;
   #slots: HTMLDivElement[] = [];
   #runs!: HTMLDivElement;
+  #feltRules!: HTMLButtonElement;
+  #feltHeadline!: HTMLSpanElement;
+  #feltExtras!: HTMLSpanElement;
   #boardShown: readonly string[] = [];
   #self!: HTMLDivElement;
   #selfFrame!: HTMLDivElement;
@@ -1018,6 +1023,13 @@ export class NostakesTable extends HTMLElement {
       return slot;
     });
     this.#runs = el("div", "runs", this.#room);
+    this.#feltRules = el("button", "felt-rules gone", this.#room);
+    this.#feltRules.type = "button";
+    this.#feltHeadline = el("span", "felt-headline", this.#feltRules);
+    this.#feltExtras = el("span", "felt-extras", this.#feltRules);
+    this.#feltRules.addEventListener("click", () => {
+      this.#emit(TableIntents.Rules.make({}));
+    });
   }
 
   #buildSelf() {
@@ -1513,6 +1525,24 @@ export class NostakesTable extends HTMLElement {
       }
     }
 
+    const rules = feltRulesBox(geo);
+    const call = waitingCallBox(geo);
+    const stage = this.parentElement;
+
+    stage?.style.setProperty(
+      "--call-x",
+      `${this.offsetLeft + call.x + call.w / 2}px`
+    );
+    stage?.style.setProperty("--call-y", `${this.offsetTop + call.y}px`);
+    stage?.style.setProperty("--call-w", `${call.w}px`);
+
+    Object.assign(this.#feltRules.style, {
+      height: `${rules.h}px`,
+      left: `${rules.x}px`,
+      top: `${rules.y}px`,
+      width: `${rules.w}px`,
+    });
+
     this.#boardShown = [];
 
     for (const slot of this.#slots) {
@@ -1795,6 +1825,7 @@ export class NostakesTable extends HTMLElement {
     const now = performance.now();
 
     this.#renderSeats(snapshot, geo, now);
+    this.#renderFeltRules(snapshot);
     this.#renderPot(snapshot, now);
     this.#renderBoard(true);
     this.#renderHero(snapshot, geo, now);
@@ -1880,6 +1911,33 @@ export class NostakesTable extends HTMLElement {
         }
       }
     }
+  }
+
+  #renderFeltRules(snapshot: TableSnapshot) {
+    const { rules } = snapshot;
+
+    toggle(this.#feltRules, "gone", rules === null);
+    toggle(this.#room, "felt-rules-on", rules !== null);
+
+    if (rules === null) {
+      return;
+    }
+
+    if (this.#feltHeadline.textContent !== rules.headline) {
+      this.#feltHeadline.textContent = rules.headline;
+    }
+
+    if (this.#feltExtras.textContent !== rules.extras) {
+      this.#feltExtras.textContent = rules.extras;
+    }
+
+    toggle(this.#feltExtras, "gone", rules.extras === "");
+    this.#feltRules.setAttribute(
+      "aria-label",
+      rules.extras === ""
+        ? `${rules.action}: ${rules.headline}`
+        : `${rules.action}: ${rules.headline}, ${rules.extras}`
+    );
   }
 
   #renderPot(snapshot: TableSnapshot, now: number) {

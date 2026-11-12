@@ -2839,8 +2839,8 @@ interface Arrangement {
   readonly tags: readonly TagSide[];
 }
 
-const atRest = (geo: Geo): Geo => {
-  const resting = placeSeats(geo, {
+export const restingPlaces = (geo: Geo) =>
+  placeSeats(geo, {
     bets: [],
     button: null,
     heroBet: false,
@@ -2855,6 +2855,9 @@ const atRest = (geo: Geo): Geo => {
     tabsInside: [],
     tags: [],
   });
+
+const atRest = (geo: Geo): Geo => {
+  const resting = restingPlaces(geo);
 
   return {
     ...geo,
@@ -2922,6 +2925,148 @@ export const boardCardsBox = (geo: Geo): Box => {
     y: Math.min(...ys) - halfH,
   };
 };
+
+export const FELT_RULES_INSET = 6;
+
+export const FELT_RULES_TAP_PX = 44;
+
+const FELT_RULES_HEIGHT = 60;
+
+const FELT_RULES_NARROWEST = 112;
+
+const FELT_RULES_STEP = 4;
+
+const FELT_RULES_SHIFTS = 130;
+
+const FELT_CALL_GAP = 8;
+
+const FELT_RULES_WIDE_INSET = 40;
+
+const callHeight = (w: number) => {
+  if (w >= 280) {
+    return 84;
+  }
+
+  if (w >= 176) {
+    return 100;
+  }
+
+  return w >= 140 ? 124 : 156;
+};
+
+const rulesHeight = (w: number) => (w >= 160 ? FELT_RULES_HEIGHT : 92);
+
+const restingBoxes = (geo: Geo) =>
+  [
+    ...restingPlaces(geo).map((place) => seatBoxes(geo, place)),
+    seatBoxes(geo, { ...geo.self, scale: geo.self.size / geo.tile }),
+  ].flat();
+
+const shiftsOf = (count: number) =>
+  Array.from(
+    { length: count * 2 + 1 },
+    (_, step) =>
+      (step % 2 === 0 ? 1 : -1) * Math.ceil(step / 2) * FELT_RULES_STEP
+  );
+
+const clearOnTable = (geo: Geo, blocked: readonly Box[]) => (box: Box) =>
+  box.x >= FELT_RULES_INSET &&
+  box.x + box.w <= geo.w - FELT_RULES_INSET &&
+  box.y >= geo.top + FELT_RULES_INSET &&
+  box.y + box.h <= geo.h - FELT_RULES_INSET &&
+  blocked.every((other) => overlap(box, other) === 0);
+
+export interface FeltBlock {
+  readonly rules: Box;
+  readonly call: Box;
+}
+
+const feltMiddle = (geo: Geo): Pt =>
+  geo.boardInStrip
+    ? { x: geo.w / 2, y: (geo.top + geo.strip.y) / 2 }
+    : { x: geo.table.x, y: geo.table.y };
+
+const blockAt = (centre: Pt, w: number, dy: number): FeltBlock => {
+  const h = callHeight(w);
+  const card = rulesHeight(w);
+  const top = centre.y + dy - (card + FELT_CALL_GAP + h) / 2;
+  const x = centre.x - w / 2;
+
+  return {
+    call: { h, w, x, y: top + card + FELT_CALL_GAP },
+    rules: { h: card, w, x, y: top },
+  };
+};
+
+const BESIDE_CALL_WIDTHS = [240, 208, 176] as const;
+
+const besideAt = (
+  centre: Pt,
+  w: number,
+  callW: number,
+  dy: number
+): FeltBlock => {
+  const h = callHeight(callW);
+  const card = rulesHeight(w);
+  const left = centre.x - (w + FELT_CALL_GAP + callW) / 2;
+  const middle = centre.y + dy;
+
+  const top = middle - Math.max(card, h) / 2;
+
+  return {
+    call: { h, w: callW, x: left + w + FELT_CALL_GAP, y: top },
+    rules: { h: card, w, x: left, y: top },
+  };
+};
+
+export const feltBlock = (geo: Geo): FeltBlock => {
+  const centre = feltMiddle(geo);
+
+  const widest = Math.max(
+    FELT_RULES_NARROWEST,
+    Math.min(
+      geo.boardInStrip
+        ? geo.strip.w - FELT_RULES_WIDE_INSET
+        : boardCardsBox(geo).w,
+      geo.w - FELT_RULES_INSET * 2
+    )
+  );
+
+  const clear = clearOnTable(geo, restingBoxes(geo));
+
+  const widths = Array.from(
+    {
+      length:
+        Math.max(
+          0,
+          Math.floor((widest - FELT_RULES_NARROWEST) / FELT_RULES_STEP)
+        ) + 1,
+    },
+    (_, step) => widest - step * FELT_RULES_STEP
+  );
+
+  const fits = ({ call, rules }: FeltBlock) => clear(rules) && clear(call);
+  const shifts = shiftsOf(FELT_RULES_SHIFTS);
+
+  const stacked = shifts
+    .flatMap((dy) => widths.map((w) => blockAt(centre, w, dy)))
+    .find(fits);
+
+  const beside = () =>
+    shifts
+      .flatMap((dy) =>
+        widths.flatMap((w) =>
+          BESIDE_CALL_WIDTHS.map((callW) => besideAt(centre, w, callW, dy))
+        )
+      )
+      .find(fits);
+
+  return stacked ?? beside() ?? blockAt(centre, widest, 0);
+};
+
+export const feltRulesBox = (geo: Geo): Box => feltBlock(geo).rules;
+
+export const waitingCallBox = (geo: Geo): Box => feltBlock(geo).call;
 
 const tabsOf = (places: readonly TabPlace[]) => ({
   tabShifts: places.map(({ shift }) => shift),

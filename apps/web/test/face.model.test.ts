@@ -208,7 +208,7 @@ describe("the face builder", () => {
       const opened = update(named.model, Messages.SubmittedCreate());
 
       expect(opened.commands?.map(({ args }) => args)).toStrictEqual([
-        { avatar: codeFor(avatar), name: "Bo" },
+        { avatar: codeFor(avatar), name: "Bo", settings: Option.none() },
       ]);
     }
   );

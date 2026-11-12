@@ -81,6 +81,7 @@ export {
   PositiveChipsSchema,
   SEAT_COUNT,
   SeatIndexSchema,
+  splitEvenly,
   type Chips,
   type PlayerId,
   type SeatIndex,

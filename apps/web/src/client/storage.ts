@@ -20,6 +20,7 @@ import type {
   RoomRecord,
   Theme,
 } from "../features/model.js";
+import { rememberedRules } from "../features/setup.js";
 import { HintSchema } from "../features/table/snapshot.js";
 import type { Hint } from "../features/table/snapshot.js";
 import { readCounting } from "./counting.js";
@@ -98,6 +99,17 @@ export const storeTheme = (theme: Option.Option<Theme>) =>
   });
 
 export const storeDeck = (deck: Deck) => writeItem(DECK_KEY, deck);
+
+const RULES_KEY = "nostakes.last-rules";
+
+export const storeLastRules = (rules: Option.Option<string>) =>
+  Option.match(rules, {
+    onNone: () =>
+      Effect.sync(() => {
+        globalThis.localStorage.removeItem(RULES_KEY);
+      }),
+    onSome: (text) => writeItem(RULES_KEY, text),
+  });
 
 export const storeSound = (on: boolean) =>
   writeItem(SOUND_KEY, on ? "on" : SOUND_OFF);
@@ -264,7 +276,9 @@ export const readFlags = Effect.gen(function* readFlags() {
     counting: yield* readCounting,
     deck,
     invite,
+    lastRules: rememberedRules(yield* readItem(RULES_KEY)),
     learned,
+    origin: globalThis.location.origin,
     profile,
     reloadedFor,
     rooms,

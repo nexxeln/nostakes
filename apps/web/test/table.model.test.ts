@@ -130,6 +130,7 @@ const actionOf = (intent: TableIntent): Option.Option<Action> =>
           Option.map((amount) => Actions.RaiseTo({ to: amount }))
         ),
       React: () => Option.none(),
+      Rules: () => Option.none(),
       Runs: () => Option.none(),
       Show: () => Option.none(),
       ShowCards: () => Option.none(),

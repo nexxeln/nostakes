@@ -94,6 +94,7 @@ const fallbackControl = (field: SettingField): RuleControl =>
         start: 0,
         step: () => 1,
         unit: "",
+        zero: Option.none(),
       }),
       Toggle: () => ({ kind: "Switch" as const, off: "false", on: "true" }),
       Unsupported: () => ({
@@ -231,6 +232,11 @@ export const unitText = (unit: string) => {
   return /^\p{L}/u.test(unit) ? ` ${unit}` : unit;
 };
 
+export const zeroText = (control: RuleControl, current: string) =>
+  control.kind === "Stepper" && Number(current) === 0 && current.trim() !== ""
+    ? control.zero
+    : Option.none();
+
 export const valueText = (line: RuleLine, draft: SettingsDraft) => {
   const current = draft[line.field.path] ?? "";
   const { control } = line.copy;
@@ -243,7 +249,10 @@ export const valueText = (line: RuleLine, draft: SettingsDraft) => {
     return control.labels[current] ?? optionLabel(current);
   }
 
-  return `${current}${unitText(control.unit)}`;
+  return Option.match(zeroText(control, current), {
+    onNone: () => `${current}${unitText(control.unit)}`,
+    onSome: (text) => text,
+  });
 };
 
 export interface CardPart {

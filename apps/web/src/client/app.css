@@ -1310,9 +1310,11 @@ html:has(.room) {
 
 .table-call {
   position: absolute;
-  left: 50%;
-  top: 42%;
-  transform: translate(-50%, -50%);
+  left: var(--call-x, 50%);
+  top: var(--call-y, 42%);
+  width: var(--call-w, auto);
+  transform: translateX(-50%);
+  text-wrap: balance;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -2184,4 +2186,177 @@ a.text-button {
   display: inline-flex;
   align-items: center;
   text-decoration: none;
+}
+
+.sheet.setup-sheet {
+  max-height: calc(100dvh - var(--inset-top) - var(--space-3));
+  gap: var(--space-3);
+  padding-bottom: 0;
+}
+
+.setup-part {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.setup-heading-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.setup-heading {
+  margin: 0;
+  color: var(--color-ink-muted);
+  font-size: var(--text-2);
+  font-weight: var(--weight-strong);
+}
+
+.setup-link {
+  margin: 0;
+  overflow-wrap: anywhere;
+  font-weight: var(--weight-strong);
+  user-select: all;
+}
+
+.setup-invite {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.sheet .setup-invite .button {
+  flex: 1;
+  width: auto;
+}
+
+.sheet .setup-invite .button.primary {
+  flex: 2;
+}
+
+.setup-all {
+  min-height: var(--size-touch);
+  margin-right: calc(var(--space-2) * -1);
+  padding: 0 var(--space-2);
+  border: 0;
+  background: none;
+  color: var(--color-ink);
+  font: inherit;
+  font-size: var(--text-2);
+  text-decoration: underline;
+  text-underline-offset: 0.25em;
+  cursor: pointer;
+}
+
+.setup-pair {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-2);
+}
+
+.setup-cell {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.setup-cell-name {
+  color: var(--color-ink-muted);
+  font-size: var(--text-1);
+}
+
+.setup-sheet .stepper {
+  margin-left: 0;
+}
+
+.setup-cell .stepper {
+  justify-content: space-between;
+}
+
+.setup-sheet .step {
+  width: var(--size-touch);
+  height: var(--size-touch);
+}
+
+.setup-sheet .step-value {
+  flex: 1;
+  width: 2.75rem;
+  min-width: 0;
+}
+
+.setup-amount .stepper {
+  margin-left: auto;
+}
+
+.setup-styles .segment {
+  min-height: var(--size-touch);
+}
+
+.setup-extras {
+  display: flex;
+  flex-direction: column;
+}
+
+.setup-extra + .setup-extra {
+  border-top: 1px solid var(--color-line);
+}
+
+.setup-extra.is-on {
+  padding-bottom: var(--space-2);
+}
+
+.setup-switch {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  width: 100%;
+  min-height: var(--size-touch);
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.setup-done {
+  position: sticky;
+  bottom: 0;
+  margin: 0 calc(var(--gutter-right) * -1) 0 calc(var(--gutter-left) * -1);
+  padding: var(--space-2) var(--gutter-right)
+    calc(var(--space-3) + var(--inset-bottom)) var(--gutter-left);
+  background: var(--color-raised);
+  box-shadow: 0 -1px 0 var(--color-line);
+}
+
+.last-rules {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0 var(--space-2);
+  margin: 0;
+  color: var(--color-ink-muted);
+  font-size: var(--text-2);
+}
+
+.last-rules-reset {
+  min-height: var(--size-touch);
+  padding: 0 var(--space-1);
+  border: 0;
+  background: none;
+  color: var(--color-ink);
+  font: inherit;
+  text-decoration: underline;
+  text-underline-offset: 0.25em;
+  cursor: pointer;
+}
+
+.step-value.step-zero {
+  width: auto;
+  min-width: 3.25rem;
+  padding: 0 var(--space-2);
+  font-size: var(--text-2);
+  white-space: nowrap;
 }

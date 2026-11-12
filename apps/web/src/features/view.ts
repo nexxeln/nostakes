@@ -10,6 +10,7 @@ import type { Message } from "./message.js";
 import { pageTheme, Screens } from "./model.js";
 import type { Model, RoomRecord } from "./model.js";
 import { roomView } from "./room-view.js";
+import { rememberedShorthand } from "./setup.js";
 
 type H = HtmlBuilder<Message>;
 
@@ -166,6 +167,29 @@ const readingLinks = (h: H): Html =>
     ]
   );
 
+const lastRulesLine = (model: Model, h: H): Html =>
+  Option.match(model.lastRules, {
+    onNone: () => h.empty,
+    onSome: (rules) =>
+      h.p(
+        [h.Class("last-rules")],
+        [
+          h.span(
+            [h.Class("last-rules-text")],
+            [`Last time's rules: ${rememberedShorthand(rules)}`]
+          ),
+          h.button(
+            [
+              h.Type("button"),
+              h.Class("last-rules-reset"),
+              h.OnClick(Messages.ClickedStandardRules()),
+            ],
+            ["Use standard"]
+          ),
+        ]
+      ),
+  });
+
 const homeView = (
   model: Model,
   busy: boolean,
@@ -221,6 +245,7 @@ const homeView = (
                 [h.Type("submit"), h.Class("button primary"), h.Disabled(busy)],
                 [busy ? "Opening…" : "Open a room"]
               ),
+              lastRulesLine(model, h),
             ]
           ),
           h.form(

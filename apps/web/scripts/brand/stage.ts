@@ -168,6 +168,7 @@ const opening: TableSnapshot = {
   pots: [OPENING_POT],
   rabbit: [],
   reactions: [],
+  rules: null,
   runVote: null,
   seats: [
     HERO,
