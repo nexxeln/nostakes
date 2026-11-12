@@ -623,6 +623,29 @@ const shouldAdvance = (view: RoomView) =>
         )
       ).length >= 2));
 
+const tableAsSeen = (view: OpenView) => {
+  const seated = view.seats.flatMap(({ occupant }) => Option.toArray(occupant));
+
+  const hand = Option.match(view.hand, {
+    onNone: () => "no hand in play",
+    onSome: ({ handNumber, street, toAct }) =>
+      `hand ${handNumber} on ${street}, ${Option.isSome(toAct) ? "a seat to act" : "nobody to act"}`,
+  });
+
+  return [
+    `the freshest view shows the game ${view.game}`,
+    hand,
+    `${seated.length} seated, ${seated.filter(({ sittingOut, stack }) => !sittingOut && stack > 0).length} able to be dealt in`,
+    `dealing ${view.settings.dealing}`,
+    Option.isSome(view.clocks.nextDeal)
+      ? "a next deal on the clock"
+      : "no next deal on the clock",
+    Option.isSome(view.fairness.sealed) ? "a hand sealed" : "no hand sealed",
+    `the table ${view.attendance._tag}`,
+    `${view.requests.seats.length} seat and ${view.requests.chips.length} chip requests waiting`,
+  ].join(", ");
+};
+
 export interface OpenedNight {
   readonly plan: NightPlan;
   readonly passes: readonly RoomPass[];
@@ -1033,7 +1056,7 @@ export const playNight = (base: string, opened: OpenedNight) =>
             )
           ) {
             problem = Option.some(
-              `the jammed room was not marked stalled within ${STALL_LIMIT_MS} ms`
+              `the jammed room was not marked stalled within ${STALL_LIMIT_MS} ms; ${tableAsSeen(open.value)}`
             );
 
             continue;
