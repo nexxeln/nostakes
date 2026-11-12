@@ -811,26 +811,57 @@ const stillPlayingOut = (view: OpenView) =>
     Option.exists(occupant, ({ player }) => isYou(view, player))
   );
 
-const leftRoomView = (view: OpenView, h: H): Html =>
+const comeBackName = (room: InRoom, h: H): Html =>
+  Option.match(room.rename, {
+    onNone: () => h.empty,
+    onSome: (name) =>
+      h.label(
+        [h.Class("field")],
+        [
+          h.span([h.Class("field-label")], ["Come back as"]),
+          h.input([
+            h.Type("text"),
+            h.Class("text-input"),
+            h.Value(name),
+            h.Maxlength(40),
+            h.Placeholder("Name"),
+            h.OnInput((value) => Messages.ChangedComeBackName({ value })),
+          ]),
+        ]
+      ),
+  });
+
+const leftRoomView = (room: InRoom, view: OpenView, h: H): Html =>
   h.section(
     [h.Class("card-panel settlement")],
     [
       h.h2([h.Class("sheet-title")], ["You left this room"]),
-      ...(stillPlayingOut(view)
-        ? [
-            h.p(
-              [h.Class("muted")],
-              [
-                "Your seat plays out this hand, then your chips are counted for the settle-up.",
-              ]
-            ),
-          ]
-        : []),
       h.p(
         [h.Class("muted")],
-        ["To play again, open the room link and join as a new player."]
+        [
+          stillPlayingOut(view)
+            ? "Your seat plays out this hand, then your chips are counted for the settle-up. You can come back as yourself."
+            : "Your chips count in the settle-up. You can come back as yourself.",
+        ]
       ),
-      homeButton("Back home", h),
+      comeBackName(room, h),
+      h.button(
+        [
+          h.Type("button"),
+          h.Class("button primary"),
+          h.Disabled(!isLive(room)),
+          h.OnClick(Messages.ClickedComeBack()),
+        ],
+        ["Come back"]
+      ),
+      h.button(
+        [
+          h.Type("button"),
+          h.Class("button quiet"),
+          h.OnClick(Messages.ClickedHome()),
+        ],
+        ["Back home"]
+      ),
     ]
   );
 
@@ -1049,7 +1080,7 @@ const roomBody = (
                 Closed: (closed) => closedRoomView(model, room, closed, h),
                 Open: (live) =>
                   hasLeft(live)
-                    ? leftRoomView(live, h)
+                    ? leftRoomView(room, live, h)
                     : openRoomView(model, room, live, presence, h),
               }),
           }),

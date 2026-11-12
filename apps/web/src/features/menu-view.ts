@@ -755,7 +755,7 @@ const confirmText = (view: OpenView, confirm: Confirm) =>
       }),
       LeaveRoom: () => ({
         action: "Leave the room",
-        body: "Your chips count in the settle-up. To play again, you join as someone new.",
+        body: "Your chips count in the settle-up. You can come back as yourself from this device.",
         pending: "Leaving",
         title: "Leave the room?",
       }),

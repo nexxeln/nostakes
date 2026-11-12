@@ -39,6 +39,7 @@ export type DraftField = typeof DraftFieldSchema.Type;
 export const Messages = defineMessageUnion({
   AcquiredConnection: {},
   CaughtError: { message: Schema.String, name: Schema.String },
+  ChangedComeBackName: { value: Schema.String },
   ChangedDraft: { field: DraftFieldSchema, value: Schema.String },
   ChangedJoinCode: { value: Schema.String },
   ChangedName: { value: Schema.String },
@@ -57,6 +58,7 @@ export const Messages = defineMessageUnion({
   ClickedBackToWelcome: {},
   ClickedCancelFace: {},
   ClickedCheckResult: {},
+  ClickedComeBack: {},
   ClickedConfirm: { confirm: ConfirmSchema },
   ClickedCopyLink: {},
   ClickedCopyProof: { hand: Schema.Int },

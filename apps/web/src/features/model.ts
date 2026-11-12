@@ -229,6 +229,7 @@ export const InRoomSchema = Schema.Struct({
     })
   ),
   removed: Schema.Option(RemovedResults),
+  rename: Schema.Option(Schema.String),
   resumed: Schema.Option(
     Schema.Struct({ player: PlayerIdSchema, receivedAt: Schema.Int })
   ),

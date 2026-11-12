@@ -13,6 +13,7 @@ import { RoomCodeSchema } from "@nostakes/protocol";
 import {
   ChipAmountSchema,
   MemberCommandSchema,
+  NameTaken,
   RoomSignalSchema,
   RoomViews,
   SeenEvents,
@@ -112,7 +113,9 @@ import {
 } from "./reports.js";
 import type { ClientReport } from "./reports.js";
 import {
+  departedSelf,
   isActing,
+  leftOpenRoom,
   recordChanged,
   recordOf,
   isLegal,
@@ -181,6 +184,7 @@ const freshRoom = (code: InRoom["code"], player: InRoom["player"]): InRoom => ({
   player,
   reactions: [],
   removed: Option.none(),
+  rename: Option.none(),
   resumed: Option.none(),
   rules: Option.none(),
   setup: Option.none(),
@@ -1167,7 +1171,8 @@ const settle = (room: InRoom, key: number, outcome: ReplyOutcome): InRoom => {
   const clearing = clearingAnswered(room, key, outcome);
 
   return ReplyOutcomes.match(outcome, {
-    Accepted: () => reportedClear({ ...room, clearing, pending }),
+    Accepted: () =>
+      reportedClear({ ...room, clearing, pending, rename: Option.none() }),
     Lost: ({ reason }) => ({
       ...room,
       clearing,
@@ -1179,6 +1184,10 @@ const settle = (room: InRoom, key: number, outcome: ReplyOutcome): InRoom => {
       clearing,
       notice: Option.some(rejectionText(rejection, viewOf(room))),
       pending,
+      rename:
+        leftOpenRoom(room) && Schema.is(NameTaken)(rejection)
+          ? Option.some(rejection.wanted)
+          : room.rename,
     }),
   });
 };
@@ -1188,6 +1197,42 @@ const presenceOf = (room: InRoom) =>
     onNone: () => [],
     onSome: ({ presence }) => presence,
   });
+
+const COMING_BACK = "Coming back";
+
+const comeBack = (model: Model): Return =>
+  inRoom(model, (room) =>
+    Option.match(openViewOf(room).pipe(Option.flatMap(departedSelf)), {
+      onNone: () => ({ model }),
+      onSome: (self) => {
+        const name = enteredName(
+          Option.getOrElse(room.rename, () => self.name)
+        );
+
+        if (
+          !isLive(room) ||
+          room.pending.some(({ label }) => label === COMING_BACK)
+        ) {
+          return { model };
+        }
+
+        return Option.match(nameRefusal(name), {
+          onNone: () =>
+            send(
+              model,
+              room,
+              Commands.Join.make({ avatar: self.avatar, name }),
+              COMING_BACK
+            ),
+          onSome: (problem) =>
+            editRoom(model, (current) => ({
+              ...current,
+              notice: Option.some(problem),
+            })),
+        });
+      },
+    })
+  );
 
 const leave = (model: Model): Return =>
   inRoom(model, (room) => {
@@ -1452,6 +1497,8 @@ export const update = (model: Model, message: Message): Return =>
             },
           }
         : { model },
+    ChangedComeBackName: ({ value }) =>
+      editRoom(model, (room) => ({ ...room, rename: Option.some(value) })),
     ChangedDraft: ({ field, value }) =>
       editRoom(model, (room) => ({
         ...room,
@@ -1522,6 +1569,7 @@ export const update = (model: Model, message: Message): Return =>
         commands: [ReadOwnResult({ code: room.code })],
         model,
       })),
+    ClickedComeBack: () => comeBack(model),
     ClickedConfirm: ({ confirm }) =>
       editRoom(model, (room) => ({
         ...room,
@@ -1582,7 +1630,8 @@ export const update = (model: Model, message: Message): Return =>
       editRoom(model, (room) => ({ ...room, fairnessOpen: true })),
     ClickedHome: () =>
       inRoom(model, (room) => {
-        const keepsResult = Option.isSome(room.removed) || turnedAway(room);
+        const keepsResult =
+          Option.isSome(room.removed) || turnedAway(room) || leftOpenRoom(room);
 
         return {
           commands: keepsResult

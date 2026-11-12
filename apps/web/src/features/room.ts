@@ -36,8 +36,12 @@ export const peopleOf = (view: RoomView) => [
 export const nameOf = (view: RoomView, player: PlayerId) =>
   peopleOf(view).find((member) => member.player === player)?.name ?? "Someone";
 
-export const hasLeft = (view: RoomView) =>
-  view.departed.some(({ player }) => isYou(view, player));
+export const departedSelf = (view: RoomView) =>
+  Option.fromUndefinedOr(
+    view.departed.find(({ player }) => isYou(view, player))
+  );
+
+export const hasLeft = (view: RoomView) => Option.isSome(departedSelf(view));
 
 export const recordOf = (view: RoomView, seenAt: number): RoomRecord => ({
   closed: RoomViews.$is("Closed")(view),
@@ -66,6 +70,9 @@ export const viewOf = (room: InRoom): Option.Option<RoomView> =>
 
 export const openViewOf = (room: InRoom): Option.Option<OpenView> =>
   viewOf(room).pipe(Option.filter(RoomViews.$is("Open")));
+
+export const leftOpenRoom = (room: InRoom) =>
+  Option.exists(openViewOf(room), hasLeft);
 
 export const isLive = (room: InRoom) =>
   Option.exists(room.link, ({ phase }) => phase === "Live");
