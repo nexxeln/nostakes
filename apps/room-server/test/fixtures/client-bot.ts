@@ -23,7 +23,15 @@ import type {
   RoomView,
   SeenEvent,
 } from "@nostakes/room";
-import { Duration, Effect, Fiber, Option, Result, Stream } from "effect";
+import {
+  Duration,
+  Effect,
+  Fiber,
+  Option,
+  Result,
+  Schedule,
+  Stream,
+} from "effect";
 import type { Scope } from "effect";
 
 import { MemberCommandSchema, pokerRoom } from "../../src/poker-room.js";
@@ -193,6 +201,10 @@ const NAP_MIN_SEATED = 4;
 
 const MEND_POLL_MS = 100;
 
+const ACTIVITY_POLL_MS = 20;
+
+const ACTIVITY_POLLS = 250;
+
 const MEND_WAKE_GAP_MS = 1000;
 
 const UNANSWERED_ON: Readonly<Record<LineMode, DropCause>> = {
@@ -298,6 +310,8 @@ export const startClientBot = (setup: ClientBotSetup) => {
   const drops: ClientDrop[] = [];
   const problems: string[] = [];
   let current = Option.none<PokerClientState>();
+  let stoppedAt = Option.none<PokerClientState>();
+  let accountedTo = 0;
   let firstSeq = Option.none<number>();
   let lastTableAt = wallClock();
   let checkedHand = 0;
@@ -420,6 +434,7 @@ export const startClientBot = (setup: ClientBotSetup) => {
 
   const absorb = (item: Activity<SeenEvent>) => {
     activity.push(item);
+    accountedTo = Activities.$is("Applied")(item) ? item.seq : item.to;
 
     if (Activities.$is("Skipped")(item)) {
       stats.skippedRanges += 1;
@@ -462,7 +477,7 @@ export const startClientBot = (setup: ClientBotSetup) => {
     arrivals: wire.arrivals,
     commands,
     drops,
-    final: () => current,
+    final: () => Option.orElse(stoppedAt, () => current),
     firstSeq: () => firstSeq,
     frames: wire.frames,
     handEnds,
@@ -876,6 +891,19 @@ export const startClientBot = (setup: ClientBotSetup) => {
 
     note("saw the night stop");
     yield* client.stop;
+
+    const stopped = yield* client.state;
+    const applied = Option.getOrElse(stopped.seq, () => 0);
+
+    stoppedAt = Option.some(stopped);
+
+    yield* Effect.sync(() => accountedTo).pipe(
+      Effect.repeat({
+        schedule: Schedule.spaced(Duration.millis(ACTIVITY_POLL_MS)),
+        times: ACTIVITY_POLLS,
+        until: (seq) => seq >= applied,
+      })
+    );
   }).pipe(Effect.scoped);
 
   return { closeAll: Effect.void, loop, record };
