@@ -81,6 +81,8 @@ const BOMB_POT_ANTE = 4;
 
 const CHECKED_HANDS = 2 * CHECKED_HANDS_PER_ROOM;
 
+const NIGHT_SPEAKS_WITHIN_MS = 105_000;
+
 interface SmallRoom {
   readonly bombPotEvery?: number;
   readonly knocks?: boolean;
@@ -192,11 +194,13 @@ test(
           SEED + index,
           {
             betweenHandsSeconds: 0,
+            checkedInTime: CHECKED_HANDS,
             clientPercent: 50,
             ending,
             handBudgetMs: 4000,
             hands,
             knocks: knocks ?? false,
+            mostMs: NIGHT_SPEAKS_WITHIN_MS,
             players,
             race: race ?? false,
             regular: regular ?? false,

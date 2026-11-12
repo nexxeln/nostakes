@@ -107,6 +107,7 @@ export interface NightPlan {
   readonly regularAtHand: Option.Option<number>;
   readonly knocksAtHand: Option.Option<number>;
   readonly clearRace: boolean;
+  readonly checkedInTime: number;
 }
 
 export interface PlayedNight {
@@ -314,6 +315,8 @@ export interface NightRecipe {
   readonly regular?: boolean;
   readonly knocks?: boolean;
   readonly race?: boolean;
+  readonly checkedInTime?: number;
+  readonly mostMs?: number;
 }
 
 const clientIndices = (random: Random, bots: number, percent: number) => {
@@ -444,6 +447,12 @@ const racerIndex = (plan: NightPlan) =>
     (index) => index > 0 && !plan.clients.includes(index)
   ) ?? 1;
 
+const checksOwedBy = (recipe: NightRecipe) =>
+  recipe.shuffle === "Checked" ? (recipe.checkedInTime ?? 0) : 0;
+
+const mostMsOf = (recipe: NightRecipe) =>
+  recipe.mostMs ?? Number.POSITIVE_INFINITY;
+
 export const planNight = (
   seed: number,
   recipe: NightRecipe,
@@ -551,6 +560,7 @@ export const planNight = (
 
   return {
     ...plan,
+    checkedInTime: checksOwedBy(recipe),
     clients,
     devices: Array.from(
       { length: plan.players + plan.spectators + plan.lateJoiners },
@@ -559,10 +569,12 @@ export const planNight = (
     ending: recipe.ending,
 
     ...racingOnlyWithoutSpectators(visitors, plan.spectators),
-    limitMs:
+    limitMs: Math.min(
+      mostMsOf(recipe),
       plan.limitMs +
-      recipe.hands * slowRulesAllowanceMs(played) +
-      (Option.isSome(visitors.knocksAtHand) ? KNOCKS_ALLOWANCE_MS : 0),
+        recipe.hands * slowRulesAllowanceMs(played) +
+        (Option.isSome(visitors.knocksAtHand) ? KNOCKS_ALLOWANCE_MS : 0)
+    ),
     settings:
       Option.isSome(visitors.regularAtHand) ||
       Option.isSome(visitors.knocksAtHand)
@@ -764,6 +776,12 @@ export const playNight = (base: string, opened: OpenedNight) =>
 
     const planned: readonly (readonly [PlannedScene, Option.Option<number>])[] =
       [
+        [
+          "the hands its bots checked in time",
+          plan.checkedInTime > 0
+            ? Option.some(plan.checkedInTime)
+            : Option.none(),
+        ],
         ["the knocks at the door", plan.knocksAtHand],
         ["the regular's removal", plan.regularAtHand],
         ["the stranger's removal", plan.intruderAtHand],
@@ -771,6 +789,7 @@ export const playNight = (base: string, opened: OpenedNight) =>
 
     const control: NightControl = {
       approval: Option.none(),
+      checkedInTime: 0,
       closesWhileABotHoldsTheAction: false,
       closing: false,
       door: Option.none(),
@@ -911,6 +930,15 @@ export const playNight = (base: string, opened: OpenedNight) =>
 
     let handsReached = 0;
 
+    const asLastSeen = () =>
+      freshest().pipe(
+        Option.filter(RoomViews.$is("Open")),
+        Option.match({
+          onNone: () => "",
+          onSome: (open) => `; ${tableAsSeen(open)}`,
+        })
+      );
+
     const troubleAt = (now: number, hands: number) => {
       const reported = clients.flatMap((client) => client.problems).at(0);
 
@@ -926,12 +954,12 @@ export const playNight = (base: string, opened: OpenedNight) =>
 
       const owed =
         control.owed.size > 0
-          ? `, still owing ${[...control.owed].join(" and ")}, which it waits for before it closes`
+          ? `, still owing ${[...control.owed].join(" and ")}, which it waits for before it closes (${control.checkedInTime} of ${plan.checkedInTime} hands checked in time)`
           : "";
 
       return now - started > plan.limitMs
         ? Option.some(
-            `the night reached ${handsReached} of ${plan.hands} hands in ${plan.limitMs} ms${owed}${unsettled}`
+            `the night reached ${handsReached} of ${plan.hands} hands in ${plan.limitMs} ms${owed}${unsettled}${asLastSeen()}`
           )
         : Option.none();
     };
@@ -1081,6 +1109,12 @@ export const playNight = (base: string, opened: OpenedNight) =>
         Option.exists((since) => now - since > MID_HAND_WAIT_MS)
       );
 
+    const noteChecks = () => {
+      if (control.checkedInTime >= plan.checkedInTime) {
+        control.owed.delete("the hands its bots checked in time");
+      }
+    };
+
     const supervise = Effect.gen(function* superviseNight() {
       let progress = wallClock();
       let problem = Option.none<string>();
@@ -1096,6 +1130,8 @@ export const playNight = (base: string, opened: OpenedNight) =>
           control.head,
           ...watched.map((record) => record.lastSeq())
         );
+
+        noteChecks();
 
         if (nightOver(now)) {
           problem = settle(now);

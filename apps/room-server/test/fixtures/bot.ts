@@ -30,7 +30,18 @@ import {
   SeenEvents,
   TableRejected,
 } from "@nostakes/room";
-import type { RoomRejection, RoomView, RoomViewSchema } from "@nostakes/room";
+import type {
+  RoomRejection,
+  RoomView,
+  RoomViewSchema,
+  SeenEvent,
+} from "@nostakes/room";
+import {
+  EpochMillisSchema,
+  SealArrivals,
+  SealTimings,
+  sealTiming,
+} from "@nostakes/shuffle";
 import { Duration, Effect, Option, Queue, Schedule, Schema } from "effect";
 
 import { MemberCommandSchema } from "../../src/poker-room.js";
@@ -46,6 +57,7 @@ import {
 import type { PokerSocket } from "./poker-socket.js";
 import { signalPlanner, signalSeedFor } from "./signal-plan.js";
 import type { SignalTally } from "./signal-plan.js";
+import { TEST_CHAIN } from "./test-beacon.js";
 
 const BOT_COMMANDS: Allowance = {
   burst: COMMAND_BURST,
@@ -143,10 +155,12 @@ export interface NightControl {
   raced: boolean;
   closesWhileABotHoldsTheAction: boolean;
   stagingTheTable: boolean;
+  checkedInTime: number;
   readonly holdingTheAction: Set<PlayerId>;
 }
 
 export type PlannedScene =
+  | "the hands its bots checked in time"
   | "the knocks at the door"
   | "the regular's removal"
   | "the stranger's removal";
@@ -1256,6 +1270,34 @@ export const startBot = (setup: BotSetup) => {
   const lastSeqOf = (device: Device) =>
     currentOf(device).pipe(Option.flatMap(({ socket }) => socket.lastSeq()));
 
+  const sealedInTime = new Set<string>();
+
+  const countChecks = (events: readonly SeenEvent[], arrivedAt: number) => {
+    for (const event of events) {
+      if (
+        SeenEvents.$is("HandSealed")(event) &&
+        SealTimings.$is("InTime")(
+          sealTiming(
+            TEST_CHAIN,
+            event.round,
+            SealArrivals.Live({
+              at: EpochMillisSchema.make(Math.round(arrivedAt)),
+            })
+          )
+        )
+      ) {
+        sealedInTime.add(`${event.hand}:${event.round}`);
+      }
+
+      if (
+        SeenEvents.$is("DealtFromBeacon")(event) &&
+        sealedInTime.delete(`${event.hand}:${event.round}`)
+      ) {
+        control.checkedInTime += 1;
+      }
+    }
+  };
+
   const absorb = () => {
     const current = currentOf(main);
 
@@ -1279,6 +1321,7 @@ export const startBot = (setup: BotSetup) => {
         lastTableAt = arrival.message.events.some(SeenEvents.$is("Table"))
           ? arrival.at
           : lastTableAt;
+        countChecks(arrival.message.events, arrival.at);
       }
     }
   };
