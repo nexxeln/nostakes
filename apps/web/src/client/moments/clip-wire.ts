@@ -75,6 +75,13 @@ export const WorkerRequestSchema = Schema.Union([
 
 export type WorkerRequest = typeof WorkerRequestSchema.Type;
 
+export const HoldRequestSchema = Schema.Struct({
+  held: Schema.Boolean,
+  kind: Schema.Literal("Hold"),
+});
+
+export const isHoldRequest = Schema.is(HoldRequestSchema);
+
 export const ClipReplySchema = Schema.Union([
   Schema.Struct({
     percents: Schema.Array(Schema.Int),

@@ -55,6 +55,9 @@ const told = (into: Element) => {
   if (isMomentHost(host)) {
     host.sound = false;
     host.hand = replayHand(params.get("hand") ?? "", { deck, theme });
+    Reflect.set(globalThis, "__tellHand", (name: string) => {
+      host.hand = replayHand(name, { deck, theme });
+    });
   }
 };
 

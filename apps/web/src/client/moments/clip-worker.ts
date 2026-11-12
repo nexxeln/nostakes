@@ -16,7 +16,7 @@ import {
 } from "../../features/moments/i420.js";
 import type { Channels } from "../../features/moments/i420.js";
 import { drawAreas, placementsAt } from "./clip-draw.js";
-import { WorkerRequestSchema } from "./clip-wire.js";
+import { isHoldRequest, WorkerRequestSchema } from "./clip-wire.js";
 import type { ClipReply, FilmRequest, WorkerRequest } from "./clip-wire.js";
 import { liveMedia, Media, mediaWithoutNativeAac } from "./mediabunny/index.js";
 import type { MediaFailed, Mp4Writer } from "./mediabunny/index.js";
@@ -36,6 +36,46 @@ const failedAt = (step: string) => (cause: unknown) =>
 const PROGRESS_EVERY = 15;
 
 const SNAPSHOT_SHARE = 0.25;
+
+interface Holding {
+  held: boolean;
+  waiting: (() => void)[];
+}
+
+const holding: Holding = {
+  held: false,
+  waiting: [],
+};
+
+const unheld: Effect.Effect<void> = Effect.suspend(() =>
+  holding.held
+    ? Effect.callback<"Going">((resume) => {
+        const go = () => {
+          resume(Effect.succeed("Going"));
+        };
+
+        holding.waiting.push(go);
+
+        return Effect.sync(() => {
+          holding.waiting = holding.waiting.filter((waiter) => waiter !== go);
+        });
+      }).pipe(Effect.asVoid)
+    : Effect.void
+);
+
+const heldAs = (held: boolean) => {
+  holding.held = held;
+
+  if (!held) {
+    const woken = holding.waiting;
+
+    holding.waiting = [];
+
+    for (const go of woken) {
+      go();
+    }
+  }
+};
 
 const reply = (message: ClipReply, transfer: readonly Transferable[]) => {
   globalThis.postMessage(message, { transfer: [...transfer] });
@@ -342,6 +382,8 @@ const made = (request: FilmRequest) =>
     reply({ made: 0, tag: "Progress" }, []);
 
     for (let index = 0; index < request.frames; index += 1) {
+      yield* unheld;
+
       const ms = frameTime(index, request.fps);
       const placements = placementsAt(request, ms);
 
@@ -439,6 +481,12 @@ const answered = (request: WorkerRequest) =>
 globalThis.addEventListener("message", (event: MessageEvent<unknown>) => {
   if (isCloseRequest(event.data)) {
     globalThis.close();
+
+    return;
+  }
+
+  if (isHoldRequest(event.data)) {
+    heldAs(event.data.held);
 
     return;
   }

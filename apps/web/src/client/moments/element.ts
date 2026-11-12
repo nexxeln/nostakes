@@ -25,7 +25,7 @@ import { Keeper } from "../pictures/keeper.js";
 import { measureParts } from "./clip-measure.js";
 import type { PartBox } from "./clip-measure.js";
 import { rememberStyle, rememberedStyle } from "./clip-style.js";
-import type { Clipper, ClipState } from "./clipper.js";
+import type { Clipper, ClipMaking, ClipState } from "./clipper.js";
 import { paintPicture } from "./markup.js";
 import { noiseFor, perform, seededNoise } from "./synth.js";
 import type { Synth } from "./synth.js";
@@ -43,7 +43,8 @@ const STYLE = `
 .keeping b { color: var(--color-accent-ink, #d63a00); }
 .keeping .story, .keeping .clip, .keeping .hide, .keeping .style { color: var(--color-ink-muted, #716a79); font-weight: 600; padding: 8px 10px; }
 .keeping .style[aria-pressed="true"] { color: var(--color-on-accent, #fffaf3); background: var(--color-accent, #ef5326); }
-.keeping:not(.lingering) .hide, .keeping.lingering .keep, .keeping.lingering .story, .keeping.lingering .style { display: none; }
+.keeping .clip small { font: inherit; font-weight: 600; color: var(--color-ink-muted, #716a79); }
+.keeping:not(.lingering):not(.carrying) .hide, .keeping.lingering .keep, .keeping.lingering .story, .keeping.lingering .style, .keeping.carrying .style { display: none; }
 .keeping .clip[aria-busy="true"] { opacity: 0.8; }
 .gone, .keeping .gone { display: none; }
 `;
@@ -78,15 +79,43 @@ const keyframesOf = (length: number, pose: (ms: number) => Pose): Keyframe[] =>
 
 const NOISE_SEED = 7;
 
-const CLIP_LABELS: Readonly<Record<ClipState, string>> = {
-  Asked: "Clip…",
-  Checking: "Clip",
-  Making: "Clip",
-  Ready: "Clip",
-  Share: "Share clip",
-  Unavailable: "Clip",
-  Waiting: "Clip",
+const madeText = (making: ClipMaking) => {
+  const percent = Math.floor(making.made * 100);
+
+  return percent > 0 ? ` ${percent}%` : "…";
 };
+
+const styleText = (making: ClipMaking) =>
+  making.style === "Drift" ? "Drift" : "clip";
+
+const clipLabel = (
+  state: ClipState,
+  making: ClipMaking | null,
+  told: boolean
+): string => {
+  if (state === "Failed") {
+    return "Clip failed. Try again";
+  }
+
+  if (state === "Share") {
+    return "Share clip";
+  }
+
+  if (making === null || state === "Ready") {
+    return "Clip";
+  }
+
+  return told || state === "Asked"
+    ? `Making ${styleText(making)}${madeText(making)}`
+    : "Clip";
+};
+
+const driftLabel = (making: ClipMaking | null, owed: boolean) =>
+  making !== null && owed
+    ? `Making ${styleText(making)}${madeText(making)}`
+    : "Drift";
+
+type Tab = "Card" | "Closed" | "Lingering" | "Offered";
 
 export interface SceneStory {
   readonly hand: MomentHand;
@@ -130,6 +159,12 @@ class NostakesMoment extends HTMLElement {
   #style: ClipStyle = rememberedStyle();
   #keeper: Keeper | null = null;
   #clipper: Clipper | null = null;
+  #carrying = false;
+  #tab: Tab = "Closed";
+  #measured: {
+    readonly boxes: readonly PartBox[];
+    readonly id: string;
+  } | null = null;
   #clipLive = false;
   readonly #motion = globalThis.matchMedia("(prefers-reduced-motion: reduce)");
   #scene: MomentScene | null = null;
@@ -143,7 +178,6 @@ class NostakesMoment extends HTMLElement {
   readonly #random = seededNoise(NOISE_SEED);
   #holding: Animation | null = null;
   #offered: Animation | null = null;
-  #lingering = false;
   #released: Animation | null = null;
 
   constructor() {
@@ -166,7 +200,7 @@ class NostakesMoment extends HTMLElement {
     this.#clip = document.createElement("button");
     this.#clip.className = "clip gone";
     this.#clip.type = "button";
-    this.#clip.textContent = CLIP_LABELS.Waiting;
+    this.#clip.textContent = "Clip";
     this.#clip.title = "A short clip of the moment with its sound";
     this.#clip.addEventListener("click", () => {
       this.#clipper?.keep();
@@ -177,6 +211,14 @@ class NostakesMoment extends HTMLElement {
     this.#hide.textContent = "Hide";
     this.#hide.title = "Stop making the clip";
     this.#hide.addEventListener("click", () => {
+      if (this.#carrying && this.#tab === "Offered") {
+        this.#dropClip();
+        this.#offerOwn();
+        this.#render();
+
+        return;
+      }
+
       this.#closeKeeping();
       this.#dropClip();
     });
@@ -290,8 +332,14 @@ class NostakesMoment extends HTMLElement {
       }
     );
     this.#keeper.prepare(KEPT_FRAMES);
-    this.#dropClip();
-    this.#lingering = false;
+
+    if (this.#clipper?.owed === true) {
+      this.#carrying = true;
+    } else {
+      this.#dropClip();
+    }
+
+    this.#measured = null;
     this.#released?.cancel();
     this.#released = null;
     this.#clipLive = true;
@@ -313,26 +361,41 @@ class NostakesMoment extends HTMLElement {
   set dealing(next: boolean) {
     if (next && !this.#dealing) {
       this.#leave();
-      this.#clipper?.abandon();
     }
+
+    this.#clipper?.hold(next);
 
     if (!next && this.#dealing && this.#clipLive) {
       this.#clipper?.prepare();
     }
 
-    if (this.#lingering) {
-      this.#keeping.classList.toggle("gone", next);
-    }
-
     this.#dealing = next;
+    this.#render();
   }
 
   #dropClip() {
     this.#clipper?.drop();
     this.#clipper = null;
+    this.#carrying = false;
     this.#clip.className = "clip gone";
     this.#drift.className = "style gone";
     delete this.dataset.clip;
+    delete this.dataset.carrying;
+  }
+
+  #offerOwn() {
+    const scene = this.#scene;
+    const measured = this.#measured;
+
+    if (
+      scene !== null &&
+      measured !== null &&
+      measured.id === scene.id &&
+      this.#clipper === null &&
+      this.#tab === "Offered"
+    ) {
+      this.#offerClip(scene, measured.boxes);
+    }
   }
 
   #storyNow(scene: MomentScene): SceneStory | null {
@@ -397,31 +460,88 @@ class NostakesMoment extends HTMLElement {
     const clipper = made();
 
     this.#clipper = clipper;
+    clipper.hold(this.#dealing);
     clipper.start(this.#clipLive && !this.#dealing);
   }
 
   #showClip(state: ClipState) {
-    const busy = state === "Asked" || (this.#lingering && MAKING.has(state));
+    const clipper = this.#clipper;
+
+    if (
+      this.#carrying &&
+      clipper !== null &&
+      !clipper.owed &&
+      this.#tab === "Offered"
+    ) {
+      this.#dropClip();
+      this.#offerOwn();
+    } else if (this.#tab === "Lingering" && state === "Unavailable") {
+      this.#closeKeeping();
+    }
+
+    this.#render();
+  }
+
+  #render() {
+    const tab = this.#tab;
+    const lingering = tab === "Lingering";
+    const shown = tab === "Offered" || (lingering && !this.#dealing);
+
+    this.#keeping.className = [
+      "keeping",
+      ...(lingering ? ["lingering"] : []),
+      ...(this.#carrying ? ["carrying"] : []),
+      ...(shown ? [] : ["gone"]),
+    ].join(" ");
+    this.#flag("lingering", lingering);
+    this.#flag("carrying", this.#carrying);
+
+    const clipper = this.#clipper;
+
+    if (clipper !== null) {
+      this.#renderClip(clipper, lingering);
+    }
+  }
+
+  #flag(name: string, on: boolean) {
+    if (on) {
+      this.setAttribute(`data-${name}`, "true");
+    } else {
+      this.removeAttribute(`data-${name}`);
+    }
+  }
+
+  #renderClip(clipper: Clipper, lingering: boolean) {
+    const { making, owed, state } = clipper;
+    const told = lingering || this.#carrying || owed;
+    const finished = state === "Ready" || state === "Share";
 
     this.dataset.clip = state;
+    this.dataset.style = this.#style;
     this.#clip.className =
       state === "Unavailable" || state === "Checking" ? "clip gone" : "clip";
     this.#drift.className =
-      this.#clipper?.offersDrift === true && state !== "Unavailable"
-        ? "style"
-        : "style gone";
-    this.dataset.style = this.#style;
-    this.#clip.textContent = busy ? CLIP_LABELS.Asked : CLIP_LABELS[state];
-    this.#clip.disabled = state === "Asked";
-    this.#clip.setAttribute("aria-busy", String(busy));
+      clipper.offersDrift && state !== "Unavailable" ? "style" : "style gone";
+    this.#drift.textContent = driftLabel(finished ? making : null, owed);
+    this.#clip.textContent = clipLabel(state, making, told);
 
-    if (!this.#lingering) {
-      return;
+    if (finished && making !== null && (lingering || this.#carrying)) {
+      const note = document.createElement("small");
+
+      note.textContent = ` · ${driftLabel(making, true)}`;
+      this.#clip.append(note);
     }
 
-    if (state === "Unavailable") {
-      this.#closeKeeping();
-    } else if (!MAKING.has(state) && this.#released === null) {
+    this.#clip.title = this.#carrying
+      ? `A clip of ${clipper.title}`
+      : "A short clip of the moment with its sound";
+    this.#clip.disabled = state === "Asked";
+    this.#clip.setAttribute(
+      "aria-busy",
+      String(making !== null && (state === "Asked" || told))
+    );
+
+    if (lingering && !owed && !MAKING.has(state) && this.#released === null) {
       this.#released = this.#keeping.animate(STILL, {
         duration: READY_HOLD_MS,
       });
@@ -432,15 +552,14 @@ class NostakesMoment extends HTMLElement {
   }
 
   #offerEnded() {
-    const state = this.#clipper?.state;
+    const clipper = this.#clipper;
 
-    if (this.#clipLive && state !== undefined && MAKING.has(state)) {
-      this.#lingering = true;
-      this.dataset.lingering = "true";
-      this.#keeping.className = this.#dealing
-        ? "keeping lingering gone"
-        : "keeping lingering";
-      this.#showClip(state);
+    if (
+      clipper !== null &&
+      (clipper.owed || (this.#clipLive && MAKING.has(clipper.state)))
+    ) {
+      this.#tab = "Lingering";
+      this.#render();
 
       return;
     }
@@ -449,13 +568,12 @@ class NostakesMoment extends HTMLElement {
   }
 
   #closeKeeping() {
-    this.#lingering = false;
-    delete this.dataset.lingering;
+    this.#tab = "Closed";
     this.#released?.cancel();
     this.#released = null;
-    this.#keeping.className = "keeping gone";
     this.#clipLive = false;
     this.#clipper?.abandon();
+    this.#render();
   }
 
   readonly #unlock = () => {
@@ -546,7 +664,8 @@ class NostakesMoment extends HTMLElement {
       frame: "Table",
       theme: scene.theme,
     });
-    this.#keeping.className = "keeping gone";
+    this.#tab = "Card";
+    this.#render();
     this.#play(picture);
 
     const holding =
@@ -602,11 +721,13 @@ class NostakesMoment extends HTMLElement {
       return;
     }
 
-    if (boxes.length > 0 && this.#clipper === null) {
-      this.#offerClip(scene, boxes);
+    if (boxes.length > 0) {
+      this.#measured = { boxes, id: scene.id };
     }
 
-    this.#keeping.className = "keeping";
+    this.#tab = "Offered";
+    this.#offerOwn();
+    this.#render();
     const title = document.createElement("b");
 
     title.textContent = scene.picture.title;

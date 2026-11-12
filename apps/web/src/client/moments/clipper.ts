@@ -15,20 +15,28 @@ import {
 } from "../../features/moments/replay-plan.js";
 import type { KeptFrame } from "../../features/pictures/paper.js";
 import { offer } from "../pictures/keeper.js";
+import type { Kept } from "../pictures/keeper.js";
 import type { ClipUnavailable } from "./clip-layers.js";
 import type { PartBox } from "./clip-measure.js";
 import { clipFile, clipSupport, replayFile, slotFor } from "./clip.js";
 import type { ClipPace, ClipSupport, ClipTooSlow } from "./clip.js";
 import type { SceneStory } from "./element.js";
+import type { FilmWatch } from "./film-file.js";
 
 export type ClipState =
   | "Asked"
   | "Checking"
+  | "Failed"
   | "Making"
   | "Ready"
   | "Share"
   | "Unavailable"
   | "Waiting";
+
+export interface ClipMaking {
+  readonly made: number;
+  readonly style: ClipStyle;
+}
 
 export interface ClipArt {
   readonly boxes: readonly PartBox[];
@@ -66,9 +74,16 @@ export class Clipper {
   #state: ClipState = "Checking";
   #pace: ClipPace = "Quiet";
   #file: File | null = null;
+  #fileStyle: ClipStyle | null = null;
   #making: AbortController | null = null;
+  #makingStyle: ClipStyle;
+  #made = 0;
+  #owed = false;
   #dropped = false;
   #style: ClipStyle;
+  #held = false;
+  #waiting: (() => void)[] = [];
+  readonly #holdHeard = new Set<(held: boolean) => void>();
 
   constructor(
     picture: MomentPicture,
@@ -82,6 +97,7 @@ export class Clipper {
     this.#art = art;
     this.#changed = look.changed;
     this.#style = look.style;
+    this.#makingStyle = look.style;
   }
 
   get offersDrift(): boolean {
@@ -93,28 +109,43 @@ export class Clipper {
     );
   }
 
+  get state(): ClipState {
+    return this.#state;
+  }
+
+  get owed(): boolean {
+    return this.#owed;
+  }
+
+  get making(): ClipMaking | null {
+    return this.#making === null
+      ? null
+      : { made: this.#made, style: this.#makingStyle };
+  }
+
+  get title(): string {
+    return this.#picture.title;
+  }
+
   restyle(style: ClipStyle) {
     if (style === this.#style) {
       return;
     }
 
-    const busy = this.#making !== null || this.#file !== null;
-
     this.#style = style;
-    this.abandon();
-    this.#file = null;
+    this.#stopMaking();
 
-    if (this.#support !== null) {
-      this.#become("Waiting");
+    if (this.#support === null || this.#fileStyle === style) {
+      this.#tell();
+
+      return;
     }
 
-    if (busy) {
-      this.prepare();
-    }
-  }
+    this.#owed = true;
+    this.#become(this.#file === null ? "Making" : "Ready");
 
-  get state(): ClipState {
-    return this.#state;
+    this.#make("Asked");
+    this.#tell();
   }
 
   start(quiet: boolean) {
@@ -149,34 +180,66 @@ export class Clipper {
   }
 
   prepare() {
-    if (this.#making === null && this.#file === null) {
+    if (
+      this.#making === null &&
+      this.#file === null &&
+      this.#state !== "Failed"
+    ) {
       this.#make("Quiet");
     }
   }
 
-  abandon() {
-    const making = this.#making;
+  hold(held: boolean) {
+    if (held === this.#held) {
+      return;
+    }
 
-    if (making !== null) {
-      this.#making = null;
-      making.abort();
+    this.#held = held;
 
-      if (this.#state === "Making" || this.#state === "Asked") {
-        this.#become("Waiting");
+    if (!held) {
+      const woken = this.#waiting;
+
+      this.#waiting = [];
+
+      for (const go of woken) {
+        go();
       }
+    }
+
+    for (const heard of this.#holdHeard) {
+      heard(held);
+    }
+  }
+
+  abandon() {
+    this.#stopMaking();
+
+    if (
+      this.#file === null &&
+      (this.#state === "Making" || this.#state === "Asked")
+    ) {
+      this.#become("Waiting");
     }
   }
 
   keep() {
     const file = this.#file;
 
-    if (file !== null) {
-      Effect.runFork(offer(file));
-      this.#become("Ready");
+    if (this.#state === "Failed") {
+      this.#owed = true;
+      this.#become("Asked");
+      this.#make("Asked");
 
       return;
     }
 
+    if (file !== null) {
+      this.#offer(file);
+
+      return;
+    }
+
+    this.#owed = true;
     this.#pace = "Asked";
     this.#become("Asked");
 
@@ -187,8 +250,52 @@ export class Clipper {
 
   drop() {
     this.#dropped = true;
-    this.abandon();
+    this.#stopMaking();
     this.#file = null;
+    this.#holdHeard.clear();
+    this.#waiting = [];
+  }
+
+  #stopMaking() {
+    const making = this.#making;
+
+    if (making !== null) {
+      this.#making = null;
+      making.abort();
+    }
+  }
+
+  #offer(file: File) {
+    Effect.runFork(
+      offer(file).pipe(
+        Effect.flatMap((kept) =>
+          Effect.sync(() => {
+            this.#offered(kept);
+          })
+        )
+      )
+    );
+  }
+
+  #offered(kept: Kept) {
+    if (this.#dropped) {
+      return;
+    }
+
+    if (kept === "NotAllowed") {
+      this.#owed = true;
+      this.#become("Share");
+      this.#tell();
+
+      return;
+    }
+
+    if (this.#making === null) {
+      this.#owed = false;
+    }
+
+    this.#become("Ready");
+    this.#tell();
   }
 
   #become(state: ClipState) {
@@ -198,6 +305,47 @@ export class Clipper {
     }
   }
 
+  #tell() {
+    if (!this.#dropped) {
+      this.#changed(this.#state);
+    }
+  }
+
+  readonly #unheld: Effect.Effect<void> = Effect.suspend(() =>
+    this.#held
+      ? Effect.callback<"Going">((resume) => {
+          const go = () => {
+            resume(Effect.succeed("Going"));
+          };
+
+          this.#waiting.push(go);
+
+          return Effect.sync(() => {
+            this.#waiting = this.#waiting.filter((waiter) => waiter !== go);
+          });
+        }).pipe(Effect.asVoid)
+      : Effect.void
+  );
+
+  readonly #watch: FilmWatch = {
+    heldBy: (heard) => {
+      this.#holdHeard.add(heard);
+      heard(this.#held);
+
+      return () => {
+        this.#holdHeard.delete(heard);
+      };
+    },
+    made: (share) => {
+      const made = Math.min(1, Math.max(0, share));
+
+      if (Math.floor(made * 100) !== Math.floor(this.#made * 100)) {
+        this.#made = made;
+        this.#tell();
+      }
+    },
+  };
+
   #make(pace: ClipPace) {
     const support = this.#support;
 
@@ -206,8 +354,10 @@ export class Clipper {
     }
 
     this.#pace = pace;
+    this.#made = 0;
+    this.#makingStyle = this.#style;
 
-    if (pace === "Quiet") {
+    if (pace === "Quiet" && this.#file === null) {
       this.#become("Making");
     }
 
@@ -219,9 +369,12 @@ export class Clipper {
       boxes: this.#art.boxes,
       budgetMs: null,
       frame: "Chat" as const,
-      slot: Effect.suspend(() => slotFor(this.#pace)),
+      slot: this.#unheld.pipe(
+        Effect.andThen(Effect.suspend(() => slotFor(this.#pace)))
+      ),
       support,
       svg: this.#art.svg("Chat"),
+      watch: this.#watch,
     };
 
     const replay = replayOrderOf(this.#art.story);
@@ -272,7 +425,7 @@ export class Clipper {
         ? cascade
         : short
       ).pipe(
-        Effect.match({
+        Effect.matchCause({
           onFailure: () => {
             this.#finished(making, null);
           },
@@ -293,18 +446,26 @@ export class Clipper {
     this.#making = null;
 
     if (file === null) {
-      this.#become("Unavailable");
+      if (this.#owed) {
+        this.#become("Failed");
+      } else if (this.#file === null) {
+        this.#become("Unavailable");
+      }
+
+      this.#tell();
 
       return;
     }
 
     this.#file = file;
+    this.#fileStyle = this.#makingStyle;
 
     if (this.#state === "Asked" && activationLasts()) {
-      Effect.runFork(offer(file));
-      this.#become("Ready");
+      this.#offer(file);
     } else {
-      this.#become(this.#state === "Asked" ? "Share" : "Ready");
+      this.#become(this.#owed ? "Share" : "Ready");
     }
+
+    this.#tell();
   }
 }

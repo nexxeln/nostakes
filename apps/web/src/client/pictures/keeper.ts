@@ -9,7 +9,7 @@ export interface PictureSource {
   readonly title: string;
 }
 
-export type Kept = "Cancelled" | "Downloaded" | "Shared";
+export type Kept = "Cancelled" | "Downloaded" | "NotAllowed" | "Shared";
 
 const IDLE_WAIT_MS = 600;
 
@@ -55,6 +55,14 @@ const sharesFiles = (file: File) =>
   "canShare" in globalThis.navigator &&
   globalThis.navigator.canShare({ files: [file] });
 
+const refusalOf = (cause: DOMException) => {
+  if (cause.name === "AbortError") {
+    return "Cancelled";
+  }
+
+  return cause.name === "NotAllowedError" ? "NotAllowed" : "Refused";
+};
+
 export const offer = (file: File): Effect.Effect<Kept> => {
   if (!sharesFiles(file)) {
     return download(file);
@@ -66,19 +74,20 @@ export const offer = (file: File): Effect.Effect<Kept> => {
     catch: (cause) =>
       new KeepFailed({
         file: file.name,
-        reason:
-          cause instanceof DOMException && cause.name === "AbortError"
-            ? "Cancelled"
-            : "Refused",
+        reason: cause instanceof DOMException ? refusalOf(cause) : "Refused",
       }),
     try: () => sharing,
   }).pipe(
     Effect.as<Kept>("Shared"),
-    Effect.catchTag("KeepFailed", (failed) =>
-      failed.reason === "Cancelled"
-        ? Effect.succeed<Kept>("Cancelled")
-        : download(file)
-    )
+    Effect.catchTag("KeepFailed", (failed) => {
+      if (failed.reason === "Cancelled") {
+        return Effect.succeed<Kept>("Cancelled");
+      }
+
+      return failed.reason === "NotAllowed"
+        ? Effect.succeed<Kept>("NotAllowed")
+        : download(file);
+    })
   );
 };
 

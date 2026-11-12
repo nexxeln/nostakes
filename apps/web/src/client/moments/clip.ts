@@ -39,7 +39,13 @@ import { cardParts, ClipUnavailable } from "./clip-layers.js";
 import type { CardPart } from "./clip-layers.js";
 import type { PartBox } from "./clip-measure.js";
 import { clipWorker, filmFile, filmOn } from "./film-file.js";
-import type { ClipSupport, ClipTooSlow, ClipWorker } from "./film-file.js";
+import type {
+  ClipSupport,
+  ClipTooSlow,
+  ClipWorker,
+  FilmOrder,
+  FilmWatch,
+} from "./film-file.js";
 import { mixedOffThread } from "./soundtrack.js";
 
 export { ClipUnavailable } from "./clip-layers.js";
@@ -162,7 +168,24 @@ export interface ClipOrder {
   readonly slot: Effect.Effect<void>;
   readonly support: ClipSupport;
   readonly svg: string;
+  readonly watch?: FilmWatch;
 }
+
+const filmOrderOf = (
+  order: ClipOrder,
+  name: string,
+  scale: number
+): FilmOrder => {
+  const base = {
+    budgetMs: order.budgetMs,
+    name,
+    scale,
+    slot: order.slot,
+    support: order.support,
+  };
+
+  return order.watch === undefined ? base : { ...base, watch: order.watch };
+};
 
 const motionOf = (picture: MomentPicture) => ({
   family: FAMILIES[picture.kind],
@@ -241,12 +264,7 @@ export const clipFile = (
 ): Effect.Effect<File, ClipUnavailable | ClipTooSlow> =>
   cardFilm(picture, look, order).pipe(
     Effect.flatMap((film) =>
-      filmFile(film, {
-        budgetMs: order.budgetMs,
-        name: clipName(picture, order.frame),
-        slot: order.slot,
-        support: order.support,
-      })
+      filmFile(film, filmOrderOf(order, clipName(picture, order.frame), 1))
     ),
     Effect.map((made) => made.file)
   );
@@ -459,13 +477,11 @@ export const replayFile = (
     Effect.flatMap((worker) =>
       replayFilm(worker, picture, look, order).pipe(
         Effect.flatMap((film) =>
-          filmOn(worker, film, {
-            budgetMs: order.budgetMs,
-            name: clipName(picture, order.frame),
-            scale: order.scale ?? 1,
-            slot: order.slot,
-            support: order.support,
-          })
+          filmOn(
+            worker,
+            film,
+            filmOrderOf(order, clipName(picture, order.frame), order.scale ?? 1)
+          )
         )
       )
     ),

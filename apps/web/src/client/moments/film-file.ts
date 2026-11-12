@@ -1,5 +1,6 @@
 import { Effect, Option, Schema } from "effect";
 import type { Scope } from "effect";
+import { constVoid } from "effect/Function";
 
 import {
   filmFrames,
@@ -26,8 +27,14 @@ export interface ClipSupport {
   readonly codec: string;
 }
 
+export interface FilmWatch {
+  readonly heldBy: (heard: (held: boolean) => void) => () => void;
+  readonly made: (share: number) => void;
+}
+
 export interface FilmOrder {
   readonly budgetMs: number | null;
+  readonly watch?: FilmWatch;
   readonly name: string;
   readonly scale?: number;
   readonly slot: Effect.Effect<void>;
@@ -68,6 +75,7 @@ export interface ClipWorker {
     transfer: readonly Transferable[],
     progress?: Progress
   ) => Effect.Effect<ClipReply, ClipUnavailable | ClipTooSlow>;
+  readonly hold: (held: boolean) => void;
 }
 
 export const clipWorker: Effect.Effect<
@@ -136,6 +144,9 @@ export const clipWorker: Effect.Effect<
             : Effect.succeed(reply)
         )
       ),
+    hold: (held: boolean) => {
+      worker.postMessage({ held, kind: "Hold" }, { transfer: [] });
+    },
   }))
 );
 
@@ -174,16 +185,64 @@ const fitted = (
 
 const JUDGED_AFTER_SECONDS = 2;
 
+const RUNNING: FilmWatch = {
+  heldBy: () => constVoid,
+  made: constVoid,
+};
+
+interface WorkingClock {
+  readonly now: () => number;
+  readonly stop: () => void;
+}
+
+const workingClock = (watch: FilmWatch, worker: ClipWorker): WorkingClock => {
+  const held = { ms: 0, since: Option.none<number>() };
+
+  const stop = watch.heldBy((holding) => {
+    const now = performance.now();
+
+    if (holding && Option.isNone(held.since)) {
+      held.since = Option.some(now);
+    }
+
+    if (!holding && Option.isSome(held.since)) {
+      held.ms += now - held.since.value;
+      held.since = Option.none();
+    }
+
+    worker.hold(holding);
+  });
+
+  return {
+    now: () => {
+      const now = performance.now();
+
+      return (
+        now -
+        held.ms -
+        Option.match(held.since, {
+          onNone: () => 0,
+          onSome: (since) => now - since,
+        })
+      );
+    },
+    stop,
+  };
+};
+
 const watching = (
   film: Film,
   budgetMs: number | null,
-  started: number
+  started: number,
+  clock: { readonly made: (share: number) => void; readonly now: () => number }
 ): Progress => {
   const frames = filmFrames(film);
-  const drawing = { from: performance.now() };
+  const drawing = { from: clock.now() };
 
   return (made) => {
-    const now = performance.now();
+    const now = clock.now();
+
+    clock.made(made / frames);
 
     if (made === 0) {
       drawing.from = now;
@@ -202,14 +261,16 @@ const watching = (
   };
 };
 
-export const filmOn = (
+const filmWatched = (
   worker: ClipWorker,
   film: Film,
   order: FilmOrder,
-  checks: FilmChecks = EVERYDAY
+  checks: FilmChecks,
+  clock: WorkingClock,
+  watch: FilmWatch
 ): Effect.Effect<FilmMade, ClipUnavailable | ClipTooSlow> =>
   Effect.gen(function* makeFilm() {
-    const started = performance.now();
+    const started = clock.now();
 
     yield* Option.match(filmProblem(film), {
       onNone: () => Effect.void,
@@ -264,7 +325,10 @@ export const filmOn = (
         ...atlas.bands,
         ...new Set((sound?.channels ?? []).map((channel) => channel.buffer)),
       ],
-      watching(film, order.budgetMs, started)
+      watching(film, order.budgetMs, started, {
+        made: watch.made,
+        now: clock.now,
+      })
     );
 
     if (reply.tag !== "Made") {
@@ -280,6 +344,23 @@ export const filmOn = (
       redrawn: reply.redrawn,
     };
   });
+
+export const filmOn = (
+  worker: ClipWorker,
+  film: Film,
+  order: FilmOrder,
+  checks: FilmChecks = EVERYDAY
+): Effect.Effect<FilmMade, ClipUnavailable | ClipTooSlow> =>
+  Effect.acquireUseRelease(
+    Effect.sync(() => {
+      const watch = order.watch ?? RUNNING;
+
+      return { clock: workingClock(watch, worker), watch };
+    }),
+    ({ clock, watch }) =>
+      filmWatched(worker, film, order, checks, clock, watch),
+    ({ clock }) => Effect.sync(clock.stop)
+  );
 
 export const filmFile = (
   film: Film,

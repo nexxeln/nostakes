@@ -38,6 +38,26 @@ export const SHARE_STUB = `
 })();
 `;
 
+export const SAFARI_ACTIVATION = `
+(() => {
+  let tapped = -Infinity;
+  addEventListener("click", () => { tapped = performance.now(); }, true);
+  const share = navigator.share;
+  window.__refused = 0;
+  Object.defineProperty(navigator, "share", {
+    configurable: true,
+    value: (data) => {
+      if (performance.now() - tapped > 5000) {
+        window.__refused += 1;
+        return Promise.reject(new DOMException("The request is not allowed", "NotAllowedError"));
+      }
+      tapped = -Infinity;
+      return share(data);
+    },
+  });
+})();
+`;
+
 export const sharedAtLeast = (page: Page, count: number, timeout: number) =>
   page.waitForFunction(
     (least) => {
