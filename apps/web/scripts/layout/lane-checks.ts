@@ -10,6 +10,7 @@ import { Option } from "effect";
 
 import {
   buttonBox,
+  buttonGround,
   computeGeo,
   flightControl,
   FELT_RULES_TAP_PX,
@@ -702,6 +703,59 @@ export const hintPlaced = (geo: Table, { height, width }: Screen) => {
       !hint.onCards || hint.say.w * 2 >= HINT_LINES.sayW,
   };
 };
+
+const BUTTON_FAULTS = {
+  coversAnotherSeatOrTheMiddle:
+    "covers another seat's face or name, a bet, the board, your cards, or the chip",
+  nearestIsOwner: "is not nearest its own face and name",
+  onTable: "leaves the table",
+};
+
+export const buttonsPlaced = (geo: Table, { height, width }: Screen) => {
+  const grounds = buttonGround(geo, handHintBox(geo, geo.hint));
+
+  const seats = [
+    ...geo.seats.map((centre) => faceOf(centre, geo.tile, 1)),
+    faceOf(geo.self, geo.self.size, 1),
+  ];
+
+  return [...geo.buttons.seats, geo.buttons.self].map((spot, owner) => {
+    const box = buttonBox(spot);
+
+    const gaps = seats.map((boxes) =>
+      Math.min(...boxes.map((part) => gapToBox(spot, part)))
+    );
+
+    const own = gaps[owner] ?? Infinity;
+
+    return {
+      coversAnotherSeatOrTheMiddle: (grounds[owner]?.untouchable ?? []).some(
+        (other) => covers(box, other)
+      ),
+      nearestIsOwner: gaps.every((gap, index) => index === owner || gap > own),
+      onTable: onScreen(box, geo, { height, width }),
+    };
+  });
+};
+
+export const BUTTON_PLACED_WELL = {
+  coversAnotherSeatOrTheMiddle: false,
+  nearestIsOwner: true,
+  onTable: true,
+};
+
+export const buttonsMisplaced = (geo: Table, screen: Screen) =>
+  buttonsPlaced(geo, screen).flatMap((placed, owner) => [
+    ...(placed.coversAnotherSeatOrTheMiddle
+      ? [`seat ${owner}'s button ${BUTTON_FAULTS.coversAnotherSeatOrTheMiddle}`]
+      : []),
+    ...(placed.nearestIsOwner
+      ? []
+      : [`seat ${owner}'s button ${BUTTON_FAULTS.nearestIsOwner}`]),
+    ...(placed.onTable
+      ? []
+      : [`seat ${owner}'s button ${BUTTON_FAULTS.onTable}`]),
+  ]);
 
 export const feltRulesPlaced = (geo: Table, screen: Screen) => {
   const card = feltRulesBox(geo);

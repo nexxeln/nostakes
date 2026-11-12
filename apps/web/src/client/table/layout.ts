@@ -392,16 +392,37 @@ const solveStadium = (
   return { pts, t, tile };
 };
 
-const tallSizes = (w: number) =>
-  w < 560
+const TIGHTEST_TALL = { h: 600, w: 360 };
+
+const CARD_ASPECT = 1.4;
+
+const HAND_CARD_PER_WIDTH = 0.225;
+
+const BOARD_CARD_PER_WIDTH = 1 / 5.6;
+
+const CARD_HEIGHT_PER_WIDTH =
+  CARD_ASPECT * (HAND_CARD_PER_WIDTH + BOARD_CARD_PER_WIDTH);
+
+const widthTheCardsAreSizedFor = (w: number, h: number) =>
+  Math.min(
+    w,
+    TIGHTEST_TALL.w + Math.max(0, h - TIGHTEST_TALL.h) / CARD_HEIGHT_PER_WIDTH
+  );
+
+const tallSizes = (w: number, h: number) => {
+  const cardsFor = widthTheCardsAreSizedFor(w, h);
+  const roomyPad = clamp(w * 0.03, 12, 32);
+
+  return w < 560
     ? {
         bottomInset: 22,
         chip: 84,
         compact: true,
         gap: 12,
-        handCardW: clamp(w * 0.225, 64, 88),
+        handCardW: clamp(cardsFor * HAND_CARD_PER_WIDTH, 64, 88),
         pad: 8,
         self: 68,
+        stripCardW: Math.min(48, (cardsFor - 126) * BOARD_CARD_PER_WIDTH),
         tileCap: (w - 16) * 0.36,
       }
     : {
@@ -410,10 +431,15 @@ const tallSizes = (w: number) =>
         compact: false,
         gap: clamp(w * 0.05, 24, 64),
         handCardW: clamp(w * 0.13, 88, 120),
-        pad: clamp(w * 0.03, 12, 32),
+        pad: roomyPad,
         self: 84,
+        stripCardW: Math.min(
+          64,
+          (w - 2 * roomyPad - 110) * BOARD_CARD_PER_WIDTH
+        ),
         tileCap: clamp(w * 0.19, 120, 168),
       };
+};
 
 interface Middle {
   readonly tile: number;
@@ -436,7 +462,7 @@ const stripMiddle = (
 ): Middle => {
   const { pad } = sizes;
   const cx = w / 2;
-  const cardW = Math.min(sizes.compact ? 48 : 64, (w - 2 * pad - 110) / 5.6);
+  const cardW = sizes.stripCardW;
   const gap = Math.max(5, cardW * 0.12);
   const stripH = cardW * 1.4 + 18;
   const stripY = heroTop - stripH + 4;
@@ -747,7 +773,7 @@ const potGap = (stacked: boolean) =>
   stacked ? POT_ABOVE_BOARD : POT_FLAT_ABOVE_BOARD;
 
 const tallGeo = (w: number, h: number, count: number, room: Room): Geo => {
-  const sizes = tallSizes(w);
+  const sizes = tallSizes(w, h);
   const cx = w / 2;
   const handH = sizes.handCardW * 1.4;
   const hand = { x: cx, y: h - sizes.bottomInset - handH / 2 - 18 };

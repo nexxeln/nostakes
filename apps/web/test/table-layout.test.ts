@@ -3,17 +3,17 @@ import { Schema } from "effect";
 import * as Arbitrary from "effect/Arbitrary";
 
 import {
+  BUTTON_PLACED_WELL,
+  buttonsPlaced,
   covers,
   everyOwnerProblems,
   fallbackOf,
   flightsOverTheHint,
-  gapToBox,
   FELT_RULES_PLACED_WELL,
   feltRulesPlaced,
   HINT_PLACED_WELL,
   hintPlaced,
   laneProblemsOf,
-  NAME_DEPTH,
   rideOf,
   SHORTEST_WIDE,
   SMALLEST_TABLES,
@@ -40,9 +40,7 @@ import {
 import type {
   Box,
   ButtonRide,
-  ButtonSpot,
   ButtonSpots,
-  Pt,
   Table as LaidTable,
 } from "../src/client/table/layout.js";
 
@@ -143,57 +141,10 @@ interface Seating {
   readonly width: number;
 }
 
-const seatGap = (point: Pt, centre: Pt, size: number) =>
-  Math.min(
-    gapToBox(point, {
-      h: size,
-      w: size,
-      x: centre.x - size / 2,
-      y: centre.y - size / 2,
-    }),
-    gapToBox(point, {
-      h: NAME_DEPTH,
-      w: size * 1.3,
-      x: centre.x - size * 0.65,
-      y: centre.y + size / 2,
-    })
-  );
-
 const buttonsOf = ({ height, others, width }: Seating) => {
   const geo = computeGeo(width, height, others);
   const spots = geo.buttons;
   const grounds = buttonGround(geo, handHintBox(geo, geo.hint));
-
-  const faces = [
-    ...geo.seats.map(({ x, y }) => ({ centre: { x, y }, size: geo.tile })),
-    { centre: geo.self, size: geo.self.size },
-  ];
-
-  const judged = (spot: ButtonSpot, owner: number) => {
-    const box = buttonBox(spot);
-    const gaps = faces.map(({ centre, size }) => seatGap(spot, centre, size));
-    const own = gaps[owner] ?? Infinity;
-
-    const ground = grounds[owner] ?? {
-      others: [],
-      own: [],
-      ownSeat: [],
-      tags: [],
-      untouchable: [],
-    };
-
-    return {
-      coversAnotherSeatOrTheMiddle: ground.untouchable.some((other) =>
-        covers(box, other)
-      ),
-      nearestIsOwner: gaps.every((gap, index) => index === owner || gap > own),
-      onTable:
-        box.x > -VISIBLE_PX &&
-        box.y > geo.top - VISIBLE_PX &&
-        box.x + box.w < width + VISIBLE_PX &&
-        box.y + box.h < height + VISIBLE_PX,
-    };
-  };
 
   return {
     onTheFelt: [...spots.seats, spots.self].filter((spot, owner) =>
@@ -202,17 +153,9 @@ const buttonsOf = ({ height, others, width }: Seating) => {
         ...(grounds[owner]?.others ?? []),
       ].every((mine) => !covers(buttonBox(spot), mine))
     ).length,
-    placed: [...spots.seats, spots.self].map((spot, owner) =>
-      judged(spot, owner)
-    ),
+    placed: buttonsPlaced(geo, { height, width }),
     seats: others + 1,
   };
-};
-
-const BUTTON_PLACED_WELL = {
-  coversAnotherSeatOrTheMiddle: false,
-  nearestIsOwner: true,
-  onTable: true,
 };
 
 const SCREENS_WE_SHOOT: readonly Seating[] = [1, 5, 8].flatMap((others) =>
@@ -242,6 +185,12 @@ describe("the dealer button", () => {
       expect(spots).toStrictEqual(spots.map(() => BUTTON_PLACED_WELL));
     }
   );
+
+  it("is placed well at nine seats on 382 by 600, where the hand and the board once grew with the width and left the ring too little height", () => {
+    expect(
+      buttonsOf({ height: 600, others: 8, width: 382 }).placed
+    ).toStrictEqual(Array.from({ length: 9 }, () => BUTTON_PLACED_WELL));
+  });
 
   it("lies on the felt clear of its own face and name and of every other seat's face, ring, and name on the screens we photograph", () => {
     const found = SCREENS_WE_SHOOT.map(buttonsOf);
