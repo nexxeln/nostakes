@@ -164,7 +164,13 @@ export const STALL_LIMIT_MS = 20_000 + beaconWaitLimitMs(TEST_CHAIN);
 
 export const MID_HAND_WAIT_MS = 15_000;
 
+export const STAGING_LIMIT_MS = 30_000;
+
+const SEATS_A_DEAL_NEEDS = 2;
+
 interface Watched {
+  readonly connected: () => boolean;
+  readonly pass: RoomPass;
   readonly latest: () => Option.Option<RoomView>;
   readonly lastSeq: () => number;
   readonly lastTableAt: () => number;
@@ -793,6 +799,7 @@ export const playNight = (base: string, opened: OpenedNight) =>
       seats: plan.players + plan.lateJoiners,
       silences: plan.silences,
       silencesTaken: 0,
+      stagingTheTable: false,
       stop: false,
     };
 
@@ -932,7 +939,76 @@ export const playNight = (base: string, opened: OpenedNight) =>
     let halting = false;
     let settlingSince = Option.none<number>();
     let endingSince = Option.none<number>();
-    let jammed = false;
+    let stagedAt = Option.none<number>();
+    let jammedAt = Option.none<number>();
+    let closingSince = Option.none<number>();
+    let unstaged = Option.none<string>();
+
+    const missingAtTheTable = (open: OpenView): readonly string[] => {
+      const bots = new Set(
+        watched.flatMap((record) =>
+          record.connected() ? [record.pass.player] : []
+        )
+      );
+
+      const dealable = open.seats
+        .flatMap(({ occupant }) => Option.toArray(occupant))
+        .filter(
+          ({ leaving, leavingRoom, sittingOut, stack }) =>
+            !sittingOut && stack > 0 && !leaving && !leavingRoom
+        );
+
+      const ready = dealable.filter(({ player }) => bots.has(player));
+
+      const dealDue =
+        Option.isSome(open.hand) ||
+        Option.isSome(open.clocks.nextDeal) ||
+        Option.isSome(open.fairness.sealed);
+
+      return [
+        ...(open.game === "Running" ? [] : ["the game is not running"]),
+        ...(ready.length >= SEATS_A_DEAL_NEEDS
+          ? []
+          : [
+              `${ready.length} of the ${SEATS_A_DEAL_NEEDS} seats a deal needs are held by a connected bot that can be dealt in (${dealable.length} seats could be dealt in, ${bots.size} bots are connected, the host ${bots.has(open.host) ? "is" : "is not"} one of them)`,
+            ]),
+        ...(dealDue
+          ? []
+          : [
+              "no deal is due: no hand in play, no next deal on the clock, and no hand sealed",
+            ]),
+      ];
+    };
+
+    const tableStaged = (open: OpenView, now: number, since: number) => {
+      if (Option.isSome(stagedAt)) {
+        return true;
+      }
+
+      if (!control.stagingTheTable) {
+        note(`seating the table before the ${plan.ending} ending`);
+        control.stagingTheTable = true;
+      }
+
+      const missing = missingAtTheTable(open);
+
+      if (missing.length === 0) {
+        note(
+          "the table is seated: two connected bots can be dealt in and a deal is due"
+        );
+        stagedAt = Option.some(now);
+
+        return true;
+      }
+
+      if (now - since > STAGING_LIMIT_MS) {
+        unstaged = Option.some(
+          `the night could not seat the table for its ${plan.ending} ending within ${STAGING_LIMIT_MS} ms: ${missing.join("; ")}; ${tableAsSeen(open)}`
+        );
+      }
+
+      return false;
+    };
 
     const timeToClose = (open: OpenView, now: number) =>
       Effect.gen(function* decideClosing() {
@@ -940,14 +1016,18 @@ export const playNight = (base: string, opened: OpenedNight) =>
 
         endingSince = Option.some(since);
 
+        if (plan.ending === "AsItComes") {
+          return Option.some("as it comes");
+        }
+
+        if (!tableStaged(open, now, since)) {
+          return Option.none();
+        }
+
         if (plan.ending === "MidHand") {
           control.closesWhileABotHoldsTheAction = true;
 
           return Option.some("once a bot holds the action in a hand");
-        }
-
-        if (plan.ending === "AsItComes") {
-          return Option.some("as it comes");
         }
 
         if (plan.ending === "Halted") {
@@ -956,10 +1036,10 @@ export const playNight = (base: string, opened: OpenedNight) =>
             : Option.none();
         }
 
-        if (!jammed) {
+        if (Option.isNone(jammedAt)) {
           note("jamming the room's deals so it stalls");
           yield* jamRoom(base, plan.code, true);
-          jammed = true;
+          jammedAt = Option.some(now);
         }
 
         return Option.isSome(open.stalled)
@@ -997,7 +1077,7 @@ export const playNight = (base: string, opened: OpenedNight) =>
     const noHeldActionCame = (open: OpenView, now: number) =>
       control.closesWhileABotHoldsTheAction &&
       !open.queued.close &&
-      endingSince.pipe(
+      closingSince.pipe(
         Option.exists((since) => now - since > MID_HAND_WAIT_MS)
       );
 
@@ -1049,9 +1129,13 @@ export const playNight = (base: string, opened: OpenedNight) =>
           if (Option.isSome(reason)) {
             note(`closing after ${hands} hands, ${reason.value}`);
             control.closing = true;
+            closingSince = Option.some(now);
+          } else if (Option.isSome(unstaged)) {
+            problem = unstaged;
+
+            continue;
           } else if (
-            jammed &&
-            endingSince.pipe(
+            jammedAt.pipe(
               Option.exists((since) => now - since > STALL_LIMIT_MS)
             )
           ) {
@@ -1070,7 +1154,7 @@ export const playNight = (base: string, opened: OpenedNight) =>
           control.closesWhileABotHoldsTheAction = false;
         }
 
-        if (jammed) {
+        if (Option.isSome(jammedAt)) {
           progress = now;
         }
 

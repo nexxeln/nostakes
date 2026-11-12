@@ -142,6 +142,7 @@ export interface NightControl {
   heldClear: Option.Option<HeldClear>;
   raced: boolean;
   closesWhileABotHoldsTheAction: boolean;
+  stagingTheTable: boolean;
   readonly holdingTheAction: Set<PlayerId>;
 }
 
@@ -191,6 +192,7 @@ export interface BotStats {
 export type Role = "Player" | "Spectator";
 
 export interface BotRecord {
+  readonly connected: () => boolean;
   readonly index: number;
   readonly label: string;
   readonly pass: RoomPass;
@@ -548,6 +550,7 @@ export const plannerFor = (setup: PlannerSetup) => {
     if (
       open.game === "Running" &&
       Option.isNone(open.hand) &&
+      !control.stagingTheTable &&
       random.chance(0.3)
     ) {
       return intent(Commands.PauseGame.make({}));
@@ -702,6 +705,10 @@ export const plannerFor = (setup: PlannerSetup) => {
     );
   };
 
+  const grants = () => control.stagingTheTable || random.chance(80);
+
+  const handsOver = () => !control.stagingTheTable && random.chance(0.05);
+
   const hostIntent = (open: OpenView): Option.Option<Intent> => {
     const [seatRequest] = open.requests.seats;
     const [chipRequest] = open.requests.chips;
@@ -716,7 +723,7 @@ export const plannerFor = (setup: PlannerSetup) => {
 
     if (seatRequest !== undefined) {
       return intent(
-        random.chance(80)
+        grants()
           ? Commands.ApproveSeat.make({ player: seatRequest.player })
           : Commands.DenySeat.make({ player: seatRequest.player }),
         random.below(150)
@@ -725,7 +732,7 @@ export const plannerFor = (setup: PlannerSetup) => {
 
     if (chipRequest !== undefined) {
       return intent(
-        random.chance(80)
+        grants()
           ? Commands.ApproveChips.make({ player: chipRequest.player })
           : Commands.DenyChips.make({ player: chipRequest.player }),
         random.below(150)
@@ -798,7 +805,7 @@ export const plannerFor = (setup: PlannerSetup) => {
       return intent(Commands.ActForSeat.make({ player: other.value.player }));
     }
 
-    if (random.chance(0.05)) {
+    if (handsOver()) {
       const heir = open.members.find(({ player }) => player !== pass.player);
 
       return heir === undefined
@@ -817,10 +824,18 @@ export const plannerFor = (setup: PlannerSetup) => {
     };
     readonly posts: boolean;
   }): Option.Option<Intent> =>
+    !control.stagingTheTable &&
     (occupant.owes.big || occupant.owes.entry || occupant.owes.small) &&
     random.chance(10)
       ? intent(Commands.ChoosePosting.make({ post: !occupant.posts }))
       : Option.none();
+
+  const comesBack = () =>
+    control.stagingTheTable ||
+    (wallClock() > restingUntil && random.chance(30));
+
+  const staysPut = () =>
+    control.stagingTheTable || !random.chance(temper.churnPercent);
 
   const raced = { back: false, left: false };
 
@@ -856,6 +871,7 @@ export const plannerFor = (setup: PlannerSetup) => {
     );
 
     const canTopUp = !asked && !queued && mayTopUp(open, occupant.stack);
+
     const posting = postingIntent(occupant);
 
     if (Option.isSome(posting)) {
@@ -876,15 +892,11 @@ export const plannerFor = (setup: PlannerSetup) => {
       );
     }
 
-    if (
-      occupant.sittingOut &&
-      wallClock() > restingUntil &&
-      random.chance(30)
-    ) {
+    if (occupant.sittingOut && comesBack()) {
       return intent(Commands.SitIn.make({}));
     }
 
-    if (!random.chance(temper.churnPercent)) {
+    if (staysPut()) {
       return Option.none();
     }
 
@@ -1015,12 +1027,16 @@ export const plannerFor = (setup: PlannerSetup) => {
   const standingIntent = (open: OpenView): Option.Option<Intent> => {
     const member = open.members.some(({ player }) => player === pass.player);
 
-    if (Option.isSome(racing) && (raced.left || raced.back)) {
+    if (
+      Option.isSome(racing) &&
+      (raced.left || raced.back) &&
+      !control.stagingTheTable
+    ) {
       return Option.none();
     }
 
     if (!member) {
-      return random.chance(3)
+      return control.stagingTheTable || random.chance(3)
         ? intent(Commands.Join.make({ avatar: "back", name: label }))
         : Option.none();
     }
@@ -1035,7 +1051,7 @@ export const plannerFor = (setup: PlannerSetup) => {
       setup.role === "Player" &&
       !asked &&
       seat !== undefined &&
-      random.chance(25)
+      (control.stagingTheTable || random.chance(25))
     ) {
       return intent(Commands.RequestSeat.make({ buyIn: buyIn(open), seat }));
     }
@@ -1215,7 +1231,16 @@ export const startBot = (setup: BotSetup) => {
   let view = Option.none<RoomView>();
   let counter = 0;
 
+  const currentOf = (device: Device) =>
+    Option.fromUndefinedOr(device.sockets.at(-1));
+
+  const isLive = (device: Device) =>
+    currentOf(device).pipe(
+      Option.exists(({ socket }) => Option.isNone(socket.closed()))
+    );
+
   const record: BotRecord = {
+    connected: () => isLive(main),
     devices: [main, second],
     index: setup.index,
     label,
@@ -1227,14 +1252,6 @@ export const startBot = (setup: BotSetup) => {
     sent,
     stats,
   };
-
-  const currentOf = (device: Device) =>
-    Option.fromUndefinedOr(device.sockets.at(-1));
-
-  const isLive = (device: Device) =>
-    currentOf(device).pipe(
-      Option.exists(({ socket }) => Option.isNone(socket.closed()))
-    );
 
   const lastSeqOf = (device: Device) =>
     currentOf(device).pipe(Option.flatMap(({ socket }) => socket.lastSeq()));
@@ -1434,7 +1451,7 @@ export const startBot = (setup: BotSetup) => {
     });
 
   const chaos = Effect.gen(function* chaos() {
-    if (control.closing) {
+    if (control.closing || control.stagingTheTable) {
       return;
     }
 
@@ -1534,7 +1551,11 @@ export const startBot = (setup: BotSetup) => {
         yield* signalSometimes(current.value);
       }
 
-      if (!control.closing && random.chance(temper.illegalPercent / 20)) {
+      if (
+        !control.closing &&
+        !control.stagingTheTable &&
+        random.chance(temper.illegalPercent / 20)
+      ) {
         yield* sendServerOnly;
         continue;
       }

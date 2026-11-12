@@ -38,6 +38,8 @@ export const REGULAR_NAME = "regular";
 
 const PLAY_EVERY_MS = 40;
 
+const BOT_NAMES = "bot";
+
 type OpenView = Extract<RoomView, { readonly _tag: "Open" }>;
 
 export interface RegularRecord extends RemovalRecord {
@@ -88,6 +90,14 @@ const nextMove = (
   firstSeat: number
 ): Option.Option<MemberCommand> => {
   const mine = seatOf(view, player);
+
+  const hostBot = view.members.find(
+    (member) => member.player !== player && member.name.startsWith(BOT_NAMES)
+  );
+
+  if (view.host === player && hostBot !== undefined) {
+    return Option.some(Commands.TransferHost.make({ to: hostBot.player }));
+  }
 
   if (Option.isSome(view.legal)) {
     return Option.some(

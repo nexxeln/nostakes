@@ -151,6 +151,7 @@ export interface ClientBotRecord {
   readonly role: Role;
   readonly stats: ClientBotStats;
   readonly activity: readonly Activity<SeenEvent>[];
+  readonly connected: () => boolean;
   readonly commands: readonly ClientCommand[];
   readonly handEnds: readonly HandEnd[];
   readonly drops: readonly ClientDrop[];
@@ -476,6 +477,8 @@ export const startClientBot = (setup: ClientBotSetup) => {
     activity,
     arrivals: wire.arrivals,
     commands,
+    connected: () =>
+      current.pipe(Option.exists(({ connection }) => connection === "Live")),
     drops,
     final: () => Option.orElse(stoppedAt, () => current),
     firstSeq: () => firstSeq,
@@ -700,6 +703,7 @@ export const startClientBot = (setup: ClientBotSetup) => {
       while (
         !control.stop &&
         !control.closing &&
+        !control.stagingTheTable &&
         control.head - from <= MAX_MISSED_EVENTS + 5 &&
         wallClock() - started < NAP_LIMIT_MS
       ) {
@@ -857,12 +861,11 @@ export const startClientBot = (setup: ClientBotSetup) => {
         stats.signalsKeptOnDevice += outcome === "Sent" ? 0 : 1;
       }
 
-      const disruption = control.closing
-        ? Option.none()
-        : disruptionFor(open.value);
+      const calm = control.closing || control.stagingTheTable;
+      const disruption = calm ? Option.none() : disruptionFor(open.value);
 
       if (Option.isNone(disruption)) {
-        const trip = control.closing ? Option.none() : sideTrip(open.value);
+        const trip = calm ? Option.none() : sideTrip(open.value);
 
         if (Option.isSome(trip)) {
           yield* trip.value;
