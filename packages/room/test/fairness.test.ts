@@ -27,6 +27,7 @@ import {
   emptyWitness,
   evidenceFor,
   handsWitnessed,
+  millis,
   redact,
   viewFor,
   witnessEvent,
@@ -98,6 +99,20 @@ interface Watched {
   readonly at: Millis;
   readonly events: readonly RoomEvent[];
 }
+
+const reachedDevicesAt = (before: RoomState, command: RoomCommand): Millis =>
+  millis(Math.max(command.at, before.now));
+
+const MOST_SHRINKS = 12;
+
+const nights = (quick: number, full: number) => {
+  const sizes = generated(quick, full);
+
+  return {
+    ...sizes,
+    arbitrary: { ...sizes.arbitrary, maxShrinks: MOST_SHRINKS },
+  };
+};
 
 const handInPlay = (state: RoomState): Option.Option<number> =>
   RoomStates.$is("Open")(state) && TableStates.$is("InHand")(state.table)
@@ -241,10 +256,11 @@ const nightWithALateArrival = (): readonly Watched[] => {
   let state = openedBy(ann, CHECKED);
 
   const play = (command: RoomCommand) => {
+    const at = reachedDevicesAt(state, command);
     const { events, state: after } = run(state, command);
 
     state = after;
-    steps.push({ after, at: command.at, events });
+    steps.push({ after, at, events });
   };
 
   for (const command of [
@@ -280,13 +296,19 @@ describe("what a device sees of a checked hand", () => {
 
       const steps = played.steps.flatMap((step) =>
         Result.isSuccess(step.decision)
-          ? [{ after: step.after, at: step.command.at, events: step.events }]
+          ? [
+              {
+                after: step.after,
+                at: reachedDevicesAt(step.before, step.command),
+                events: step.events,
+              },
+            ]
           : []
       );
 
       expect(judgedLive(ROOM, steps, POOL).problems).toStrictEqual([]);
     },
-    generated(2, 6)
+    nights(2, 6)
   );
 
   it("gives someone who joined after a sealed hand was over no verdict on it, because the view no longer says who was dealt in, and never an alarm", () => {
@@ -326,7 +348,8 @@ describe("what a device sees of a checked hand", () => {
           continue;
         }
 
-        const at = EpochMillisSchema.make(step.command.at);
+        const roomTime = reachedDevicesAt(step.before, step.command);
+        const at = EpochMillisSchema.make(roomTime);
         const arrival = SealArrivals.Live({ at });
 
         const watchers: readonly (readonly [string, Audience])[] = [
@@ -352,11 +375,7 @@ describe("what a device sees of a checked hand", () => {
 
           witnesses.set(
             name,
-            witnessView(
-              witness,
-              viewFor(step.after, audience, step.command.at),
-              at
-            )
+            witnessView(witness, viewFor(step.after, audience, roomTime), at)
           );
         }
       }
@@ -392,6 +411,6 @@ describe("what a device sees of a checked hand", () => {
 
       expect(problems).toStrictEqual([]);
     },
-    generated(2, 6)
+    nights(2, 6)
   );
 });
