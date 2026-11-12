@@ -1,6 +1,5 @@
-import { Effect, Option, Schema } from "effect";
+import { Effect, Function, Option, Schema } from "effect";
 import type { Scope } from "effect";
-import { constVoid } from "effect/Function";
 
 import {
   filmFrames,
@@ -186,8 +185,8 @@ const fitted = (
 const JUDGED_AFTER_SECONDS = 2;
 
 const RUNNING: FilmWatch = {
-  heldBy: () => constVoid,
-  made: constVoid,
+  heldBy: () => Function.constVoid,
+  made: Function.constVoid,
 };
 
 interface WorkingClock {

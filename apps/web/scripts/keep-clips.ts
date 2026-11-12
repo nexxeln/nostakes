@@ -2478,6 +2478,32 @@ const reported = (checked: {
     return checked.problems;
   });
 
+const namedFlows = (
+  only: readonly string[],
+  engine: BrowserType,
+  settings: Settings
+) => [
+  ...(only.includes("refused") ? [refusedClip(engine)] : []),
+  ...(only.includes("owed") ? [owedClip(engine, settings)] : []),
+];
+
+const namedChecks = (
+  only: readonly string[],
+  chosen: readonly BrowserType[],
+  settings: Settings
+) =>
+  Effect.gen(function* checkNamed() {
+    const problems: string[] = [];
+
+    for (const engine of chosen) {
+      for (const flow of namedFlows(only, engine, settings)) {
+        problems.push(...(yield* reported(yield* flow)));
+      }
+    }
+
+    return problems;
+  });
+
 const firefoxChecks = (wanted: boolean) =>
   Effect.gen(function* checkFirefox() {
     const problems: string[] = [];
@@ -2521,17 +2547,12 @@ const checks = Effect.gen(function* checkClips() {
     engines.includes(engine.name())
   );
 
-  const problems: string[] = [];
+  const problems: string[] = [
+    ...(yield* firefoxChecks(only.length === 0 && engines.includes("firefox"))),
+    ...(yield* namedChecks(only, chosen, settings)),
+  ];
 
   const quietChat = pace === "Quiet" && frames.includes("Chat");
-
-  problems.push(
-    ...(yield* firefoxChecks(only.length === 0 && engines.includes("firefox")))
-  );
-
-  for (const engine of only.includes("owed") ? chosen : []) {
-    problems.push(...(yield* reported(yield* owedClip(engine, settings))));
-  }
 
   for (const engine of only.length > 0 ? [] : chosen) {
     if (quietChat) {
