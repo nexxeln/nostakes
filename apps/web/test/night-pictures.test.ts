@@ -15,6 +15,7 @@ import {
   recapCardsShown,
   shownInRecap,
 } from "../src/features/recap.js";
+import { withHandsADeckCanDeal } from "./dealt-recap.js";
 
 const closedViews = Arbitrary.schema(RoomViewSchema.cases.Closed);
 
@@ -72,7 +73,8 @@ describe("the night's recap on the page", () => {
   it.prop(
     "draws only cards the room's recap holds, the biggest pot as the room counted it, and never the room code",
     { frame: frames, theme: themes, view: closedViews },
-    ({ frame, theme, view }) => {
+    ({ frame, theme, view: generated }) => {
+      const view = withHandsADeckCanDeal(generated);
       const card = recapCardOf(view);
 
       const svg = recapSvg(card, {

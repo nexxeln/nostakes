@@ -14,6 +14,7 @@ import {
 import { recapCardOf, recapPictureOf } from "../src/features/recap.js";
 import { nameOf } from "../src/features/room.js";
 import type { ClosedView } from "../src/features/room.js";
+import { withHandsADeckCanDeal } from "./dealt-recap.js";
 
 const HOSTILE_NAMES = [
   "<img src=x onerror=alert(1)>",
@@ -68,7 +69,7 @@ describe("markup the page draws from what players typed", () => {
     "keeps every hostile name and face code out of the tags of every shared picture",
     { view: closedViews },
     ({ view }) => {
-      const night = hostile(view);
+      const night = hostile(withHandsADeckCanDeal(view));
       const settleUp = settleUpSvg(settleUpCardOf(night), LOOK);
 
       const pictures = [
