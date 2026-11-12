@@ -1,5 +1,7 @@
 verifyDepsBeforeRun: error
 
+minimumReleaseAge: 1440
+
 packages:
   - "apps/*"
   - "packages/*"
@@ -8,7 +10,3 @@ packages:
 allowBuilds:
   lefthook: true
   workerd: true
-
-minimumReleaseAgeExclude:
-  - "@xstate/effect@1.0.0-beta.1"
-  - xstate@6.0.0-beta.2

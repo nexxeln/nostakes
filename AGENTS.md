@@ -10,7 +10,7 @@ Workspace `package.json` files declare the pinned stack. Keep every dependency e
 
 - pnpm workspaces and Turborepo `2.11.10`: `packages/*`, `tools/fence`, and `apps/*`
 - Foldkit `0.170.0`, `@foldkit/vite-plugin` `0.29.0`, and Vite `8.3.6` for `apps/web`, at rat-stack's pins. `apps/web` declares Foldkit's peer `@effect/platform-browser` `4.1.2` itself, at the Effect pin. `playwright-core` `1.65.0` drives its end-to-end check, and `@effect/platform-node` `4.1.2` starts the servers that check needs.
-- Node `>=24.22.1`, the security release (`.nvmrc` holds `24.22.2`) and pnpm `11.28.11`. Do not install with npm or Bun.
+- Node `>=24.22.1`, the security release (`.nvmrc` holds `24.22.2`) and pnpm `11.28.11`. Do not install with npm or Bun. `pnpm-workspace.yaml` sets `minimumReleaseAge: 1440`, so a pin younger than 24 hours fails the install; wait it out, and never add a `minimumReleaseAgeExclude` entry.
 - Effect `4.1.2` and `@effect/vitest` `4.1.2`. Every package resolves the same Effect runtime.
 - TypeScript `7.0.2` in strict mode, patched by `@effect/tsgo` `0.67.7` in `prepare` so the Effect diagnostics fail `tsc` too
 - `@yielded/effect-tsrs` `0.2.3` runs `typecheck` and `check` with `diagnostics --strict --type-check`. `--strict` makes Effect warnings fail.
