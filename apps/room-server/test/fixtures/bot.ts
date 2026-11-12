@@ -656,7 +656,7 @@ export const plannerFor = (setup: PlannerSetup) => {
     );
   };
 
-  const regularIntent = (open: OpenView): Option.Option<Intent> =>
+  const regularDue = (open: OpenView): Option.Option<PlayerId> =>
     Option.fromUndefinedOr(
       [...control.regulars].find(
         ([regular, atHand]) =>
@@ -673,11 +673,35 @@ export const plannerFor = (setup: PlannerSetup) => {
             )
           )
       )
-    ).pipe(
-      Option.flatMap(([regular]) =>
-        intent(Commands.RemoveMember.make({ player: regular }))
-      )
+    ).pipe(Option.map(([regular]) => regular));
+
+  const removesUnderAHeldAction = (
+    open: OpenView
+  ): Option.Option<Option.Option<Intent>> => {
+    const due = control.closing ? Option.none<PlayerId>() : regularDue(open);
+
+    if (Option.isNone(due) || Option.isSome(open.hostAway)) {
+      return Option.none();
+    }
+
+    if (Option.isSome(open.legal)) {
+      control.holdingTheAction.add(pass.player);
+    }
+
+    const held = Option.exists(actorOf(open), (actor) =>
+      control.holdingTheAction.has(actor)
     );
+
+    if (open.host === pass.player && held) {
+      return Option.some(
+        intent(Commands.RemoveMember.make({ player: due.value }))
+      );
+    }
+
+    return Option.isSome(open.legal)
+      ? Option.some(Option.none())
+      : Option.none();
+  };
 
   const doorIntent = (open: OpenView): Option.Option<Intent> => {
     const approval = control.approval.pipe(
@@ -1017,7 +1041,7 @@ export const plannerFor = (setup: PlannerSetup) => {
 
   const plannedScene = (open: OpenView): Option.Option<Intent> =>
     (open.host === pass.player && !control.closing
-      ? doorIntent(open).pipe(Option.orElse(() => regularIntent(open)))
+      ? doorIntent(open)
       : Option.none<Intent>()
     ).pipe(Option.orElse(() => raceIntent(open)));
 
@@ -1035,7 +1059,11 @@ export const plannerFor = (setup: PlannerSetup) => {
       return Option.some(closes);
     }
 
-    return plannedScene(open).pipe(Option.map((scene) => Option.some(scene)));
+    return removesUnderAHeldAction(open).pipe(
+      Option.orElse(() =>
+        plannedScene(open).pipe(Option.map((scene) => Option.some(scene)))
+      )
+    );
   };
 
   const standingIntent = (open: OpenView): Option.Option<Intent> => {
