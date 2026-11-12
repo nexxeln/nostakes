@@ -355,10 +355,18 @@ const buyInsFollowed = (
     Number(before["buyIn.min"]) % old === 0 &&
     Number(before["buyIn.max"]) % old === 0;
 
+  const multiplesKept = {
+    ...after,
+    "buyIn.max": String((Number(before["buyIn.max"]) / old) * now),
+    "buyIn.min": String((Number(before["buyIn.min"]) / old) * now),
+  };
+
+  const follows = both && Result.isSuccess(settingsFrom(multiplesKept));
+
   return ["buyIn.min", "buyIn.max"].flatMap((path) => {
     const was = Number(before[path]);
     const is = Number(after[path]);
-    const kept = both ? is * old === was * now : is === was;
+    const kept = follows ? is * old === was * now : is === was;
 
     return kept
       ? []
