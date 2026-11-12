@@ -2551,7 +2551,7 @@ export const awardTabBox = (
 const GROWN_SLACK = 0.5;
 
 export const placeSeats = <Plan extends SeatPlan>(
-  geo: Geo,
+  geo: Geo & { readonly hint?: HandHint },
   rest: SeatsAtRest<Plan>
 ): readonly (Plan & SeatPlace)[] => {
   const homes = rest.seats.flatMap((plan) => {
@@ -2638,7 +2638,11 @@ export const placeSeats = <Plan extends SeatPlan>(
     const drawn = drawnWithTab(placed, winner);
     const found = new Map<string, number>();
 
-    const nearby = [...middleGround(geo), ...yourSeat];
+    const nearby = [
+      ...middleGround(geo),
+      ...yourSeat,
+      ...(geo.hint === undefined ? [] : [geo.hint.say, geo.hint.foot]),
+    ];
 
     for (const [which, boxes] of drawn.entries()) {
       for (const [part, box] of boxes.entries()) {
@@ -4156,6 +4160,14 @@ const FLIGHT_TURNS = [
   0, 30, -30, 60, -60, 90, -90, 120, -120, 150, -150, 180,
 ].map((degrees) => (degrees * Math.PI) / 180);
 
+const WIDER_FLIGHT_BENDS = [...FLIGHT_BENDS, 520, 600] as const;
+
+const FINER_FLIGHT_TURNS = Array.from({ length: 24 }, (__, step) => {
+  const degrees = Math.ceil(step / 2) * 15 * (step % 2 === 0 ? -1 : 1);
+
+  return (degrees * Math.PI) / 180;
+});
+
 const FLIGHT_STEP_PX = 2;
 
 const FLIGHT_ENDS = 0.06;
@@ -4221,17 +4233,23 @@ export const flightControl = (
   const length = Math.hypot(to.x - from.x, to.y - from.y) || 1;
   const normal = { x: -(to.y - from.y) / length, y: (to.x - from.x) / length };
 
+  const clearAmong = (bends: readonly number[], turns: readonly number[]) =>
+    bends
+      .flatMap((bend) =>
+        turns.map((turn) => ({
+          x:
+            middle.x +
+            (normal.x * Math.cos(turn) - normal.y * Math.sin(turn)) * bend,
+          y:
+            middle.y +
+            (normal.x * Math.sin(turn) + normal.y * Math.cos(turn)) * bend,
+        }))
+      )
+      .find((control) => flightClears(from, control, to, avoid, reach));
+
   return (
-    FLIGHT_BENDS.flatMap((bend) =>
-      FLIGHT_TURNS.map((turn) => ({
-        x:
-          middle.x +
-          (normal.x * Math.cos(turn) - normal.y * Math.sin(turn)) * bend,
-        y:
-          middle.y +
-          (normal.x * Math.sin(turn) + normal.y * Math.cos(turn)) * bend,
-      }))
-    ).find((control) => flightClears(from, control, to, avoid, reach)) ??
+    clearAmong(FLIGHT_BENDS, FLIGHT_TURNS) ??
+    clearAmong(WIDER_FLIGHT_BENDS, FINER_FLIGHT_TURNS) ??
     straight
   );
 };
