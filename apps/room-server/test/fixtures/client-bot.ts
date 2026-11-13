@@ -704,6 +704,7 @@ export const startClientBot = (setup: ClientBotSetup) => {
         !control.stop &&
         !control.closing &&
         !control.stagingTheTable &&
+        !control.tableQuiet &&
         control.head - from <= MAX_MISSED_EVENTS + 5 &&
         wallClock() - started < NAP_LIMIT_MS
       ) {

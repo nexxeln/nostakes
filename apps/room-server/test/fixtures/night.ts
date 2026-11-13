@@ -12,6 +12,7 @@ import {
 } from "@nostakes/protocol";
 import type { PlayerId, RoomCode, RoomPass } from "@nostakes/protocol";
 import {
+  AttendanceViewSchema,
   DEFAULT_PAUSE_WHEN_AWAY_SECONDS,
   RoomSettingsSchema,
   RoomViews,
@@ -820,6 +821,7 @@ export const playNight = (base: string, opened: OpenedNight) =>
       silencesTaken: 0,
       stagingTheTable: false,
       stop: false,
+      tableQuiet: false,
     };
 
     const records = opened.bots;
@@ -972,12 +974,37 @@ export const playNight = (base: string, opened: OpenedNight) =>
     let closingSince = Option.none<number>();
     let unstaged = Option.none<string>();
 
-    const missingAtTheTable = (open: OpenView): readonly string[] => {
-      const bots = new Set(
+    const connectedBots = () =>
+      new Set(
         watched.flatMap((record) =>
           record.connected() ? [record.pass.player] : []
         )
       );
+
+    const seatedAndConnected = (open: OpenView): readonly PlayerId[] => {
+      const bots = connectedBots();
+
+      return open.seats
+        .flatMap(({ occupant }) => Option.toArray(occupant))
+        .flatMap(({ player }) => (bots.has(player) ? [player] : []));
+    };
+
+    const owesProgress = (open: OpenView) =>
+      shouldAdvance(open) &&
+      !(
+        AttendanceViewSchema.guards.Quiet(open.attendance) &&
+        Option.isNone(open.hand) &&
+        seatedAndConnected(open).length === 0
+      );
+
+    const stuckAt = (open: OpenView, stuckMs: number, hands: number) => {
+      const seated = seatedAndConnected(open);
+
+      return `no table event arrived for ${Math.round(stuckMs)} ms with a running game at hand ${hands}; ${tableAsSeen(open)}, seated bots connected: ${seated.length === 0 ? "none" : seated.join(", ")}`;
+    };
+
+    const missingAtTheTable = (open: OpenView): readonly string[] => {
+      const bots = connectedBots();
 
       const dealable = open.seats
         .flatMap(({ occupant }) => Option.toArray(occupant))
@@ -1217,14 +1244,16 @@ export const playNight = (base: string, opened: OpenedNight) =>
           ...watched.map((record) => record.lastTableAt())
         );
 
-        progress = shouldAdvance(open.value)
+        control.tableQuiet = AttendanceViewSchema.guards.Quiet(
+          open.value.attendance
+        );
+
+        progress = owesProgress(open.value)
           ? Math.max(progress, lastEvent)
           : now;
 
         if (now - progress > longestClockMs(open.value) + WATCHDOG_MARGIN_MS) {
-          problem = Option.some(
-            `no table event arrived for ${Math.round(now - progress)} ms with a running game at hand ${hands}`
-          );
+          problem = Option.some(stuckAt(open.value, now - progress, hands));
         }
       }
 

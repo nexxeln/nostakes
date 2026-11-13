@@ -155,6 +155,7 @@ export interface NightControl {
   raced: boolean;
   closesWhileABotHoldsTheAction: boolean;
   stagingTheTable: boolean;
+  tableQuiet: boolean;
   checkedInTime: number;
   readonly holdingTheAction: Set<PlayerId>;
 }
