@@ -33,7 +33,7 @@
     "verify:status": "node apps/room-server/scripts/verify-status.ts"
   },
   "devDependencies": {
-    "@effect/tsgo": "0.67.7",
+    "@effect/tsgo": "0.68.1",
     "@foldkit/oxlint-plugin": "0.15.4",
     "@oxlint/plugins": "1.93.0",
     "@types/node": "24.19.2",
@@ -42,7 +42,7 @@
     "oxfmt": "0.78.0",
     "oxlint": "1.93.0",
     "oxlint-tsgolint": "7.0.2006",
-    "tsrs": "0.24.0-ts7.1.0-beta",
+    "tsrs": "0.25.0-ts7.1.0-beta",
     "turbo": "2.11.11",
     "typescript": "7.0.2",
     "ultracite": "8.1.1",

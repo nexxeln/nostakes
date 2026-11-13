@@ -12,9 +12,9 @@ Workspace `package.json` files declare the pinned stack. Keep every dependency e
 - Foldkit `0.170.0` and `@foldkit/vite-plugin` `0.29.0` for `apps/web`, at rat-stack's pins, and Vite `8.3.8`, ahead of rat-stack's `8.3.6` (Rolldown 1.2.19). `apps/web` declares Foldkit's peer `@effect/platform-browser` `4.1.4` itself, at the Effect pin. `playwright-core` `1.65.0` drives its end-to-end check, and `@effect/platform-node` `4.1.4` starts the servers that check needs.
 - Node `>=24.22.1`, the security release (`.nvmrc` holds `24.22.2`) and pnpm `11.28.11`. Do not install with npm or Bun. `pnpm-workspace.yaml` sets `minimumReleaseAge: 1440`, so a pin younger than 24 hours fails the install; wait it out, and never add a `minimumReleaseAgeExclude` entry.
 - Effect `4.1.4` and `@effect/vitest` `4.1.4`. Every package resolves the same Effect runtime.
-- TypeScript `7.0.2` in strict mode, patched by `@effect/tsgo` `0.67.7` in `prepare` so the Effect diagnostics fail `tsc` too
+- TypeScript `7.0.2` in strict mode, patched by `@effect/tsgo` `0.68.1` in `prepare` so the Effect diagnostics fail `tsc` too
 - `@yielded/effect-tsrs` `0.2.3` runs `typecheck` and `check` with `diagnostics --strict --type-check`. `--strict` makes Effect warnings fail.
-- tsrs `0.24.0-ts7.1.0-beta` runs `typecheck:fast`. It has no Effect diagnostics.
+- tsrs `0.25.0-ts7.1.0-beta` runs `typecheck:fast`. It has no Effect diagnostics.
 - Vitest `5.1.0`
 - Oxlint `1.93.0` with `oxlint-tsgolint` `7.0.2006` for type-aware rules, `@oxlint/plugins` `1.93.0`, `@foldkit/oxlint-plugin` `0.15.4` (its recommended rules on `apps/web/src`, with `no-impure-call-at-decision-time` off only in the five `src/client` files that read the clock or the random source themselves, listed in `oxlint.config.ts`: the list only shrinks, and a new file takes its time from the frame callback or an Effect instead), Ultracite `8.1.1`, and Oxfmt `0.78.0`
 - Lefthook `2.2.2` and `@types/node` `24.19.2`
