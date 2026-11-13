@@ -31,10 +31,10 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v7.0.1
-      - name: Use Node.js 24.22.2
+      - name: Use Node.js 24.22.3
         uses: actions/setup-node@v7.1.0
         with:
-          node-version: 24.22.2
+          node-version: 24.22.3
       - name: Enable corepack pnpm
         run: corepack enable && corepack prepare pnpm@12.20.0 --activate
       - name: Install dependencies
@@ -60,10 +60,10 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v7.0.1
-      - name: Use Node.js 24.22.2
+      - name: Use Node.js 24.22.3
         uses: actions/setup-node@v7.1.0
         with:
-          node-version: 24.22.2
+          node-version: 24.22.3
       - name: Enable corepack pnpm
         run: corepack enable && corepack prepare pnpm@12.20.0 --activate
       - name: Install dependencies
