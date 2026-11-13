@@ -434,10 +434,51 @@ const decodeCard = Schema.decodeUnknownOption(CardFromText);
 const decodedCards = (texts: readonly string[]) =>
   texts.flatMap((text) => Option.toArray(decodeCard(text)));
 
+const FLOP_CARDS = 3;
+
+const RIVER_CARDS = 5;
+
 const hasNothing = (hole: readonly string[], board: readonly string[]) =>
   hole.length === 2 &&
-  board.length === 5 &&
+  board.length >= FLOP_CARDS &&
   nothingOfItsOwn(decodedCards(hole), decodedCards(board));
+
+const boardOf = (page: Page, cards: number) =>
+  attempt(`see ${cards} cards on the board`, () =>
+    page.waitForFunction(
+      (want) =>
+        (globalThis.document
+          .querySelector("nostakes-table")
+          ?.shadowRoot?.querySelectorAll(".slot .card:not(.rabbit) .face")
+          .length ?? 0) >= want,
+      cards,
+      { timeout: 15_000 }
+    )
+  ).pipe(Effect.andThen(cardsOn(page)));
+
+interface DealtTable extends HTMLElement {
+  readonly snapshot: { readonly handId: number } | null;
+}
+
+const handOn = (page: Page) =>
+  attempt("read which hand the table shows", () =>
+    page.evaluate(
+      () =>
+        globalThis.document.querySelector<DealtTable>("nostakes-table")
+          ?.snapshot?.handId ?? -1
+    )
+  );
+
+const handAfter = (page: Page, finished: number) =>
+  attempt(`see the hand after hand ${finished} dealt`, () =>
+    page.waitForFunction(
+      (last) =>
+        (globalThis.document.querySelector<DealtTable>("nostakes-table")
+          ?.snapshot?.handId ?? last) > last,
+      finished,
+      { timeout: 30_000 }
+    )
+  );
 
 const passes = (page: Page, step: string) =>
   Effect.gen(function* tapAndWait() {
@@ -574,27 +615,73 @@ const momentOn = (page: Page, who: string) =>
     )
   );
 
-const showsABluff = (ana: Page, ben: Page) =>
-  Effect.gen(function* playUntilABluff() {
-    let bluffed = false;
+const bluffsInThisHand = (ana: Page, ben: Page) =>
+  Effect.gen(function* checkEachStreet() {
+    const opener = yield* whoseTurn([ana, ben]);
+    const caller = opener === ana ? ben : ana;
 
-    for (let hand = 0; hand < 8 && !bluffed; hand += 1) {
-      const page = yield* toRiver([ana, ben]);
-      const other = page === ana ? ben : ana;
-      const mine = yield* cardsOn(page);
-      const theirs = yield* cardsOn(other);
+    yield* opens(opener);
+    yield* whoseTurn([caller]);
+    yield* passes(caller, "call the raise to see the flop");
+
+    for (let cards = FLOP_CARDS; cards <= RIVER_CARDS; cards += 1) {
+      const first = yield* whoseTurn([ana, ben]);
+      const second = first === ana ? ben : ana;
+      const mine = yield* boardOf(first, cards);
+      const theirs = yield* cardsOn(second);
 
       if (hasNothing(mine.hole, mine.board)) {
-        yield* bluffs(page, other);
-        bluffed = true;
-      } else if (hasNothing(theirs.hole, mine.board)) {
-        yield* passes(page, "check the river");
-        yield* whoseTurn([other]);
-        yield* bluffs(other, page);
-        bluffed = true;
-      } else {
-        yield* drag(page, HAND, 170, "fold a river nobody can bluff");
-        yield* Console.log("  nobody could bluff that board; dealing again");
+        yield* bluffs(first, second);
+
+        return true;
+      }
+
+      if (hasNothing(theirs.hole, mine.board)) {
+        yield* passes(first, "check to the player who can bluff");
+        yield* whoseTurn([second]);
+        yield* bluffs(second, first);
+
+        return true;
+      }
+
+      if (cards === RIVER_CARDS) {
+        yield* drag(first, HAND, 170, "fold a river nobody can bluff");
+
+        return false;
+      }
+
+      yield* passes(first, "check with nothing to bluff");
+      yield* whoseTurn([second]);
+      yield* passes(second, "check to the next card");
+    }
+
+    return false;
+  });
+
+const BLUFF_HANDS = 8;
+
+const showsABluff = (ana: Page, ben: Page) =>
+  Effect.gen(function* playUntilABluff() {
+    const tried: number[] = [];
+    let bluffed = false;
+
+    while (tried.length < BLUFF_HANDS && !bluffed) {
+      const dealt = yield* handOn(ana);
+
+      yield* holds(
+        dealt >= 0 && !tried.includes(dealt),
+        new NightFailed({
+          detail: `the table showed hand ${dealt} after the hands tried, ${tried.join(", ")}`,
+          step: "deal a fresh hand for each try at a bluff",
+        })
+      );
+      tried.push(dealt);
+      bluffed = yield* bluffsInThisHand(ana, ben);
+
+      if (!bluffed) {
+        yield* Console.log(`  nobody could bluff hand ${dealt}; dealing again`);
+        yield* handAfter(ana, dealt);
+        yield* handAfter(ben, dealt);
       }
     }
 
@@ -602,8 +689,7 @@ const showsABluff = (ana: Page, ben: Page) =>
       ? Effect.void
       : Effect.fail(
           new NightFailed({
-            detail:
-              "eight hands passed without a player holding nothing on the river",
+            detail: `nobody held nothing of their own on any street of hands ${tried.join(", ")}`,
             step: "find a hand to bluff with",
           })
         );
