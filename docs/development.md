@@ -4,7 +4,7 @@ How to set up nostakes, play it locally, and run its checks. [`AGENTS.md`](../AG
 
 ## Install
 
-nostakes needs Node `24.22.1` or later and pnpm `11.28.11`. pnpm 10 switches to `11.28.11` on its own through the `packageManager` field. Without pnpm, run `corepack enable` first. Do not install with npm or Bun.
+nostakes needs Node `24.22.1` or later and pnpm `12.20.0`. pnpm 10 and 11 switch to `12.20.0` on their own through the `packageManager` field. Without pnpm, run `corepack enable` first. Do not install with npm or Bun.
 
 ```sh
 pnpm install

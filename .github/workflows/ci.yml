@@ -36,7 +36,7 @@ jobs:
         with:
           node-version: 24.22.2
       - name: Enable corepack pnpm
-        run: corepack enable && corepack prepare pnpm@11.28.11 --activate
+        run: corepack enable && corepack prepare pnpm@12.20.0 --activate
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
       - name: Run ${{ matrix.part }}
@@ -65,7 +65,7 @@ jobs:
         with:
           node-version: 24.22.2
       - name: Enable corepack pnpm
-        run: corepack enable && corepack prepare pnpm@11.28.11 --activate
+        run: corepack enable && corepack prepare pnpm@12.20.0 --activate
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
       - name: Build every package and the web app

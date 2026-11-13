@@ -45,7 +45,7 @@ jobs:
         with:
           node-version: 24.22.2
       - name: Enable corepack pnpm
-        run: corepack enable && corepack prepare pnpm@11.28.11 --activate
+        run: corepack enable && corepack prepare pnpm@12.20.0 --activate
       - name: Install uv
         if: matrix.target == 'differential'
         uses: astral-sh/setup-uv@v10.3.3
@@ -126,7 +126,7 @@ jobs:
         with:
           node-version: 24.22.2
       - name: Enable corepack pnpm
-        run: corepack enable && corepack prepare pnpm@11.28.11 --activate
+        run: corepack enable && corepack prepare pnpm@12.20.0 --activate
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
       - name: Build the room server and its packages
