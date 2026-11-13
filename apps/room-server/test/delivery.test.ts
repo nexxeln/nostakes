@@ -11,8 +11,8 @@ import {
   SOCKETS_PER_PLAYER,
 } from "@nostakes/protocol";
 import { Effect, Option, Redacted, Schema, pipe } from "effect";
-import * as FetchHttpClient from "effect/http/FetchHttpClient";
 
+import { harnessHttp } from "./fixtures/harness-http.js";
 import {
   appliedSeqs,
   codec,
@@ -208,7 +208,7 @@ test(
         expect(text.includes(Redacted.value(other.token))).toBe(false);
       }
     }
-  }).pipe(Effect.provide(FetchHttpClient.layer))
+  }).pipe(Effect.provide(harnessHttp))
 );
 
 test(
@@ -292,7 +292,7 @@ test(
       ...appliedSeqs(benFirst).filter((seq) => seq <= benCut),
       ...appliedSeqs(benSecond),
     ]).toEqual(expected);
-  }).pipe(Effect.provide(FetchHttpClient.layer))
+  }).pipe(Effect.provide(harnessHttp))
 );
 
 const COMMANDS_PER_CLIENT = 5;
@@ -396,7 +396,7 @@ test(
     for (const client of clients) {
       expect(eventLog(client)).toEqual(expected);
     }
-  }).pipe(Effect.provide(FetchHttpClient.layer)),
+  }).pipe(Effect.provide(harnessHttp)),
   { timeout: 60_000 }
 );
 
@@ -542,7 +542,7 @@ test(
     expect(after.headSeq).toBe(before.headSeq + 1);
     expect(after.events.filter((event) => event.includes("Wave"))).toEqual([]);
     expect(after.replies).toBe(before.replies + 1);
-  }).pipe(Effect.provide(FetchHttpClient.layer))
+  }).pipe(Effect.provide(harnessHttp))
 );
 
 test(
@@ -622,5 +622,5 @@ test(
     );
     expect(seenFrom("Ben")).toEqual(["Ben waves 9"]);
     expect(seenFrom("Cy")).toEqual(["Cy points", "Cy waves 10"]);
-  }).pipe(Effect.provide(FetchHttpClient.layer))
+  }).pipe(Effect.provide(harnessHttp))
 );

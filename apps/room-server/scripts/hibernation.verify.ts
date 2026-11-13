@@ -2,8 +2,8 @@ import * as Cloudflare from "@alchemy.run/cloudflare";
 import * as Test from "@alchemy.run/test/Vitest";
 import { PING_FRAME, PONG_FRAME } from "@nostakes/protocol";
 import { Console, Effect } from "effect";
-import * as FetchHttpClient from "effect/http/FetchHttpClient";
 
+import { harnessHttp } from "../test/fixtures/harness-http.js";
 import { HibernationLost } from "../test/fixtures/hibernation-lost.js";
 import {
   codec,
@@ -104,6 +104,6 @@ test(
     yield* kept
       ? Effect.void
       : new HibernationLost({ step: JSON.stringify(report) });
-  }).pipe(Effect.provide(FetchHttpClient.layer)),
+  }).pipe(Effect.provide(harnessHttp)),
   { timeout: 120_000 }
 );

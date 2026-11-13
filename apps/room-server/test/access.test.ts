@@ -30,7 +30,6 @@ import {
 } from "effect";
 import * as Base64Url from "effect/encoding/Base64Url";
 import * as Hex from "effect/encoding/Hex";
-import * as FetchHttpClient from "effect/http/FetchHttpClient";
 import * as HttpClient from "effect/http/HttpClient";
 import * as HttpClientRequest from "effect/http/HttpClientRequest";
 import type * as HttpClientResponse from "effect/http/HttpClientResponse";
@@ -44,6 +43,7 @@ import {
 } from "../src/room-rpc.js";
 import { REJECTIONS_KEPT_PER_SOCKET } from "../src/socket-attachment.js";
 import { roomAnalytics } from "./fixtures/analytics-checks.js";
+import { harnessHttp } from "./fixtures/harness-http.js";
 import {
   codec,
   command,
@@ -238,7 +238,7 @@ test(
     expect(after.events).toEqual(before.events);
     expect(after.replies).toBe(before.replies);
     expect(eventsOf(ben.client).filter(isEvent.TurnExpired).length).toBe(1);
-  }).pipe(Effect.provide(FetchHttpClient.layer))
+  }).pipe(Effect.provide(harnessHttp))
 );
 
 const ownSecrets = (client: RoomClient) =>
@@ -295,7 +295,7 @@ test(
     expect(
       new Set([...ownSecrets(ana.client), ...ownSecrets(ben.client)]).size
     ).toBe(6);
-  }).pipe(Effect.provide(FetchHttpClient.layer))
+  }).pipe(Effect.provide(harnessHttp))
 );
 
 test(
@@ -393,7 +393,7 @@ test(
       expect(frames.includes(secret)).toBe(false);
       expect(stored.includes(secret)).toBe(false);
     }
-  }).pipe(Effect.provide(FetchHttpClient.layer))
+  }).pipe(Effect.provide(harnessHttp))
 );
 
 const refusalOf = (response: HttpClientResponse.HttpClientResponse) =>
@@ -469,7 +469,7 @@ test(
     expect(full.status).toBe(409);
     expect(yield* refusalOf(full)).toEqual({ refusal: "RoomFull" });
     expect((yield* inspect(base, second.code)).members).toBe(MAX_MEMBERS);
-  }).pipe(Effect.provide(FetchHttpClient.layer))
+  }).pipe(Effect.provide(harnessHttp))
 );
 
 const paddedPing = (bytes: number) =>
@@ -535,7 +535,7 @@ test(
     expect(tooMany.reason).toBe("TooManyFrames");
     expect(pongs).toBeGreaterThanOrEqual(PLAYER_FRAME_ALLOWANCE.burst - 2);
     expect(pongs).toBeLessThan(flooded);
-  }).pipe(Effect.provide(FetchHttpClient.layer))
+  }).pipe(Effect.provide(harnessHttp))
 );
 
 type ToyEvents = typeof codec.server.cases.Events.Type;
@@ -621,7 +621,7 @@ test(
     expect(dealt.events[0]?._tag).toBe("StallCleared");
     expect(dealt.view.stalled).toStrictEqual(Option.none());
     expect(settled.alarmRuns.at(-1)?.outcome).toBe("Committed");
-  }).pipe(Effect.provide(FetchHttpClient.layer))
+  }).pipe(Effect.provide(harnessHttp))
 );
 
 test(
@@ -701,7 +701,7 @@ test(
       )
     );
     expect(stalled.faults.join(" ")).not.toContain("a private note");
-  }).pipe(Effect.provide(FetchHttpClient.layer))
+  }).pipe(Effect.provide(harnessHttp))
 );
 
 const SLOT_FLOOD = 64;
@@ -828,7 +828,7 @@ test(
       [...waiting, late],
       Effect.forEach((client) => client.disconnect)
     );
-  }).pipe(Effect.provide(FetchHttpClient.layer))
+  }).pipe(Effect.provide(harnessHttp))
 );
 
 const isClosingWith =
@@ -994,7 +994,7 @@ test(
       codec.server.cases.Closing.make({ reason: "TooManyFrames" })
     );
     expect(cyClosing.reason).toBe("TooManyFrames");
-  }).pipe(Effect.provide(FetchHttpClient.layer))
+  }).pipe(Effect.provide(harnessHttp))
 );
 
 const MARKED_NAME = "Nadia Markerworth";
@@ -1056,7 +1056,7 @@ test(
     expect(
       after.logged.every((line) => line.includes(`"room":"${keys[0]}"`))
     ).toBe(true);
-  }).pipe(Effect.provide(FetchHttpClient.layer))
+  }).pipe(Effect.provide(harnessHttp))
 );
 
 test(
@@ -1093,5 +1093,5 @@ test(
       silent,
       Effect.forEach((client) => client.disconnect)
     );
-  }).pipe(Effect.provide(FetchHttpClient.layer))
+  }).pipe(Effect.provide(harnessHttp))
 );

@@ -25,6 +25,7 @@ import {
   proofRecord,
 } from "../test/fixtures/fair-checks.js";
 import type { FairnessCountName, Proof } from "../test/fixtures/fair-checks.js";
+import { harnessHttp } from "../test/fixtures/harness-http.js";
 import {
   COUNT_NAMES,
   DEAF_REPLY_BOUND_MS,
@@ -47,7 +48,6 @@ import type {
 import { wallClock } from "../test/fixtures/poker-socket.js";
 import { PokerStack } from "../test/fixtures/poker-stack.js";
 import { inspect, refusedAlarms } from "../test/fixtures/stack.js";
-import { answeringAfterStalls } from "../test/fixtures/stale-sockets.js";
 import { funnelLines, funnelOf, groupPoints, healthLines } from "./funnel.ts";
 import { SoakHeapLimit } from "./soak-heap-limit.ts";
 
@@ -736,6 +736,6 @@ test(
           })
         )
       : Effect.void;
-  }).pipe(Effect.provide([answeringAfterStalls, NodeFileSystem.layer])),
+  }).pipe(Effect.provide([harnessHttp, NodeFileSystem.layer])),
   { timeout: VITEST_LIMIT_MS }
 );

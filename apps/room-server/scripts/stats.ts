@@ -11,12 +11,12 @@ import {
   Redacted,
   Schema,
 } from "effect";
-import * as FetchHttpClient from "effect/http/FetchHttpClient";
 import * as HttpClient from "effect/http/HttpClient";
 import * as HttpClientRequest from "effect/http/HttpClientRequest";
 
 import { datasetName } from "../src/measures.ts";
 import { SiteStageSchema } from "../src/site.ts";
+import { harnessHttp } from "../test/fixtures/harness-http.ts";
 import { credential } from "./cloudflare-credentials.ts";
 import {
   CountRowsSchema,
@@ -227,7 +227,7 @@ const report = Effect.gen(function* report() {
 const outcome = await Effect.runPromiseExit(
   report.pipe(
     Effect.tapError((stopped) => Console.error(stopped.message)),
-    Effect.provide(Layer.merge(NodeServices.layer, FetchHttpClient.layer))
+    Effect.provide(Layer.merge(NodeServices.layer, harnessHttp))
   )
 );
 

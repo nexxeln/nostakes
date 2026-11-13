@@ -2,8 +2,8 @@ import * as Cloudflare from "@alchemy.run/cloudflare";
 import * as Test from "@alchemy.run/test/Vitest";
 import { COMMANDS_PER_SECOND } from "@nostakes/protocol";
 import { Array as Arr, Console, Effect, Order, pipe } from "effect";
-import * as FetchHttpClient from "effect/http/FetchHttpClient";
 
+import { harnessHttp } from "../test/fixtures/harness-http.js";
 import {
   codec,
   command,
@@ -154,6 +154,6 @@ test(
         spacingMs: SPACING_MS,
       })
     );
-  }).pipe(Effect.scoped, Effect.provide(FetchHttpClient.layer)),
+  }).pipe(Effect.scoped, Effect.provide(harnessHttp)),
   { timeout: 300_000 }
 );

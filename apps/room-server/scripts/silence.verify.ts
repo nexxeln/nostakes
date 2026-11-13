@@ -6,8 +6,8 @@ import {
   SOCKET_SILENCE_LIMIT_MS,
 } from "@nostakes/protocol";
 import { Console, Effect, Option, Schedule } from "effect";
-import * as FetchHttpClient from "effect/http/FetchHttpClient";
 
+import { harnessHttp } from "../test/fixtures/harness-http.js";
 import {
   codec,
   isPresence,
@@ -92,6 +92,6 @@ test(
     yield* noticed
       ? Effect.void
       : new SilenceUnnoticed({ step: JSON.stringify(report) });
-  }).pipe(Effect.scoped, Effect.provide(FetchHttpClient.layer)),
+  }).pipe(Effect.scoped, Effect.provide(harnessHttp)),
   { timeout: 180_000 }
 );

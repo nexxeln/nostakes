@@ -16,7 +16,6 @@ import {
 } from "@nostakes/room";
 import type { MemberCommand, Shuffle } from "@nostakes/room";
 import { Effect, Option, Redacted, Schedule, Schema } from "effect";
-import * as FetchHttpClient from "effect/http/FetchHttpClient";
 
 import { DEFAULT_SETTINGS } from "../src/poker-room.js";
 import type { Temper } from "./fixtures/bot.js";
@@ -33,6 +32,7 @@ import {
   standingsProblems,
   unfinishedHand,
 } from "./fixtures/halted-standings.js";
+import { harnessHttp } from "./fixtures/harness-http.js";
 import type { NightEnding } from "./fixtures/night-checks.js";
 import {
   judgeNight,
@@ -346,7 +346,7 @@ test(
     expect(total((counts) => counts.peeksWithoutCards)).toBeGreaterThan(0);
     expect(total((counts) => counts.clientSignalsSent)).toBeGreaterThan(0);
     expect(total((counts) => counts.clientSignalsHeard)).toBeGreaterThan(0);
-  }).pipe(Effect.provide(FetchHttpClient.layer)),
+  }).pipe(Effect.provide(harnessHttp)),
   { timeout: 120_000 }
 );
 
@@ -553,6 +553,6 @@ test(
     expect(
       ledger.map(({ net }) => net).toSorted((left, right) => left - right)
     ).toEqual([-1, 1]);
-  }).pipe(Effect.provide(FetchHttpClient.layer)),
+  }).pipe(Effect.provide(harnessHttp)),
   { timeout: 60_000 }
 );

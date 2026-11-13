@@ -6,7 +6,6 @@ import type { ReplyResult } from "@nostakes/client";
 import { RoomCodeSchema } from "@nostakes/protocol";
 import type { RoomCode } from "@nostakes/protocol";
 import { Clock, Effect, Fiber, Option, Redacted, Schema, pipe } from "effect";
-import * as FetchHttpClient from "effect/http/FetchHttpClient";
 
 import {
   appliedSeqs,
@@ -19,6 +18,7 @@ import {
   wrongToken,
 } from "./client-harness.js";
 import type { Player, ToyClientTypes } from "./client-harness.js";
+import { harnessHttp } from "./fixtures/harness-http.js";
 import { openRoomWith } from "./fixtures/room-client.js";
 import { inspect, restart, ToyStack } from "./fixtures/stack.js";
 import { ToyEventSchema, ToyRedactedSchema } from "./fixtures/toy-room.js";
@@ -84,7 +84,7 @@ test(
     );
 
     yield* ana.client.stop;
-  }).pipe(Effect.scoped, Effect.provide(FetchHttpClient.layer))
+  }).pipe(Effect.scoped, Effect.provide(harnessHttp))
 );
 
 const COMMANDS_PER_CLIENT = 24;
@@ -226,7 +226,7 @@ test(
     expect(
       players.reduce((opened, player) => opened + player.wire.opened(), 0)
     ).toBeGreaterThanOrEqual(players.length + KILLS);
-  }).pipe(Effect.scoped, Effect.provide(FetchHttpClient.layer)),
+  }).pipe(Effect.scoped, Effect.provide(harnessHttp)),
   { timeout: 90_000 }
 );
 
@@ -270,7 +270,7 @@ test(
     for (const player of players) {
       expect(player.wire.opened()).toBeGreaterThanOrEqual(3);
     }
-  }).pipe(Effect.scoped, Effect.provide(FetchHttpClient.layer)),
+  }).pipe(Effect.scoped, Effect.provide(harnessHttp)),
   { timeout: 90_000 }
 );
 
@@ -312,7 +312,7 @@ test(
     expect(new Set(replyFrames).size).toBe(1);
 
     yield* ana.client.stop;
-  }).pipe(Effect.scoped, Effect.provide(FetchHttpClient.layer))
+  }).pipe(Effect.scoped, Effect.provide(harnessHttp))
 );
 
 test(
@@ -365,7 +365,7 @@ test(
     expect(impostor.wire.opened()).toBe(1);
     expect(lost.wire.opened()).toBe(1);
     expect(late._tag).toBe("ClientRefused");
-  }).pipe(Effect.scoped, Effect.provide(FetchHttpClient.layer))
+  }).pipe(Effect.scoped, Effect.provide(harnessHttp))
 );
 
 const isSecretDealt = ToyRedactedSchema.guards.SecretDealt;
@@ -462,7 +462,7 @@ test(
 
       yield* player.client.stop;
     }
-  }).pipe(Effect.scoped, Effect.provide(FetchHttpClient.layer))
+  }).pipe(Effect.scoped, Effect.provide(harnessHttp))
 );
 
 const WAKE_BOUND_MS = 4000;
@@ -499,5 +499,5 @@ test(
     expect(reply._tag).toBe("Accepted");
 
     yield* ana.client.stop;
-  }).pipe(Effect.scoped, Effect.provide(FetchHttpClient.layer))
+  }).pipe(Effect.scoped, Effect.provide(harnessHttp))
 );

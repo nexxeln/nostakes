@@ -3,8 +3,8 @@ import * as Test from "@alchemy.run/test/Vitest";
 import { expect } from "@effect/vitest";
 import { CLOSE_CODES } from "@nostakes/protocol";
 import { Effect, Option } from "effect";
-import * as FetchHttpClient from "effect/http/FetchHttpClient";
 
+import { harnessHttp } from "./fixtures/harness-http.js";
 import { joinAs, openRoomWith, post } from "./fixtures/room-client.js";
 import { BriefStack, inspect, restart } from "./fixtures/stack.js";
 
@@ -51,6 +51,6 @@ test(
       [],
     ]);
     expect(late.status).toBe(404);
-  }).pipe(Effect.provide(FetchHttpClient.layer)),
+  }).pipe(Effect.provide(harnessHttp)),
   { timeout: 30_000 }
 );

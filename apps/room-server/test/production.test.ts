@@ -27,13 +27,13 @@ import {
   Schema,
   pipe,
 } from "effect";
-import * as FetchHttpClient from "effect/http/FetchHttpClient";
 import * as HttpClient from "effect/http/HttpClient";
 import * as HttpClientRequest from "effect/http/HttpClientRequest";
 
 import { ADDRESS_LIMITS } from "../src/address-limits.js";
 import { DEFAULT_SETTINGS, MemberCommandSchema } from "../src/poker-room.js";
 import type { MemberCommand } from "../src/poker-room.js";
+import { harnessHttp } from "./fixtures/harness-http.js";
 import {
   createPokerRoom,
   joinPokerRoom,
@@ -203,7 +203,7 @@ test(
 
     yield* ana.socket.disconnect;
     yield* ben.socket.disconnect;
-  }).pipe(Effect.provide(FetchHttpClient.layer)),
+  }).pipe(Effect.provide(harnessHttp)),
   { timeout: 60_000 }
 );
 
@@ -255,7 +255,7 @@ test(
       ],
       second: anaPass.code,
     });
-  }).pipe(Effect.provide(FetchHttpClient.layer)),
+  }).pipe(Effect.provide(harnessHttp)),
   { timeout: 60_000 }
 );
 
@@ -331,7 +331,7 @@ test(
 
     yield* ana.socket.disconnect;
     yield* again.disconnect;
-  }).pipe(Effect.provide(FetchHttpClient.layer)),
+  }).pipe(Effect.provide(harnessHttp)),
   { timeout: 60_000 }
 );
 
@@ -387,7 +387,7 @@ test(
     });
 
     yield* ana.socket.disconnect;
-  }).pipe(Effect.provide(FetchHttpClient.layer)),
+  }).pipe(Effect.provide(harnessHttp)),
   { timeout: 60_000 }
 );
 
@@ -524,7 +524,7 @@ test(
 
     yield* ana.socket.disconnect;
     yield* inside.socket.disconnect;
-  }).pipe(Effect.provide(FetchHttpClient.layer)),
+  }).pipe(Effect.provide(harnessHttp)),
   { timeout: 60_000 }
 );
 
@@ -738,7 +738,7 @@ test(
     for (const { socket } of players) {
       yield* socket.disconnect;
     }
-  }).pipe(Effect.provide(FetchHttpClient.layer)),
+  }).pipe(Effect.provide(harnessHttp)),
   { timeout: 60_000 }
 );
 
@@ -810,7 +810,7 @@ test(
     });
 
     yield* ana.socket.disconnect;
-  }).pipe(Effect.provide(FetchHttpClient.layer)),
+  }).pipe(Effect.provide(harnessHttp)),
   { timeout: 60_000 }
 );
 
@@ -932,7 +932,7 @@ test(
 
     yield* cy.socket.disconnect;
     yield* benBack.socket.disconnect;
-  }).pipe(Effect.provide(FetchHttpClient.layer)),
+  }).pipe(Effect.provide(harnessHttp)),
   { timeout: 60_000 }
 );
 
@@ -982,7 +982,7 @@ test(
       Option.some({ refusal: "TooManyRequests", retryAfterSeconds: 60 })
     );
     expect(elsewhere.status).toBe(201);
-  }).pipe(Effect.provide(FetchHttpClient.layer)),
+  }).pipe(Effect.provide(harnessHttp)),
   { timeout: 60_000 }
 );
 
@@ -1039,6 +1039,6 @@ test(
       code: CLOSE_CODES.TooManySockets,
       reason: "TooManySockets",
     });
-  }).pipe(Effect.provide(FetchHttpClient.layer)),
+  }).pipe(Effect.provide(harnessHttp)),
   { timeout: 60_000 }
 );

@@ -81,6 +81,26 @@ export default defineConfig({
     ...foldkitOverrides,
     {
       files: [
+        "apps/room-server/test/**/*.ts",
+        "apps/room-server/scripts/**/*.ts",
+      ],
+      rules: {
+        "no-restricted-imports": [
+          "error",
+          {
+            paths: [
+              {
+                message:
+                  "Provide harnessHttp from apps/room-server/test/fixtures/harness-http.ts. It opens a fresh connection per request, so a request after the event loop was blocked never lands on a socket workerd closed meanwhile.",
+                name: "effect/http/FetchHttpClient",
+              },
+            ],
+          },
+        ],
+      },
+    },
+    {
+      files: [
         "**/*.{test,spec,test-d,spec-d}.{ts,tsx,js,jsx,mts,cts,mjs,cjs}",
         "**/__tests__/**/*.{ts,tsx,js,jsx,mts,cts,mjs,cjs}",
       ],

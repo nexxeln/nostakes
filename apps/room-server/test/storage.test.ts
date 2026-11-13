@@ -3,8 +3,8 @@ import * as Test from "@alchemy.run/test/Vitest";
 import { expect } from "@effect/vitest";
 import { SeqSchema } from "@nostakes/protocol";
 import { Effect, Option } from "effect";
-import * as FetchHttpClient from "effect/http/FetchHttpClient";
 
+import { harnessHttp } from "./fixtures/harness-http.js";
 import {
   codec,
   command,
@@ -91,7 +91,7 @@ test(
     expect(
       ana.client.messages.filter(isEvents).map(({ from, to }) => [from, to])
     ).toEqual([[before.headSeq + 1, before.headSeq + 1]]);
-  }).pipe(Effect.provide(FetchHttpClient.layer))
+  }).pipe(Effect.provide(harnessHttp))
 );
 
 test(
@@ -152,7 +152,7 @@ test(
     expect((yield* inspect(base, anaPass.code)).seqs).toEqual(
       contiguous(before.headSeq + 1)
     );
-  }).pipe(Effect.provide(FetchHttpClient.layer))
+  }).pipe(Effect.provide(harnessHttp))
 );
 
 const replyText = (client: RoomClient, id: string) =>
@@ -219,7 +219,7 @@ test(
     expect(final.headSeq).toBe(4);
     expect(final.seqs).toEqual(contiguous(4));
     expect(second.welcome.view.count).toBe(1);
-  }).pipe(Effect.provide(FetchHttpClient.layer))
+  }).pipe(Effect.provide(harnessHttp))
 );
 
 test(
@@ -283,7 +283,7 @@ test(
     );
 
     expect(refused.status).toBe(410);
-  }).pipe(Effect.provide(FetchHttpClient.layer))
+  }).pipe(Effect.provide(harnessHttp))
 );
 
 test(
@@ -324,5 +324,5 @@ test(
       memoryMatchesLog: true,
       seqs: [...contiguous(before.headSeq - 2), before.headSeq],
     });
-  }).pipe(Effect.provide(FetchHttpClient.layer))
+  }).pipe(Effect.provide(harnessHttp))
 );

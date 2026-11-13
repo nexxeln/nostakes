@@ -37,9 +37,10 @@ import {
   Schema,
   Stream,
 } from "effect";
-import * as FetchHttpClient from "effect/http/FetchHttpClient";
 import * as HttpClient from "effect/http/HttpClient";
 import * as HttpClientRequest from "effect/http/HttpClientRequest";
+
+import { harnessHttp } from "../test/fixtures/harness-http.ts";
 
 interface SmokeTypes {
   readonly Command: MemberCommand;
@@ -462,7 +463,7 @@ const outcome = await Effect.runPromiseExit(
   smoke.pipe(
     Effect.scoped,
     Effect.tapError((failure) => Console.error(failure.message)),
-    Effect.provide(FetchHttpClient.layer)
+    Effect.provide(harnessHttp)
   )
 );
 

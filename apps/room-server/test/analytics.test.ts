@@ -3,7 +3,6 @@ import * as Test from "@alchemy.run/test/Vitest";
 import { expect } from "@effect/vitest";
 import { RoomCodeSchema } from "@nostakes/protocol";
 import { Effect, Option } from "effect";
-import * as FetchHttpClient from "effect/http/FetchHttpClient";
 import * as HttpClient from "effect/http/HttpClient";
 import * as HttpClientRequest from "effect/http/HttpClientRequest";
 
@@ -13,6 +12,7 @@ import { REPORTS_ROUTE } from "../src/room-routes.js";
 import { roomAnalytics, siteAnalytics } from "./fixtures/analytics-checks.js";
 import type { Temper } from "./fixtures/bot.js";
 import type { ClientTemper } from "./fixtures/client-bot.js";
+import { harnessHttp } from "./fixtures/harness-http.js";
 import {
   judgeNight,
   openNight,
@@ -121,7 +121,7 @@ test(
     ).toEqual([]);
     expect(new Set(points.map(({ point }) => point.indexes[0])).size).toBe(1);
     expect(points[0]?.point.indexes[0]).toMatch(/^[0-9a-f]{16}$/u);
-  }).pipe(Effect.provide(FetchHttpClient.layer))
+  }).pipe(Effect.provide(harnessHttp))
 );
 
 test(
@@ -160,7 +160,7 @@ test(
         indexes: ["site"],
       },
     ]);
-  }).pipe(Effect.provide(FetchHttpClient.layer))
+  }).pipe(Effect.provide(harnessHttp))
 );
 
 const openWith = (base: string, seed: number, mode: AnalyticsMode) =>
@@ -226,6 +226,6 @@ test(
       failing.inspection.faults.filter((fault) => fault === ANALYTICS_FAULT)
     ).toEqual([ANALYTICS_FAULT]);
     expect(hanging.inspection.faults).toEqual([]);
-  }).pipe(Effect.provide(FetchHttpClient.layer)),
+  }).pipe(Effect.provide(harnessHttp)),
   { timeout: 120_000 }
 );

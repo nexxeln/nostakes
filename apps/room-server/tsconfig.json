@@ -7,6 +7,7 @@
         "name": "@effect/language-service",
         "allowedUnstableApis": [
           "@effect/platform-node/NodeFileSystem",
+          "@effect/platform-node/NodeHttpClient",
           "@effect/platform-node/NodeServices",
           "@effect/vitest",
           "effect/Arbitrary",
@@ -14,7 +15,6 @@
           "effect/http/FetchHttpClient",
           "effect/http/HttpBody",
           "effect/http/HttpClient",
-          "effect/http/HttpClientError",
           "effect/http/HttpClientRequest",
           "effect/http/HttpClientResponse",
           "effect/http/HttpRouter",
