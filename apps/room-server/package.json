@@ -13,16 +13,16 @@
     "verify": "vitest run --config vitest.verify.config.ts --silent=false"
   },
   "dependencies": {
-    "@alchemy.run/cloudflare": "2.0.0-beta.85",
+    "@alchemy.run/cloudflare": "2.0.0-beta.87",
     "@nostakes/engine": "workspace:*",
     "@nostakes/protocol": "workspace:*",
     "@nostakes/room": "workspace:*",
     "@nostakes/shuffle": "workspace:*",
-    "alchemy": "2.0.0-beta.85",
+    "alchemy": "2.0.0-beta.87",
     "effect": "4.1.4"
   },
   "devDependencies": {
-    "@alchemy.run/test": "2.0.0-beta.85",
+    "@alchemy.run/test": "2.0.0-beta.87",
     "@cloudflare/workers-types": "5.20261112.1",
     "@effect/platform-node": "4.1.4",
     "@effect/vitest": "4.1.4",
