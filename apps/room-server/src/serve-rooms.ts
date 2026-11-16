@@ -9,7 +9,7 @@ import type { Recorder } from "./analytics.js";
 import { liveEntropy } from "./entropy.js";
 import FeedbackBox from "./feedback-box.js";
 import { feedbackRoutes } from "./feedback-routes.js";
-import { FEEDBACK_SECRET } from "./feedback.js";
+import { FEEDBACK_SECRET } from "./feedback-wire.js";
 import { SITE_SCOPE } from "./measures.js";
 import PokerRoom from "./poker-room-object.js";
 import { roomRoutes } from "./room-routes.js";

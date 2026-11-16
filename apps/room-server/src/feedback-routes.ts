@@ -8,20 +8,19 @@ import * as HttpServerResponse from "effect/http/HttpServerResponse";
 import { tooManyRequests } from "./address-limits.js";
 import { FEEDBACK_BOX_NAME } from "./feedback-box.js";
 import {
+  FEEDBACK_READ_ROUTE,
+  FEEDBACK_ROUTE,
   FeedbackPageSchema,
-  holdsSecret,
-  noteFrom,
-  readFrom,
-} from "./feedback.js";
-import type { FeedbackNoteSchema, FeedbackReadSchema } from "./feedback.js";
+} from "./feedback-wire.js";
+import type {
+  FeedbackNoteSchema,
+  FeedbackReadSchema,
+} from "./feedback-wire.js";
+import { holdsSecret, noteFrom, readFrom } from "./feedback.js";
 import { measure } from "./measures.js";
 import { refuse } from "./room-object.js";
 import { routeGuards } from "./route-guards.js";
 import type { RouteGuardOptions } from "./route-guards.js";
-
-export const FEEDBACK_ROUTE = "/rooms/feedback";
-
-export const FEEDBACK_READ_ROUTE = "/rooms/feedback/read";
 
 export interface FeedbackStub {
   readonly keep: (

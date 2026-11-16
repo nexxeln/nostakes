@@ -31,8 +31,11 @@ import * as HttpClient from "effect/http/HttpClient";
 import * as HttpClientRequest from "effect/http/HttpClientRequest";
 
 import { ADDRESS_LIMITS } from "../src/address-limits.js";
-import { FEEDBACK_READ_ROUTE, FEEDBACK_ROUTE } from "../src/feedback-routes.js";
-import { FeedbackPageSchema } from "../src/feedback.js";
+import {
+  FEEDBACK_READ_ROUTE,
+  FEEDBACK_ROUTE,
+  FeedbackPageSchema,
+} from "../src/feedback-wire.js";
 import { DEFAULT_SETTINGS, MemberCommandSchema } from "../src/poker-room.js";
 import type { MemberCommand } from "../src/poker-room.js";
 import { harnessHttp } from "./fixtures/harness-http.js";

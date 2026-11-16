@@ -7,13 +7,10 @@ import * as HttpServerRequest from "effect/http/HttpServerRequest";
 import * as HttpServerResponse from "effect/http/HttpServerResponse";
 
 import { unlimited } from "../src/address-limits.js";
-import {
-  FEEDBACK_READ_ROUTE,
-  FEEDBACK_ROUTE,
-  feedbackRoutes,
-} from "../src/feedback-routes.js";
+import { feedbackRoutes } from "../src/feedback-routes.js";
 import type { FeedbackNamespace } from "../src/feedback-routes.js";
-import type { FeedbackNoteSchema } from "../src/feedback.js";
+import { FEEDBACK_READ_ROUTE, FEEDBACK_ROUTE } from "../src/feedback-wire.js";
+import type { FeedbackNoteSchema } from "../src/feedback-wire.js";
 import { measure, SITE_SCOPE, pointOf } from "../src/measures.js";
 import { memoryAnalytics } from "./fixtures/test-analytics.js";
 

@@ -7,7 +7,7 @@ import {
   FeedbackReadSchema,
   MOST_NOTES_KEPT,
   NOTES_PER_READ,
-} from "./feedback.js";
+} from "./feedback-wire.js";
 
 export const FEEDBACK_BOX_NAME = "feedback";
 
