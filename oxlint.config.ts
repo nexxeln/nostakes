@@ -46,7 +46,7 @@ const foldkitOverrides = [
 export default defineConfig({
   extends: [core],
   ignorePatterns: [
-    ...(core.ignorePatterns ?? []),
+    ...core.ignorePatterns,
     "**/dist/**",
     "node_modules/**",
     ".claude/**",
