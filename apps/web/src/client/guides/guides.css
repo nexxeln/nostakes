@@ -19,8 +19,23 @@
 .guide-page dl {
   margin: 0;
   display: grid;
-  grid-template-columns: auto 1fr;
-  gap: var(--space-1) var(--space-3);
+  grid-template-columns: 1fr;
+  gap: 0 var(--space-3);
+}
+
+.guide-page dd + dt {
+  margin-top: var(--space-2);
+}
+
+@media (min-width: 40rem) {
+  .guide-page dl {
+    grid-template-columns: minmax(9rem, max-content) 1fr;
+    gap: var(--space-1) var(--space-3);
+  }
+
+  .guide-page dd + dt {
+    margin-top: 0;
+  }
 }
 
 .guide-page dt {
