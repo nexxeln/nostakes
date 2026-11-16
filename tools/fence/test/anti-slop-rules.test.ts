@@ -23,6 +23,14 @@ interface Case {
 const cases: readonly Case[] = [
   {
     accepted:
+      'export const rank = (s: string) => (s === "a" ? 1 : s === "b" ? 2 : 3);\n',
+    file: "fixture.ts",
+    rejected:
+      'export const rank = (s: string) => (s === "a" ? 1 : s === "b" ? 2 : s === "c" ? 3 : 4);\n',
+    rule: "anti-slop/max-ternary-depth",
+  },
+  {
+    accepted:
       "export const f = (xs: number[]) => xs.flatMap((x) => (x > 1 ? [x * 2] : []));\n",
     file: "fixture.ts",
     rejected:
