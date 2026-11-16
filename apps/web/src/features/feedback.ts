@@ -39,7 +39,7 @@ export const feedbackLink = (h: H, className: string): Html =>
   );
 
 const SENDS =
-  "Sends your note with your browser, screen size, and which screen you were on.";
+  "We also get your browser, screen size, and which screen you were on. Never your name or your room.";
 
 const writing = (sheet: FeedbackSheet, h: H): readonly Html[] => {
   const sending = FeedbackStages.guards.Sending(sheet.stage);
@@ -51,7 +51,9 @@ const writing = (sheet: FeedbackSheet, h: H): readonly Html[] => {
       [
         h.label(
           [h.Class("field-label"), h.For("feedback-note")],
-          ["What broke, or what did you like?"]
+          [
+            "Tell us what broke, what felt off, or what you loved. Missing a rule your group plays? Tell us that too.",
+          ]
         ),
         h.textarea([
           h.Id("feedback-note"),
@@ -59,6 +61,7 @@ const writing = (sheet: FeedbackSheet, h: H): readonly Html[] => {
           h.Value(sheet.note),
           h.Maxlength(MAX_NOTE_LENGTH),
           h.Rows(5),
+          h.Placeholder("The chip drag felt slow on my phone…"),
           h.DataAttribute("modal-focus", "note"),
           h.Disabled(sending),
           h.OnInput((value) => Messages.ChangedFeedback({ value })),
@@ -91,10 +94,10 @@ const writing = (sheet: FeedbackSheet, h: H): readonly Html[] => {
   ];
 };
 
-const thanked = (h: H): readonly Html[] => [
+const thanked = (h: H, atTable: boolean): readonly Html[] => [
   h.p(
     [h.Class("feedback-thanks"), h.Role("status")],
-    ["Thanks. We read every note."]
+    ["Every note gets read. Thanks for playing."]
   ),
   h.button(
     [
@@ -103,7 +106,7 @@ const thanked = (h: H): readonly Html[] => [
       h.DataAttribute("modal-focus", "done"),
       h.OnClick(Messages.ClosedSheet()),
     ],
-    ["Done"]
+    [atTable ? "Back to the table" : "Done"]
   ),
 ];
 
@@ -112,6 +115,8 @@ export const feedbackSheet = (model: Model, h: H): Html =>
     onNone: () => h.empty,
     onSome: (sheet) => {
       const modal = modalElement.withMessage(h);
+      const sent = FeedbackStages.guards.Sent(sheet.stage);
+      const atTable = feedbackScreen(model) === "Room";
 
       return modal(
         [
@@ -121,10 +126,14 @@ export const feedbackSheet = (model: Model, h: H): Html =>
         ],
         [
           sheetLayer(h, "Feedback", "feedback-sheet", [
-            sheetTop(h, h.h2([h.Class("sheet-title")], ["Send feedback"])),
-            ...(FeedbackStages.guards.Sent(sheet.stage)
-              ? thanked(h)
-              : writing(sheet, h)),
+            sheetTop(
+              h,
+              h.h2(
+                [h.Class("sheet-title")],
+                [sent ? "Got it." : "How's the table?"]
+              )
+            ),
+            ...(sent ? thanked(h, atTable) : writing(sheet, h)),
           ]),
         ]
       );
