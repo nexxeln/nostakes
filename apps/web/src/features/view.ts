@@ -4,6 +4,7 @@ import type { Document, Html, HtmlBuilder } from "foldkit/html";
 
 import { learnLink, themeSwitch, wordmark } from "./chrome.js";
 import { face, faceSheet } from "./face-builder.js";
+import { feedbackLink, feedbackSheet } from "./feedback.js";
 import { landingView } from "./landing/view.js";
 import { Messages } from "./message.js";
 import type { Message } from "./message.js";
@@ -164,6 +165,7 @@ const readingLinks = (h: H): Html =>
       learnLink(h),
       h.a([h.Href("/privacy")], ["Privacy"]),
       h.a([h.Href("/terms")], ["Terms"]),
+      feedbackLink(h, "link-button"),
     ]
   );
 
@@ -330,17 +332,29 @@ export const view = (model: Model, h: H): Document => ({
     Home: ({ busy, problem }) =>
       h.div(
         [h.Class("screen")],
-        [homeView(model, busy, problem, h), faceSheetOf(model, h)]
+        [
+          homeView(model, busy, problem, h),
+          faceSheetOf(model, h),
+          feedbackSheet(model, h),
+        ]
       ),
     Invited: ({ busy, code, problem }) =>
       h.div(
         [h.Class("screen")],
-        [invitedView(model, code, busy, problem, h), faceSheetOf(model, h)]
+        [
+          invitedView(model, code, busy, problem, h),
+          faceSheetOf(model, h),
+          feedbackSheet(model, h),
+        ]
       ),
     Room: ({ room }) =>
       h.div(
         [h.Class("screen")],
-        [roomView(model, room, h), faceSheetOf(model, h)]
+        [
+          roomView(model, room, h),
+          faceSheetOf(model, h),
+          feedbackSheet(model, h),
+        ]
       ),
     Welcome: () => h.div([h.Class("screen")], [landingView(model, h)]),
   }),

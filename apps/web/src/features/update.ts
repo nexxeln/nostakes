@@ -33,6 +33,7 @@ import {
   ApplyDeck,
   ApplyTheme,
   SaveCounting,
+  SendFeedback,
   SendReport,
   CheckRoom,
   CopyRoomLink,
@@ -69,6 +70,12 @@ import {
   stillWaiting,
 } from "./door.js";
 import { PART_LABELS, stepped, toldOf } from "./face/parts.js";
+import {
+  enteredNote,
+  FeedbackStages,
+  freshFeedback,
+} from "./feedback-sheet.js";
+import { feedbackScreen } from "./feedback.js";
 import { haltedText } from "./halted.js";
 import { heirOf } from "./handover.js";
 import { BRAND_LINE, INVITE_PREVIEW } from "./link-preview.js";
@@ -233,6 +240,7 @@ export const init = (flags: Flags): Return => {
     deck: flags.deck,
     faceDraft: Option.none(),
     faceHolding: false,
+    feedback: Option.none(),
     faceLearned: false,
     faceMood: "Resting" as const,
     facePart: "species" as const,
@@ -1504,6 +1512,18 @@ export const update = (model: Model, message: Message): Return =>
         ...room,
         drafts: { ...room.drafts, [field]: value },
       })),
+    ChangedFeedback: ({ value }) => ({
+      model: {
+        ...model,
+        feedback: model.feedback.pipe(
+          Option.map((sheet) =>
+            FeedbackStages.guards.Sending(sheet.stage)
+              ? sheet
+              : { note: value, stage: FeedbackStages.Writing() }
+          )
+        ),
+      },
+    }),
     ChangedJoinCode: ({ value }) => ({
       model: { ...model, joinCode: value.toUpperCase() },
     }),
@@ -1626,6 +1646,14 @@ export const update = (model: Model, message: Message): Return =>
         )
       ),
     }),
+    ClickedFeedback: () => {
+      const closed = editRoom(model, (room) => ({ ...room, menu: false }));
+
+      return {
+        ...closed,
+        model: { ...closed.model, feedback: Option.some(freshFeedback) },
+      };
+    },
     ClickedFairness: () =>
       editRoom(model, (room) => ({ ...room, fairnessOpen: true })),
     ClickedHome: () =>
@@ -1749,19 +1777,22 @@ export const update = (model: Model, message: Message): Return =>
 
       return {
         ...flushed,
-        model: editRoom(flushed.model, (room) => ({
-          ...room,
-          addingChips: false,
-          confirm: Option.none(),
-          drafts: { ...room.drafts, seat: Option.none() },
-          fairnessOpen: false,
-          heir: Option.none(),
-          member: Option.none(),
-          menu: false,
-          picked: Option.none(),
-          rules: Option.none(),
-          setup: Option.none(),
-        })).model,
+        model: editRoom(
+          { ...flushed.model, feedback: Option.none() },
+          (room) => ({
+            ...room,
+            addingChips: false,
+            confirm: Option.none(),
+            drafts: { ...room.drafts, seat: Option.none() },
+            fairnessOpen: false,
+            heir: Option.none(),
+            member: Option.none(),
+            menu: false,
+            picked: Option.none(),
+            rules: Option.none(),
+            setup: Option.none(),
+          })
+        ).model,
       };
     },
     CompletedCopy: ({ copied }) =>
@@ -1847,6 +1878,17 @@ export const update = (model: Model, message: Message): Return =>
     },
     KnockedAtRoom: (knocked) => knockedAt(model, knocked),
     LetInside: () => letInside(model),
+    MissedFeedback: ({ reason }) => ({
+      model: {
+        ...model,
+        feedback: model.feedback.pipe(
+          Option.map((sheet) => ({
+            ...sheet,
+            stage: FeedbackStages.Failed({ reason }),
+          }))
+        ),
+      },
+    }),
     MissedKnock: ({ reason }) =>
       editRoom(model, (room) => ({
         ...room,
@@ -1957,6 +1999,14 @@ export const update = (model: Model, message: Message): Return =>
       editRoom(model, (room) => ({ ...room, connected: false })),
     ScrolledToTop: () => ({ model }),
     ScrubbedFacePart: ({ by, part }) => scrubFacePart(model, part, by),
+    SentFeedback: () => ({
+      model: {
+        ...model,
+        feedback: model.feedback.pipe(
+          Option.map(() => ({ note: "", stage: FeedbackStages.Sent() }))
+        ),
+      },
+    }),
     SentSignal: ({ at, sent, signal }) =>
       sent && RoomSignalSchema.guards.Reaction(signal)
         ? inRoom(model, (room) => ({
@@ -1984,6 +2034,36 @@ export const update = (model: Model, message: Message): Return =>
     ShuffledFace: ({ avatar }) =>
       wearFace(model, { avatar, shuffled: true, told: "A new face" }),
     StartedReload: () => ({ model }),
+    SubmittedFeedback: () =>
+      Option.match(
+        model.feedback.pipe(
+          Option.filter(
+            (sheet) =>
+              !FeedbackStages.guards.Sending(sheet.stage) &&
+              !FeedbackStages.guards.Sent(sheet.stage) &&
+              enteredNote(sheet.note).length > 0
+          )
+        ),
+        {
+          onNone: () => ({ model }),
+          onSome: (sheet) => ({
+            commands: [
+              SendFeedback({
+                build: reportBuild(model),
+                note: enteredNote(sheet.note),
+                screen: feedbackScreen(model),
+              }),
+            ],
+            model: {
+              ...model,
+              feedback: Option.some({
+                ...sheet,
+                stage: FeedbackStages.Sending(),
+              }),
+            },
+          }),
+        }
+      ),
     SubmittedCreate: () => {
       const name = enteredName(model.profile.name);
 

@@ -30,6 +30,12 @@ import * as HttpClientRequest from "effect/http/HttpClientRequest";
 import { Command, Navigation } from "foldkit";
 
 import { pauseText } from "../features/door.js";
+import {
+  FEEDBACK_PATH,
+  FeedbackNoteSchema,
+  FeedbackScreenSchema,
+  sentAgent,
+} from "../features/feedback-sheet.js";
 import { Messages, ReplyOutcomes } from "../features/message.js";
 import {
   CopiedSchema,
@@ -652,6 +658,80 @@ export const SendReport = Command.define("SendReport", {
         : Effect.void
     ).pipe(Effect.as(Messages.CompletedPreference())),
   messages: [Messages.CompletedPreference],
+});
+
+const encodeFeedback = Schema.encodeSync(
+  Schema.fromJsonString(FeedbackNoteSchema)
+);
+
+const feedbackRefusalText = (refusal: typeof HttpRefusalSchema.Type) =>
+  Match.value(refusal).pipe(
+    Match.when(
+      { refusal: "BadRequest" },
+      () => "The server could not read that note."
+    ),
+    Match.when(
+      { refusal: "BodyTooLarge" },
+      () => "That note is too long to send. Make it shorter."
+    ),
+    Match.orElse(refusalText)
+  );
+
+const feedbackFailure = (
+  status: number,
+  refused: Option.Option<typeof HttpRefusalSchema.Type>
+) =>
+  Option.match(refused, {
+    onNone: () => `The server could not take the note (${status}). Try again.`,
+    onSome: feedbackRefusalText,
+  });
+
+export const SendFeedback = Command.define("SendFeedback", {
+  args: {
+    build: Schema.String,
+    note: Schema.String,
+    screen: FeedbackScreenSchema,
+  },
+  execute: ({ build, note, screen }) =>
+    Effect.suspend(() =>
+      HttpClientRequest.post(
+        new URL(FEEDBACK_PATH, globalThis.location.href)
+      ).pipe(
+        HttpClientRequest.bodyText(
+          encodeFeedback({
+            agent: sentAgent(globalThis.navigator.userAgent),
+            build,
+            height: Math.round(globalThis.innerHeight),
+            note,
+            screen,
+            width: Math.round(globalThis.innerWidth),
+          }),
+          "application/json"
+        ),
+        HttpClient.execute,
+        Effect.mapError(
+          () => "The note did not reach the server. Check your connection."
+        ),
+        Effect.flatMap((response) =>
+          response.status === 204
+            ? Effect.succeed(Messages.SentFeedback())
+            : response.json.pipe(
+                Effect.map(Schema.decodeUnknownOption(HttpRefusalSchema)),
+                Effect.orElseSucceed(() => Option.none()),
+                Effect.flatMap((refused) =>
+                  Effect.fail(feedbackFailure(response.status, refused))
+                )
+              )
+        ),
+        Effect.provide(FetchHttpClient.layer)
+      )
+    ).pipe(
+      Effect.match({
+        onFailure: (reason) => Messages.MissedFeedback({ reason }),
+        onSuccess: (sent) => sent,
+      })
+    ),
+  messages: [Messages.SentFeedback, Messages.MissedFeedback],
 });
 
 export const SaveSound = Command.define("SaveSound", {

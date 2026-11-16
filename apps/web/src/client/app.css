@@ -1846,9 +1846,15 @@ button.person {
 
 .menu-foot-end {
   display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
   align-items: center;
   gap: var(--space-1);
   margin-left: auto;
+}
+
+.menu-foot-end > * {
+  white-space: nowrap;
 }
 
 .text-button {
@@ -2371,4 +2377,37 @@ a.text-button {
 .segments.heirs {
   flex-wrap: wrap;
   margin-left: 0;
+}
+
+.link-button {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.feedback-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.feedback-note {
+  min-height: calc(var(--size-touch) * 3);
+  resize: vertical;
+  font: inherit;
+  font-size: max(16px, var(--text-3, 1rem));
+  line-height: 1.4;
+}
+
+.feedback-sends {
+  margin: 0;
+}
+
+.feedback-thanks {
+  margin: 0 0 var(--space-2);
+  font-size: var(--text-3, 1rem);
 }

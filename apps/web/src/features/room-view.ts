@@ -17,6 +17,7 @@ import {
   fairSymbol,
   tonightLine,
 } from "./fairness-text.js";
+import { feedbackLink } from "./feedback.js";
 import { HALTED_LINE, haltedRows, netText } from "./halted.js";
 import {
   chipsSheet,
@@ -739,6 +740,7 @@ const closedRoomView = (
         ],
         ["Back home"]
       ),
+      feedbackLink(h, "text-button"),
     ]
   );
 };

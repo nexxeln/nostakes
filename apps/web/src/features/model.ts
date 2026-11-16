@@ -17,6 +17,7 @@ import {
 import { Effect, Option, Schema } from "effect";
 import { defineTaggedUnion } from "foldkit/schema";
 
+import { FeedbackSheetSchema } from "./feedback-sheet.js";
 import { MomentWatchSchema } from "./moments/watch.js";
 import { RuleGroupSchema } from "./rules-copy.js";
 import { HintSchema, TableEventSchema } from "./table/snapshot.js";
@@ -301,6 +302,7 @@ export const ModelSchema = Schema.Struct({
   counting: Schema.Boolean,
   deck: DeckSchema,
   faceDraft: Schema.Option(AvatarSchema),
+  feedback: Schema.Option(FeedbackSheetSchema),
   faceHolding: Schema.Boolean,
   faceLearned: Schema.Boolean,
   faceMood: ExpressionSchema,

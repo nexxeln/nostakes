@@ -8,6 +8,7 @@ import { mayCallBombPot } from "./bomb-pot.js";
 import { commandButton } from "./buttons.js";
 import { deviceToggles, learnInNewTab } from "./chrome.js";
 import { face } from "./face-builder.js";
+import { feedbackLink } from "./feedback.js";
 import { heirOf, heirsOf } from "./handover.js";
 import { Messages } from "./message.js";
 import type { Message } from "./message.js";
@@ -524,6 +525,7 @@ const menuFoot = (model: Model, view: OpenView, h: H): Html => {
         [h.Class("menu-foot-end")],
         [
           learnInNewTab(h),
+          feedbackLink(h, "text-button"),
           hosting && view.queued.close
             ? h.span([h.Class("muted small")], ["Ending after this hand"])
             : h.empty,
