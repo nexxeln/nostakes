@@ -10,7 +10,7 @@ One person opens a room and drops the link in the group chat. Up to nine friends
 
 It should feel like sitting in the same room, not like an online casino. There are no accounts, no ads, and no real money: the app keeps the count, and friends settle up outside it.
 
-> Pre-release. [nostakes.club](https://nostakes.club) is not live yet.
+> Public beta at [nostakes.club](https://nostakes.club). Tell us what breaks with Feedback in the app.
 
 ## What it does
 
