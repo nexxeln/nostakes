@@ -190,6 +190,14 @@ const cases: readonly Case[] = [
       'export const rank = (s: "a" | "b" | "c") => (s === "a" ? 1 : s === "b" ? 2 : 3);\n',
     rule: "anti-slop-effect/prefer-effect-match",
   },
+  {
+    accepted:
+      'import { Effect } from "effect";\n\ndeclare const program: Effect.Effect<number, { readonly _tag: "A" }>;\n\nexport const out = program.pipe(Effect.catchTag("A", () => Effect.succeed(1)));\n',
+    file: "fixture.ts",
+    rejected:
+      'import { Effect, Predicate } from "effect";\n\ndeclare const program: Effect.Effect<number, { readonly _tag: "A" } | { readonly _tag: "B" }>;\n\nexport const out = program.pipe(Effect.catch((error) => (Predicate.isTagged(error, "A") ? Effect.succeed(1) : Effect.fail(error))));\n',
+    rule: "anti-slop-effect/prefer-tagged-error-handling",
+  },
 ];
 
 const byName = (left: string, right: string) => left.localeCompare(right);
