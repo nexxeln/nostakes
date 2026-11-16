@@ -10,6 +10,11 @@ import { BETA, BETA_TAG_MARKUP } from "./src/features/beta.js";
 import { GUIDES, guidePage } from "./src/features/guides.js";
 import { landingPictures } from "./src/features/landing/pictures.js";
 import {
+  landingWords,
+  NO_SCRIPT_STYLE,
+  PRERENDER_STYLE,
+} from "./src/features/landing/prerender.js";
+import {
   canonicalTag,
   HOME_PREVIEW,
   INVITE_PREVIEW,
@@ -46,6 +51,38 @@ const HOME_HEAD = [previewHead(HOME_PREVIEW), dataBlock(HOME_APPLICATION)].join(
   "\n    "
 );
 
+const EMPTY_ROOT = '<div id="root"></div>';
+
+const prerenderedLanding = (): Plugin => ({
+  name: "nostakes-prerendered-landing",
+  transformIndexHtml: (html, { path }) => {
+    if (path !== `/${HOME_PAGE}`) {
+      return html;
+    }
+
+    if (!html.includes(EMPTY_ROOT)) {
+      throw new Error(
+        `${HOME_PAGE} needs ${EMPTY_ROOT} for the landing's words to fill.`
+      );
+    }
+
+    return Effect.runPromise(landingWords).then((words) => ({
+      html: html.replace(
+        EMPTY_ROOT,
+        EMPTY_ROOT.replace("></div>", `>${words}</div>`)
+      ),
+      tags: [
+        { children: PRERENDER_STYLE, injectTo: "head", tag: "style" },
+        {
+          children: `<style>${NO_SCRIPT_STYLE}</style>`,
+          injectTo: "head",
+          tag: "noscript",
+        },
+      ],
+    }));
+  },
+});
+
 const linkPreviews = (): Plugin => ({
   enforce: "post",
   generateBundle(_options, bundle) {
@@ -57,14 +94,21 @@ const linkPreviews = (): Plugin => ({
       );
     }
 
-    this.emitFile({
-      fileName: INVITE_PAGE,
-      source: String(home.source).replace(
-        HOME_HEAD,
-        previewHead(INVITE_PREVIEW)
-      ),
-      type: "asset",
-    });
+    return Effect.runPromise(
+      landingWords.pipe(
+        Effect.flatMap((words) =>
+          Effect.sync(() => {
+            this.emitFile({
+              fileName: INVITE_PAGE,
+              source: String(home.source)
+                .replace(HOME_HEAD, previewHead(INVITE_PREVIEW))
+                .replace(words, ""),
+              type: "asset",
+            });
+          })
+        )
+      )
+    );
   },
   name: "nostakes-link-previews",
   transformIndexHtml: (html, { path }) => {
@@ -501,6 +545,7 @@ export default defineConfig({
     foldkit({ devToolsMcpPort: false }),
     builtLandingPictures(),
     buildStamp(),
+    prerenderedLanding(),
     linkPreviews(),
     learnData(),
     guideData(),
