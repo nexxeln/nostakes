@@ -258,6 +258,7 @@ export const init = (flags: Flags): Return => {
     reloadedFor: flags.reloadedFor,
     reporting: { errors: 0, reconnects: 0 },
     rooms: flags.rooms,
+    rulesFromLink: flags.rulesFromLink ?? false,
     sound: flags.sound,
     systemTheme: flags.systemTheme,
     theme: flags.theme,
@@ -270,7 +271,7 @@ export const init = (flags: Flags): Return => {
           model: {
             ...base,
             screen:
-              flags.rooms.length === 0
+              flags.rooms.length === 0 && flags.rulesFromLink !== true
                 ? Screens.Welcome()
                 : Screens.Home({ busy: false, problem: Option.none() }),
           },
@@ -1768,7 +1769,7 @@ export const update = (model: Model, message: Message): Return =>
     ClickedSit: ({ seat }) => sit(model, seat),
     ClickedStandardRules: () => ({
       commands: [RememberRules({ rules: Option.none() })],
-      model: { ...model, lastRules: Option.none() },
+      model: { ...model, lastRules: Option.none(), rulesFromLink: false },
     }),
     ClickedUndoFace: () => undoFace(model),
     ClickedUseHere: () => ({ commands: [UseRoomHere()], model }),

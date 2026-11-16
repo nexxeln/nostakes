@@ -650,6 +650,37 @@
   text-wrap: balance;
 }
 
+.landing .guide-links {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  color: var(--color-ink-muted);
+  font-size: var(--text-2);
+}
+
+.landing .guide-links-title {
+  margin: 0;
+  font-size: var(--text-2);
+  font-weight: var(--weight-strong);
+}
+
+.landing .guide-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0 var(--space-3);
+}
+
+.landing .guide-list a {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--size-touch);
+  color: inherit;
+}
+
 @media (min-width: 40rem) {
   .landing .tiles {
     grid-template-columns: repeat(2, 1fr);

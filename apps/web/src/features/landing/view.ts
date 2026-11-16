@@ -5,6 +5,7 @@ import type { Html, HtmlBuilder } from "foldkit/html";
 import { cardFaceOf } from "../card-art.js";
 import { learnLink, themeSwitch, wordmark } from "../chrome.js";
 import { face } from "../face-builder.js";
+import { GUIDES } from "../guides.js";
 import { BRAND_LINE } from "../link-preview.js";
 import { cardMarkup } from "../markup.js";
 import { Messages } from "../message.js";
@@ -360,6 +361,18 @@ const close = (h: H): Html =>
       h.h2([h.Class("close-title")], [LANDING_WORDS.close]),
       openButton(h, "close-open"),
       h.p([h.Class("close-quiet")], [LANDING_WORDS.quiet]),
+      h.nav(
+        [h.Class("guide-links"), h.AriaLabel("Guides")],
+        [
+          h.h2([h.Class("guide-links-title")], ["Guides"]),
+          h.ul(
+            [h.Class("guide-list")],
+            GUIDES.map(({ name, path }) =>
+              h.li([], [h.a([h.Href(path)], [name])])
+            )
+          ),
+        ]
+      ),
       h.footer(
         [h.Class("reading-links")],
         [

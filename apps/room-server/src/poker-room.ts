@@ -1,7 +1,6 @@
-import { Antes } from "@nostakes/engine";
 import {
   Actors,
-  DEFAULT_PAUSE_WHEN_AWAY_SECONDS,
+  DEFAULT_SETTINGS,
   Deadlines,
   JoinRequestSchema,
   MemberCommandSchema,
@@ -10,14 +9,12 @@ import {
   RoomEventSchema,
   RoomEvents,
   RoomRejectionSchema,
-  RoomSettingsSchema,
   RoomSignalSchema,
   KnockViewSchema,
   RemovedViewSchema,
   RoomViewSchema,
   SealedDealSources,
   SeenEventSchema,
-  TimeBankRefills,
   attendanceCommand,
   audienceOf,
   decide,
@@ -47,7 +44,6 @@ import type {
   RoomCommand,
   RoomEvent,
   RoomRejection,
-  RoomSettings,
   KnockView,
   RemovedView,
   RoomSignal,
@@ -67,6 +63,7 @@ import { Option, Schema } from "effect";
 import type { HostedRoom } from "./hosted-room.js";
 
 export {
+  DEFAULT_SETTINGS,
   JoinRequestSchema,
   MemberCommandSchema,
   OpenRequestSchema,
@@ -77,44 +74,6 @@ export type { JoinRequest, MemberCommand, OpenRequest } from "@nostakes/room";
 export const DEAL_SHUFFLE_BYTES = 128;
 
 export const SEAL_BYTES = 2 * DEAL_SHUFFLE_BYTES + DIGEST_BYTES;
-
-export const DEFAULT_SETTINGS: RoomSettings = Schema.decodeSync(
-  RoomSettingsSchema
-)({
-  approval: { chips: false, seats: false },
-  betweenHandsSeconds: 5,
-  buyIn: { max: 400, min: 40 },
-  dealing: "Automatic",
-  leavingMidHand: "ActedFor",
-  locked: false,
-  pauseWhenAwaySeconds: DEFAULT_PAUSE_WHEN_AWAY_SECONDS,
-  peeking: true,
-  runChoiceSeconds: 15,
-  seats: 9,
-  showdownSeconds: 15,
-  shuffle: "Checked",
-  sitOutAfterTimeouts: 1,
-  table: {
-    allInHands: "FaceUp",
-    ante: Antes.NoAnte(),
-    bigBlind: 2,
-    blindPosting: "HomeGame",
-    maxRuns: 1,
-    rabbitHunt: false,
-    rabbitHunters: "DealtIn",
-    runCount: "Vote",
-    showdown: "Interactive",
-    showdownOrder: "RiverAggressor",
-    smallBlind: 1,
-    straddle: { button: false, underTheGun: 0 },
-    straddleSize: "Doubling",
-    voluntaryShows: "EitherCard",
-  },
-  timeBankRefill: TimeBankRefills.NoRefill(),
-  timeBankSeconds: 60,
-  topUps: "UpToMax",
-  turnSeconds: 30,
-});
 
 export interface PokerTypes {
   readonly State: RoomState;

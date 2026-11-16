@@ -179,7 +179,9 @@ const lastRulesLine = (model: Model, h: H): Html =>
         [
           h.span(
             [h.Class("last-rules-text")],
-            [`Last time's rules: ${rememberedShorthand(rules)}`]
+            [
+              `${model.rulesFromLink ? "Rules" : "Last time's rules"}: ${rememberedShorthand(rules)}`,
+            ]
           ),
           h.button(
             [

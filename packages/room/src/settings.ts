@@ -1,4 +1,5 @@
 import {
+  Antes,
   ChipsSchema,
   SEAT_COUNT,
   TableConfigSchema,
@@ -253,6 +254,44 @@ export const RoomSettingsSchema = Schema.Struct(settingsFields("Plain"));
 export const RequestedSettingsSchema = Schema.Struct(settingsFields("Checked"));
 
 export type RoomSettings = typeof RoomSettingsSchema.Type;
+
+export const DEFAULT_SETTINGS: RoomSettings = Schema.decodeSync(
+  RoomSettingsSchema
+)({
+  approval: { chips: false, seats: false },
+  betweenHandsSeconds: 5,
+  buyIn: { max: 400, min: 40 },
+  dealing: "Automatic",
+  leavingMidHand: "ActedFor",
+  locked: false,
+  pauseWhenAwaySeconds: DEFAULT_PAUSE_WHEN_AWAY_SECONDS,
+  peeking: true,
+  runChoiceSeconds: 15,
+  seats: 9,
+  showdownSeconds: 15,
+  shuffle: "Checked",
+  sitOutAfterTimeouts: 1,
+  table: {
+    allInHands: "FaceUp",
+    ante: Antes.NoAnte(),
+    bigBlind: 2,
+    blindPosting: "HomeGame",
+    maxRuns: 1,
+    rabbitHunt: false,
+    rabbitHunters: "DealtIn",
+    runCount: "Vote",
+    showdown: "Interactive",
+    showdownOrder: "RiverAggressor",
+    smallBlind: 1,
+    straddle: { button: false, underTheGun: 0 },
+    straddleSize: "Doubling",
+    voluntaryShows: "EitherCard",
+  },
+  timeBankRefill: TimeBankRefills.NoRefill(),
+  timeBankSeconds: 60,
+  topUps: "UpToMax",
+  turnSeconds: 30,
+});
 
 export const turnClockRuns = (settings: RoomSettings) =>
   settings.turnSeconds > 0;

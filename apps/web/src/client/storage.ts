@@ -21,6 +21,7 @@ import type {
   Theme,
 } from "../features/model.js";
 import { rememberedRules } from "../features/setup.js";
+import { startingRuleIn, startingRules } from "../features/starting-rules.js";
 import { HintSchema } from "../features/table/snapshot.js";
 import type { Hint } from "../features/table/snapshot.js";
 import { readCounting } from "./counting.js";
@@ -271,17 +272,24 @@ export const readFlags = Effect.gen(function* readFlags() {
     Option.getOrElse((): Deck => "TwoColour")
   );
 
+  const linkedRules = startingRuleIn(globalThis.location.search).pipe(
+    Option.flatMap(startingRules)
+  );
+
+  const remembered = rememberedRules(yield* readItem(RULES_KEY));
+
   const flags: Flags = {
     build: Option.getOrElse(pageBuild(), () => "dev"),
     counting: yield* readCounting,
     deck,
     invite,
-    lastRules: rememberedRules(yield* readItem(RULES_KEY)),
+    lastRules: Option.orElse(linkedRules, () => remembered),
     learned,
     origin: globalThis.location.origin,
     profile,
     reloadedFor,
     rooms,
+    rulesFromLink: Option.isSome(linkedRules),
     saved,
     sound,
     systemTheme: systemTheme(),

@@ -169,6 +169,7 @@ export {
   ChipAmountSchema,
   DEFAULT_KNOCK_SECONDS,
   DEFAULT_PAUSE_WHEN_AWAY_SECONDS,
+  DEFAULT_SETTINGS,
   DealingSchema,
   LeavingMidHandSchema,
   MAX_CHIP_AMOUNT,
