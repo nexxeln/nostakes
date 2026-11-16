@@ -1,3 +1,4 @@
+import { GUIDES, guidePage } from "./guides.js";
 import { canonicalOf } from "./link-preview.js";
 
 export interface IndexedPage {
@@ -10,6 +11,7 @@ export const INDEXED_PAGES: readonly IndexedPage[] = [
   { file: "learn.html", path: "/learn" },
   { file: "privacy.html", path: "/privacy" },
   { file: "terms.html", path: "/terms" },
+  ...GUIDES.map((guide) => ({ file: guidePage(guide), path: guide.path })),
 ];
 
 export const UNCRAWLED_PATHS = ["/rooms/"] as const;

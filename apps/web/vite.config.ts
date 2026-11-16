@@ -29,6 +29,7 @@ import {
 } from "./src/features/search-pages.js";
 import {
   dataBlock,
+  guideArticle,
   HOME_APPLICATION,
   LEARN_ARTICLE,
 } from "./src/features/structured-data.js";
@@ -101,6 +102,39 @@ const learnData = (): Plugin => ({
     return html.replace(
       HEAD_ENDS,
       `  ${dataBlock(LEARN_ARTICLE)}\n  ${HEAD_ENDS}`
+    );
+  },
+});
+
+const guideData = (): Plugin => ({
+  name: "nostakes-guide-data",
+  transformIndexHtml: (html, { path }) => {
+    const guide = GUIDES.find((each) => path === `/${guidePage(each)}`);
+
+    if (guide === undefined) {
+      return html;
+    }
+
+    const flat = html.replaceAll(/\s+/gu, " ");
+
+    if (
+      !flat.includes(`<title> ${guide.headline} · nostakes </title>`) &&
+      !flat.includes(`<title>${guide.headline} · nostakes</title>`)
+    ) {
+      throw new Error(
+        `${path} must have the title ${guide.headline} · nostakes that src/features/guides.ts names for it.`
+      );
+    }
+
+    if (!flat.includes(`content="${guide.description}"`)) {
+      throw new Error(
+        `${path} must have the description that src/features/guides.ts names for it, so its article data says what the page says.`
+      );
+    }
+
+    return html.replace(
+      HEAD_ENDS,
+      `  ${dataBlock(guideArticle(guide))}\n  ${HEAD_ENDS}`
     );
   },
 });
@@ -469,6 +503,7 @@ export default defineConfig({
     buildStamp(),
     linkPreviews(),
     learnData(),
+    guideData(),
     betaWordmark(),
     pagePolicy(),
     securityHeaders(),

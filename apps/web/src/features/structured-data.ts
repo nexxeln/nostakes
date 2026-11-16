@@ -1,5 +1,6 @@
 import type { Schema } from "effect";
 
+import type { Guide } from "./guides.js";
 import { canonicalOf, HOME_PREVIEW, PREVIEW_IMAGE } from "./link-preview.js";
 
 const SCHEMA_ORG = "https://schema.org";
@@ -43,6 +44,23 @@ export const LEARN_ARTICLE = {
   timeRequired: "PT2M",
   url: canonicalOf("/learn"),
 } satisfies Schema.Json;
+
+export const guideArticle = (guide: Guide) =>
+  ({
+    "@context": SCHEMA_ORG,
+    "@type": "Article",
+    about: "Texas hold'em poker",
+    author: NOSTAKES,
+    datePublished: "2026-11-16",
+    description: guide.description,
+    headline: guide.headline,
+    image: canonicalOf(PREVIEW_IMAGE.path),
+    inLanguage: "en",
+    isAccessibleForFree: true,
+    mainEntityOfPage: canonicalOf(guide.path),
+    publisher: NOSTAKES,
+    url: canonicalOf(guide.path),
+  }) satisfies Schema.Json;
 
 export const dataBlock = (data: Schema.Json) =>
   `<script type="application/ld+json">${JSON.stringify(data)
