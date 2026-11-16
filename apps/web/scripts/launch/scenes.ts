@@ -3,6 +3,7 @@ import { codeFor, randomAvatar } from "@nostakes/avatar";
 import { CAST, RING } from "../../src/features/landing/cast.js";
 import type { CastName } from "../../src/features/landing/cast.js";
 import { BOARD, HANDS, POT } from "../../src/features/landing/night.js";
+import type { SettleUpCard } from "../../src/features/pictures/settle-up.js";
 import { bountyHappenings } from "../../src/features/table/from-room.js";
 import { Happenings } from "../../src/features/table/snapshot.js";
 import type {
@@ -148,13 +149,13 @@ const empty = (index: number) =>
   });
 
 const ARRIVALS: readonly CastName[] = [
-  "Priya",
-  "Kit",
   "Lou",
   "Ana",
   "Ben",
   "Jonas",
+  "Kit",
   "Maya",
+  "Priya",
   "Dev",
 ];
 
@@ -707,16 +708,10 @@ const waitBigScene = (): Told => {
   const waiting = tableOf({
     buttonSeat: at("Maya"),
     clock: clockOn(at("Priya")),
-    entry: {
-      action: "Post 20 to come in",
-      line: "Waiting for the big blind",
-      note: "",
-      post: true,
-    },
     handId: 100,
-    heroCards: [],
+    heroCards: ["Qh", "Jh"],
     seats: ring((seat) =>
-      seat.seat === HERO || seat.seat === at("Lou")
+      seat.seat === at("Kit") || seat.seat === at("Lou")
         ? {
             ...seat,
             cardsHeld: 0,
@@ -768,13 +763,18 @@ const reactionScene = (): Told => {
   const teller = tellerOf(room);
 
   const thrown = [
-    { reaction: "Fire", seat: at("Priya") },
+    { reaction: "Fire", seat: HERO },
+    { reaction: "Laugh", seat: at("Priya") },
+    { reaction: "Clap", seat: HERO },
+    { reaction: "Wow", seat: at("Priya") },
     { reaction: "Laugh", seat: HERO },
-    { reaction: "Clap", seat: at("Dev") },
+    { reaction: "Fire", seat: at("Priya") },
+    { reaction: "Wow", seat: HERO },
+    { reaction: "Clap", seat: HERO },
   ] as const;
 
   for (const [index, { reaction, seat }] of thrown.entries()) {
-    teller.at(0.15 + index * 0.4, (now) => ({
+    teller.at(0.05 + index * 0.16, (now) => ({
       ...now,
       reactions: [...now.reactions, { id: index + 1, reaction, seat }],
     }));
@@ -822,22 +822,35 @@ const sweepScene = (): Told => {
 };
 
 const keepSeatScene = (): Told => {
-  const lou = at("Lou");
-
   const room = tableOf({
     boards: [["9d", "9c", "4h"]],
     buttonSeat: at("Ben"),
     handId: 140,
     heroCards: ["Ac", "Tc"],
     pots: [180],
-    seats: ring((seat) => (seat.seat === lou ? { ...seat, away: true } : seat)),
   });
 
-  const teller = tellerOf(room);
+  return { cues: [[0, room]], hero: HERO };
+};
 
-  teller.at(0.9, (now) => withSeat(now, lou, { away: false }));
-
-  return { cues: teller.cues, hero: HERO };
+export const SMALL_NIGHT: SettleUpCard = {
+  players: [
+    { avatar: codeFor(CAST.Ben), expression: "Happy", name: "Ben", net: 60 },
+    { avatar: codeFor(CAST.Kit), expression: "Happy", name: "Kit", net: 15 },
+    { avatar: codeFor(CAST.Dev), expression: "Resting", name: "Dev", net: -15 },
+    {
+      avatar: codeFor(CAST.Jonas),
+      expression: "Resting",
+      name: "Jonas",
+      net: -20,
+    },
+    { avatar: codeFor(CAST.Ana), expression: "Gutted", name: "Ana", net: -40 },
+  ],
+  transfers: [
+    { amount: 40, from: "Ana", to: "Ben" },
+    { amount: 20, from: "Jonas", to: "Ben" },
+    { amount: 15, from: "Dev", to: "Kit" },
+  ],
 };
 
 export const LITTLE_TOLD = {

@@ -9,7 +9,7 @@ import { defineTable } from "../../src/client/table/element.js";
 import { fairParagraph, fairSymbol } from "../../src/features/fairness-text.js";
 import { CAST, RING } from "../../src/features/landing/cast.js";
 import type { CastName } from "../../src/features/landing/cast.js";
-import { BAD_BEAT, SETTLE_UP } from "../../src/features/landing/night.js";
+import { BAD_BEAT } from "../../src/features/landing/night.js";
 import { INVITE_PREVIEW } from "../../src/features/link-preview.js";
 import { FairMarks } from "../../src/features/model.js";
 import { pictureSvg } from "../../src/features/moments/picture.js";
@@ -37,6 +37,7 @@ import {
   DEFAULT_FELT,
   GESTURE_RAISE_FALLBACK,
   LITTLE_TOLD,
+  SMALL_NIGHT,
   badBeatTold,
   fillTold,
   gestureStory,
@@ -46,9 +47,10 @@ import type { Cue } from "./scenes.ts";
 import {
   BEAT_MS,
   CAPTIONS,
+  FPS,
   HIT_BEAT,
-  LITTLE_BEATS,
   LITTLE_THINGS,
+  OUTRO_BEAT,
   RULE_STAMPS,
   beatOfMs,
   littleStart,
@@ -62,34 +64,45 @@ interface Box {
   readonly h: number;
 }
 
+interface Size {
+  readonly w: number;
+  readonly h: number;
+}
+
 interface Framing {
-  readonly view: { readonly w: number; readonly h: number };
+  readonly view: Size;
   readonly window: Box;
   readonly caption: Box;
-  readonly native: { readonly w: number; readonly h: number };
+  readonly pictureCaption: Box;
+  readonly picture: Box;
+  readonly native: Size;
   readonly captionPx: number;
-  readonly smallCaptionPx: number;
+  readonly align: "Centre" | "Start";
   readonly tall: boolean;
 }
 
 const FRAMINGS: Readonly<Record<"tall" | "wide", Framing>> = {
   tall: {
-    caption: { h: 88, w: 440, x: 30, y: 112 },
-    captionPx: 27,
+    align: "Centre",
+    caption: { h: 196, w: 440, x: 30, y: 112 },
+    captionPx: 54,
     native: { h: 620, w: 420 },
-    smallCaptionPx: 24,
+    picture: { h: 480, w: 384, x: 78, y: 258 },
+    pictureCaption: { h: 140, w: 440, x: 30, y: 112 },
     tall: true,
     view: { h: 960, w: 540 },
-    window: { h: 530, w: 440, x: 30, y: 208 },
+    window: { h: 420, w: 440, x: 30, y: 318 },
   },
   wide: {
-    caption: { h: 80, w: 760, x: 100, y: 432 },
-    captionPx: 34,
+    align: "Start",
+    caption: { h: 460, w: 330, x: 44, y: 40 },
+    captionPx: 58,
     native: { h: 385, w: 660 },
-    smallCaptionPx: 30,
+    picture: { h: 490, w: 392, x: 70, y: 25 },
+    pictureCaption: { h: 460, w: 400, x: 510, y: 40 },
     tall: false,
     view: { h: 540, w: 960 },
-    window: { h: 385, w: 660, x: 150, y: 28 },
+    window: { h: 476, w: 520, x: 400, y: 32 },
   },
 };
 
@@ -97,7 +110,9 @@ const params = new URLSearchParams(globalThis.location.search);
 
 const FRAMING = params.get("frame") === "tall" ? FRAMINGS.tall : FRAMINGS.wide;
 
-const ROOM_LINK = "nostakes.club/r/K7QF2M";
+const ROOM_CODE = "K7QF2M";
+
+const ROOM_LINK = `nostakes.club/r/${ROOM_CODE}`;
 
 const STAGE_CSS = `
 html, body { margin: 0; width: ${FRAMING.view.w}px; height: ${FRAMING.view.h}px; overflow: hidden; background: var(--color-page); }
@@ -109,10 +124,11 @@ body { font-family: var(--font-body); font-weight: var(--weight-body); color: va
 .lv-backing { position: absolute; border-radius: var(--radius-4); box-shadow: var(--shadow-sheet-2); }
 .lv-lens { position: absolute; left: 0; top: 0; transform-origin: 0 0; }
 .lv-lens > nostakes-table { position: absolute; inset: 0; display: block; }
-.lv-cap { position: absolute; display: flex; flex-wrap: wrap; justify-content: center; align-content: center; gap: 0.12em 0.26em; text-align: center; }
-.lv-word { display: inline-block; font-family: var(--font-display); font-weight: var(--weight-display); font-variation-settings: var(--settings-display); letter-spacing: var(--tracking-display); line-height: 1.08; color: var(--color-ink); transform-origin: 50% 80%; }
-.lv-strip { position: absolute; padding: 0.22em 0.55em 0.3em; border-radius: var(--radius-3); background: var(--color-raised); box-shadow: var(--shadow-sheet-2); font-family: var(--font-display); font-weight: var(--weight-display); font-variation-settings: var(--settings-display); letter-spacing: var(--tracking-display); line-height: 1.05; color: var(--color-ink); white-space: nowrap; transform-origin: 50% 50%; }
-.lv-stamp { position: absolute; padding: 0.3em 0.7em 0.36em; border-radius: var(--radius-3); box-shadow: var(--shadow-sheet-2); font-family: var(--font-display); font-weight: var(--weight-display); font-variation-settings: var(--settings-display); letter-spacing: var(--tracking-display); color: var(--house-ink); white-space: nowrap; }
+.lv-cap { position: absolute; display: flex; flex-wrap: wrap; align-content: center; gap: 0.04em 0.24em; }
+.lv-cap.lv-centre { justify-content: center; text-align: center; }
+.lv-cap.lv-start { justify-content: flex-start; text-align: left; }
+.lv-word { display: inline-block; font-family: var(--font-display); font-weight: var(--weight-display); font-variation-settings: var(--settings-display); letter-spacing: var(--tracking-display); line-height: 1.02; color: var(--color-ink); transform-origin: 50% 85%; }
+.lv-stamp { position: absolute; left: 0; top: 0; padding: 0.3em 0.7em 0.36em; border-radius: var(--radius-3); box-shadow: var(--shadow-sheet-2); font-family: var(--font-display); font-weight: var(--weight-display); font-variation-settings: var(--settings-display); letter-spacing: var(--tracking-display); color: var(--house-ink); white-space: nowrap; }
 .lv-bit { position: absolute; left: 0; top: 0; box-shadow: var(--shadow-sheet-1); }
 .lv-finger { pointer-events: none; position: absolute; z-index: 10; width: 34px; height: 34px; margin: -17px 0 0 -17px; border-radius: 50%; background: rgb(31 28 49 / 0.16); box-shadow: 0 0 0 2.5px rgb(255 253 248 / 0.95), 0 0 0 4px rgb(31 28 49 / 0.22); opacity: 0; }
 .lv-chat { position: absolute; inset: 0; display: flex; flex-direction: column; padding: 18px 18px 20px; gap: 12px; }
@@ -139,12 +155,14 @@ body { font-family: var(--font-body); font-weight: var(--weight-body); color: va
 .lv-end-line { font-family: var(--font-display); font-weight: var(--weight-display); font-variation-settings: var(--settings-display); letter-spacing: var(--tracking-display); color: var(--color-ink); }
 .lv-end-sub { font-weight: var(--weight-strong); color: var(--color-ink-muted); }
 .lv-end-cast { display: flex; justify-content: center; }
-.lv-room-wrap { position: absolute; inset: 0; display: flex; flex-direction: column; }
-.lv-room-wrap .room-header { padding: 4px 10px 0; margin: 0; }
-.lv-room-wrap .room-body { position: relative; flex: 1; }
-.lv-room-wrap nostakes-table { position: absolute; inset: 0; display: block; }
-.lv-fair-sheet { position: absolute; padding: 12px 16px; border-radius: var(--radius-4); background: var(--color-raised); box-shadow: var(--shadow-sheet-3); }
-.lv-fair-sheet .fair-text { font-size: 14px; }
+.lv-fair { position: absolute; inset: 0; display: flex; flex-direction: column; }
+.lv-fair .room-header { padding: 6px 12px 0; margin: 0; }
+.lv-fair-mark { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px; padding: 0 20px; }
+.lv-tick { display: grid; place-items: center; width: 1.5em; height: 1.5em; border-radius: var(--radius-4); background: var(--color-page); box-shadow: var(--shadow-sheet-2); font-family: var(--font-display); font-weight: var(--weight-display); color: var(--color-ink); line-height: 1; }
+.lv-fair-words { font-family: var(--font-display); font-weight: var(--weight-display); font-variation-settings: var(--settings-display); letter-spacing: var(--tracking-display); color: var(--color-ink); text-align: center; line-height: 1.05; }
+.lv-home { position: absolute; inset: 0; display: flex; flex-direction: column; justify-content: center; gap: 16px; padding: 20px; }
+.lv-home .brand { margin: 0; }
+.lv-home .room-list { margin: 0; padding: 0; list-style: none; }
 `;
 
 const HOUSE = {
@@ -225,6 +243,15 @@ interface Enter {
   readonly look?: SpringLook;
 }
 
+interface Pose {
+  readonly x: number;
+  readonly y: number;
+  readonly rot: number;
+  readonly scale: number;
+}
+
+type Tick = (beat: number) => void;
+
 interface Layer {
   readonly lead: number;
   readonly from: number;
@@ -232,17 +259,13 @@ interface Layer {
   readonly node: HTMLElement;
   readonly box: Box;
   readonly enter: Enter;
-  readonly tick: (beat: number) => void;
+  readonly tick: Tick;
   readonly started: { done: boolean };
   readonly start: () => void;
-  readonly exit?:
-    | ((
-        beat: number
-      ) => { x: number; y: number; rot: number; scale: number } | null)
-    | undefined;
+  readonly exit?: ((beat: number) => Pose | null) | undefined;
 }
 
-const offsetOf = (entry: Entry, box: Box) => {
+const offsetOf = (entry: Entry, box: Box): Pose => {
   const far = FRAMING.view;
 
   if (entry === "Rise") {
@@ -284,113 +307,247 @@ const posed = (layer: Layer, beat: number) => {
   layer.node.style.transform = `translate(${x.toFixed(2)}px, ${y.toFixed(2)}px) rotate(${rot.toFixed(3)}deg) scale(${scale.toFixed(4)})`;
 };
 
-interface Camera {
-  readonly zoom: number;
-  readonly fx: number;
-  readonly fy: number;
-}
-
-type Focus =
-  | { readonly kind: "Centre" }
-  | { readonly kind: "Seat"; readonly name: CastName; readonly dy?: number }
-  | { readonly kind: "Part"; readonly selector: string; readonly dy?: number }
-  | { readonly kind: "Point"; readonly fx: number; readonly fy: number };
-
-interface Shot {
-  readonly zoom: number;
-  readonly focus: Focus;
-}
-
-const shadowOf = (table: HTMLElement) => table.shadowRoot;
-
-const centreOfNode = (table: HTMLElement, node: Element, scale: number) => {
-  const host = table.getBoundingClientRect();
-  const box = node.getBoundingClientRect();
-
-  return {
-    x: (box.left + box.width / 2 - host.left) / scale,
-    y: (box.top + box.height / 2 - host.top) / scale,
-  };
-};
-
-const seatNode = (table: HTMLElement, name: string) => {
-  const tiles = shadowOf(table)?.querySelectorAll(".tile") ?? [];
-
-  for (const tile of tiles) {
-    const label = tile.querySelector(".name");
-
-    if (
-      (label?.textContent ?? tile.textContent ?? "").trim().startsWith(name)
-    ) {
-      return tile.querySelector(".pic") ?? tile;
+const peeledAway =
+  (from: number) =>
+  (beat: number): Pose | null => {
+    if (beat < from) {
+      return null;
     }
+
+    const along = eased((beat - from) / 0.8);
+
+    return {
+      rot: 16 * along,
+      scale: 1 - 0.1 * along,
+      x: FRAMING.view.w * 0.9 * along,
+      y: FRAMING.view.h * (FRAMING.tall ? 0.12 : -0.2) * along,
+    };
+  };
+
+type Who = CastName | "You";
+
+type Target =
+  | { readonly kind: "Whole" }
+  | { readonly kind: "Seats"; readonly who: readonly Who[] }
+  | {
+      readonly kind: "Parts";
+      readonly selectors: readonly string[];
+      readonly text?: RegExp;
+      readonly who?: readonly Who[];
+    };
+
+interface Aim {
+  readonly at: number;
+  readonly target: Target;
+  readonly fill: number;
+  readonly lift?: number;
+}
+
+const seats = (...who: Who[]): Target => ({ kind: "Seats", who });
+
+const parts = (
+  selectors: readonly string[],
+  extra: { readonly text?: RegExp; readonly who?: readonly Who[] } = {}
+): Target => ({ kind: "Parts", selectors, ...extra });
+
+const WHOLE: Target = { kind: "Whole" };
+
+const aim = (at: number, target: Target, fill: number, lift = 0): Aim => ({
+  at,
+  fill,
+  lift,
+  target,
+});
+
+interface Rect {
+  readonly left: number;
+  readonly top: number;
+  readonly right: number;
+  readonly bottom: number;
+}
+
+const unionOf = (rects: readonly Rect[]): Rect | null => {
+  const [first, ...rest] = rects;
+
+  if (first === undefined) {
+    return null;
   }
 
-  return null;
+  let all = first;
+
+  for (const rect of rest) {
+    all = {
+      bottom: Math.max(all.bottom, rect.bottom),
+      left: Math.min(all.left, rect.left),
+      right: Math.max(all.right, rect.right),
+      top: Math.min(all.top, rect.top),
+    };
+  }
+
+  return all;
 };
 
-const focusPoint = (
-  table: HTMLElement,
-  focus: Focus,
-  scale: number,
-  native: { readonly w: number; readonly h: number }
-) => {
-  const middle = { x: native.w / 2, y: native.h / 2 };
+interface Camera {
+  x: number;
+  y: number;
+  scale: number;
+  ready: boolean;
+}
 
-  if (focus.kind === "Centre") {
-    return middle;
-  }
-
-  if (focus.kind === "Point") {
-    return { x: native.w * focus.fx, y: native.h * focus.fy };
-  }
-
-  const node =
-    focus.kind === "Seat"
-      ? seatNode(table, focus.name)
-      : (shadowOf(table)?.querySelector(focus.selector) ?? null);
-
-  if (node === null) {
-    return middle;
-  }
-
-  const found = centreOfNode(table, node, scale);
-
-  return { x: found.x, y: found.y + (focus.dy ?? 0) };
-};
-
-const OVERSCAN = 22;
-
-const lensTransform = (
-  lens: HTMLElement,
-  win: Box,
-  native: { readonly w: number; readonly h: number },
-  camera: Camera
-) => {
-  const fit = Math.min(win.w / native.w, win.h / native.h);
-  const scale = fit * camera.zoom;
-  const width = native.w * scale;
-  const height = native.h * scale;
-
-  const along = (size: number, room: number, focus: number) =>
-    size <= room
-      ? (room - size) / 2
-      : clamp(room / 2 - focus * scale, room - size - OVERSCAN, OVERSCAN);
-
-  const x = along(width, win.w, camera.fx);
-  const y = along(height, win.h, camera.fy);
-
-  lens.style.transform = `translate(${x.toFixed(2)}px, ${y.toFixed(2)}px) scale(${scale.toFixed(4)})`;
-
-  return scale;
-};
+interface Remembered {
+  box: Rect | null;
+}
 
 interface TableRig {
   readonly table: TableHost;
   readonly lens: HTMLElement;
-  readonly native: { readonly w: number; readonly h: number };
-  scale: number;
+  readonly native: Size;
+  readonly camera: Camera;
+  readonly last: Remembered;
 }
+
+const rootOf = (rig: TableRig) => rig.table.shadowRoot;
+
+const nodesFor = (rig: TableRig, who: Who) => {
+  const root = rootOf(rig);
+
+  if (root === null) {
+    return [];
+  }
+
+  if (who === "You") {
+    return [...root.querySelectorAll(".self")];
+  }
+
+  return [...root.querySelectorAll(".tile")].filter(
+    (tile) => tile.querySelector(".name")?.textContent?.trim() === who
+  );
+};
+
+const visible = (node: Element) => {
+  const rect = node.getBoundingClientRect();
+
+  return rect.width > 0 && rect.height > 0 ? [rect] : [];
+};
+
+const targetRect = (rig: TableRig, target: Target): Rect | null => {
+  if (target.kind === "Whole") {
+    return { bottom: rig.native.h, left: 0, right: rig.native.w, top: 0 };
+  }
+
+  const root = rootOf(rig);
+  const host = rig.table.getBoundingClientRect();
+  const { scale } = rig.camera;
+
+  const seatRects = (target.who ?? []).flatMap((who) =>
+    nodesFor(rig, who).flatMap(visible)
+  );
+
+  const partRects =
+    target.kind === "Parts"
+      ? target.selectors.flatMap((selector) =>
+          [...(root?.querySelectorAll(selector) ?? [])]
+            .filter(
+              (node) =>
+                target.text === undefined ||
+                target.text.test(node.textContent ?? "")
+            )
+            .flatMap(visible)
+        )
+      : [];
+
+  const page = unionOf([...seatRects, ...partRects]);
+
+  return page === null
+    ? null
+    : {
+        bottom: (page.bottom - host.top) / scale,
+        left: (page.left - host.left) / scale,
+        right: (page.right - host.left) / scale,
+        top: (page.top - host.top) / scale,
+      };
+};
+
+const OVERSCAN = 80;
+
+const MOST_ZOOM = 5;
+
+const CAMERA_RATE = 3.2;
+
+const DRIFT_PER_BEAT = 0.012;
+
+const fitOf = (rig: TableRig, win: Size) =>
+  Math.min(win.w / rig.native.w, win.h / rig.native.h);
+
+const steer = (
+  rig: TableRig,
+  aims: readonly Aim[],
+  beat: number,
+  win: Size
+) => {
+  const active = aims.findLast((each) => each.at <= beat) ??
+    aims[0] ?? { at: 0, fill: 1, target: WHOLE };
+
+  const found = targetRect(rig, active.target);
+  const box = found ?? rig.last.box ?? targetRect(rig, WHOLE);
+
+  if (found !== null) {
+    rig.last.box = found;
+  }
+
+  if (box === null) {
+    return;
+  }
+
+  const fit = fitOf(rig, win);
+  const lift = active.lift ?? 0;
+  const width = Math.max(40, box.right - box.left);
+  const height = Math.max(40, box.bottom - box.top + Math.abs(lift));
+
+  const wanted = clamp(
+    active.fill *
+      Math.min(win.w / width, win.h / height) *
+      (1 + DRIFT_PER_BEAT * Math.max(0, beat - active.at)),
+    fit,
+    fit * MOST_ZOOM
+  );
+
+  const centre = {
+    x: (box.left + box.right) / 2,
+    y: (box.top + box.bottom - lift) / 2,
+  };
+
+  const { camera } = rig;
+
+  if (camera.ready) {
+    const step = 1 - Math.exp(-CAMERA_RATE / FPS);
+
+    camera.x = mixed(camera.x, centre.x, step);
+    camera.y = mixed(camera.y, centre.y, step);
+    camera.scale = Math.exp(
+      mixed(Math.log(camera.scale), Math.log(wanted), step)
+    );
+  } else {
+    camera.x = centre.x;
+    camera.y = centre.y;
+    camera.scale = wanted;
+    camera.ready = true;
+  }
+
+  const along = (size: number, room: number, focus: number) =>
+    size <= room
+      ? (room - size) / 2
+      : clamp(
+          room / 2 - focus * camera.scale,
+          room - size - OVERSCAN,
+          OVERSCAN
+        );
+
+  const x = along(rig.native.w * camera.scale, win.w, camera.x);
+  const y = along(rig.native.h * camera.scale, win.h, camera.y);
+
+  rig.lens.style.transform = `translate(${x.toFixed(2)}px, ${y.toFixed(2)}px) scale(${camera.scale.toFixed(4)})`;
+};
 
 const tableRig = (holder: HTMLElement, native = FRAMING.native): TableRig => {
   const lens = el("div", "lv-lens");
@@ -406,7 +563,13 @@ const tableRig = (holder: HTMLElement, native = FRAMING.native): TableRig => {
   lens.append(table);
   holder.append(lens);
 
-  return { lens, native, scale: 1, table };
+  return {
+    camera: { ready: false, scale: 1, x: 0, y: 0 },
+    last: { box: null },
+    lens,
+    native,
+    table,
+  };
 };
 
 const cueRunner = (rig: TableRig, cues: readonly Cue[], from: number) => {
@@ -434,64 +597,29 @@ const cueRunner = (rig: TableRig, cues: readonly Cue[], from: number) => {
   };
 };
 
-const cameraAt = (
-  rig: TableRig,
-  shots: readonly (readonly [number, Shot])[],
-  beat: number,
-  win: Box
-) => {
-  const points = shots.map(([at, shot]) => {
-    const point = focusPoint(rig.table, shot.focus, rig.scale, rig.native);
+type Align = "Centre" | "Start";
 
-    return { at, point, zoom: shot.zoom };
-  });
-
-  const [first] = points;
-
-  if (first === undefined) {
-    return;
-  }
-
-  let camera: Camera = {
-    fx: first.point.x,
-    fy: first.point.y,
-    zoom: first.zoom,
-  };
-
-  for (let index = 1; index < points.length; index += 1) {
-    const before = points[index - 1];
-    const after = points[index];
-
-    if (before === undefined || after === undefined || beat < after.at) {
-      break;
-    }
-
-    const along = eased((beat - after.at) / 1.2);
-
-    camera = {
-      fx: mixed(before.point.x, after.point.x, along),
-      fy: mixed(before.point.y, after.point.y, along),
-      zoom: mixed(before.zoom, after.zoom, along),
-    };
-  }
-
-  rig.scale = lensTransform(rig.lens, win, rig.native, camera);
+const ALIGN_CLASS: Readonly<Record<Align, string>> = {
+  Centre: "lv-centre",
+  Start: "lv-start",
 };
 
 const wordsCaption = (
   text: string,
   box: Box,
-  px: number,
-  from: number,
-  spacing = 0.18
+  options: {
+    readonly from: number;
+    readonly px: number;
+    readonly spacing: number;
+    readonly align: Align;
+  }
 ) => {
-  const cap = el("div", "lv-cap");
-  const words = text.split(" ");
+  const cap = el("div", `lv-cap ${ALIGN_CLASS[options.align]}`);
 
   place(cap, box);
-  cap.style.fontSize = `${px}px`;
+  cap.style.fontSize = `${options.px}px`;
 
-  const nodes = words.map((word) => {
+  const nodes = text.split(" ").map((word) => {
     const node = el("span", "lv-word", word);
 
     cap.append(node);
@@ -503,11 +631,15 @@ const wordsCaption = (
     node: cap,
     tick: (beat: number, leaving: number) => {
       for (const [index, node] of nodes.entries()) {
-        const along = sprung(secondsSince(beat, from + index * spacing), POP);
-        const out = clamp((beat - leaving) / 0.35);
+        const along = sprung(
+          secondsSince(beat, options.from + index * options.spacing),
+          POP
+        );
+
+        const out = eased((beat - leaving - index * 0.04) / 0.3);
 
         node.style.opacity = along <= 0 ? "0" : String(1 - out);
-        node.style.transform = `translateY(${((1 - along) * 0.5 + out * -0.3).toFixed(3)}em) scale(${(0.4 + 0.6 * along).toFixed(4)}) rotate(${((1 - along) * (index % 2 === 0 ? -8 : 8)).toFixed(2)}deg)`;
+        node.style.transform = `translateY(${((1 - along) * 0.45 - out * 0.25).toFixed(3)}em) scale(${(0.5 + 0.5 * along).toFixed(4)}) rotate(${((1 - along) * (index % 2 === 0 ? -7 : 7)).toFixed(2)}deg)`;
       }
     },
   };
@@ -570,15 +702,13 @@ interface Pointer {
 
 interface Stage {
   readonly layers: Layer[];
-  readonly ticks: ((beat: number) => void)[];
+  readonly ticks: Tick[];
   pointer: Pointer | null;
   readonly sheets: HTMLElement;
   readonly front: HTMLElement;
   readonly deco: HTMLElement;
   readonly finger: HTMLElement;
 }
-
-type Tick = (beat: number) => void;
 
 const layerOf = (
   stage: Stage,
@@ -588,7 +718,6 @@ const layerOf = (
     readonly box: Box;
     readonly enter: Enter;
     readonly bare?: boolean;
-    readonly host?: HTMLElement;
     readonly build: (node: HTMLElement) => Tick | null;
     readonly exit?: Layer["exit"];
     readonly lead?: number;
@@ -599,7 +728,7 @@ const layerOf = (
   let tick: Tick | null = null;
 
   place(node, spec.box);
-  node.style.visibility = "hidden";
+  node.style.opacity = "0";
   node.style.zIndex = String(stage.layers.length + 1);
 
   const layer: Layer = {
@@ -610,7 +739,7 @@ const layerOf = (
     lead: spec.lead ?? 0.6,
     node,
     start: () => {
-      (spec.host ?? stage.sheets).append(node);
+      stage.sheets.append(node);
       tick = spec.build(node);
     },
     started,
@@ -657,17 +786,15 @@ const tableLayer = (
     readonly from: number;
     readonly until: number;
     readonly cues: readonly Cue[];
-    readonly shots: readonly (readonly [number, Shot])[];
+    readonly aims: readonly Aim[];
     readonly enter: Enter;
     readonly box?: Box;
-    readonly extra?: (
-      node: HTMLElement,
-      rig: TableRig
-    ) => (beat: number) => void;
+    readonly extra?: (node: HTMLElement, rig: TableRig) => Tick;
     readonly exit?: Layer["exit"];
   }
 ) => {
   const box = spec.box ?? FRAMING.window;
+  const aims = spec.aims.map((each) => ({ ...each, at: spec.from + each.at }));
 
   return layerOf(stage, {
     box,
@@ -676,13 +803,9 @@ const tableLayer = (
       const run = cueRunner(rig, spec.cues, spec.from);
       const extra = spec.extra?.(node, rig);
 
-      const shots = spec.shots.map(
-        ([at, shot]) => [spec.from + at, shot] as const
-      );
-
       return (beat) => {
         run(beat);
-        cameraAt(rig, shots, beat, { ...box, x: 0, y: 0 });
+        steer(rig, aims, beat, box);
         extra?.(beat);
       };
     },
@@ -703,15 +826,15 @@ const captionLayer = (
     readonly px?: number;
     readonly spacing?: number;
     readonly box?: Box;
+    readonly align?: Align;
   } = {}
 ) => {
-  const caption = wordsCaption(
-    text,
-    options.box ?? FRAMING.caption,
-    options.px ?? FRAMING.captionPx,
+  const caption = wordsCaption(text, options.box ?? FRAMING.caption, {
+    align: options.align ?? FRAMING.align,
     from,
-    options.spacing
-  );
+    px: options.px ?? FRAMING.captionPx,
+    spacing: options.spacing ?? 0.12,
+  });
 
   let added = false;
 
@@ -732,9 +855,9 @@ const captionLayer = (
 
 const CHAT_BOX: Box = FRAMING.tall
   ? { h: 600, w: 440, x: 30, y: 125 }
-  : { h: 500, w: 430, x: 265, y: 20 };
+  : { h: 500, w: 400, x: 280, y: 20 };
 
-const CHAT_ZOOM = FRAMING.tall ? 1.36 : 1.04;
+const CHAT_ZOOM = FRAMING.tall ? 1.36 : 1.13;
 
 const chatShot = (stage: Stage) => {
   backing(stage, 0, 7.5, CHAT_BOX, "blue", -3.5);
@@ -744,6 +867,7 @@ const chatShot = (stage: Stage) => {
       const chat = el("div", "lv-chat");
 
       chat.style.zoom = String(CHAT_ZOOM);
+
       const head = el("div", "lv-chat-head");
       const faces = el("span", "lv-chat-faces");
 
@@ -841,13 +965,32 @@ const chatShot = (stage: Stage) => {
 const fillShot = (stage: Stage) => {
   backing(stage, 5.6, 15, FRAMING.window, "yellow", 2.5);
   tableLayer(stage, {
+    aims: [
+      aim(
+        0,
+        parts([".felt-rules"], {
+          who: FRAMING.tall ? ["Lou", "Ana", "Ben", "Jonas"] : ["Ana", "Ben"],
+        }),
+        0.92,
+        20
+      ),
+      aim(
+        4.4,
+        parts([".felt-rules"], {
+          who: FRAMING.tall
+            ? ["Lou", "Ana", "Ben", "Jonas", "Kit", "Maya"]
+            : ["Lou", "Ana", "Ben", "Jonas"],
+        }),
+        0.95,
+        20
+      ),
+    ],
     cues: fillTold(DEFAULT_FELT).cues,
     enter: { entry: "Right", rest: 0 },
     from: 5.6,
-    shots: [[0, { focus: { kind: "Centre" }, zoom: 1 }]],
     until: 15,
   });
-  captionLayer(stage, CAPTIONS.Fill, 7, 13.7);
+  captionLayer(stage, CAPTIONS.Fill, 6.6, 13.7);
 };
 
 interface RigHolder {
@@ -873,6 +1016,13 @@ const gestureShot = (stage: Stage) => {
     to: null,
   };
 
+  const aims = [
+    aim(0, parts([".hand", ".chipctl"]), 0.8, 30),
+    aim(2.9, parts([".hand", ".chipctl"]), 0.92, 190),
+    aim(6.4, parts([".hand", ".chipctl"]), 0.8, 30),
+    aim(8.4, parts([".hand", ".chipctl"]), 0.75, 80),
+  ].map((each) => ({ ...each, at: from + each.at }));
+
   backing(stage, from, 27, FRAMING.window, "green", -2.5);
   layerOf(stage, {
     box: FRAMING.window,
@@ -880,7 +1030,7 @@ const gestureShot = (stage: Stage) => {
       const rig = tableRig(node);
       const opening = cueRunner(rig, [[0, story.opening]], from);
       const dealNext = cueRunner(rig, story.nextHand, 22);
-      let after: ((beat: number) => void) | null = null;
+      let after: Tick | null = null;
 
       rigs.rig = rig;
       rig.table.addEventListener("intent", (event) => {
@@ -908,16 +1058,6 @@ const gestureShot = (stage: Stage) => {
         }
       });
 
-      const shots: readonly (readonly [number, Shot])[] = [
-        [
-          from,
-          {
-            focus: { kind: "Part", selector: ".hand", dy: -60 },
-            zoom: FRAMING.tall ? 1.15 : 1.25,
-          },
-        ],
-      ];
-
       return (beat) => {
         opening(beat);
 
@@ -935,7 +1075,7 @@ const gestureShot = (stage: Stage) => {
           dealNext(beat);
         }
 
-        cameraAt(rig, shots, beat, { ...FRAMING.window, x: 0, y: 0 });
+        steer(rig, aims, beat, FRAMING.window);
       };
     },
     enter: { entry: "Rise", rest: 0 },
@@ -945,7 +1085,7 @@ const gestureShot = (stage: Stage) => {
   });
 
   const target = (selector: string, match?: RegExp) => {
-    const root = rigs.rig === null ? null : shadowOf(rigs.rig.table);
+    const root = rigs.rig === null ? null : rootOf(rigs.rig);
     const nodes = root?.querySelectorAll(selector) ?? [];
 
     for (const node of nodes) {
@@ -972,9 +1112,11 @@ const gestureShot = (stage: Stage) => {
         stage.pointer = { down: beat >= 14.95, x: hand.x, y: hand.y };
       }
     } else if (beat >= 17 && beat < 20) {
-      chipFrom.at ??= target(".chipctl");
+      if (beat >= 17.45) {
+        chipFrom.at ??= target(".chipctl");
+      }
 
-      const chip = chipFrom.at;
+      const chip = chipFrom.at ?? target(".chipctl");
 
       if (chip !== null) {
         const lift = clamp((beat - 17.6) / 0.25);
@@ -996,26 +1138,45 @@ const gestureShot = (stage: Stage) => {
         stage.pointer = {
           down: beat >= 23.2 && beat < 23.9,
           x: hand.x + flick * 14,
-          y: hand.y - flick * (FRAMING.tall ? 200 : 170),
+          y: hand.y - flick * (FRAMING.tall ? 220 : 200),
         };
       }
     }
   });
 
-  captionLayer(stage, CAPTIONS.Gestures[0], 14.5, 25.7, {
-    box: captionThird(0),
-  });
-  captionLayer(stage, CAPTIONS.Gestures[1], 18, 25.7, { box: captionThird(1) });
-  captionLayer(stage, CAPTIONS.Gestures[2], 22.3, 25.7, {
-    box: captionThird(2),
-  });
+  const [hold, drag, flick] = CAPTIONS.Gestures;
+
+  const third = (index: number): Box => {
+    const box = FRAMING.caption;
+
+    return FRAMING.tall
+      ? { h: box.h, w: box.w / 3, x: box.x + (box.w / 3) * index, y: box.y }
+      : { h: box.h / 3, w: box.w, x: box.x, y: box.y + (box.h / 3) * index };
+  };
+
+  const big = FRAMING.tall ? 54 : 84;
+
+  for (const [index, word, at] of [
+    [0, hold, 14.5],
+    [1, drag, 18],
+    [2, flick, 22.3],
+  ] as const) {
+    captionLayer(stage, word, at, 25.7, { box: third(index), px: big });
+  }
 };
 
-const captionThird = (index: number): Box => {
-  const box = FRAMING.caption;
-  const width = box.w / 3;
+const stampSpot = (card: Rect, index: number, width: number) => {
+  const middle = (card.left + card.right) / 2;
+  const gap = 14;
+  const height = FRAMING.tall ? 44 : 52;
+  const x = index % 2 === 0 ? middle - width - 6 : middle + 6;
 
-  return { h: box.h, w: width, x: box.x + width * index, y: box.y };
+  const y =
+    index < 2
+      ? card.top - gap - height
+      : card.bottom + gap + (FRAMING.tall ? 4 : 0);
+
+  return { x, y };
 };
 
 const rulesShot = (stage: Stage) => {
@@ -1031,21 +1192,15 @@ const rulesShot = (stage: Stage) => {
 
   backing(stage, from, 35, FRAMING.window, "pink", 2.5);
   tableLayer(stage, {
+    aims: [aim(0, parts([".felt-rules"]), FRAMING.tall ? 0.9 : 0.5)],
     cues: rulesTold(felts).cues,
     enter: { entry: "Drop", rest: 0 },
     extra: (_node, rig) => {
-      const sides = [
-        { x: 18, y: 70 },
-        { x: 806, y: 112 },
-        { x: 26, y: 262 },
-        { x: 800, y: 300 },
-      ];
-
       const stamps = RULE_STAMPS.map((stamp, index) => {
         const node = el("div", "lv-stamp", stamp.word);
 
         node.style.background = HOUSE[stamp.colour];
-        node.style.fontSize = `${FRAMING.tall ? 21 : 24}px`;
+        node.style.fontSize = `${FRAMING.tall ? 24 : 28}px`;
         node.style.opacity = "0";
         stage.front.append(node);
 
@@ -1061,46 +1216,25 @@ const rulesShot = (stage: Stage) => {
       });
 
       return (beat) => {
-        const card = shadowOf(rig.table)?.querySelector(".felt-rules");
-        const box = card?.getBoundingClientRect();
+        const card = rootOf(rig)
+          ?.querySelector(".felt-rules")
+          ?.getBoundingClientRect();
+
+        if (card === undefined) {
+          return;
+        }
 
         for (const stamp of stamps) {
           const along = sprung(secondsSince(beat, stamp.at), POP);
-          const width = stamp.node.offsetWidth;
-
-          const spot =
-            FRAMING.tall && box !== undefined
-              ? {
-                  x:
-                    box.left +
-                    box.width / 2 -
-                    width / 2 +
-                    (stamp.index % 2 === 0 ? -16 : 16),
-                  y: box.bottom + 12 + stamp.index * 40,
-                }
-              : (sides[stamp.index] ?? { x: 0, y: 0 });
-
-          stamp.node.style.left = `${spot.x.toFixed(1)}px`;
-          stamp.node.style.top = `${spot.y.toFixed(1)}px`;
+          const spot = stampSpot(card, stamp.index, stamp.node.offsetWidth);
           const leaving = 1 - eased((beat - 33.5) / 0.6);
 
           stamp.node.style.opacity = along <= 0 ? "0" : "1";
-          stamp.node.style.transform = `scale(${((2.2 - 1.2 * along) * leaving).toFixed(4)}) rotate(${(stamp.tilt * along).toFixed(2)}deg)`;
+          stamp.node.style.transform = `translate(${spot.x.toFixed(1)}px, ${spot.y.toFixed(1)}px) scale(${((2.2 - 1.2 * along) * leaving).toFixed(4)}) rotate(${(stamp.tilt * along).toFixed(2)}deg)`;
         }
       };
     },
     from,
-    shots: [
-      [
-        0,
-        FRAMING.tall
-          ? {
-              focus: { kind: "Part", selector: ".felt-rules", dy: 90 },
-              zoom: 1.12,
-            }
-          : { focus: { kind: "Centre" }, zoom: 1 },
-      ],
-    ],
     until: 35,
   });
   captionLayer(stage, CAPTIONS.Rules, 26.3, 33.7);
@@ -1113,15 +1247,6 @@ const PICTURE_LOOK = {
   theme: "Light",
 } as const;
 
-const pictureBox = (): Box =>
-  FRAMING.tall
-    ? { h: 525, w: 420, x: 40, y: 210 }
-    : { h: 490, w: 392, x: 150, y: 25 };
-
-const PICTURE_CAPTION: Box = FRAMING.tall
-  ? FRAMING.caption
-  : { h: 220, w: 330, x: 580, y: 160 };
-
 const pictureLayer = (
   stage: Stage,
   svg: string,
@@ -1130,7 +1255,7 @@ const pictureLayer = (
   enter: Enter
 ) =>
   layerOf(stage, {
-    box: pictureBox(),
+    box: FRAMING.picture,
     build: (node) => {
       node.classList.add("lv-picture");
       node.innerHTML = svg;
@@ -1147,21 +1272,15 @@ const badBeatShot = (stage: Stage) => {
 
   backing(stage, from, 41.5, FRAMING.window, "blue", -2);
   tableLayer(stage, {
+    aims: [
+      aim(0, seats("Jonas"), 0.6, 30),
+      aim(0.9, parts([".slot"]), 0.9),
+      aim(2.6, parts([".slot"], { who: ["Priya"] }), 0.92, 20),
+      aim(3.8, seats("Jonas"), 0.55, 60),
+    ],
     cues: badBeatTold().cues,
     enter: { entry: "Left", rest: 0 },
     from,
-    shots: FRAMING.tall
-      ? [
-          [0, { focus: { kind: "Centre" }, zoom: 1 }],
-          [1, { focus: { kind: "Part", selector: ".strip" }, zoom: 1.25 }],
-          [2.7, { focus: { kind: "Centre" }, zoom: 1.12 }],
-        ]
-      : [
-          [0, { focus: { kind: "Centre" }, zoom: 1 }],
-          [1, { focus: { kind: "Part", selector: ".strip" }, zoom: 1.35 }],
-          [2.7, { focus: { kind: "Centre" }, zoom: 1.1 }],
-          [3.9, { focus: { kind: "Seat", name: "Jonas" }, zoom: 1.6 }],
-        ],
     until: 41.5,
   });
   pictureLayer(stage, pictureSvg(BAD_BEAT, PICTURE_LOOK), 40, 47, {
@@ -1169,47 +1288,48 @@ const badBeatShot = (stage: Stage) => {
     rest: 2,
   });
   captionLayer(stage, CAPTIONS.BadBeat, 40.3, 45.7, {
-    box: PICTURE_CAPTION,
-    px: FRAMING.tall ? FRAMING.captionPx : 42,
+    box: FRAMING.pictureCaption,
   });
 };
 
 const settleShot = (stage: Stage) => {
-  pictureLayer(stage, settleUpSvg(SETTLE_UP, PICTURE_LOOK), 45.6, 53, {
+  pictureLayer(stage, settleUpSvg(SMALL_NIGHT, PICTURE_LOOK), 45.6, 53, {
     entry: "Right",
     rest: -2,
   });
   captionLayer(stage, CAPTIONS.Settle, 46.4, 51.7, {
-    box: PICTURE_CAPTION,
-    px: FRAMING.tall ? FRAMING.captionPx : 42,
-    spacing: 0.12,
+    box: FRAMING.pictureCaption,
+    px: FRAMING.tall ? 40 : FRAMING.captionPx,
+    spacing: 0.1,
   });
 };
 
-const LITTLE_SHOTS: Readonly<
-  Record<LittleScene, readonly (readonly [number, Shot])[]>
-> = {
-  BombPot: [[0, { focus: { kind: "Centre" }, zoom: 1.15 }]],
-  Bounty: [[0, { focus: { kind: "Seat", name: "Kit", dy: 20 }, zoom: 1.4 }]],
-  Button: [[0, { focus: { kind: "Centre" }, zoom: 1.2 }]],
-  Fairness: [[0, { focus: { kind: "Centre" }, zoom: 1 }]],
-  KeepSeat: [[0, { focus: { kind: "Seat", name: "Lou" }, zoom: 1.9 }]],
-  Peeking: [[0, { focus: { kind: "Seat", name: "Maya" }, zoom: 2 }]],
-  Reaction: [[0, { focus: { kind: "Point", fx: 0.5, fy: 0.72 }, zoom: 1.6 }]],
-  RunTwice: [[0, { focus: { kind: "Centre" }, zoom: 1.05 }]],
-  ShowOne: [
-    [0, { focus: { kind: "Part", selector: ".hand", dy: -30 }, zoom: 1.7 }],
+const LITTLE_AIMS: Readonly<Record<LittleScene, readonly Aim[]>> = {
+  BombPot: [
+    aim(0, seats("Ana", "Ben"), 0.85, 20),
+    aim(0.7, parts([".slot", ".pot"]), 0.85),
   ],
-  Straddle: [[0, { focus: { kind: "Seat", name: "Kit", dy: 30 }, zoom: 1.7 }]],
-  Sweep: [[0, { focus: { kind: "Centre" }, zoom: 1.2 }]],
+  Bounty: [aim(0, seats("Kit", "Lou"), 0.95, 20)],
+  Button: [aim(0, parts([".dealer"], { who: ["Dev", "You"] }), 0.95)],
+  Fairness: [aim(0, WHOLE, 1)],
+  KeepSeat: [aim(0, seats("You"), 0.5, -70)],
+  Peeking: [aim(0, seats("Maya"), 0.55, 20)],
+  Reaction: [
+    aim(0, FRAMING.tall ? seats("You") : seats("Priya", "You"), 0.85, 130),
+  ],
+  RunTwice: [aim(0, parts([".slot", ".runs .card"]), 0.9)],
+  ShowOne: [aim(0, parts([".hand"]), 0.75, 20)],
+  Straddle: [
+    aim(0, parts([".pile.posted", ".pile.posted .posted-tag"]), 0.92, 10),
+  ],
+  Sweep: [
+    aim(0, parts([".pile:not(.empty)", ".pot"]), 0.9),
+    aim(0.5, parts([".pot", ".slot"]), 0.8),
+  ],
   WaitBig: [
-    [0, { focus: { kind: "Part", selector: ".hand", dy: -40 }, zoom: 1.45 }],
+    aim(0, parts([".note"], { text: /Waits/u }), FRAMING.tall ? 0.8 : 0.6, 30),
   ],
 };
-
-const LITTLE_BOX: Box = FRAMING.tall
-  ? { h: 500, w: 420, x: 40, y: 222 }
-  : { h: 365, w: 620, x: 170, y: 36 };
 
 const fairnessLayer = (
   stage: Stage,
@@ -1218,19 +1338,25 @@ const fairnessLayer = (
   enter: Enter
 ) =>
   layerOf(stage, {
-    box: LITTLE_BOX,
+    box: FRAMING.window,
     build: (node) => {
-      const wrap = el("div", "lv-room-wrap page room");
+      const wrap = el("div", "lv-fair page room");
       const header = el("header", "room-header");
       const brand = el("span", "brand small");
       const end = el("span", "bar-end");
-      const body = el("div", "room-body");
 
       const mark = FairMarks.Checked({
         cards: 14,
         round: 18_442_907,
         timing: "InTime",
       });
+
+      const symbol = fairSymbol(mark);
+
+      const [checks = CAPTIONS.Fairness] = fairParagraph({
+        hand: 14,
+        mark,
+      }).split(/(?<=\.) /u);
 
       brand.append("nostakes", el("span", "beta-tag", "beta"));
       end.append(
@@ -1240,43 +1366,28 @@ const fairnessLayer = (
       header.append(
         brand,
         el("span", "bar-button", "Invite"),
-        el("span", "bar-button fair-mark", fairSymbol(mark)),
+        el("span", "bar-button fair-mark", symbol),
         end
       );
 
-      const rig = tableRig(body, { h: LITTLE_BOX.h - 44, w: LITTLE_BOX.w });
+      const body = el("div", "lv-fair-mark");
+      const tick = el("div", "lv-tick", symbol);
+      const words = el("div", "lv-fair-words", checks);
 
-      rig.table.snapshot = LITTLE_TOLD.Sweep().cues[1]?.[1] ?? null;
-      lensTransform(
-        rig.lens,
-        { ...LITTLE_BOX, h: LITTLE_BOX.h - 44, x: 0, y: 0 },
-        rig.native,
-        { fx: 0, fy: 0, zoom: 1 }
-      );
+      tick.style.fontSize = FRAMING.tall ? "92px" : "110px";
+      words.style.fontSize = FRAMING.tall ? "40px" : "46px";
+      body.append(tick, words);
       wrap.append(header, body);
       node.append(wrap);
 
-      const sheet = el("div", "lv-fair-sheet");
-      const paragraph = el("p", "fair-text", fairParagraph({ hand: 14, mark }));
-
-      paragraph.style.fontSize = FRAMING.tall ? "15px" : "15px";
-      sheet.append(
-        el("div", "fair-tonight", "Hand 14  ✓ deck checked"),
-        paragraph
-      );
-      place(
-        sheet,
-        FRAMING.tall
-          ? { h: 300, w: 360, x: 30, y: 70 }
-          : { h: 220, w: 420, x: 100, y: 64 }
-      );
-      node.append(sheet);
-
       return (beat) => {
-        const along = sprung(secondsSince(beat, from + 0.55), POP);
+        const pop = sprung(secondsSince(beat, from + 0.3), POP);
+        const say = sprung(secondsSince(beat, from + 0.7), SOFT);
 
-        sheet.style.opacity = along <= 0 ? "0" : "1";
-        sheet.style.transform = `translateY(${((1 - along) * 40).toFixed(1)}px) scale(${(0.7 + 0.3 * along).toFixed(4)})`;
+        tick.style.opacity = pop <= 0 ? "0" : "1";
+        tick.style.transform = `scale(${pop.toFixed(4)}) rotate(${((1 - pop) * -20).toFixed(2)}deg)`;
+        words.style.opacity = String(clamp(say));
+        words.style.transform = `translateY(${((1 - say) * 18).toFixed(1)}px)`;
       };
     },
     enter,
@@ -1284,48 +1395,122 @@ const fairnessLayer = (
     until,
   });
 
+const homeRow = (
+  list: HTMLElement,
+  code: string,
+  who: string,
+  state: string
+) => {
+  const item = el("li");
+  const button = el("button", "room-row");
+
+  button.append(
+    el("span", "room-row-code", code),
+    el("span", "room-row-who", who),
+    el("span", state === "Open" ? "tag is-open" : "tag", state)
+  );
+  item.append(button);
+  list.append(item);
+
+  return button;
+};
+
+const keepSeat = (stage: Stage, from: number, enter: Enter) => {
+  const table = LITTLE_TOLD.KeepSeat().cues;
+  const away = from + 0.75;
+  const tap = from + 1.55;
+  const back = from + 1.85;
+
+  tableLayer(stage, {
+    aims: LITTLE_AIMS.KeepSeat,
+    cues: table,
+    enter,
+    exit: peeledAway(away),
+    from,
+    until: away + 1,
+  });
+  layerOf(stage, {
+    box: FRAMING.window,
+    build: (node) => {
+      const home = el("div", "lv-home page home");
+      const brand = el("h1", "brand");
+      const rooms = el("section", "your-rooms");
+      const list = el("ul", "room-list");
+
+      brand.append("nostakes", el("span", "beta-tag", "beta"));
+      rooms.append(el("span", "field-label", "Your rooms"), list);
+
+      const open = homeRow(list, ROOM_CODE, "With Ben, Ana and 6 more", "Open");
+
+      homeRow(list, "H4MW9P", "With Kit and Lou", "Settled");
+      home.append(brand, rooms);
+      home.style.zoom = FRAMING.tall ? "1.3" : "1.55";
+      node.append(home);
+
+      stage.ticks.push((beat) => {
+        if (beat >= tap - 0.35 && beat < back) {
+          const box = open.getBoundingClientRect();
+
+          stage.pointer = {
+            down: beat >= tap,
+            x: box.left + box.width * 0.45,
+            y: box.top + box.height / 2,
+          };
+        }
+      });
+
+      return (beat) => {
+        const pressed = beat >= tap && beat < back;
+
+        open.style.transform = pressed ? "translate(1px, 2px)" : "";
+      };
+    },
+    enter: { entry: "Rise", look: SOFT, rest: 1 },
+    exit: peeledAway(back),
+    from: away + 0.1,
+    until: back + 1,
+  });
+  tableLayer(stage, {
+    aims: LITTLE_AIMS.KeepSeat,
+    cues: table,
+    enter: { entry: "Pop", rest: -1 },
+    from: back,
+    until: OUTRO_BEAT + 0.6,
+  });
+};
+
 const littleShots = (stage: Stage) => {
   for (const [index, little] of LITTLE_THINGS.entries()) {
-    const from = littleStart(index) - 0.25;
-    const until = littleStart(index) + LITTLE_BEATS * 3;
+    const start = littleStart(index);
+    const from = start - 0.25;
+    const until = start + little.beats * 3;
 
     const enter: Enter = {
       entry: index % 2 === 0 ? "Right" : "Left",
-      look: { damping: 0.5, frequency: 2.6 },
+      look: { damping: 0.55, frequency: 2.4 },
       rest: index % 2 === 0 ? 1.6 : -1.8,
     };
 
     if (little.scene === "Fairness") {
       fairnessLayer(stage, from, until, enter);
+    } else if (little.scene === "KeepSeat") {
+      keepSeat(stage, from, enter);
     } else {
       tableLayer(stage, {
-        box: LITTLE_BOX,
+        aims: LITTLE_AIMS[little.scene],
         cues: LITTLE_TOLD[little.scene]().cues,
         enter,
         from,
-        shots: LITTLE_SHOTS[little.scene].map(
-          ([at, shot]) =>
-            [
-              at,
-              {
-                ...shot,
-                zoom:
-                  little.scene === "Bounty"
-                    ? shot.zoom
-                    : Math.max(shot.zoom, FRAMING.tall ? 1.3 : 1.25),
-              },
-            ] as const
-        ),
-        until: index === LITTLE_THINGS.length - 1 ? 77 : until,
+        until,
       });
     }
 
     captionLayer(
       stage,
       little.caption,
-      littleStart(index) + 0.05,
-      littleStart(index) + LITTLE_BEATS - 0.25,
-      { px: FRAMING.smallCaptionPx, spacing: 0.08 }
+      start + 0.05,
+      start + little.beats - 0.25,
+      { spacing: 0.07 }
     );
   }
 
@@ -1333,64 +1518,65 @@ const littleShots = (stage: Stage) => {
     paperBits(
       stage.deco,
       littleStart(0),
-      FRAMING.tall ? { x: 40, y: 150 } : { x: 90, y: 60 },
+      FRAMING.tall ? { x: 40, y: 310 } : { x: 400, y: 40 },
       12,
       52
     ),
     paperBits(
       stage.deco,
       littleStart(0),
-      FRAMING.tall ? { x: 460, y: 150 } : { x: 870, y: 60 },
+      FRAMING.tall ? { x: 470, y: 310 } : { x: 910, y: 40 },
       12,
       53
     )
   );
 };
 
+const OUTRO_SPOTS: readonly (readonly [number, number])[] = FRAMING.tall
+  ? [
+      [70, 150],
+      [380, 170],
+      [210, 220],
+      [60, 640],
+      [390, 660],
+      [230, 700],
+    ]
+  : [
+      [110, 50],
+      [780, 40],
+      [450, 30],
+      [80, 410],
+      [800, 410],
+      [460, 430],
+    ];
+
+const OUTRO_CAST: readonly (readonly [CastName, Expression])[] = [
+  ["Ana", "Happy"],
+  ["Ben", "Thinking"],
+  ["Kit", "LookingDown"],
+  ["Priya", "Happy"],
+  ["Jonas", "Gutted"],
+  ["Lou", "Happy"],
+];
+
 const outroShot = (stage: Stage) => {
-  captionLayer(stage, CAPTIONS.Outro, 76.2, 79.6, {
+  captionLayer(stage, CAPTIONS.Outro, OUTRO_BEAT + 0.2, 79.6, {
+    align: "Centre",
     box: FRAMING.tall
       ? { h: 300, w: 440, x: 30, y: 300 }
-      : { h: 200, w: 760, x: 100, y: 170 },
-    px: FRAMING.tall ? 44 : 52,
-    spacing: 0.22,
+      : { h: 240, w: 760, x: 100, y: 150 },
+    px: FRAMING.tall ? 50 : 62,
+    spacing: 0.16,
   });
   layerOf(stage, {
-    box: { h: FRAMING.view.h, w: FRAMING.view.w, x: 0, y: 0 },
     bare: true,
+    box: { h: FRAMING.view.h, w: FRAMING.view.w, x: 0, y: 0 },
     build: (node) => {
       node.style.background = "var(--color-page)";
 
-      const spots = FRAMING.tall
-        ? [
-            [70, 150],
-            [380, 170],
-            [210, 220],
-            [60, 640],
-            [390, 660],
-            [230, 700],
-          ]
-        : [
-            [110, 70],
-            [780, 60],
-            [450, 50],
-            [80, 400],
-            [800, 400],
-            [460, 420],
-          ];
-
-      const cast: readonly (readonly [CastName, Expression])[] = [
-        ["Ana", "Happy"],
-        ["Ben", "Thinking"],
-        ["Kit", "LookingDown"],
-        ["Priya", "Happy"],
-        ["Jonas", "Gutted"],
-        ["Lou", "Happy"],
-      ];
-
-      const faces = cast.map(([name, expression], index) => {
+      const faces = OUTRO_CAST.map(([name, expression], index) => {
         const tile = faceTile(CAST[name], expression, FRAMING.tall ? 64 : 70);
-        const [x, y] = spots[index] ?? [0, 0];
+        const [x, y] = OUTRO_SPOTS[index] ?? [0, 0];
 
         tile.style.position = "absolute";
         tile.style.left = `${x}px`;
@@ -1402,18 +1588,21 @@ const outroShot = (stage: Stage) => {
 
       return (beat) => {
         for (const [index, tile] of faces.entries()) {
-          const along = sprung(secondsSince(beat, 76.5 + index * 0.25), POP);
-          const bob = Math.sin((beat - 76) * 1.6 + index) * 4;
+          const along = sprung(
+            secondsSince(beat, OUTRO_BEAT + 0.4 + index * 0.2),
+            POP
+          );
 
-          tile.style.opacity = along <= 0 ? "0" : "1";
+          const bob = Math.sin((beat - OUTRO_BEAT) * 1.6 + index) * 4;
           const gone = 1 - eased((beat - HIT_BEAT) / 0.5);
 
+          tile.style.opacity = along <= 0 ? "0" : "1";
           tile.style.transform = `translateY(${bob.toFixed(1)}px) scale(${(along * gone).toFixed(4)}) rotate(${((index % 2 === 0 ? -6 : 6) * along).toFixed(1)}deg)`;
         }
       };
     },
     enter: { entry: "Rise", look: SOFT, rest: 0 },
-    from: 75.9,
+    from: OUTRO_BEAT - 0.1,
     until: 81,
   });
 };
@@ -1444,8 +1633,8 @@ const endShot = (stage: Stage) => {
     )
   );
   layerOf(stage, {
-    box: { h: FRAMING.view.h, w: FRAMING.view.w, x: 0, y: 0 },
     bare: true,
+    box: { h: FRAMING.view.h, w: FRAMING.view.w, x: 0, y: 0 },
     build: (node) => {
       const end = el("div", "lv-end");
       const brand = el("h1", "brand");
@@ -1552,13 +1741,13 @@ declare global {
 }
 
 const base64Of = (bytes: Uint8Array) => {
-  const parts: string[] = [];
+  const chunks: string[] = [];
 
   for (let at = 0; at < bytes.length; at += 0x80_00) {
-    parts.push(String.fromCodePoint(...bytes.subarray(at, at + 0x80_00)));
+    chunks.push(String.fromCodePoint(...bytes.subarray(at, at + 0x80_00)));
   }
 
-  return btoa(parts.join(""));
+  return btoa(chunks.join(""));
 };
 
 const pointerOf = (stage: Stage): Pointer | null => stage.pointer;
@@ -1610,7 +1799,9 @@ const mount = () => {
     paperBits(
       stage.deco,
       40,
-      { x: FRAMING.view.w * 0.5, y: FRAMING.view.h * 0.35 },
+      FRAMING.tall
+        ? { x: FRAMING.view.w * 0.5, y: 250 }
+        : { x: 700, y: FRAMING.view.h * 0.35 },
       14,
       40
     )
@@ -1638,8 +1829,7 @@ const mount = () => {
         if (layer.started.done && beat >= layer.until) {
           layer.node.remove();
         } else if (layer.started.done) {
-          layer.node.style.visibility =
-            beat >= layer.from ? "visible" : "hidden";
+          layer.node.style.opacity = beat >= layer.from ? "1" : "0";
           posed(layer, beat);
           layer.tick(beat);
         }

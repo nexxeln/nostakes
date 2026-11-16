@@ -31,6 +31,8 @@ const PIXEL_RATIO = 2;
 
 const CLOCK_PAUSED_AT = 300_000;
 
+const RENDER_ONLY = { height: 2, width: 2, x: 0, y: 0 };
+
 class LaunchFailed extends Schema.TaggedError<
   LaunchFailed,
   { readonly brand: unique symbol }
@@ -190,6 +192,12 @@ const filmed = (
       yield* moved(page, pointer, next);
       pointer = next;
 
+      if (stills.length > 0 && !wanted.has(index)) {
+        yield* attempt("render the frame", () =>
+          page.screenshot({ clip: RENDER_ONLY, type: "jpeg" })
+        );
+      }
+
       if (stills.length === 0 || wanted.has(index)) {
         const name =
           stills.length === 0
@@ -220,7 +228,7 @@ const filmed = (
     return frames;
   });
 
-const scored = (opened: Browser, origin: string, dir: string) =>
+const scored = (opened: Browser, origin: string, path: string) =>
   Effect.gen(function* score() {
     const files = yield* FileSystem.FileSystem;
     const page = yield* attempt("open the score page", () => opened.newPage());
@@ -240,78 +248,79 @@ const scored = (opened: Browser, origin: string, dir: string) =>
 
     yield* attempt("close the score page", () => page.close());
 
-    const path = `${dir}/score.wav`;
-
     yield* files.writeFile(path, Uint8Array.from(Buffer.from(wav, "base64")));
     yield* Console.log(`wrote ${path}`);
 
     return path;
   });
 
-const encoded = (
-  dir: string,
-  framing: FramingName,
-  frames: string,
-  score: string
-) =>
-  Effect.gen(function* encode() {
-    const look = FRAMINGS[framing];
-    const out = `${dir}/${look.file}.mp4`;
+const pictured = (picture: string, frames: string) =>
+  ffmpeg(`encode ${picture}`, [
+    "-framerate",
+    String(FPS),
+    "-i",
+    `${frames}/%05d.png`,
+    "-c:v",
+    "libx264",
+    "-preset",
+    "slow",
+    "-crf",
+    "17",
+    "-profile:v",
+    "high",
+    "-pix_fmt",
+    "yuv420p",
+    "-colorspace",
+    "bt709",
+    "-color_primaries",
+    "bt709",
+    "-color_trc",
+    "bt709",
+    "-color_range",
+    "tv",
+    "-vf",
+    "scale=out_color_matrix=bt709:out_range=tv",
+    "-an",
+    "-movflags",
+    "+faststart",
+    picture,
+  ]);
 
-    yield* ffmpeg(`encode ${look.file}`, [
-      "-framerate",
-      String(FPS),
-      "-i",
-      `${frames}/%05d.png`,
-      "-i",
-      score,
-      "-map",
-      "0:v",
-      "-map",
-      "1:a",
-      "-c:v",
-      "libx264",
-      "-preset",
-      "slow",
-      "-crf",
-      "17",
-      "-profile:v",
-      "high",
-      "-pix_fmt",
-      "yuv420p",
-      "-colorspace",
-      "bt709",
-      "-color_primaries",
-      "bt709",
-      "-color_trc",
-      "bt709",
-      "-color_range",
-      "tv",
-      "-vf",
-      "scale=out_color_matrix=bt709:out_range=tv",
-      "-c:a",
-      "aac",
-      "-b:a",
-      "192k",
-      "-ar",
-      "48000",
-      "-t",
-      (LENGTH_MS / 1000).toFixed(3),
-      "-movflags",
-      "+faststart",
-      out,
-    ]);
-    yield* ffmpeg(`contact sheet for ${look.file}`, [
-      "-i",
-      out,
-      "-vf",
-      `fps=${TEMPO}/60:start_time=${((60 / TEMPO) * 0.5).toFixed(3)},scale=${framing === "wide" ? 384 : 216}:-1,tile=11x8:padding=6:margin=6:color=0xf6f1e8`,
-      "-frames:v",
-      "1",
-      `${dir}/${look.file}-contact.png`,
-    ]);
-    yield* Console.log(`wrote ${out} and its contact sheet`);
-  });
+const muxed = (picture: string, score: string, out: string) =>
+  ffmpeg(`mux ${out}`, [
+    "-i",
+    picture,
+    "-i",
+    score,
+    "-map",
+    "0:v",
+    "-map",
+    "1:a",
+    "-c:v",
+    "copy",
+    "-c:a",
+    "aac",
+    "-b:a",
+    "192k",
+    "-ar",
+    "48000",
+    "-t",
+    (LENGTH_MS / 1000).toFixed(3),
+    "-movflags",
+    "+faststart",
+    out,
+  ]);
+
+const contactSheet = (framing: FramingName, film: string, sheet: string) =>
+  ffmpeg(`contact sheet for ${film}`, [
+    "-i",
+    film,
+    "-vf",
+    `fps=${TEMPO}/60:start_time=${((60 / TEMPO) * 0.5).toFixed(3)},scale=${framing === "wide" ? 384 : 216}:-1,tile=11x8:padding=6:margin=6:color=0xf6f1e8`,
+    "-frames:v",
+    "1",
+    sheet,
+  ]);
 
 const program = Effect.gen(function* launchVideo() {
   const files = yield* FileSystem.FileSystem;
@@ -357,23 +366,62 @@ const program = Effect.gen(function* launchVideo() {
     )
   );
 
+  const tag = yield* Config.String("LAUNCH_TAG").pipe(Config.withDefault("v2"));
+
+  const given = yield* Config.String("LAUNCH_SCORE").pipe(
+    Config.withDefault("")
+  );
+
+  const muxOnly = yield* Config.Boolean("LAUNCH_MUX_ONLY").pipe(
+    Config.withDefault(false)
+  );
+
   const scoreOnly = yield* Config.Boolean("LAUNCH_SCORE_ONLY").pipe(
     Config.withDefault(false)
   );
 
-  const score = stills.length === 0 ? yield* scored(opened, origin, dir) : "";
+  const names = (framing: FramingName) => {
+    const base = `${dir}/${FRAMINGS[framing].file}-${tag}`;
+
+    return {
+      film: `${base}.mp4`,
+      picture: `${base}-picture.mp4`,
+      sheet: `${base}-contact.png`,
+    };
+  };
+
+  if (stills.length > 0) {
+    for (const framing of framings) {
+      yield* filmed(opened, origin, framing, dir, stills);
+    }
+
+    return;
+  }
+
+  const score =
+    given === ""
+      ? yield* scored(opened, origin, `${dir}/score-${tag}.wav`)
+      : given;
 
   if (scoreOnly) {
     return;
   }
 
   for (const framing of framings) {
-    const frames = yield* filmed(opened, origin, framing, dir, stills);
+    const { film, picture, sheet } = names(framing);
 
-    if (stills.length === 0) {
-      yield* encoded(dir, framing, frames, score);
+    if (!muxOnly) {
+      const frames = yield* filmed(opened, origin, framing, dir, stills);
+
+      yield* pictured(picture, frames);
       yield* files.remove(frames, { recursive: true });
     }
+
+    yield* muxed(picture, score, film);
+    yield* contactSheet(framing, film, sheet);
+    yield* Console.log(
+      `wrote ${film}, its picture alone, and its contact sheet`
+    );
   }
 });
 
