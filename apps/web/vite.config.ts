@@ -9,6 +9,7 @@ import { MEDIA_PACKAGES } from "./src/client/moments/mediabunny/packages.js";
 import { BETA, BETA_TAG_MARKUP } from "./src/features/beta.js";
 import { landingPictures } from "./src/features/landing/pictures.js";
 import {
+  canonicalTag,
   HOME_PREVIEW,
   INVITE_PREVIEW,
   previewHead,
@@ -210,9 +211,17 @@ const searchFiles = (): Plugin => ({
   enforce: "post",
   generateBundle(_options, bundle) {
     for (const { file, path } of INDEXED_PAGES) {
-      if (bundle[file]?.type !== "asset") {
+      const page = bundle[file];
+
+      if (page?.type !== "asset") {
         this.error(
           `${SITEMAP_FILE} lists ${path}, but the build wrote no ${file}. Add it to the build's input or take it out of INDEXED_PAGES in src/features/search-pages.ts.`
+        );
+      }
+
+      if (!String(page.source).includes(canonicalTag(path))) {
+        this.error(
+          `${file} is in ${SITEMAP_FILE} but has no ${canonicalTag(path)}. Give it that canonical link.`
         );
       }
     }

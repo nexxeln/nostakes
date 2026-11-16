@@ -1,4 +1,4 @@
-import { SITE_ORIGIN } from "./link-preview.js";
+import { canonicalOf } from "./link-preview.js";
 
 export interface IndexedPage {
   readonly file: string;
@@ -17,11 +17,6 @@ export const UNCRAWLED_PATHS = ["/rooms/"] as const;
 export const ROBOTS_FILE = "robots.txt";
 
 export const SITEMAP_FILE = "sitemap.xml";
-
-export const canonicalOf = (path: string) => `${SITE_ORIGIN}${path}`;
-
-export const canonicalTag = (path: string) =>
-  `<link rel="canonical" href="${canonicalOf(path)}" />`;
 
 export const robotsText = () =>
   [

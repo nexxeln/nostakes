@@ -6,6 +6,7 @@ import { learnLink, themeSwitch, wordmark } from "./chrome.js";
 import { face, faceSheet } from "./face-builder.js";
 import { feedbackLink, feedbackSheet } from "./feedback.js";
 import { landingView } from "./landing/view.js";
+import { HOME_TITLE } from "./link-preview.js";
 import { Messages } from "./message.js";
 import type { Message } from "./message.js";
 import { pageTheme, Screens } from "./model.js";
@@ -362,6 +363,6 @@ export const view = (model: Model, h: H): Document => ({
     Home: () => "nostakes",
     Invited: ({ code }) => `Join ${code} · nostakes`,
     Room: ({ room }) => `${room.code} · nostakes`,
-    Welcome: () => "nostakes",
+    Welcome: () => HOME_TITLE,
   }),
 });

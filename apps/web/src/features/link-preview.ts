@@ -1,5 +1,10 @@
 export const SITE_ORIGIN = "https://nostakes.club";
 
+export const canonicalOf = (path: string) => `${SITE_ORIGIN}${path}`;
+
+export const canonicalTag = (path: string) =>
+  `<link rel="canonical" href="${canonicalOf(path)}" />`;
+
 export const BRAND_LINE = "Poker night. Pull up a chair.";
 
 export const PREVIEW_IMAGE = {
@@ -20,12 +25,17 @@ export const PREVIEW_CLIP = {
 export interface LinkPreview {
   readonly title: string;
   readonly description: string;
+  readonly canonical?: string;
 }
 
+export const HOME_TITLE =
+  "nostakes: poker night with your friends, in the browser";
+
 export const HOME_PREVIEW: LinkPreview = {
+  canonical: "/",
   description:
-    "Poker night with your friends, in the browser. Open a room, drop the link in the group chat, and play hold'em. No money on the table, just the count.",
-  title: "nostakes",
+    "Open a room, drop the link in the group chat, and play hold'em with your friends. Free, no sign-up, and no money on the table, just the count.",
+  title: HOME_TITLE,
 };
 
 export const INVITE_PREVIEW: LinkPreview = {
@@ -44,10 +54,11 @@ const escaped = (text: string) =>
 const meta = (key: "name" | "property", name: string, content: string) =>
   `<meta ${key}="${name}" content="${escaped(content)}" />`;
 
-export const previewHead = ({ description, title }: LinkPreview) =>
+export const previewHead = ({ canonical, description, title }: LinkPreview) =>
   [
     `<title>${escaped(title)}</title>`,
     meta("name", "description", description),
+    ...(canonical === undefined ? [] : [canonicalTag(canonical)]),
     meta("property", "og:type", "video.other"),
     meta("property", "og:site_name", "nostakes"),
     meta("property", "og:url", `${SITE_ORIGIN}/`),

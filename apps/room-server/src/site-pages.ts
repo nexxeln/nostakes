@@ -40,6 +40,8 @@ export const PAGE_ORIGIN = siteOrigin("production");
 const pageUrlTag = (address: string) =>
   `<meta property="og:url" content="${address}" />`;
 
+const contentFrom = (origin: string) => `content="${origin}`;
+
 const MEDIA_CACHE = "public, max-age=86400";
 
 export type ByteRange = Data.TaggedEnum<{
@@ -153,7 +155,7 @@ const page = <R>(
           pageUrlTag(`${PAGE_ORIGIN}/`),
           pageUrlTag(url.origin + url.pathname)
         )
-        .replaceAll(PAGE_ORIGIN, url.origin)
+        .replaceAll(contentFrom(PAGE_ORIGIN), contentFrom(url.origin))
     );
 
     return HttpServerResponse.uint8Array(html, {
