@@ -12,6 +12,7 @@ import {
   buttonBox,
   buttonGround,
   computeGeo,
+  entryPlace,
   flightControl,
   FELT_RULES_TAP_PX,
   feltRulesBox,
@@ -22,6 +23,7 @@ import {
   HINT_LINES,
   PIC_LIFT,
   placeSeats,
+  postTagBox,
   potTabOf,
   ridingScale,
 } from "../../src/client/table/layout.js";
@@ -29,6 +31,7 @@ import type {
   Box,
   ButtonSpot,
   ButtonSpots,
+  EntryForm,
   Geo,
   Pt,
   SeatPlace,
@@ -779,6 +782,114 @@ export const FELT_RULES_PLACED_WELL = {
   clearOfEverySeat: true,
   onScreen: true,
   tallEnoughToTap: true,
+};
+
+const DRAWN_NOTE_PX = 84;
+
+const DRAWN_ENTRY_PX = {
+  Bare: [
+    [120, 60],
+    [160, 44],
+  ],
+  Full: [
+    [140, 160],
+    [180, 129],
+    [240, 115],
+    [280, 112],
+    [300, 105],
+  ],
+  Tight: [
+    [140, 123],
+    [160, 120],
+    [180, 106],
+    [220, 94],
+  ],
+} as const;
+
+const drawnEntryHeight = (w: number, form: EntryForm) =>
+  DRAWN_ENTRY_PX[form].findLast(([from]) => w >= from)?.[1] ??
+  Number.POSITIVE_INFINITY;
+
+const notedSeatsDrawn = (
+  geo: Geo,
+  places: readonly (SeatPlace & { readonly index: number })[]
+) =>
+  seatsDrawn(geo, places).map(([face, caption]) => {
+    const note = DRAWN_NOTE_PX * ((caption?.h ?? NAME_DEPTH) / NAME_DEPTH);
+
+    return caption === undefined || caption.w >= note
+      ? [face, caption]
+      : [
+          face,
+          { ...caption, w: note, x: caption.x + caption.w / 2 - note / 2 },
+        ];
+  });
+
+const actingPlaces = (geo: Table, active: number | null) =>
+  placeSeats(geo, {
+    bets: geo.seats.map((__, index) => index),
+    button: null,
+    heroBet: false,
+    seats: geo.seats.map((__, index) => ({
+      active: index === active,
+      folded: false,
+      index,
+      winner: false,
+    })),
+    someoneElse: active !== null,
+    tabShifts: geo.tabShifts,
+    tabsInside: geo.tabsInside,
+    tags: [],
+  });
+
+const postedTagOf = (geo: Table, pile: Pt, seat: number): Box => {
+  const wide = geo.tagSides.wideFits[seat] === true && !geo.compactPiles;
+
+  return postTagBox(
+    pile,
+    (wide ? geo.tagSides.wide : geo.tagSides.narrow)[seat] ?? "Before",
+    wide ? DRAWN_TAG_PX.wide : DRAWN_TAG_PX.narrow,
+    geo.pileW
+  );
+};
+
+export const entryPlaced = (geo: Table, screen: Screen) => {
+  const { box, form } = entryPlace(geo);
+
+  const clearOf = (others: readonly (Box | undefined)[]) =>
+    others.every((other) => other === undefined || !covers(box, other));
+
+  const middle = middleOf(geo).flatMap(([what, part]) =>
+    what === "the board" || what === "the pot tab" ? [part] : []
+  );
+
+  const piles = geo.seats.map(({ bet }) => bet);
+
+  return {
+    clearOfEverySeatAtRest: clearOf(
+      notedSeatsDrawn(geo, actingPlaces(geo, null)).flat()
+    ),
+    clearOfEverySeatActing: geo.seats.every((__, active) =>
+      clearOf(notedSeatsDrawn(geo, actingPlaces(geo, active)).flat())
+    ),
+    clearOfTheBetsTagsAndButtons: clearOf([
+      ...piles.map((pile) => drawnPile(pile, geo.pileW)),
+      ...piles.map((pile, seat) => postedTagOf(geo, pile, seat)),
+      ...[...geo.buttons.seats, geo.buttons.self].map(buttonBox),
+    ]),
+    clearOfTheBoardAndPot: clearOf(middle),
+    holdsItsWords: box.h >= drawnEntryHeight(box.w, form),
+    onScreen: onScreen(box, geo, screen),
+  };
+};
+
+export const ENTRY_PLACED_WELL = {
+  clearOfEverySeatActing: true,
+  clearOfEverySeatAtRest: true,
+  clearOfTheBetsTagsAndButtons: true,
+  clearOfTheBoardAndPot: true,
+  holdsItsWords: true,
+  onScreen: true,
 };
 
 export const HINT_PLACED_WELL = {

@@ -6,6 +6,8 @@ import {
   BUTTON_PLACED_WELL,
   buttonsPlaced,
   covers,
+  ENTRY_PLACED_WELL,
+  entryPlaced,
   everyOwnerProblems,
   fallbackOf,
   flightsOverTheHint,
@@ -325,6 +327,42 @@ describe("the house rules on the empty felt", () => {
         feltRulesPlaced(computeGeo(screen.width, screen.height, 8), screen)
       )
     ).toStrictEqual(phones.map(() => FELT_RULES_PLACED_WELL));
+  });
+});
+
+describe("the card for posting in or waiting for the big blind", () => {
+  it.prop(
+    "covers no face, name, stack, or seat note, the board, the pot, a bet, a tag, or the button, stays on the table, and holds its words, with two, six, or nine seats",
+    { screen: Schema.Union(SUPPORTED_TABLES) },
+    ({ screen }) => {
+      expect(
+        SEATS_AROUND_YOU.map((others) =>
+          entryPlaced(computeGeo(screen.width, screen.height, others), screen)
+        )
+      ).toStrictEqual(SEATS_AROUND_YOU.map(() => ENTRY_PLACED_WELL));
+    },
+    { arbitrary: { runs: 100 } }
+  );
+
+  it("covers nothing on the short wide tables where it ran under your caption", () => {
+    const shortWide = [
+      { height: 385, width: 660 },
+      { height: 350, width: 660 },
+      { height: 320, width: 740 },
+      { height: 342, width: 844 },
+    ];
+
+    expect(
+      shortWide.flatMap((screen) =>
+        [1, 2, 3, 4, 5, 6, 7, 8].map((others) =>
+          entryPlaced(computeGeo(screen.width, screen.height, others), screen)
+        )
+      )
+    ).toStrictEqual(
+      shortWide.flatMap(() =>
+        [1, 2, 3, 4, 5, 6, 7, 8].map(() => ENTRY_PLACED_WELL)
+      )
+    );
   });
 });
 

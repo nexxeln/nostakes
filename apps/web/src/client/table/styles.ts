@@ -258,6 +258,11 @@ export const tableCss = `
 .entry .post-action:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 3px; }
 .entry.posting .post-action { background: transparent; box-shadow: none; color: var(--color-ink-muted); font-weight: var(--weight-body); text-decoration: underline; text-underline-offset: 3px; min-height: 36px; }
 .entry .note { font-size: var(--text-1); color: var(--color-ink-muted); }
+.entry.tight { gap: var(--space-1); }
+.entry.tight .line { font-size: var(--text-1); }
+.entry.tight .post-action { padding: var(--space-1) var(--space-3); }
+.entry.tight.posting .post-action { min-height: 32px; }
+.entry.bare .line, .entry.bare .note { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 .chipctl { position: absolute; z-index: 9; width: var(--c); height: var(--c); cursor: grab; border: 0; padding: 0; background: none; font: inherit; color: inherit; }
 .chipctl:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 4px; border-radius: 50%; }
 .chipctl .disc {

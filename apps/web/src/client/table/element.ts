@@ -32,6 +32,7 @@ import {
   awardTabBox,
   clamp,
   computeGeo,
+  entryPlace,
   deadButtonSpot,
   flightControl,
   pileWidthFor,
@@ -1585,13 +1586,14 @@ export class NostakesTable extends HTMLElement {
     }
 
     const chipSize = geo.chip.size;
-    const selfEdge = geo.self.x + geo.self.size / 2;
-    const chipEdge = geo.chip.x - chipSize / 2;
+    const entry = entryPlace(geo);
 
+    toggle(this.#entry, "tight", entry.form !== "Full");
+    toggle(this.#entry, "bare", entry.form === "Bare");
     Object.assign(this.#entry.style, {
-      left: `${(selfEdge + chipEdge) / 2}px`,
-      top: `${geo.hand.y}px`,
-      width: `${Math.max(140, chipEdge - selfEdge - 16)}px`,
+      left: `${entry.box.x + entry.box.w / 2}px`,
+      top: `${entry.box.y + entry.box.h / 2}px`,
+      width: `${entry.box.w}px`,
     });
 
     this.#placeHint(geo);
@@ -1974,7 +1976,6 @@ export class NostakesTable extends HTMLElement {
     const seated = me !== undefined;
 
     toggle(this.#self, "gone", !seated);
-    toggle(this.#chip, "gone", !seated);
 
     if (me !== undefined) {
       this.#renderSelf(me, now);
@@ -1991,7 +1992,7 @@ export class NostakesTable extends HTMLElement {
       me !== undefined && dealt > 0 && (me.status !== "Folded" || showable);
 
     toggle(this.#hand, "gone", !holding);
-    this.#renderEntry(snapshot.entry, holding);
+    this.#renderEntry(snapshot.entry, holding, seated);
 
     for (const [index, holder] of this.#handCards.entries()) {
       const card = snapshot.heroCards[index];
@@ -2026,10 +2027,15 @@ export class NostakesTable extends HTMLElement {
     this.#renderKeys(this.#canAct() ? snapshot.legal : null, me, holding);
   }
 
-  #renderEntry(offer: TableSnapshot["entry"], holding: boolean) {
+  #renderEntry(
+    offer: TableSnapshot["entry"],
+    holding: boolean,
+    seated: boolean
+  ) {
     const shown = offer !== null && !holding;
 
     toggle(this.#entry, "gone", !shown);
+    toggle(this.#chip, "gone", !seated || shown);
 
     if (!shown) {
       return;

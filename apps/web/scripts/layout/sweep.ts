@@ -4,6 +4,7 @@ import { Console, Effect } from "effect";
 import { computeGeo } from "../../src/client/table/layout.js";
 import {
   buttonsMisplaced,
+  entryPlaced,
   everyoneBetting,
   feltRulesPlaced,
   flightsOverTheHint,
@@ -60,6 +61,9 @@ const problemsOn = (
     ),
     ...Object.entries(feltRulesPlaced(geo, screen)).flatMap(([part, well]) =>
       well ? [] : [`the rules on the felt fail ${part}`]
+    ),
+    ...Object.entries(entryPlaced(geo, screen)).flatMap(([part, well]) =>
+      well ? [] : [`the posting card fails ${part}`]
     ),
   ].map((problem) => `${where}: ${problem}`);
 };

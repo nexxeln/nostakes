@@ -3111,6 +3111,192 @@ export const feltRulesBox = (geo: Geo): Box => feltBlock(geo).rules;
 
 export const waitingCallBox = (geo: Geo): Box => feltBlock(geo).call;
 
+const SEAT_NOTE_W = 88;
+
+export type EntryForm = "Full" | "Tight" | "Bare";
+
+const ENTRY_WIDTHS = [300, 280, 260, 240, 220, 200, 180, 160, 140, 120];
+
+const entryHeight = (w: number, form: EntryForm) => {
+  if (form === "Bare") {
+    return w >= 160 ? 46 : 62;
+  }
+
+  if (form === "Tight") {
+    if (w >= 220) {
+      return 96;
+    }
+
+    return w >= 180 ? 108 : 124;
+  }
+
+  if (w >= 300) {
+    return 108;
+  }
+
+  if (w >= 240) {
+    return 118;
+  }
+
+  return w >= 180 ? 132 : 162;
+};
+
+const ENTRY_NARROWEST = { Bare: 120, Full: 140, Tight: 140 };
+
+const ENTRY_REACH = { across: 200, down: 40, near: 96, step: 4, up: 140 };
+
+const noted = (caption: Box, note: number): Box =>
+  caption.w >= note
+    ? caption
+    : { ...caption, w: note, x: caption.x + caption.w / 2 - note / 2 };
+
+const notedSeatBoxes = (geo: Geo, place: SeatPlace): readonly Box[] =>
+  seatBoxes(geo, place).map((box, part) =>
+    part === 0 ? box : noted(box, SEAT_NOTE_W * place.scale)
+  );
+
+const notedSelfBoxes = (geo: Geo): readonly Box[] => {
+  const { size, x, y } = geo.self;
+  const half = Math.max(size * 0.65, size / 2);
+
+  return [
+    { h: size, w: size, x: x - size / 2, y: y - size / 2 },
+    noted(
+      { h: CAPTION_DEPTH, w: half * 2, x: x - half, y: y + size / 2 },
+      SEAT_NOTE_W
+    ),
+  ];
+};
+
+const tagsAround = (geo: Table, seat: number, pile: Pt): readonly Box[] => {
+  const wide = geo.tagSides.wideFits[seat] === true && !geo.compactPiles;
+  const side = (wide ? geo.tagSides.wide : geo.tagSides.narrow)[seat];
+
+  return side === undefined
+    ? []
+    : [
+        postTagBox(
+          pile,
+          side,
+          wide ? POST_TAG_WIDTHS.wide : POST_TAG_WIDTHS.narrow,
+          geo.pileW
+        ),
+      ];
+};
+
+const placesWhileActing = (geo: Table, active: number | null) =>
+  placeSeats(geo, {
+    bets: geo.seats.map((__, index) => index),
+    button: null,
+    heroBet: false,
+    seats: geo.seats.map((__, index) => ({
+      active: index === active,
+      folded: false,
+      index,
+      winner: false,
+    })),
+    someoneElse: active !== null,
+    tabShifts: geo.tabShifts,
+    tabsInside: geo.tabsInside,
+    tags: [],
+  });
+
+const seatsWhileAnyoneActs = (geo: Table): readonly Box[] => [
+  ...new Map(
+    [null, ...geo.seats.map((__, index) => index)]
+      .flatMap((active) =>
+        placesWhileActing(geo, active).flatMap((place) =>
+          notedSeatBoxes(geo, place)
+        )
+      )
+      .map((box) => [`${box.x} ${box.y} ${box.w} ${box.h}`, box] as const)
+  ).values(),
+];
+
+const entryGround = (geo: Table): readonly Box[] => [
+  ...seatsWhileAnyoneActs(geo),
+  ...notedSelfBoxes(geo),
+  geo.strip,
+  potTabBox(geo),
+  ...geo.seats.flatMap(({ bet }, seat) => [
+    pileBox(bet, geo.pileW),
+    ...tagsAround(geo, seat, bet),
+  ]),
+  ...[...geo.buttons.seats, geo.buttons.self].map(buttonBox),
+];
+
+const ENTRY_SHIFTS = (() => {
+  const steps = (from: number, to: number) =>
+    Array.from(
+      { length: Math.floor((to - from) / ENTRY_REACH.step) + 1 },
+      (_, step) => from + step * ENTRY_REACH.step
+    );
+
+  const shifts = steps(-ENTRY_REACH.across, ENTRY_REACH.across)
+    .flatMap((dx) =>
+      steps(-ENTRY_REACH.up, ENTRY_REACH.down).map((dy) => ({
+        away: Math.hypot(dx, dy),
+        dx,
+        dy,
+      }))
+    )
+    .toSorted((left, right) => left.away - right.away);
+
+  return {
+    far: shifts.filter(({ away }) => away > ENTRY_REACH.near),
+    near: shifts.filter(({ away }) => away <= ENTRY_REACH.near),
+  };
+})();
+
+const ENTRY_SEARCH = [
+  ["Full", "near"],
+  ["Tight", "near"],
+  ["Full", "far"],
+  ["Tight", "far"],
+  ["Bare", "near"],
+  ["Bare", "far"],
+] as const;
+
+export interface EntryPlace {
+  readonly box: Box;
+  readonly form: EntryForm;
+}
+
+export const entryPlace = (geo: Table): EntryPlace => {
+  const clear = clearOnTable(geo, entryGround(geo));
+
+  const entryAt = (
+    w: number,
+    form: EntryForm,
+    { dx, dy }: { dx: number; dy: number }
+  ): EntryPlace => {
+    const h = entryHeight(w, form);
+
+    return {
+      box: { h, w, x: geo.hand.x + dx - w / 2, y: geo.hand.y + dy - h / 2 },
+      form,
+    };
+  };
+
+  for (const [form, reach] of ENTRY_SEARCH) {
+    for (const w of ENTRY_WIDTHS) {
+      if (w < ENTRY_NARROWEST[form]) {
+        continue;
+      }
+
+      for (const shift of ENTRY_SHIFTS[reach]) {
+        const place = entryAt(w, form, shift);
+
+        if (clear(place.box)) {
+          return place;
+        }
+      }
+    }
+  }
+
+  return entryAt(ENTRY_NARROWEST.Bare, "Bare", { dx: 0, dy: 0 });
+};
+
 const tabsOf = (places: readonly TabPlace[]) => ({
   tabShifts: places.map(({ shift }) => shift),
   tabsInside: places.map(({ inside }) => inside),
