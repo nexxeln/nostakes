@@ -6,6 +6,7 @@ import { defineConfig } from "vite";
 import type { Connect, Plugin, Rolldown } from "vite";
 
 import { MEDIA_PACKAGES } from "./src/client/moments/mediabunny/packages.js";
+import { BETA, BETA_TAG_MARKUP } from "./src/features/beta.js";
 import { landingPictures } from "./src/features/landing/pictures.js";
 import {
   HOME_PREVIEW,
@@ -60,6 +61,33 @@ const linkPreviews = (): Plugin => ({
     }
 
     return html.replace(PLAIN_TITLE, previewHead(HOME_PREVIEW));
+  },
+});
+
+const READING_WORDMARK = '<a class="brand" href="/">nostakes</a>';
+
+const betaWordmark = (): Plugin => ({
+  name: "nostakes-beta-wordmark",
+  transformIndexHtml: (html, { path }) => {
+    if (!READING_PAGES.some((page) => path === `/${page}`)) {
+      return html;
+    }
+
+    if (!html.includes(READING_WORDMARK)) {
+      throw new Error(
+        `${path} needs ${READING_WORDMARK} for the beta tag to join.`
+      );
+    }
+
+    return BETA
+      ? html.replace(
+          READING_WORDMARK,
+          READING_WORDMARK.replace(
+            "nostakes</a>",
+            `nostakes ${BETA_TAG_MARKUP}</a>`
+          )
+        )
+      : html;
   },
 });
 
@@ -360,6 +388,7 @@ export default defineConfig({
     builtLandingPictures(),
     buildStamp(),
     linkPreviews(),
+    betaWordmark(),
     pagePolicy(),
     securityHeaders(),
     aacNotice(),

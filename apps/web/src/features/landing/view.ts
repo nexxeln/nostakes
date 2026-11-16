@@ -3,7 +3,7 @@ import type { Expression } from "@nostakes/avatar";
 import type { Html, HtmlBuilder } from "foldkit/html";
 
 import { cardFaceOf } from "../card-art.js";
-import { learnLink, themeSwitch } from "../chrome.js";
+import { learnLink, themeSwitch, wordmark } from "../chrome.js";
 import { face } from "../face-builder.js";
 import { BRAND_LINE } from "../link-preview.js";
 import { cardMarkup } from "../markup.js";
@@ -381,7 +381,7 @@ export const landingView = (model: Model, h: H): Html => {
       h.header(
         [h.Class("bar landing-bar")],
         [
-          h.span([h.Class("brand small")], ["nostakes"]),
+          h.span([h.Class("brand small")], wordmark(h)),
           h.span([h.Class("bar-end")], [themeSwitch(h)]),
         ]
       ),

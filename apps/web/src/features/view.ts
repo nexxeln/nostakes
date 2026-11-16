@@ -2,7 +2,7 @@ import { avatarFor } from "@nostakes/avatar";
 import { Option } from "effect";
 import type { Document, Html, HtmlBuilder } from "foldkit/html";
 
-import { learnLink, themeSwitch } from "./chrome.js";
+import { learnLink, themeSwitch, wordmark } from "./chrome.js";
 import { face, faceSheet } from "./face-builder.js";
 import { landingView } from "./landing/view.js";
 import { Messages } from "./message.js";
@@ -221,7 +221,7 @@ const homeView = (
           h.div(
             [h.Class("hero")],
             [
-              h.h1([h.Class("brand")], ["nostakes"]),
+              h.h1([h.Class("brand")], wordmark(h)),
               h.p(
                 [h.Class("tagline")],
                 [
@@ -299,7 +299,7 @@ const invitedView = (
           h.div(
             [h.Class("hero")],
             [
-              h.h1([h.Class("brand")], ["nostakes"]),
+              h.h1([h.Class("brand")], wordmark(h)),
               h.p([h.Class("tagline")], [`You're invited to room ${code}.`]),
             ]
           ),

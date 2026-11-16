@@ -1,6 +1,7 @@
 import { avatarFor } from "@nostakes/avatar";
 import type { Html, HtmlBuilder } from "foldkit/html";
 
+import { BETA, BETA_WORD } from "./beta.js";
 import { face } from "./face-builder.js";
 import { iconMarkup } from "./markup.js";
 import type { IconName } from "./markup.js";
@@ -9,6 +10,11 @@ import type { Message } from "./message.js";
 import type { Deck, Theme } from "./model.js";
 
 type H = HtmlBuilder<Message>;
+
+export const wordmark = (h: H): readonly (Html | string)[] =>
+  BETA
+    ? ["nostakes", " ", h.span([h.Class("beta-tag")], [BETA_WORD])]
+    : ["nostakes"];
 
 export const LEARN_PATH = "/learn";
 

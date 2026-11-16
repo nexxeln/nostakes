@@ -12,6 +12,7 @@ import { watchZoom } from "./zoom.js";
 import "./tokens.css";
 import "./app.css";
 import "./landing.css";
+import "./wordmark.css";
 
 defineLanding();
 

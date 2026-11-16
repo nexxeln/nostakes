@@ -2,6 +2,7 @@ import { countingOn, privacySignal, setCounting } from "./counting.js";
 
 import "./tokens.css";
 import "./reading.css";
+import "./wordmark.css";
 
 const THEME_KEY = "nostakes.theme";
 

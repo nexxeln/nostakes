@@ -34,6 +34,7 @@ import { openTimeline } from "./timeline.js";
 import "../tokens.css";
 import "../reading.css";
 import "./learn.css";
+import "../wordmark.css";
 
 const THEME_KEY = "nostakes.theme";
 

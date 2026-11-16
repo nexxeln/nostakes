@@ -1,0 +1,24 @@
+.brand:has(> .beta-tag) {
+  display: inline-flex;
+  align-items: flex-start;
+  white-space: nowrap;
+}
+
+.beta-tag {
+  display: inline-block;
+  margin: 0.08em 0 0 0.3em;
+  padding: 0.28em 0.5em 0.32em;
+  border-radius: 0.42em;
+  background: var(--color-accent);
+  color: var(--color-on-accent);
+  box-shadow: var(--shadow-sheet-1);
+  font-family: var(--font-body);
+  font-size: max(10px, 0.3em);
+  font-weight: var(--weight-display);
+  font-variation-settings: normal;
+  letter-spacing: 0;
+  line-height: 1;
+  text-shadow: none;
+  rotate: -6deg;
+  user-select: none;
+}

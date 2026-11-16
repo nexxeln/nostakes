@@ -8,7 +8,7 @@ import type { Html, HtmlBuilder } from "foldkit/html";
 import { attendanceLine } from "./attendance-line.js";
 import { bombPotLine } from "./bomb-pot.js";
 import { commandButton } from "./buttons.js";
-import { faceButton } from "./chrome.js";
+import { faceButton, wordmark } from "./chrome.js";
 import { DOOR_LINES, knocksAgain } from "./door.js";
 import { face } from "./face-builder.js";
 import {
@@ -160,7 +160,7 @@ const header = (
   h.header(
     [h.Class("room-header")],
     [
-      h.span([h.Class("brand small")], ["nostakes"]),
+      h.span([h.Class("brand small")], wordmark(h)),
       h.button(
         [
           h.Type("button"),
