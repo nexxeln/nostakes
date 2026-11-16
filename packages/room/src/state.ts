@@ -24,6 +24,7 @@ import type {
   SaltSecret,
 } from "@nostakes/shuffle";
 import { Data, Option, Result } from "effect";
+import type { Types } from "effect";
 
 import type { Deadline } from "./deadline.js";
 import type { Holder, KnockOutcome, OpenedCard } from "./events.js";
@@ -276,7 +277,7 @@ export const SEATS: readonly SeatIndex[] = Array.from(
   (_, index) => SeatIndexSchema.make(index)
 );
 
-export type Occupant = Extract<Seat, { readonly _tag: "Occupied" }>;
+export type Occupant = Types.ExtractTag<Seat, "Occupied">;
 
 export const occupantAt = (
   table: TableState,

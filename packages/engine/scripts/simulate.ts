@@ -40,6 +40,7 @@ import type {
   TableState,
 } from "@nostakes/engine";
 import { Console, Effect, Option, Predicate, Result, Schema } from "effect";
+import type { Types } from "effect";
 
 const DEFAULT_SEED = 20_261_110;
 
@@ -288,7 +289,7 @@ const answer = (state: TableState, random: Random): Option.Option<Command> =>
       Option.some(Commands.TableHand({ seat: choices.seat })),
   });
 
-type PendingShow = Extract<PendingDecision, { readonly _tag: "Show" }>;
+type PendingShow = Types.ExtractTag<PendingDecision, "Show">;
 
 interface ShowdownChoice {
   readonly byClock: boolean;
@@ -916,7 +917,7 @@ const forgivenDeal = (before: TableState) =>
     );
   }).length < 2;
 
-type HandStart = Extract<Event, { readonly _tag: "HandStarted" }>;
+type HandStart = Types.ExtractTag<Event, "HandStarted">;
 
 interface Entry {
   readonly dead: number;

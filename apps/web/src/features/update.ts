@@ -26,6 +26,7 @@ import type {
   SeenEvent,
 } from "@nostakes/room";
 import { Match, Option, Result, Schema } from "effect";
+import type { Types } from "effect";
 import type * as HttpClient from "effect/http/HttpClient";
 import type { ManagedResource, Update } from "foldkit";
 
@@ -494,7 +495,7 @@ const askAtTheDoor = (step: Return): Return =>
 
 const knockedAt = (
   model: Model,
-  message: Extract<Message, { readonly _tag: "KnockedAtRoom" }>
+  message: Types.ExtractTag<Message, "KnockedAtRoom">
 ): Return =>
   rememberDoor(
     {
@@ -514,7 +515,7 @@ const knockedAt = (
 
 const gotKnock = (
   model: Model,
-  message: Extract<Message, { readonly _tag: "ReceivedKnock" }>
+  message: Types.ExtractTag<Message, "ReceivedKnock">
 ): Return =>
   inRoom(model, (room) => {
     const door = doorOf(message.knock.answer);

@@ -21,6 +21,7 @@ import {
 import type { Command, TableState } from "@nostakes/engine";
 import type { HandViewSchema } from "@nostakes/room";
 import { Option, Result, Schema } from "effect";
+import type { Types } from "effect";
 import * as Arbitrary from "effect/Arbitrary";
 
 import {
@@ -30,7 +31,7 @@ import {
 
 type HandView = typeof HandViewSchema.Type;
 
-type InHand = Extract<TableState, { readonly _tag: "InHand" }>;
+type InHand = Types.ExtractTag<TableState, "InHand">;
 
 const handSeed = Arbitrary.schema(
   Schema.Int.check(Schema.isBetween({ maximum: 2_000_000_000, minimum: 1 }))

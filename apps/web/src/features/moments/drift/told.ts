@@ -2,6 +2,7 @@ import { cardText, describe, evaluate, rankOf } from "@nostakes/engine";
 import type { Card, HandCategory, SeatIndex } from "@nostakes/engine";
 import { ReplaySteps } from "@nostakes/room";
 import type { MomentKind, Replay, ReplayStep } from "@nostakes/room";
+import type { Types } from "effect";
 
 import { chipsText } from "../captions.js";
 import type { ReplaySeat } from "../replay-plan.js";
@@ -99,10 +100,7 @@ export interface DriftFacts {
   readonly title: string;
 }
 
-type StepOf<Tag extends ReplayStep["_tag"]> = Extract<
-  ReplayStep,
-  { _tag: Tag }
->;
+type StepOf<Tag extends ReplayStep["_tag"]> = Types.ExtractTag<ReplayStep, Tag>;
 
 const HOLE_CARDS = 2;
 

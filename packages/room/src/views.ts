@@ -18,6 +18,7 @@ import type { Card, Hand, PlayerId, SeatIndex } from "@nostakes/engine";
 import { NetSchema, balances } from "@nostakes/ledger";
 import { DeckOpeningSchema } from "@nostakes/shuffle";
 import { Data, Effect, Option, Schema } from "effect";
+import type { Types } from "effect";
 
 import { nextDealAt, timeBankLeft } from "./clocks.js";
 import { ClosingSchema, closingOf } from "./closing.js";
@@ -835,7 +836,7 @@ export const removedView = (
 };
 
 export const clearableOf = (
-  view: Extract<RoomView, { readonly _tag: "Open" }>
+  view: Types.ExtractTag<RoomView, "Open">
 ): readonly PlayerId[] => {
   const seated = new Set(
     view.seats.flatMap(({ occupant }) =>

@@ -169,6 +169,14 @@ const cases: readonly Case[] = [
   },
   {
     accepted:
+      'import { Schema } from "effect";\n\nconst FoldSchema = Schema.TaggedStruct("Fold", { seat: Schema.Int });\n\nexport type Fold = typeof FoldSchema.Type;\n',
+    file: "fixture.ts",
+    rejected:
+      'export interface Fold {\n  readonly _tag: "Fold";\n  readonly seat: number;\n}\n',
+    rule: "anti-slop-effect/no-manual-tagged-type",
+  },
+  {
+    accepted:
       'import { Dealer } from "./dealer.ts";\n\nexport const dealer = Dealer.layer;\n',
     file: "fixture.ts",
     rejected:

@@ -4,14 +4,15 @@ import type { PlayerId } from "@nostakes/protocol";
 import { RoomViews } from "@nostakes/room";
 import type { RoomView } from "@nostakes/room";
 import { Option } from "effect";
+import type { Types } from "effect";
 
 import { Screens } from "./model.js";
 import type { InRoom, Model, RoomRecord, SavedPass } from "./model.js";
 import { isolated } from "./names.js";
 
-export type OpenView = Extract<RoomView, { readonly _tag: "Open" }>;
+export type OpenView = Types.ExtractTag<RoomView, "Open">;
 
-export type ClosedView = Extract<RoomView, { readonly _tag: "Closed" }>;
+export type ClosedView = Types.ExtractTag<RoomView, "Closed">;
 
 export const roomOf = (model: Model): Option.Option<InRoom> =>
   Screens.guards.Room(model.screen)

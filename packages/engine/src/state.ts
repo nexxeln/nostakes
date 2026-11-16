@@ -2,7 +2,12 @@ import { Data, Option, Schema } from "effect";
 
 import type { Card } from "./cards.js";
 import type { Chips, PlayerId, SeatIndex } from "./primitives.js";
-import { SEAT_COUNT, chips } from "./primitives.js";
+import {
+  ChipsSchema,
+  PlayerIdSchema,
+  SEAT_COUNT,
+  chips,
+} from "./primitives.js";
 import type { RunCount, TableConfig } from "./rules.js";
 import type { ShowdownEntry } from "./showdown.js";
 
@@ -15,35 +20,36 @@ export const StreetSchema = Schema.Literals([
 
 export type Street = typeof StreetSchema.Type;
 
-export interface EmptySeat {
-  readonly _tag: "Empty";
-}
-
 export interface Blinds {
   readonly big: SeatIndex;
   readonly small: SeatIndex;
 }
 
-export interface BlindDebt {
-  readonly big: boolean;
-  readonly entry: boolean;
-  readonly small: boolean;
-}
+const BlindDebtSchema = Schema.Struct({
+  big: Schema.Boolean,
+  entry: Schema.Boolean,
+  small: Schema.Boolean,
+});
+
+export type BlindDebt = typeof BlindDebtSchema.Type;
 
 export const NO_DEBT: BlindDebt = { big: false, entry: false, small: false };
 
 export const owesNothing = (debt: BlindDebt) =>
   !debt.big && !debt.entry && !debt.small;
 
-export interface Occupied {
-  readonly _tag: "Occupied";
-  readonly owes: BlindDebt;
-  readonly player: PlayerId;
-  readonly sittingOut: boolean;
-  readonly stack: Chips;
-}
+const EmptySeatSchema = Schema.TaggedStruct("Empty", {});
 
-export type Seat = EmptySeat | Occupied;
+const OccupiedSchema = Schema.TaggedStruct("Occupied", {
+  owes: BlindDebtSchema,
+  player: PlayerIdSchema,
+  sittingOut: Schema.Boolean,
+  stack: ChipsSchema,
+});
+
+export type Occupied = typeof OccupiedSchema.Type;
+
+export type Seat = typeof EmptySeatSchema.Type | Occupied;
 
 export const Seats = Data.taggedEnum<Seat>();
 

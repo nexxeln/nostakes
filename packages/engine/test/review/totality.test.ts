@@ -1,6 +1,6 @@
 import { describe, expect, expectTypeOf, it } from "@effect/vitest";
 import { Effect, Option, Schema } from "effect";
-import type { Brand } from "effect";
+import type { Brand, Types } from "effect";
 import * as Arbitrary from "effect/Arbitrary";
 
 import {
@@ -43,8 +43,8 @@ const probe = (
 
 type FieldOf<
   Tag extends Command["_tag"],
-  Key extends keyof Extract<Command, { readonly _tag: Tag }>,
-> = Extract<Command, { readonly _tag: Tag }>[Key];
+  Key extends keyof Types.ExtractTag<Command, Tag>,
+> = Types.ExtractTag<Command, Tag>[Key];
 
 describe("the Command type admits only what CommandSchema admits", () => {
   it("Rule 19: a run count is an integer from 1 to MAX_RUNS, so ChooseRuns with 1.5 runs or a table with maxRuns 1.5 does not typecheck", () => {

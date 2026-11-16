@@ -1,6 +1,7 @@
 import { Commands } from "@nostakes/engine";
 import type { Command, PlayerId, SeatIndex } from "@nostakes/engine";
 import { Match, Result } from "effect";
+import type { Types } from "effect";
 
 import { timeoutsInARow } from "./clocks.js";
 import type { RoomCommand } from "./commands.js";
@@ -11,17 +12,9 @@ import { heldSeat } from "./state.js";
 import type { Open } from "./state.js";
 import { onTable } from "./table.js";
 
-export type PlayCommand = Extract<
+export type PlayCommand = Types.ExtractTag<
   RoomCommand,
-  {
-    readonly _tag:
-      | "Act"
-      | "ChooseRuns"
-      | "MuckHand"
-      | "RabbitHunt"
-      | "ShowCards"
-      | "TableHand";
-  }
+  "Act" | "ChooseRuns" | "MuckHand" | "RabbitHunt" | "ShowCards" | "TableHand"
 >;
 
 const forSeat = (command: PlayCommand, seat: SeatIndex): Command =>

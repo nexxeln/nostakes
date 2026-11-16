@@ -13,6 +13,7 @@ import {
 } from "@nostakes/room";
 import type { RoomEvent, RoomView } from "@nostakes/room";
 import { Duration, Effect, Option, Result } from "effect";
+import type { Types } from "effect";
 
 import { MemberCommandSchema } from "../../src/poker-room.js";
 import type { MemberCommand } from "../../src/poker-room.js";
@@ -40,7 +41,7 @@ const PLAY_EVERY_MS = 40;
 
 const BOT_NAMES = "bot";
 
-type OpenView = Extract<RoomView, { readonly _tag: "Open" }>;
+type OpenView = Types.ExtractTag<RoomView, "Open">;
 
 export interface RegularRecord extends RemovalRecord {
   readonly handsDealt: number;

@@ -3,6 +3,7 @@ import { cardText, evaluate, rankOf } from "@nostakes/engine";
 import type { Card, SeatIndex } from "@nostakes/engine";
 import { ReplaySteps } from "@nostakes/room";
 import type { MomentKind, Replay, ReplayStep, Tier } from "@nostakes/room";
+import type { Types } from "effect";
 
 import { FRAME_SIZES } from "../pictures/paper.js";
 import type { KeptFrame } from "../pictures/paper.js";
@@ -168,10 +169,7 @@ const FLOP_CARDS = 3;
 
 const FULL_BOARD = 5;
 
-type StepOf<Tag extends ReplayStep["_tag"]> = Extract<
-  ReplayStep,
-  { _tag: Tag }
->;
+type StepOf<Tag extends ReplayStep["_tag"]> = Types.ExtractTag<ReplayStep, Tag>;
 
 type OddsStep = StepOf<"Odds">;
 

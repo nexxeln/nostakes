@@ -1,7 +1,9 @@
+import type { Types } from "effect";
+
 import { Events, evaluate } from "../src/index.js";
 import type { Card, Event, SeatIndex } from "../src/index.js";
 
-type PotAwarded = Extract<Event, { readonly _tag: "PotAwarded" }>;
+type PotAwarded = Types.ExtractTag<Event, "PotAwarded">;
 
 export interface Choice {
   readonly mucked: boolean;

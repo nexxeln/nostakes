@@ -228,12 +228,9 @@ const program = Effect.gen(function* reel() {
   };
 }).pipe(Effect.scoped);
 
-const written = <
-  A,
-  E extends { readonly _tag: string; readonly message: string },
->(
-  reel: Effect.Effect<A, E>
-) =>
+type ReelFailure = Effect.Error<typeof program>;
+
+const written = <A>(reel: Effect.Effect<A, ReelFailure>) =>
   reel.pipe(
     Effect.match({
       onFailure: (failure) =>

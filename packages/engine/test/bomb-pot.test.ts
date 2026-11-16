@@ -1,5 +1,6 @@
 import { describe, expect, it } from "@effect/vitest";
 import { Option } from "effect";
+import type { Types } from "effect";
 
 import {
   BombPots,
@@ -224,7 +225,7 @@ const BETTING = new Set([
   "Folded",
 ]);
 
-type Started = Extract<Event, { readonly _tag: "HandStarted" }>;
+type Started = Types.ExtractTag<Event, "HandStarted">;
 
 const lastButtonOf = (before: TableState) =>
   TableStates.$is("BetweenHands")(before)

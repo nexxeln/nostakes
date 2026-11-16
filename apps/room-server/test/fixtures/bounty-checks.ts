@@ -8,6 +8,7 @@ import type { Card, Event, SeatIndex, SevenDeuce } from "@nostakes/engine";
 import { RoomStates } from "@nostakes/room";
 import type { RoomState } from "@nostakes/room";
 import { Match, Option } from "effect";
+import type { Types } from "effect";
 
 interface Payment {
   readonly amount: number;
@@ -115,7 +116,7 @@ const showing = (watch: BountyWatch, cards: readonly Card[]): BountyWatch => ({
 const paidProblems = (
   watch: BountyWatch,
   after: RoomState,
-  paid: Extract<Event, { readonly _tag: "BountyPaid" }>
+  paid: Types.ExtractTag<Event, "BountyPaid">
 ): readonly string[] =>
   Option.match(watch.due, {
     onNone: () => [

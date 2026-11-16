@@ -134,7 +134,7 @@ const traffic = (
   };
 };
 
-const tags = (values: readonly { readonly _tag: string }[]) =>
+const tags = (values: readonly (Command | Event | Rejection)[]) =>
   [...new Set(values.map((value) => value._tag))].toSorted();
 
 const brokenRoundTrips = (sample: ReturnType<typeof traffic>) => [

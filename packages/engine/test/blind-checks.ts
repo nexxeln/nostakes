@@ -1,4 +1,5 @@
 import { Option } from "effect";
+import type { Types } from "effect";
 
 import {
   Events,
@@ -9,7 +10,7 @@ import {
 } from "../src/index.js";
 import type { BlindDebt, Event, TableState } from "../src/index.js";
 
-type HandStart = Extract<Event, { readonly _tag: "HandStarted" }>;
+type HandStart = Types.ExtractTag<Event, "HandStarted">;
 
 interface Entry {
   readonly dead: number;

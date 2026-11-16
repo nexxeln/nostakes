@@ -35,14 +35,16 @@ const ToyEventSchema = Schema.TaggedUnion({
 
 const ToySignalSchema = Schema.TaggedUnion({ Nod: {} });
 
+const ToyCommandSchema = Schema.TaggedUnion({ Add: { amount: Schema.Int } });
+
 const schemas: ClientSchemas<{
-  readonly Command: { readonly _tag: "Add"; readonly amount: number };
+  readonly Command: typeof ToyCommandSchema.Type;
   readonly Event: typeof ToyEventSchema.Type;
   readonly View: { readonly total: number };
   readonly Rejection: { readonly reason: string };
   readonly Signal: typeof ToySignalSchema.Type;
 }> = {
-  command: Schema.TaggedUnion({ Add: { amount: Schema.Int } }),
+  command: ToyCommandSchema,
   event: ToyEventSchema,
   rejection: Schema.Struct({ reason: Schema.String }),
   signal: ToySignalSchema,
