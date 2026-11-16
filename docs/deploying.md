@@ -20,6 +20,8 @@ The commands read `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` from the en
 
 `pnpm stats` only reads, and its token needs Account Analytics Read.
 
+The Worker also takes `FEEDBACK_SECRET`, from the environment or else `feedback-secret` in the same directory: any long random string, such as `openssl rand -hex 32`, kept with mode 600. A plan or deploy stops before it builds anything when it is missing. `pnpm feedback` sends the same secret to read the notes, so keep one copy of it; a new secret takes effect with the next deploy.
+
 ## Plan, then deploy
 
 ```sh

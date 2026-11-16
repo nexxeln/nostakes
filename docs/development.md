@@ -100,6 +100,7 @@ pnpm smoke http://localhost:1337 --origin=https://preview.nostakes.club
 | `pnpm verify:status` | Show CI and Verify results for the last ten commits |
 | `pnpm smoke <base-url>` | Play one hand against a running site |
 | `pnpm stats [stage] [range]` | Print the funnel and health counts from a stage's analytics. Read only |
+| `pnpm feedback [stage or url] [--since=YYYY-MM-DD]` | Print the players' feedback notes, oldest first, with the feedback secret. Read only |
 | `pnpm plan:<stage>` | Show what a deploy would change. Never writes |
 | `pnpm deploy:<stage> --confirm=...` | Check, test, build, deploy, and smoke a stage |
 | `pnpm turbo run check test build` | The full gate |
