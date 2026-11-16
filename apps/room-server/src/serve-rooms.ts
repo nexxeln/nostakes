@@ -13,6 +13,8 @@ import { FEEDBACK_SECRET } from "./feedback-wire.js";
 import { SITE_SCOPE } from "./measures.js";
 import PokerRoom from "./poker-room-object.js";
 import { roomRoutes } from "./room-routes.js";
+import { withRobotsTag } from "./search-index.js";
+import type { Indexing } from "./search-index.js";
 import { servedBuild } from "./served-build.js";
 
 export const OriginSchema = Schema.String.check(
@@ -27,15 +29,25 @@ export const configuredOrigins = Effect.gen(function* configuredOrigins() {
   return yield* allowedOrigins;
 });
 
-export const serveRooms = <R>(
-  origins: Effect.Effect<readonly string[], Config.ConfigError, R>,
-  pages: (
+export interface ServedSite {
+  readonly indexing: Indexing;
+  readonly pages: (
     record: Recorder<RuntimeContext>
   ) => Layer.Layer<
     never,
     never,
     HttpRouter.HttpRouter | HttpRouter.Request<"Requires", RuntimeContext>
-  > = () => Layer.empty
+  >;
+}
+
+const NO_SITE: ServedSite = {
+  indexing: "Unindexed",
+  pages: () => Layer.empty,
+};
+
+export const serveRooms = <R>(
+  origins: Effect.Effect<readonly string[], Config.ConfigError, R>,
+  site: ServedSite = NO_SITE
 ) =>
   Effect.gen(function* buildRoomService() {
     const rooms = yield* PokerRoom;
@@ -68,7 +80,11 @@ export const serveRooms = <R>(
 
     return {
       fetch: yield* HttpRouter.toHttpEffect(
-        Layer.mergeAll(routes, feedback, pages(recorder(analytics, SITE_SCOPE)))
-      ).pipe(Effect.orDie),
+        Layer.mergeAll(
+          routes,
+          feedback,
+          site.pages(recorder(analytics, SITE_SCOPE))
+        )
+      ).pipe(Effect.map(withRobotsTag(site.indexing)), Effect.orDie),
     };
   }).pipe(Effect.provide(Cloudflare.Workers.RateLimitBinding));

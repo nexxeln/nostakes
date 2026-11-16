@@ -5,6 +5,8 @@ import * as HttpServerResponse from "effect/http/HttpServerResponse";
 
 import type { Recorder } from "./analytics.js";
 import { measure } from "./measures.js";
+import { roomApi, UNINDEXED_ROBOTS_TXT } from "./search-index.js";
+import type { Indexing } from "./search-index.js";
 import { siteOrigin } from "./site.js";
 import { visitSourceOf } from "./visit-source.js";
 
@@ -215,9 +217,44 @@ const media = (assets: AssetFetcher) =>
     );
   });
 
-export const sitePages = <R>(assets: AssetFetcher, record: Recorder<R>) =>
+export const ROBOTS_ROUTE = "/robots.txt";
+
+const anyAsset = (assets: AssetFetcher) =>
+  Effect.gen(function* serveAsset() {
+    const request = yield* HttpServerRequest.HttpServerRequest.pipe(
+      Effect.flatMap((incoming) => HttpServerRequest.toWeb(incoming)),
+      Effect.orDie
+    );
+
+    const { pathname } = new URL(request.url);
+
+    if (roomApi(pathname)) {
+      return HttpServerResponse.empty({ status: 404 });
+    }
+
+    return HttpServerResponse.fromWeb(
+      yield* Effect.promise(() => assets.fetch(request))
+    );
+  });
+
+const unindexedSite = (assets: AssetFetcher) =>
+  Layer.mergeAll(
+    HttpRouter.add(
+      "GET",
+      ROBOTS_ROUTE,
+      HttpServerResponse.text(UNINDEXED_ROBOTS_TXT)
+    ),
+    HttpRouter.add("*", "/*", anyAsset(assets))
+  );
+
+export const sitePages = <R>(
+  assets: AssetFetcher,
+  record: Recorder<R>,
+  indexing: Indexing
+) =>
   Layer.mergeAll(
     HttpRouter.add("*", "/", page(assets, HOME_PAGE, "Home", record)),
     HttpRouter.add("*", "/r/*", page(assets, INVITE_PAGE, "Invite", record)),
-    HttpRouter.add("*", "/preview/*", media(assets))
+    HttpRouter.add("*", "/preview/*", media(assets)),
+    indexing === "Indexed" ? Layer.empty : unindexedSite(assets)
   );

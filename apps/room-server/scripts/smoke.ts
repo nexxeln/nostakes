@@ -40,6 +40,7 @@ import {
 import * as HttpClient from "effect/http/HttpClient";
 import * as HttpClientRequest from "effect/http/HttpClientRequest";
 
+import { ROBOTS_HEADER, ROOM_ROBOTS } from "../src/search-index.ts";
 import { harnessHttp } from "../test/fixtures/harness-http.ts";
 
 interface SmokeTypes {
@@ -322,6 +323,22 @@ const samePolicy = (base: URL) =>
     );
   });
 
+const ROOM_LINK = "/r/QT8VND";
+
+const roomLinkUnindexed = (base: URL) =>
+  Effect.gen(function* readRobots() {
+    const headers = yield* headersOf(
+      "load a room link",
+      new URL(ROOM_LINK, base)
+    );
+
+    yield* check(
+      "keep a room link out of search",
+      headers[ROBOTS_HEADER] === ROOM_ROBOTS,
+      `${ROOM_LINK} sends ${ROBOTS_HEADER} ${headers[ROBOTS_HEADER] ?? "none"}`
+    );
+  });
+
 const smoke = Effect.gen(function* smoke() {
   const { base, origin } = yield* settings;
   const started = performance.now();
@@ -339,6 +356,8 @@ const smoke = Effect.gen(function* smoke() {
   yield* note(
     "the home page, a room link, and the preview clip send the same security headers as the asset layer"
   );
+  yield* roomLinkUnindexed(base);
+  yield* note(`a room link sends ${ROBOTS_HEADER} ${ROOM_ROBOTS}`);
 
   const anaPass = yield* answerFrom(
     "open a room",

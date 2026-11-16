@@ -7,6 +7,8 @@ import * as HttpServerResponse from "effect/http/HttpServerResponse";
 import type { Recorder } from "../src/analytics.js";
 import { measure } from "../src/measures.js";
 import type { Measure } from "../src/measures.js";
+import { withRobotsTag } from "../src/search-index.js";
+import type { Indexing } from "../src/search-index.js";
 import { sitePages } from "../src/site-pages.js";
 import type { AssetFetcher } from "../src/site-pages.js";
 
@@ -70,10 +72,13 @@ const assets: AssetFetcher = {
 const answer = (
   path: string,
   init: RequestInit = {},
-  record: Recorder = () => Effect.void
+  record: Recorder = () => Effect.void,
+  indexing: Indexing = "Indexed"
 ) =>
   Effect.gen(function* answerRequest() {
-    const handle = yield* HttpRouter.toHttpEffect(sitePages(assets, record));
+    const handle = yield* HttpRouter.toHttpEffect(
+      sitePages(assets, record, indexing)
+    ).pipe(Effect.map(withRobotsTag(indexing)));
 
     const response = yield* handle.pipe(
       Effect.provideService(
@@ -113,6 +118,46 @@ describe("the site's pages", () => {
           home: POLICY_HEADERS,
           homeValidator: undefined,
           invite: POLICY_HEADERS,
+        });
+      })
+  );
+});
+
+const robotsOf = (path: string, indexing: Indexing) =>
+  answer(path, {}, () => Effect.void, indexing).pipe(
+    Effect.map(
+      ({ body, headers, status }) =>
+        `${status} ${headers["x-robots-tag"] ?? "indexable"}${
+          path.endsWith(".txt") ? ` ${new TextDecoder().decode(body)}` : ""
+        }`
+    )
+  );
+
+describe("search engines", () => {
+  it.effect(
+    "never index a room link, on any stage, and index nothing at all on the preview stage",
+    () =>
+      Effect.gen(function* keepRoomsOutOfSearch() {
+        expect({
+          preview: {
+            home: yield* robotsOf("/", "Unindexed"),
+            robots: yield* robotsOf("/robots.txt", "Unindexed"),
+            room: yield* robotsOf("/r/QT8VND", "Unindexed"),
+          },
+          production: {
+            home: yield* robotsOf("/", "Indexed"),
+            room: yield* robotsOf("/r/QT8VND", "Indexed"),
+          },
+        }).toStrictEqual({
+          preview: {
+            home: "200 noindex",
+            robots: "200 noindex User-agent: *\nDisallow: /\n",
+            room: "200 noindex, nofollow",
+          },
+          production: {
+            home: "200 indexable",
+            room: "200 noindex, nofollow",
+          },
         });
       })
   );

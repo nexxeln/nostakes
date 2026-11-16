@@ -2,6 +2,7 @@ import * as Cloudflare from "@alchemy.run/cloudflare";
 import { Stage } from "alchemy";
 import { Effect, Schema } from "effect";
 
+import { indexingOf } from "./search-index.js";
 import { serveRooms } from "./serve-rooms.js";
 import {
   AssetFetcherSchema,
@@ -38,7 +39,10 @@ export default class SiteWorker extends Cloudflare.Worker<SiteWorker>()(
       assets: {
         directory: WEB_ASSETS,
         notFoundHandling: "single-page-application",
-        runWorkerFirst: [...ROOM_ROUTES, ...PAGE_ROUTES],
+        runWorkerFirst:
+          indexingOf(stage) === "Indexed"
+            ? [...ROOM_ROUTES, ...PAGE_ROUTES]
+            : true,
       },
       compatibility: { date: "2026-05-28" },
       domain: { name: SITE_HOSTS[stage], zoneName: ZONE },
@@ -50,6 +54,7 @@ export default class SiteWorker extends Cloudflare.Worker<SiteWorker>()(
   }),
   Effect.gen(function* serveSite() {
     const env = yield* Cloudflare.WorkerEnvironment;
+    const indexing = indexingOf(yield* siteStage);
 
     const assets = {
       fetch: (request: Request) =>
@@ -60,7 +65,7 @@ export default class SiteWorker extends Cloudflare.Worker<SiteWorker>()(
 
     return yield* serveRooms(
       siteStage.pipe(Effect.map((stage) => [siteOrigin(stage)])),
-      (record) => sitePages(assets, record)
+      { indexing, pages: (record) => sitePages(assets, record, indexing) }
     );
   })
 ) {}
