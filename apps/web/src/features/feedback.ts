@@ -94,7 +94,7 @@ const writing = (sheet: FeedbackSheet, h: H): readonly Html[] => {
 const thanked = (h: H): readonly Html[] => [
   h.p(
     [h.Class("feedback-thanks"), h.Role("status")],
-    ["Thanks. The owner reads every note."]
+    ["Thanks. We read every note."]
   ),
   h.button(
     [
@@ -121,7 +121,7 @@ export const feedbackSheet = (model: Model, h: H): Html =>
         ],
         [
           sheetLayer(h, "Feedback", "feedback-sheet", [
-            sheetTop(h, h.h2([h.Class("sheet-title")], ["Tell the owner"])),
+            sheetTop(h, h.h2([h.Class("sheet-title")], ["Send feedback"])),
             ...(FeedbackStages.guards.Sent(sheet.stage)
               ? thanked(h)
               : writing(sheet, h)),
