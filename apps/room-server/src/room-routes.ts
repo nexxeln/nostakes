@@ -17,14 +17,13 @@ import type { HttpServerError } from "effect/http/HttpServerError";
 import * as HttpServerRequest from "effect/http/HttpServerRequest";
 import * as HttpServerResponse from "effect/http/HttpServerResponse";
 
-import { addressOf, tooManyRequests } from "./address-limits.js";
-import type { AddressLimits, LimitedAction } from "./address-limits.js";
-import { recorder } from "./analytics.js";
+import { tooManyRequests } from "./address-limits.js";
+import type { AddressLimits } from "./address-limits.js";
 import type { AnalyticsSink } from "./analytics.js";
 import { reportMeasure, reportFrom } from "./client-reports.js";
 import { DEVICE_HEADER, deviceOf } from "./device.js";
 import { Entropy } from "./entropy.js";
-import { measure, SITE_SCOPE } from "./measures.js";
+import { measure } from "./measures.js";
 import { refuseSocket } from "./refused-socket.js";
 import { bodyWithin } from "./request-body.js";
 import type { BodyRefusal } from "./request-body.js";
@@ -42,7 +41,7 @@ import {
   OpenOutcomeSchema,
   StandingsOutcomeSchema,
 } from "./room-rpc.js";
-import { defectWhere, RouteFault } from "./route-fault.js";
+import { logged, routeGuards } from "./route-guards.js";
 
 export interface RoomStub {
   readonly open: (input: {
@@ -83,15 +82,6 @@ const CodePath = Schema.Struct({ code: Schema.String });
 export const REPORTS_ROUTE = "/rooms/reports";
 
 export const CHECK_ROUTE = "/rooms/:code/check";
-
-const logged = (failure: RoomCallFailed | RouteFault) =>
-  Effect.logError(failure.message).pipe(
-    Effect.annotateLogs(
-      Schema.is(RouteFault)(failure)
-        ? { error: failure._tag }
-        : { error: failure._tag, room: failure.room }
-    )
-  );
 
 const withDevice = (device: Option.Option<string>) =>
   Option.match(device, {
@@ -174,69 +164,13 @@ export const roomRoutes = <R>(
   Effect.gen(function* buildRoomRoutes() {
     const entropy = yield* Entropy.pipe(Effect.provide(options.entropy));
 
-    const record = recorder(options.analytics, SITE_SCOPE);
+    const { guarded, limited, record } = routeGuards(options);
 
     const unavailable = (failure: RoomCallFailed) =>
       record([measure("ServerFault", { fault: "RoomCallFailed" })]).pipe(
         Effect.andThen(logged(failure)),
         Effect.andThen(refuse("RoomUnavailable"))
       );
-
-    const fromAllowedOrigin = HttpServerRequest.HttpServerRequest.pipe(
-      Effect.map((request) =>
-        options.allowedOrigins.includes(request.headers.origin ?? "")
-      )
-    );
-
-    const guarded = (
-      route: string,
-      handler: Effect.Effect<
-        HttpServerResponse.HttpServerResponse,
-        never,
-        HttpServerRequest.HttpServerRequest | HttpRouter.RouteContext | R
-      >
-    ) =>
-      Effect.gen(function* checkOrigin() {
-        if (!(yield* fromAllowedOrigin)) {
-          return yield* refuse("BadOrigin");
-        }
-
-        return yield* handler;
-      }).pipe(
-        Effect.catchDefect((defect) =>
-          record([measure("ServerFault", { fault: "RouteFault" })]).pipe(
-            Effect.andThen(
-              logged(new RouteFault({ detail: defectWhere(defect), route }))
-            ),
-            Effect.andThen(refuse("ServerFault"))
-          )
-        )
-      );
-
-    const limited = (
-      action: LimitedAction,
-      refusal: Effect.Effect<
-        HttpServerResponse.HttpServerResponse,
-        never,
-        HttpServerRequest.HttpServerRequest
-      >,
-      handler: Effect.Effect<
-        HttpServerResponse.HttpServerResponse,
-        never,
-        HttpServerRequest.HttpServerRequest | HttpRouter.RouteContext | R
-      >
-    ) =>
-      Effect.gen(function* checkAddress() {
-        const address = yield* addressOf;
-
-        if (!(yield* options.limits.allow(action, address))) {
-          yield* record([measure("RateLimited", { action })]);
-
-          return yield* refusal;
-        }
-
-        return yield* handler;
-      });
 
     const drawCode = entropy
       .bytes(CODE_DRAW_BYTES)

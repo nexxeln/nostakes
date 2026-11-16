@@ -31,6 +31,8 @@ import * as HttpClient from "effect/http/HttpClient";
 import * as HttpClientRequest from "effect/http/HttpClientRequest";
 
 import { ADDRESS_LIMITS } from "../src/address-limits.js";
+import { FEEDBACK_READ_ROUTE, FEEDBACK_ROUTE } from "../src/feedback-routes.js";
+import { FeedbackPageSchema } from "../src/feedback.js";
 import { DEFAULT_SETTINGS, MemberCommandSchema } from "../src/poker-room.js";
 import type { MemberCommand } from "../src/poker-room.js";
 import { harnessHttp } from "./fixtures/harness-http.js";
@@ -48,7 +50,11 @@ import type {
   PokerServerMessage,
   PokerSocket,
 } from "./fixtures/poker-socket.js";
-import { ProductionStack, TEST_BUILD } from "./fixtures/production-stack.js";
+import {
+  ProductionStack,
+  TEST_BUILD,
+  TEST_FEEDBACK_SECRET,
+} from "./fixtures/production-stack.js";
 import { socketUrl } from "./fixtures/room-client.js";
 import { TEST_ORIGIN } from "./fixtures/toy-worker.js";
 
@@ -1039,6 +1045,107 @@ test(
       code: CLOSE_CODES.TooManySockets,
       reason: "TooManySockets",
     });
+  }).pipe(Effect.provide(harnessHttp)),
+  { timeout: 60_000 }
+);
+
+const FEEDBACK_ADDRESS = "198.51.100.23";
+
+const readFeedback = (base: string, authorization: Option.Option<string>) =>
+  HttpClientRequest.post(new URL(FEEDBACK_READ_ROUTE, base)).pipe(
+    HttpClientRequest.setHeaders({
+      "cf-connecting-ip": FEEDBACK_ADDRESS,
+      ...Option.match(authorization, {
+        onNone: () => ({}),
+        onSome: (value) => ({ authorization: value }),
+      }),
+    }),
+    HttpClientRequest.bodyJsonUnsafe({ after: 0, since: 0 }),
+    HttpClient.execute,
+    Effect.flatMap((response) =>
+      response.text.pipe(
+        Effect.map((body) => ({ body, status: response.status }))
+      )
+    ),
+    Effect.orDie
+  );
+
+test(
+  "the production Worker keeps a feedback note and reads it back only to the bearer of the feedback secret",
+  Effect.gen(function* feedbackAccess() {
+    const { url } = yield* deployed;
+    const base = yield* Effect.fromNullishOr(url).pipe(Effect.orDie);
+
+    const sent = yield* HttpClientRequest.post(
+      new URL(FEEDBACK_ROUTE, base)
+    ).pipe(
+      HttpClientRequest.setHeaders({
+        "cf-connecting-ip": FEEDBACK_ADDRESS,
+        origin: TEST_ORIGIN,
+      }),
+      HttpClientRequest.bodyJsonUnsafe({
+        agent: "Mozilla/5.0 (test)",
+        build: TEST_BUILD,
+        height: 640,
+        note: "The river card hid behind my name.",
+        screen: "Room",
+        width: 360,
+      }),
+      HttpClient.execute,
+      Effect.map((response) => response.status),
+      Effect.orDie
+    );
+
+    const missing = yield* readFeedback(base, Option.none());
+
+    const wrong = yield* readFeedback(
+      base,
+      Option.some(`Bearer ${TEST_FEEDBACK_SECRET}x`)
+    );
+
+    const unprefixed = yield* readFeedback(
+      base,
+      Option.some(TEST_FEEDBACK_SECRET)
+    );
+
+    const right = yield* readFeedback(
+      base,
+      Option.some(`Bearer ${TEST_FEEDBACK_SECRET}`)
+    );
+
+    const refused = '{"refusal":"NotAuthorized"}';
+
+    expect(sent).toBe(204);
+    expect([missing, wrong, unprefixed]).toEqual([
+      { body: refused, status: 403 },
+      { body: refused, status: 403 },
+      { body: refused, status: 403 },
+    ]);
+    expect(right.status).toBe(200);
+
+    const page = yield* Schema.decodeUnknownEffect(
+      Schema.fromJsonString(FeedbackPageSchema)
+    )(right.body).pipe(Effect.orDie);
+
+    expect(
+      page.notes.map(({ agent, build, height, note, screen, width }) => ({
+        agent,
+        build,
+        height,
+        note,
+        screen,
+        width,
+      }))
+    ).toEqual([
+      {
+        agent: "Mozilla/5.0 (test)",
+        build: TEST_BUILD,
+        height: 640,
+        note: "The river card hid behind my name.",
+        screen: "Room",
+        width: 360,
+      },
+    ]);
   }).pipe(Effect.provide(harnessHttp)),
   { timeout: 60_000 }
 );

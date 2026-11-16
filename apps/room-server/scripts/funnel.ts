@@ -714,6 +714,7 @@ export const healthLines = (funnel: Funnel) => [
   ),
   line("beacon outages", plural(weight(measured(funnel, "BeaconOutage")))),
   line("members removed", plural(weight(measured(funnel, "MemberRemoved")))),
+  line("feedback notes", listed(measured(funnel, "FeedbackSent"))),
   line("refused alarms", listed(measured(funnel, "AlarmRefused"))),
   line("rate limited", listed(measured(funnel, "RateLimited"))),
   line("server faults", listed(measured(funnel, "ServerFault"))),

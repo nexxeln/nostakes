@@ -20,6 +20,7 @@ export const MEASURES = {
   ClientReconnects: { blobs: ["build"], doubles: ["reconnects"], from: "Page" },
   DeckCheckFailed: { blobs: ["build"], doubles: [], from: "Page" },
   FirstHand: { blobs: [], doubles: ["sinceOpenMs", "players"], from: "Server" },
+  FeedbackSent: { blobs: ["screen"], doubles: [], from: "Server" },
   ForcedReload: { blobs: ["reason", "build"], doubles: [], from: "Page" },
   GameStarted: { blobs: [], doubles: ["sinceOpenMs"], from: "Server" },
   GuideStep: { blobs: ["step"], doubles: [], from: "Page" },

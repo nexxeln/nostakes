@@ -66,6 +66,15 @@ const credential = (name: string, file: string) =>
     Effect.mapError((missing) => refuse(missing.reason))
   );
 
+const FEEDBACK_SECRET_NEEDS =
+  "It is any long random string, such as 32 random bytes in hex (openssl rand -hex 32), kept with mode 600. The Worker takes it as FEEDBACK_SECRET, and pnpm feedback sends it to read the notes.";
+
+const feedbackSecret = deployCredential(
+  "FEEDBACK_SECRET",
+  "feedback-secret",
+  FEEDBACK_SECRET_NEEDS
+).pipe(Effect.mapError((missing) => refuse(missing.reason)));
+
 const webBuild = Effect.gen(function* readWebBuild() {
   const fs = yield* FileSystem.FileSystem;
   const text = yield* fs.readFileString(WEB_BUILD_FILE);
@@ -138,6 +147,8 @@ const alchemy = (
       "cloudflare-account-id"
     );
 
+    const feedback = yield* feedbackSecret;
+
     const build = yield* webBuild;
 
     yield* Console.log(`\nThe web build is ${build}.`);
@@ -152,6 +163,7 @@ const alchemy = (
         CI: mode === "plan" ? "true" : "false",
         CLOUDFLARE_ACCOUNT_ID: account,
         CLOUDFLARE_API_TOKEN: token,
+        FEEDBACK_SECRET: feedback,
         NOSTAKES_FIRST_PLAN: first ? "true" : "false",
         WEB_BUILD: build,
       }
@@ -199,6 +211,8 @@ const deploy = (stage: SiteStage, passed: readonly string[]) =>
 
 const driver = Effect.gen(function* driver() {
   const { confirmed, first, mode, passed, stage } = yield* request;
+
+  yield* feedbackSecret;
 
   if (mode === "plan") {
     return yield* plan(stage, first, passed);

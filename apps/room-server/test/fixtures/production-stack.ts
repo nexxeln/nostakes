@@ -8,6 +8,8 @@ import { TEST_ORIGIN } from "./toy-worker.js";
 
 export const TEST_BUILD = "web-build-under-test";
 
+export const TEST_FEEDBACK_SECRET = "feedback-secret-under-test-0f3a9c";
+
 export const ProductionStack = Alchemy.Stack(
   "RoomServerProduction",
   { providers: Cloudflare.providers(), state: State.inMemoryState() },
@@ -20,6 +22,7 @@ export const ProductionStack = Alchemy.Stack(
       ConfigProvider.ConfigProvider,
       ConfigProvider.fromUnknown({
         ALLOWED_ORIGINS: TEST_ORIGIN,
+        FEEDBACK_SECRET: TEST_FEEDBACK_SECRET,
         WEB_BUILD: TEST_BUILD,
       })
     )
