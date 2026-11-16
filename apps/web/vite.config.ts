@@ -26,6 +26,11 @@ import {
   SITEMAP_FILE,
   sitemapXml,
 } from "./src/features/search-pages.js";
+import {
+  dataBlock,
+  HOME_APPLICATION,
+  LEARN_ARTICLE,
+} from "./src/features/structured-data.js";
 
 const roomServer = process.env.ROOM_SERVER_URL ?? "http://localhost:1337";
 
@@ -35,13 +40,16 @@ const HOME_PAGE = "index.html";
 
 const INVITE_PAGE = "invite.html";
 
+const HOME_HEAD = [previewHead(HOME_PREVIEW), dataBlock(HOME_APPLICATION)].join(
+  "\n    "
+);
+
 const linkPreviews = (): Plugin => ({
   enforce: "post",
   generateBundle(_options, bundle) {
     const home = bundle[HOME_PAGE];
-    const homeHead = previewHead(HOME_PREVIEW);
 
-    if (home?.type !== "asset" || !String(home.source).includes(homeHead)) {
+    if (home?.type !== "asset" || !String(home.source).includes(HOME_HEAD)) {
       this.error(
         `The built ${HOME_PAGE} has no link preview to copy into ${INVITE_PAGE}. Keep ${PLAIN_TITLE} in index.html.`
       );
@@ -50,7 +58,7 @@ const linkPreviews = (): Plugin => ({
     this.emitFile({
       fileName: INVITE_PAGE,
       source: String(home.source).replace(
-        homeHead,
+        HOME_HEAD,
         previewHead(INVITE_PREVIEW)
       ),
       type: "asset",
@@ -68,7 +76,31 @@ const linkPreviews = (): Plugin => ({
       );
     }
 
-    return html.replace(PLAIN_TITLE, previewHead(HOME_PREVIEW));
+    return html.replace(PLAIN_TITLE, HOME_HEAD);
+  },
+});
+
+const LEARN_PAGE = "learn.html";
+
+const HEAD_ENDS = "</head>";
+
+const learnData = (): Plugin => ({
+  name: "nostakes-learn-data",
+  transformIndexHtml: (html, { path }) => {
+    if (path !== `/${LEARN_PAGE}`) {
+      return html;
+    }
+
+    if (!html.includes(HEAD_ENDS)) {
+      throw new Error(
+        `${LEARN_PAGE} needs a ${HEAD_ENDS} for its article data.`
+      );
+    }
+
+    return html.replace(
+      HEAD_ENDS,
+      `  ${dataBlock(LEARN_ARTICLE)}\n  ${HEAD_ENDS}`
+    );
   },
 });
 
@@ -430,6 +462,7 @@ export default defineConfig({
     builtLandingPictures(),
     buildStamp(),
     linkPreviews(),
+    learnData(),
     betaWordmark(),
     pagePolicy(),
     securityHeaders(),
