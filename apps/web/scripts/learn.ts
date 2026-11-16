@@ -24,6 +24,7 @@ const HEADINGS = [
   "Table manners",
   "Words you will hear",
   "Play with friends",
+  "Guides",
 ];
 
 const RANKS = [
