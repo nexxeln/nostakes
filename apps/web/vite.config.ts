@@ -18,6 +18,13 @@ import {
   headersFor,
   HEADERS_FILE,
 } from "./src/features/page-policy.js";
+import {
+  INDEXED_PAGES,
+  ROBOTS_FILE,
+  robotsText,
+  SITEMAP_FILE,
+  sitemapXml,
+} from "./src/features/search-pages.js";
 
 const roomServer = process.env.ROOM_SERVER_URL ?? "http://localhost:1337";
 
@@ -196,6 +203,32 @@ const pagePolicy = (): Plugin => ({
     server.middlewares.use(policyHeaders);
   },
   name: "nostakes-page-policy",
+});
+
+const searchFiles = (): Plugin => ({
+  apply: "build",
+  enforce: "post",
+  generateBundle(_options, bundle) {
+    for (const { file, path } of INDEXED_PAGES) {
+      if (bundle[file]?.type !== "asset") {
+        this.error(
+          `${SITEMAP_FILE} lists ${path}, but the build wrote no ${file}. Add it to the build's input or take it out of INDEXED_PAGES in src/features/search-pages.ts.`
+        );
+      }
+    }
+
+    this.emitFile({
+      fileName: ROBOTS_FILE,
+      source: robotsText(),
+      type: "asset",
+    });
+    this.emitFile({
+      fileName: SITEMAP_FILE,
+      source: sitemapXml(),
+      type: "asset",
+    });
+  },
+  name: "nostakes-search-files",
 });
 
 const AAC_EXTENSION = "@mediabunny/aac-encoder";
@@ -391,6 +424,7 @@ export default defineConfig({
     betaWordmark(),
     pagePolicy(),
     securityHeaders(),
+    searchFiles(),
     aacNotice(),
   ],
   server: {
