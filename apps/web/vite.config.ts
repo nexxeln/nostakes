@@ -7,6 +7,7 @@ import type { Connect, Plugin, Rolldown } from "vite";
 
 import { MEDIA_PACKAGES } from "./src/client/moments/mediabunny/packages.js";
 import { BETA, BETA_TAG_MARKUP } from "./src/features/beta.js";
+import { GUIDES, guidePage } from "./src/features/guides.js";
 import { landingPictures } from "./src/features/landing/pictures.js";
 import {
   canonicalTag,
@@ -447,7 +448,12 @@ const PURE_MODULES = [
   { sideEffects: false, test: /[\\/]node_modules[\\/].*@noble[\\/]/u },
 ];
 
-export const READING_PAGES = ["privacy.html", "terms.html", "learn.html"];
+export const READING_PAGES = [
+  "privacy.html",
+  "terms.html",
+  "learn.html",
+  ...GUIDES.map(guidePage),
+];
 
 export default defineConfig({
   build: {

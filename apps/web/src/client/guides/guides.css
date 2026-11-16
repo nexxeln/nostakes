@@ -1,0 +1,165 @@
+.guide-page h3 {
+  margin: var(--space-3) 0 var(--space-1);
+  font-size: var(--text-3);
+  font-weight: var(--weight-strong);
+}
+
+.guide-page .sheet > h3:first-of-type {
+  margin-top: var(--space-1);
+}
+
+.guide-page ol {
+  margin: 0;
+  padding-left: var(--space-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.guide-page dl {
+  margin: 0;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: var(--space-1) var(--space-3);
+}
+
+.guide-page dt {
+  font-weight: var(--weight-strong);
+}
+
+.guide-page dd {
+  margin: 0;
+}
+
+.guide-page .answer {
+  font-size: var(--text-4);
+  line-height: var(--leading-tight);
+}
+
+.cards {
+  --w: 2.125rem;
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: nowrap;
+  gap: 3px;
+  min-height: calc(var(--w) * 1.4);
+  white-space: nowrap;
+  font-variant-numeric: normal;
+}
+
+.cards.drawn {
+  vertical-align: middle;
+}
+
+.cards .face {
+  display: block;
+  width: var(--w);
+  height: calc(var(--w) * 1.4);
+  font-size: var(--w);
+  border-radius: var(--radius-card);
+  background: var(--color-card);
+  color: var(--color-card-ink);
+  box-shadow: var(--shadow-card);
+}
+
+.cards .face svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  fill: currentColor;
+}
+
+.cards .face text {
+  font-family: var(--font-card);
+  font-weight: var(--weight-strong);
+  font-variation-settings: "opsz" 20;
+}
+
+.cards .face.suit-s {
+  color: var(--color-suit-spade);
+}
+
+.cards .face.suit-h {
+  color: var(--color-suit-heart);
+}
+
+.cards .face.suit-d {
+  color: var(--color-suit-diamond);
+}
+
+.cards .face.suit-c {
+  color: var(--color-suit-club);
+}
+
+.guide-page .ranked {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  counter-reset: ranked;
+  gap: 0;
+}
+
+.ranked > li {
+  counter-increment: ranked;
+  display: grid;
+  grid-template-columns: 1.5rem 1fr;
+  gap: var(--space-1) var(--space-2);
+  padding: var(--space-3) 0;
+  border-top: 1.4px dashed var(--color-line-strong);
+}
+
+.ranked > li::before {
+  content: counter(ranked);
+  grid-row: span 2;
+  font-family: var(--font-display);
+  font-weight: var(--weight-strong);
+  color: var(--color-ink-muted);
+}
+
+.ranked > li > .cards {
+  grid-column: 2;
+}
+
+.ranked > li > p {
+  grid-column: 2;
+}
+
+.ranked b {
+  font-weight: var(--weight-strong);
+}
+
+.ranked .often {
+  color: var(--color-ink-muted);
+  font-size: var(--text-2);
+}
+
+.example {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-2);
+}
+
+.example .label {
+  min-width: 4.5rem;
+  color: var(--color-ink-muted);
+  font-size: var(--text-2);
+}
+
+.guide-page table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: var(--text-2);
+}
+
+.guide-page th,
+.guide-page td {
+  text-align: left;
+  vertical-align: top;
+  padding: var(--space-1) var(--space-2) var(--space-1) 0;
+  border-top: 1.4px dashed var(--color-line-strong);
+}
+
+.guide-page th {
+  font-weight: var(--weight-strong);
+}

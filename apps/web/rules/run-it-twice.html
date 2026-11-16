@@ -1,0 +1,233 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, viewport-fit=cover"
+    />
+    <meta name="color-scheme" content="light dark" />
+    <meta
+      name="theme-color"
+      content="#f6f1e8"
+      media="(prefers-color-scheme: light)"
+    />
+    <meta
+      name="theme-color"
+      content="#16141d"
+      media="(prefers-color-scheme: dark)"
+    />
+    <title>
+      Running it twice in poker: what it does to the odds · nostakes
+    </title>
+    <meta
+      name="description"
+      content="Running it twice deals the rest of the board twice when players are all in, and each run wins half the pot. Same expected value, less swing."
+    />
+    <link rel="canonical" href="https://nostakes.club/rules/run-it-twice" />
+    <meta property="og:type" content="article" />
+    <meta property="og:site_name" content="nostakes" />
+    <meta property="og:title" content="Running it twice" />
+    <meta
+      property="og:description"
+      content="Deal the rest of the board twice, split the pot by run. Your expected value stays the same and the swings get smaller."
+    />
+    <meta
+      property="og:url"
+      content="https://nostakes.club/rules/run-it-twice"
+    />
+    <meta
+      property="og:image"
+      content="https://nostakes.club/preview/card.png"
+    />
+    <meta name="twitter:card" content="summary_large_image" />
+    <link
+      rel="preload"
+      href="/src/client/fonts/figtree.woff2"
+      as="font"
+      type="font/woff2"
+      crossorigin
+    />
+    <link
+      rel="preload"
+      href="/src/client/fonts/dm-sans.woff2"
+      as="font"
+      type="font/woff2"
+      crossorigin
+    />
+    <link rel="icon" href="/favicon.ico" sizes="48x48" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+  </head>
+  <body>
+    <main class="reading guide-page">
+      <header class="reading-bar">
+        <a class="brand" href="/">nostakes</a>
+      </header>
+      <h1>Running it twice</h1>
+      <p class="answer">
+        When players are all in before the board is complete, running it twice
+        means dealing the rest of the board two separate times. Each run wins
+        half of the pot.
+      </p>
+      <p class="lede">
+        It does not change who is the favourite or what a hand is worth on
+        average. It makes the result less all or nothing.
+      </p>
+
+      <section class="sheet">
+        <h2>An example</h2>
+        <p>Two players are all in after the flop, with 200 in the pot.</p>
+        <div class="example">
+          <span class="label">Flop</span
+          ><span class="cards" data-cards="Kd 8c 3s"
+            >K&#9830;&#xFE0E; 8&#9827;&#xFE0E; 3&#9824;&#xFE0E;</span
+          >
+        </div>
+        <div class="example">
+          <span class="label">Ana</span
+          ><span class="cards" data-cards="Kh Qh"
+            >K&#9829;&#xFE0E; Q&#9829;&#xFE0E;</span
+          >
+        </div>
+        <div class="example">
+          <span class="label">Ben</span
+          ><span class="cards" data-cards="8h 8d"
+            >8&#9829;&#xFE0E; 8&#9830;&#xFE0E;</span
+          >
+        </div>
+        <p>
+          Ben has three eights and Ana needs help. They agree to run it twice.
+          The dealer deals a turn and a river, then deals another turn and river
+          from the cards left in the deck. Each run decides who wins 100. If Ben
+          wins one run and Ana the other, they each take 100 back.
+        </p>
+      </section>
+
+      <section class="sheet">
+        <h2>What it does to the odds</h2>
+        <p>
+          Your chance of winning each run is the same as your chance of winning
+          a single run, because the cards for every run come from the same
+          unseen deck. So the expected value, what the hand is worth on average,
+          does not change.
+        </p>
+        <p>
+          What changes is the spread. Say you are 80% to win a 200 pot. Run it
+          once: 80% of the time you win 200, 20% of the time you get nothing.
+          Run it twice: you win both runs about 64% of the time, split about 32%
+          of the time, and lose both about 4% of the time. Either way the hand
+          is worth 160 on average. Running it twice makes losing everything
+          rarer, and winning everything rarer too.
+        </p>
+        <p>
+          That is why players who are behind like it and players who are ahead
+          sometimes refuse. Neither gains or loses on average. The favourite
+          gives up some chance of winning it all to cut the chance of losing it
+          all.
+        </p>
+      </section>
+
+      <section class="sheet">
+        <h2>When it is offered</h2>
+        <ul>
+          <li>
+            Only when the betting is over because players are all in, and only
+            before the river. Once all five cards are out there is nothing left
+            to run.
+          </li>
+          <li>
+            The players in the hand agree on it. In most games one player saying
+            no means one run.
+          </li>
+          <li>
+            Some groups run it three times or more. The pot is split into that
+            many parts.
+          </li>
+          <li>
+            Groups differ on where odd chips go when the pot does not divide by
+            the number of runs. Agree on it once.
+          </li>
+        </ul>
+      </section>
+
+      <section class="sheet">
+        <h2>How nostakes does it</h2>
+        <p>
+          Running it more than once is a house rule the host sets, under All in
+          in the house rules or in the setup sheet before the first hand. It is
+          off by default.
+        </p>
+        <dl>
+          <dt>Run it up to</dt>
+          <dd>The most runs allowed, up to 9. 1 turns it off.</dd>
+          <dt>Runs</dt>
+          <dd>
+            Vote: every player still in picks how many runs, up to the most, and
+            the fewest picked wins. A player who lets the vote clock run out
+            picks once. Always most: no vote, the board always runs the most
+            times allowed.
+          </dd>
+        </dl>
+        <ul>
+          <li>
+            The vote comes when two or more players are still in, at most one of
+            them can still bet, and the board is not complete. Any chips nobody
+            could call go back first.
+          </li>
+          <li>
+            Every run gets its own cards from the deck, so no card shows up on
+            two runs. The board cards already out are shared by every run. When
+            the deck is too short for the runs asked, the room runs as many as
+            it can.
+          </li>
+          <li>
+            Each pot, the main pot and every side pot, is split into equal
+            parts, one for each run. When a pot does not divide evenly, the
+            first runs take the odd chips, one each. Within a run, a tie splits
+            as usual.
+          </li>
+          <li>
+            By default every hand still in is turned face up before the board is
+            run. The host can keep them hidden until the board is complete.
+          </li>
+          <li>
+            In a <a href="/rules/bomb-pot">bomb pot</a> every run shares the
+            flop. A <a href="/rules/seven-deuce">seven-deuce bounty</a> is paid
+            only when seven-deuce wins every run.
+          </li>
+        </ul>
+      </section>
+
+      <section class="sheet state">
+        <h2>Play it with your friends</h2>
+        <p>
+          nostakes is poker night in the browser. One of you opens a room and
+          sends the link. It is free, nobody signs up, and it holds no money.
+          Never played? <a href="/learn">Learn in two minutes</a>.
+        </p>
+        <a class="button" href="/?rules=run-it-twice"
+          >Open a room with running it twice on</a
+        >
+      </section>
+
+      <nav class="guide-links" aria-label="Guides">
+        <h2>Guides</h2>
+        <ul class="guide-list">
+          <li><a href="/hand-rankings">Hand rankings</a></li>
+          <li><a href="/rules/seven-deuce">The seven-deuce game</a></li>
+          <li><a href="/rules/bomb-pot">Bomb pots</a></li>
+          <li><a href="/rules/straddle">The straddle</a></li>
+          <li><a href="/host-a-poker-night">Hosting a poker night</a></li>
+        </ul>
+      </nav>
+
+      <footer class="reading-foot">
+        <a href="/">Home</a>
+        <a href="/learn">Learn to play</a>
+        <a href="/privacy">Privacy</a>
+        <a href="/terms">Terms</a>
+      </footer>
+    </main>
+    <script type="module" src="/src/client/guides/page.ts"></script>
+  </body>
+</html>

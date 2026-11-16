@@ -1,0 +1,219 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, viewport-fit=cover"
+    />
+    <meta name="color-scheme" content="light dark" />
+    <meta
+      name="theme-color"
+      content="#f6f1e8"
+      media="(prefers-color-scheme: light)"
+    />
+    <meta
+      name="theme-color"
+      content="#16141d"
+      media="(prefers-color-scheme: dark)"
+    />
+    <title>What is a straddle in poker? · nostakes</title>
+    <meta
+      name="description"
+      content="A straddle is an optional blind of twice the big blind, posted before the deal by the player left of the big blind. What it changes and how nostakes runs it."
+    />
+    <link rel="canonical" href="https://nostakes.club/rules/straddle" />
+    <meta property="og:type" content="article" />
+    <meta property="og:site_name" content="nostakes" />
+    <meta property="og:title" content="What is a straddle in poker?" />
+    <meta
+      property="og:description"
+      content="An optional third blind that doubles the stakes for one hand. UTG, button, and re-straddles."
+    />
+    <meta property="og:url" content="https://nostakes.club/rules/straddle" />
+    <meta
+      property="og:image"
+      content="https://nostakes.club/preview/card.png"
+    />
+    <meta name="twitter:card" content="summary_large_image" />
+    <link
+      rel="preload"
+      href="/src/client/fonts/figtree.woff2"
+      as="font"
+      type="font/woff2"
+      crossorigin
+    />
+    <link
+      rel="preload"
+      href="/src/client/fonts/dm-sans.woff2"
+      as="font"
+      type="font/woff2"
+      crossorigin
+    />
+    <link rel="icon" href="/favicon.ico" sizes="48x48" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+  </head>
+  <body>
+    <main class="reading guide-page">
+      <header class="reading-bar">
+        <a class="brand" href="/">nostakes</a>
+      </header>
+      <h1>The straddle</h1>
+      <p class="answer">
+        A straddle is an optional blind, usually twice the big blind, that the
+        player to the left of the big blind posts before the cards are dealt.
+      </p>
+      <p class="lede">
+        That seat is called under the gun, or UTG, so this is the UTG straddle.
+        For one hand it doubles the stakes before the flop.
+      </p>
+
+      <section class="sheet">
+        <h2>How it plays</h2>
+        <p>At blinds of 1 and 2, the player under the gun straddles 4.</p>
+        <ul>
+          <li>
+            The straddle acts like a third, bigger blind. Calling now costs 4,
+            not 2.
+          </li>
+          <li>
+            The first player to act is the one to the left of the straddler.
+          </li>
+          <li>
+            The straddle is live. When the action comes back round, the
+            straddler can check if nobody raised, or raise, just as the big
+            blind could.
+          </li>
+          <li>A raise has to be at least 4 more, making it at least 8.</li>
+          <li>After the flop, the order of play is the usual one.</li>
+        </ul>
+      </section>
+
+      <section class="sheet">
+        <h2>What it changes</h2>
+        <p>
+          Everyone's stack is worth half as many big blinds for that hand, so
+          the play is looser and the pots bigger. A buy-in of 100 big blinds
+          plays like 50 straddles.
+        </p>
+        <p>
+          The straddler pays for the right to act last before the flop, then
+          acts early on every later street, which is a weak position. Straddling
+          is a cost on average. People do it for the action, and some groups
+          straddle every hand.
+        </p>
+      </section>
+
+      <section class="sheet">
+        <h2>Variations</h2>
+        <dl>
+          <dt>Re-straddle</dt>
+          <dd>
+            The player after the straddler may straddle again, usually double
+            again. Groups set how many are allowed.
+          </dd>
+          <dt>Button straddle</dt>
+          <dd>
+            The player on the button straddles. The action then starts with the
+            small blind, and the button acts last before the flop as well as
+            after it. Some call it a Mississippi straddle.
+          </dd>
+          <dt>Size</dt>
+          <dd>
+            Each straddle doubles the one before, or every straddle is the same
+            two big blinds.
+          </dd>
+          <dt>Heads up</dt>
+          <dd>Some games allow no straddle with only two players.</dd>
+        </dl>
+      </section>
+
+      <section class="sheet">
+        <h2>How nostakes handles straddles</h2>
+        <p>
+          The host decides which straddles the table allows, under Straddles in
+          the house rules. The setup sheet has a switch for one UTG straddle.
+          Straddles are off by default.
+        </p>
+        <dl>
+          <dt>UTG straddles</dt>
+          <dd>
+            How many players in a row after the big blind may straddle, up to 6.
+            0 turns it off.
+          </dd>
+          <dt>Button straddle</dt>
+          <dd>Whether the player on the button may straddle.</dd>
+          <dt>Each straddle</dt>
+          <dd>Doubles, so 2, 4, then 8 big blinds, or 2 BB every time.</dd>
+        </dl>
+        <ul>
+          <li>
+            Each player chooses for themselves with the Straddle switch in the
+            menu. It stays on hand after hand until they turn it off or leave
+            their seat.
+          </li>
+          <li>
+            At each deal, the player under the gun straddles if their switch is
+            on. Then the next player re-straddles if theirs is on, and so on, up
+            to the number allowed and never past the button. The chain stops at
+            the first player whose switch is off.
+          </li>
+          <li>
+            When the button straddle is allowed and the player on the button has
+            their switch on, the button straddles, if they can cover it, and
+            nobody straddles under the gun that hand.
+          </li>
+          <li>
+            A straddle must leave the player with chips behind. A player who
+            cannot cover theirs does not straddle, and nor does anyone after
+            them in the chain.
+          </li>
+          <li>
+            There is no straddle with only two players dealt in, and none in a
+            <a href="/rules/bomb-pot">bomb pot</a>.
+          </li>
+          <li>
+            The last straddle is live. The player after it acts first, the
+            straddler acts last before the flop, and the smallest raise is the
+            size of that straddle.
+          </li>
+        </ul>
+        <p>
+          The chips posted carry a Straddle tag on the table until the player
+          acts.
+        </p>
+      </section>
+
+      <section class="sheet state">
+        <h2>Play it with your friends</h2>
+        <p>
+          nostakes is poker night in the browser. One of you opens a room and
+          sends the link. It is free, nobody signs up, and it holds no money.
+          Never played? <a href="/learn">Learn in two minutes</a>.
+        </p>
+        <a class="button" href="/?rules=straddle"
+          >Open a room with the straddle on</a
+        >
+      </section>
+
+      <nav class="guide-links" aria-label="Guides">
+        <h2>Guides</h2>
+        <ul class="guide-list">
+          <li><a href="/hand-rankings">Hand rankings</a></li>
+          <li><a href="/rules/seven-deuce">The seven-deuce game</a></li>
+          <li><a href="/rules/bomb-pot">Bomb pots</a></li>
+          <li><a href="/rules/run-it-twice">Running it twice</a></li>
+          <li><a href="/host-a-poker-night">Hosting a poker night</a></li>
+        </ul>
+      </nav>
+
+      <footer class="reading-foot">
+        <a href="/">Home</a>
+        <a href="/learn">Learn to play</a>
+        <a href="/privacy">Privacy</a>
+        <a href="/terms">Terms</a>
+      </footer>
+    </main>
+    <script type="module" src="/src/client/guides/page.ts"></script>
+  </body>
+</html>
