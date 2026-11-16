@@ -1,3 +1,4 @@
+import { BETA } from "./beta.js";
 import { DRAND_RELAYS, SITE_HOSTS } from "./outside-hosts.js";
 
 const SELF = "'self'";
@@ -67,7 +68,7 @@ export const PERMISSIONS = [
   ["display-capture", "()"],
 ] as const;
 
-export const PAGE_HEADERS = {
+const SECURITY_HEADERS = {
   "Content-Security-Policy": CONTENT_SECURITY_POLICY,
   "Permissions-Policy": PERMISSIONS.map(
     ([feature, allowed]) => `${feature}=${allowed}`
@@ -75,6 +76,10 @@ export const PAGE_HEADERS = {
   "Referrer-Policy": "same-origin",
   "X-Content-Type-Options": "nosniff",
 } as const satisfies Readonly<Record<string, string>>;
+
+export const PAGE_HEADERS: Readonly<Record<string, string>> = BETA
+  ? { ...SECURITY_HEADERS, "X-Robots-Tag": "noindex" }
+  : SECURITY_HEADERS;
 
 export const CLIP_WORKER_HEADERS = {
   ...PAGE_HEADERS,
