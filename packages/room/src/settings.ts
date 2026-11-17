@@ -133,7 +133,12 @@ export type VoiceRule = typeof VoiceRuleSchema.Type;
 
 export type Shuffle = typeof ShuffleSchema.Type;
 
-const settingsFields = (shuffleWhenAbsent: Shuffle) => ({
+interface WhenAbsent {
+  readonly shuffle: Shuffle;
+  readonly voice: VoiceRule;
+}
+
+const settingsFields = (whenAbsent: WhenAbsent) => ({
   approval: ApprovalSchema.annotate({
     description: "What the host must approve before it happens.",
     title: "Approval",
@@ -210,7 +215,7 @@ const settingsFields = (shuffleWhenAbsent: Shuffle) => ({
       title: "Showdown clock",
     }
   ),
-  shuffle: setting(ShuffleSchema, shuffleWhenAbsent, {
+  shuffle: setting(ShuffleSchema, whenAbsent.shuffle, {
     description:
       "Checked: before each hand the server seals two decks, and the order comes from a public drand beacon round named in the seal, so every player's device can check each card it was shown. Plain: the server shuffles alone and nobody can check the deck. A change applies from the next sealed hand.",
     title: "Fair shuffle",
@@ -251,16 +256,20 @@ const settingsFields = (shuffleWhenAbsent: Shuffle) => ({
       "Seconds a player has to act on their turn. 0 turns the clock off.",
     title: "Turn clock",
   }),
-  voice: setting(VoiceRuleSchema, "Off", {
+  voice: setting(VoiceRuleSchema, whenAbsent.voice, {
     description:
       "Whether the room has voice chat. Off: no voice. Seated: the host and everyone in a seat may talk, and anyone else in the room may listen. Everyone: everyone in the room may talk. Everyone joins muted and turns voice on themselves.",
     title: "Voice chat",
   }),
 });
 
-export const RoomSettingsSchema = Schema.Struct(settingsFields("Plain"));
+export const RoomSettingsSchema = Schema.Struct(
+  settingsFields({ shuffle: "Plain", voice: "Off" })
+);
 
-export const RequestedSettingsSchema = Schema.Struct(settingsFields("Checked"));
+export const RequestedSettingsSchema = Schema.Struct(
+  settingsFields({ shuffle: "Checked", voice: "Seated" })
+);
 
 export type RoomSettings = typeof RoomSettingsSchema.Type;
 
@@ -300,7 +309,7 @@ export const DEFAULT_SETTINGS: RoomSettings = Schema.decodeSync(
   timeBankSeconds: 60,
   topUps: "UpToMax",
   turnSeconds: 30,
-  voice: "Off",
+  voice: "Seated",
 });
 
 export const turnClockRuns = (settings: RoomSettings) =>

@@ -533,7 +533,7 @@ export const RULES: readonly RuleCopy[] = [
       brief: (draft) =>
         draft.voice === "Everyone"
           ? said("voice for all")
-          : when(draft.voice === "Seated", () => "voice"),
+          : when(draft.voice === "Off", () => "no voice"),
       help: "Seated: players talk and the rest listen. Everyone joins muted.",
     }
   ),
@@ -744,6 +744,6 @@ export const STANDARD = new Map<string, string>(
     "table.limit._tag": "NoLimit",
     "table.sevenDeuce._tag": "NoBounty",
     topUps: "UpToMax",
-    voice: "Off",
+    voice: "Seated",
   })
 );

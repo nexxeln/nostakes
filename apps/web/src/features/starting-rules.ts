@@ -3,7 +3,7 @@ import { Option, Result, Schema } from "effect";
 
 import { openDraft } from "./rules.js";
 import { settingsFrom } from "./settings.js";
-import { EXTRAS, setupChange, unlocked } from "./setup.js";
+import { EXTRAS, forNewRoom, setupChange } from "./setup.js";
 import type { ExtraKind, RequestedSettings } from "./setup.js";
 
 export const StartingRuleSchema = Schema.Literals([
@@ -46,5 +46,5 @@ export const startingRules = (
         )
       )
     ),
-    Option.map(unlocked)
+    Option.map(forNewRoom)
   );

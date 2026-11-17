@@ -72,6 +72,20 @@ describe("settings stored before a field existed", () => {
   });
 });
 
+describe("the voice setting when a sender leaves it out", () => {
+  it("keeps a room stored before voice existed without voice", () => {
+    expect(decodeSettings(SETTINGS_BEFORE_SHOWDOWNS).voice).toBe("Off");
+  });
+
+  it("opens a new room with seated players talking", () => {
+    const request = decodeOpenRequest(
+      `{"avatar":"","name":"Ann","settings":${SETTINGS_BEFORE_SHOWDOWNS}}`
+    );
+
+    expect(request.settings?.voice).toBe("Seated");
+  });
+});
+
 describe("the shuffle setting when a sender leaves it out", () => {
   it("reads a stored log from before it existed as a plain shuffle", () => {
     expect(decodeSettings(SETTINGS_BEFORE_SHOWDOWNS).shuffle).toBe("Plain");

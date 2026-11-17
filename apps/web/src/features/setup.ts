@@ -1,5 +1,5 @@
 import { ChipsSchema, splitEvenly } from "@nostakes/engine";
-import { RequestedSettingsSchema } from "@nostakes/room";
+import { DEFAULT_SETTINGS, RequestedSettingsSchema } from "@nostakes/room";
 import type { RoomSettings } from "@nostakes/room";
 import { Effect, Option, Result, Schema } from "effect";
 
@@ -203,9 +203,10 @@ export const debounced = (path: string) =>
 
 export const SETUP_SETTLE_MS = 700;
 
-export const unlocked = (settings: RequestedSettings): RequestedSettings => ({
+export const forNewRoom = (settings: RequestedSettings): RequestedSettings => ({
   ...settings,
   locked: false,
+  voice: DEFAULT_SETTINGS.voice,
 });
 
 const decodeRemembered = Schema.decodeUnknownOption(
@@ -219,10 +220,10 @@ const encodeRemembered = Schema.encodeSync(
 export const rememberedRules = (
   stored: Option.Option<string>
 ): Option.Option<RequestedSettings> =>
-  stored.pipe(Option.flatMap(decodeRemembered), Option.map(unlocked));
+  stored.pipe(Option.flatMap(decodeRemembered), Option.map(forNewRoom));
 
 export const rulesToRemember = (view: OpenView) =>
-  encodeRemembered(unlocked(rulesInForce(view)));
+  encodeRemembered(forNewRoom(rulesInForce(view)));
 
 export interface FeltRules {
   readonly headline: string;
@@ -287,7 +288,7 @@ export const openWithRules = <Entry, E, R>(
     settings: Option.Option<RequestedSettings>
   ) => Effect.Effect<Entry, E, R>
 ): Effect.Effect<Opened<Entry>, E, R> => {
-  const chosen = settings.pipe(Option.map(unlocked));
+  const chosen = settings.pipe(Option.map(forNewRoom));
   const plain = () => open(Option.none());
 
   return Option.isNone(chosen)

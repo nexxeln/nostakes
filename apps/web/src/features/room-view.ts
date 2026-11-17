@@ -164,7 +164,7 @@ const voiceLabel = (room: InRoom, access: VoiceAccess, you: PlayerId) => {
   const { voice } = room;
 
   if (!voice.on) {
-    return { icon: "MicOff" as const, label: "Join voice", pressed: false };
+    return { icon: "Mic" as const, label: "Join voice", pressed: false };
   }
 
   if (voice.status.phase === "Joining" || voice.status.phase === "Off") {
