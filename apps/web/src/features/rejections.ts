@@ -57,21 +57,20 @@ const capital = (text: string) =>
 const illegalText = (action: Action, legal: LegalActions) =>
   Match.value(action).pipe(
     Match.tagsExhaustive({
-      Call: () => "There is nothing to call.",
+      Call: () => "There's nothing to call.",
       Check: () =>
         Option.match(legal.call, {
-          onNone: () => "You cannot check right now.",
-          onSome: (owed) =>
-            `You cannot check. It costs ${chips(owed)} to call.`,
+          onNone: () => "You can't check right now.",
+          onSome: (owed) => `You can't check. It's ${chips(owed)} to call.`,
         }),
-      Fold: () => "You cannot fold right now.",
+      Fold: () => "You can't fold right now.",
       RaiseTo: ({ to }) =>
         Option.match(legal.raise, {
-          onNone: () => "You cannot raise here.",
+          onNone: () => "You can't raise here.",
           onSome: ({ maxTo, minTo }) =>
             minTo === maxTo
-              ? `A raise here can only go to ${chips(maxTo)}.`
-              : `A raise here goes to between ${chips(minTo)} and ${chips(maxTo)}, not ${chips(to)}.`,
+              ? `You can only raise to ${chips(maxTo)}.`
+              : `You can raise to between ${chips(minTo)} and ${chips(maxTo)}, not ${chips(to)}.`,
         }),
     })
   );
@@ -79,11 +78,10 @@ const illegalText = (action: Action, legal: LegalActions) =>
 const STRADDLE_TEXT = {
   BombPot: "There are no straddles in a bomb pot.",
   ButtonStraddleOff: "This room has no straddle on the button.",
-  CannotCover: "You do not have the chips to straddle.",
-  HeadsUp: "There is no straddle heads-up.",
-  OutOfTurn: "Straddles go in turn, and it is not your turn to straddle.",
-  PostingToEnter:
-    "You are posting to come in this hand, so you cannot straddle.",
+  CannotCover: "You don't have the chips to straddle.",
+  HeadsUp: "There's no straddle heads-up.",
+  OutOfTurn: "Straddles go in order, and it's not your turn to straddle.",
+  PostingToEnter: "You're posting to come in this hand, so you can't straddle.",
   TooMany: "This hand already has as many straddles as the room allows.",
   UnderTheGunOff: "This room has no straddle under the gun.",
 } as const;
@@ -107,7 +105,7 @@ const tableText = (
       BombPotsOff: () => "This room has bomb pots off.",
       CardAlreadyPublic: ({ card }) =>
         `The ${cardText(card)} is already shown.`,
-      CardNotHeld: ({ card }) => `You did not hold the ${cardText(card)}.`,
+      CardNotHeld: ({ card }) => `You didn't hold the ${cardText(card)}.`,
       ChipLimitExceeded: ({ amount, available, seat }) =>
         `That takes ${chips(amount)}, and ${voice.seatName(seat)} ${voice.seatName(seat) === "you" ? "have" : "has"} ${chips(available)}.`,
       FoldedSeatCannotHunt: () =>
@@ -117,22 +115,22 @@ const tableText = (
       NoBettingRound: () => "Nobody is betting right now.",
       NoRunChoiceOwed: () =>
         "Nobody is choosing how many times to run it right now.",
-      NoShowdownChoiceOwed: () => "It is not your turn to show or muck.",
+      NoShowdownChoiceOwed: () => "It's not your turn to show or muck.",
       NotEnoughPlayers: () =>
-        "A hand needs at least two players with chips who are not sitting out.",
+        "A hand needs at least 2 players with chips who aren't sitting out.",
       NotInLastHand: () =>
         nextHandDealt
           ? "The next hand is already dealt, so the last one is closed."
-          : "You were not dealt into the last hand.",
+          : "You weren't dealt into the last hand.",
       NotYourTurn: ({ toAct }) =>
         voice.seatName(toAct) === "you"
           ? "Wait a moment, the table is catching up."
-          : `It is ${voice.seatName(toAct)}'s turn.`,
+          : `It's ${voice.seatName(toAct)}'s turn.`,
       NothingToHunt: () => "The whole board was dealt, so there is no rabbit.",
       PlayerAlreadySeated: ({ player }) =>
         `${voice.subject(player)} already ${voice.isYou(player) ? "have" : "has"} a seat.`,
       RabbitAlreadyHunted: () => "Someone already hunted the rabbit.",
-      RabbitHuntOff: () => "This room does not hunt rabbits.",
+      RabbitHuntOff: () => "This room has rabbit hunting off.",
       RunsOutOfRange: ({ maxRuns }) =>
         `This room runs it at most ${maxRuns} ${maxRuns === 1 ? "time" : "times"}.`,
       SeatEmpty: ({ seat }) => `${capital(seatLabel(seat))} is empty.`,
@@ -148,7 +146,7 @@ const tableText = (
     })
   );
 
-const DEALER_BUSY = "The dealer is not ready for that yet.";
+const DEALER_BUSY = "The dealer isn't ready for that yet.";
 
 export const rejectionText = (
   rejection: RoomRejection,
@@ -159,11 +157,11 @@ export const rejectionText = (
   return Match.value(rejection).pipe(
     Match.tagsExhaustive({
       ActionNotOnSeat: ({ player }) =>
-        `It is not ${voice.possessive(player)} turn, so there is nothing to do for ${voice.name(player)}.`,
+        `It's not ${voice.possessive(player)} turn, so there's nothing to do for ${voice.name(player)}.`,
       AlreadyAMember: ({ player }) =>
         `${voice.subject(player)} ${voice.isYou(player) ? "are" : "is"} already in this room.`,
       AlreadyKnocked: () =>
-        "This pass already knocked. Go back and knock again from the room link.",
+        "You already knocked. Open the room link to knock again.",
       AlreadyLeaving: ({ player }) =>
         `${voice.subject(player)} already ${voice.isYou(player) ? "stand" : "stands"} up when this hand ends.`,
       AlreadyRemoved: ({ player }) =>
@@ -177,10 +175,10 @@ export const rejectionText = (
       BuyInOutOfRange: ({ amount, max, min }) =>
         `A buy-in here is between ${chips(min)} and ${chips(max)}, not ${chips(amount)}.`,
       ChipRequestPending: ({ amount, player }) =>
-        `${voice.subject(player)} already asked for ${chips(amount)}. The host has not answered yet.`,
+        `${voice.subject(player)} already asked for ${chips(amount)}. The host hasn't answered yet.`,
       ChipsOverMax: ({ amount, holding, max, player }) =>
         `${chips(amount)} more would take ${voice.name(player)} from ${chips(holding)} past the ${chips(max)} limit.`,
-      ClockNotDue: () => "That clock has not run out yet.",
+      ClockNotDue: () => "That clock hasn't run out yet.",
       CloseAlreadyQueued: () => "The room already closes when this hand ends.",
       DealNotDue: () => "No hand is due to be dealt yet.",
       DealingIsAutomatic: ({ betweenHandsSeconds }) =>
@@ -191,7 +189,7 @@ export const rejectionText = (
           : "The game is already paused.",
       HostStillHere: ({ claimableAt, host }) =>
         Option.isSome(claimableAt)
-          ? `${voice.subject(host)} left less than two minutes ago. Anyone can take over as host once two minutes have passed.`
+          ? `${voice.subject(host)} left less than 2 minutes ago. Anyone can take over as host after 2 minutes.`
           : `${voice.subject(host)} ${voice.isYou(host) ? "are" : "is"} still here, so the host stays the same.`,
       MembersOnly: () => "Only players in the room can do that.",
       NameTaken: ({ wanted }) =>
@@ -203,10 +201,10 @@ export const rejectionText = (
         `${voice.subject(player)} ${voice.isYou(player) ? "have" : "has"} no seat request waiting.`,
       NoSuchDeadline: () => "That clock already stopped.",
       NobodyToClear: () =>
-        "Nobody on that list can be removed any more: they took a seat or are in the settle-up, and the room is already locked.",
+        "Nobody on that list can be removed now. They took a seat or are in the settle-up, and the room is already locked.",
       NotAMember: ({ player }) =>
         `${voice.subject(player)} ${voice.isYou(player) ? "are" : "is"} not in the room.`,
-      NotKnocking: () => "They are no longer waiting at the door.",
+      NotKnocking: () => "They're not waiting at the door anymore.",
       NotSeated: ({ player }) =>
         voice.isYou(player)
           ? "You need a seat for that."
@@ -217,9 +215,9 @@ export const rejectionText = (
       QueueNotDue: () => DEALER_BUSY,
       QuietNotDue: () => DEALER_BUSY,
       RemovedFromRoom: () =>
-        "The host removed you from this room, so this pass cannot join it again.",
+        "The host removed you from this room, so you can't join it again from this device.",
       RemovingYourself: () =>
-        "You cannot remove yourself. Leave the room instead, and someone else becomes host.",
+        "You can't remove yourself. Leave the room instead, and someone else becomes host.",
       RoomIsClosed: () => "This room is closed.",
       RoomLocked: () =>
         "The host locked this room, so nobody new can join. Ask them to unlock it.",
@@ -231,9 +229,9 @@ export const rejectionText = (
       SeatNotFree: ({ seat }) =>
         `${capital(seatLabel(seat))} is taken or someone already asked for it.`,
       SeatRequestPending: ({ player, seat }) =>
-        `${voice.subject(player)} already asked for ${seatLabel(seat)}. The host has not answered yet.`,
+        `${voice.subject(player)} already asked for ${seatLabel(seat)}. The host hasn't answered yet.`,
       SeatsStillTaken: ({ seats, wanted }) =>
-        `The table cannot shrink to ${wanted} seats while ${seats.length === 1 ? "a seat past that is" : "seats past that are"} taken or asked for.`,
+        `The table can't shrink to ${wanted} seats while ${seats.length === 1 ? "a seat past that is" : "seats past that are"} taken or asked for.`,
       ServerOnly: () => "Only the room itself can do that.",
       SettlesAfterHand: () => "The room settles up when this hand ends.",
       ShuffleRanOut: () => DEALER_BUSY,
@@ -254,8 +252,7 @@ export const rejectionText = (
           ? `This room adds chips only below the smallest buy-in of ${chips(min)}, and ${voice.name(player)} ${voice.isYou(player) ? "have" : "has"} ${chips(holding)}.`
           : `This room adds chips only once ${voice.name(player)} ${voice.isYou(player) ? "are" : "is"} out of chips.`;
       },
-      Unbalanced: () =>
-        "The chip count would not balance, so the room refused.",
+      Unbalanced: () => "The chip count wouldn't add up, so the room said no.",
     })
   );
 };

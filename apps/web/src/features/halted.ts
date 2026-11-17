@@ -16,7 +16,7 @@ export const haltedRows = (view: ClosedView): readonly HaltedRow[] =>
   view.settlement.balances
     .toSorted((left, right) => right.net - left.net)
     .map(({ boughtIn, cashedOut, net, player }) => ({
-      detail: `in ${boughtIn}, left with ${cashedOut}`,
+      detail: `bought in ${boughtIn}, left with ${cashedOut}`,
       name: nameOf(view, player),
       net,
       player,

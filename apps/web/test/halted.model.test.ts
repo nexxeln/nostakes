@@ -112,8 +112,8 @@ describe("a room the server halted", () => {
       text: copied.commands?.map(({ args }) => args),
     }).toStrictEqual({
       rows: [
-        { detail: "in 200, left with 201", name: "Ben", net: 1 },
-        { detail: "in 200, left with 199", name: "Ana", net: -1 },
+        { detail: "bought in 200, left with 201", name: "Ben", net: 1 },
+        { detail: "bought in 200, left with 199", name: "Ana", net: -1 },
       ],
       state: Option.some(HaltedStandings.Shown({ view: STANDINGS })._tag),
       text: [
@@ -121,8 +121,8 @@ describe("a room the server halted", () => {
           copied: "Settlement",
           text: [
             HALTED_LINE,
-            "+1 \u2068Ben\u2069 (in 200, left with 201)",
-            "-1 \u2068Ana\u2069 (in 200, left with 199)",
+            "+1 \u2068Ben\u2069 (bought in 200, left with 201)",
+            "-1 \u2068Ana\u2069 (bought in 200, left with 199)",
             "",
             "nostakes ABC234",
             "+1 \u2068Ben\u2069",

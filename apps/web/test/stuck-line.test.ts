@@ -65,7 +65,7 @@ describe("the offer to take over from a host who is gone", () => {
       ]).toStrictEqual([
         Option.none(),
         Option.some(
-          "Ana has been gone for two minutes. Anyone here can take over as host."
+          "Ana has been gone for 2 minutes. Anyone here can take over as host."
         ),
         Option.none(),
         Option.none(),

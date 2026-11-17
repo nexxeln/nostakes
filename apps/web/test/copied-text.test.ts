@@ -52,7 +52,7 @@ const NAME = String.raw`\u2068[^\u2066-\u2069\u202A-\u202E\u200E\u200F\u061C]*\u
 const NET = new RegExp(String.raw`^(?<net>[+-]?\d+) ${NAME}$`, "u");
 
 const HALTED_ROW = new RegExp(
-  String.raw`^(?<net>[+-]?\d+) ${NAME} \(in (?<in>-?\d+), left with (?<out>-?\d+)\)$`,
+  String.raw`^(?<net>[+-]?\d+) ${NAME} \(bought in (?<in>-?\d+), left with (?<out>-?\d+)\)$`,
   "u"
 );
 
