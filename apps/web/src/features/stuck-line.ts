@@ -4,7 +4,7 @@ import { isYou, nameOf } from "./room.js";
 import type { OpenView } from "./room.js";
 
 export const STUCK_LINE =
-  "The table is stuck and cannot go on. Anyone here can end the night and settle up.";
+  "The table is stuck and can't go on. Anyone here can end the night and settle up.";
 
 export const stuckLine = (view: OpenView): Option.Option<string> =>
   Option.isSome(view.stalled) ? Option.some(STUCK_LINE) : Option.none();
@@ -28,6 +28,6 @@ export const takeOverLine = (
     ),
     Option.map(
       () =>
-        `${nameOf(view, view.host)} has been gone for two minutes. Anyone here can take over as host.`
+        `${nameOf(view, view.host)} has been gone for 2 minutes. Anyone here can take over as host.`
     )
   );

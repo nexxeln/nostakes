@@ -208,7 +208,7 @@ const missing = (
           hand,
           mark: FairMarks.Failed({
             proof: proofText(room, hand, { unopened: cards }),
-            reason: `The server showed ${cards.length === 1 ? "a card" : `${cards.length} cards`} without opening ${cards.length === 1 ? "it" : "them"} against the sealed deck, so this device cannot tell whether the deck was changed.`,
+            reason: `The server showed ${cards.length === 1 ? "a card" : `${cards.length} cards`} without opening ${cards.length === 1 ? "it" : "them"} against the sealed deck, so this device can't tell if the deck was changed.`,
           }),
         })
       ),

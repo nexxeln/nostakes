@@ -7,13 +7,13 @@ const PROBLEM_TEXT = {
   HiddenCharacter:
     "That name has a line break or a hidden character. Type it again.",
   MixedAlphabets:
-    "Use one alphabet in a name. Latin, Greek, and Cyrillic letters do not mix.",
-  NoLetter: "A name needs at least one letter.",
+    "Use one alphabet in a name. Latin, Greek, and Cyrillic letters can't mix.",
+  NoLetter: "A name needs at least 1 letter.",
   NotNormalised: "Type that name again.",
-  SpaceAtEnd: "A name cannot start or end with a space.",
+  SpaceAtEnd: "A name can't start or end with a space.",
   StackedMarks: "That name stacks too many accents on one letter.",
   StrayMark: "An accent in that name has no letter under it.",
-  TooLong: "A name is at most 40 characters.",
+  TooLong: "A name can be at most 40 characters.",
 } satisfies Record<NameProblem, string>;
 
 export const nameProblemText = (problem: NameProblem) => PROBLEM_TEXT[problem];

@@ -81,6 +81,6 @@ export const updateLine = ({ stage, target }: PageUpdate) => {
   }
 
   return ReloadTargets.guards.NewProtocol(target)
-    ? "nostakes was updated and this page could not load the new version. Close this tab and open the room link again."
-    : "A new version of nostakes is out and this page could not load it. Close this tab and open the room link again when you can.";
+    ? "nostakes was updated and this page couldn't load the new version. Close this tab and open the room link again."
+    : "A new version of nostakes is out and this page couldn't load it. Close this tab and open the room link again when you can.";
 };

@@ -14,7 +14,7 @@ export const attendanceLine = (
     Option.flatMap((view) => {
       if (AttendanceViewSchema.guards.Quiet(view.attendance)) {
         return Option.some(
-          "The game is paused because nobody at the table is connected. It goes on when one of them is back."
+          "The game is paused because nobody at the table is connected. It starts again when one of them is back."
         );
       }
 
