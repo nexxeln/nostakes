@@ -212,7 +212,18 @@ export const realtimeCalls = (
             ? HttpClientResponse.schemaBodyJson(answer)(response).pipe(
                 Effect.mapError(() => failed(step, "Garbled"))
               )
-            : Effect.fail(failed(step, `Status${response.status}`))
+            : HttpClientResponse.schemaBodyJson(PlainSchema)(response).pipe(
+                Effect.map(({ errorCode }) => errorCode ?? "NoCode"),
+                Effect.orElseSucceed(() => "NoBody"),
+                Effect.flatMap((code) =>
+                  Effect.fail(
+                    failed(
+                      step,
+                      `Status${response.status} ${code.slice(0, 64)}`
+                    )
+                  )
+                )
+              )
         )
       );
 

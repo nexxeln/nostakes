@@ -1477,8 +1477,8 @@ export const roomObject = <T extends RoomTypes, Tally>(
             );
 
             return VoiceOutcomes.$match(outcome, {
-              Refused: ({ refusal }) =>
-                VoiceOutcomeSchema.cases.Refused.make({ refusal }),
+              Refused: ({ detail, refusal }) =>
+                VoiceOutcomeSchema.cases.Refused.make({ detail, refusal }),
               Replied: ({ reply }) =>
                 VoiceOutcomeSchema.cases.Replied.make({
                   reply: Schema.encodeSync(VoiceReplySchema)(reply),

@@ -61,7 +61,10 @@ export const VoiceOutcomeSchema = Schema.TaggedUnion({
   Invalid: {},
   NotAuthorized: {},
   NotFound: {},
-  Refused: { refusal: Schema.Literals(["VoiceRefused", "VoiceUnavailable"]) },
+  Refused: {
+    detail: Schema.String,
+    refusal: Schema.Literals(["VoiceRefused", "VoiceUnavailable"]),
+  },
   Replied: { reply: Schema.Json },
 });
 

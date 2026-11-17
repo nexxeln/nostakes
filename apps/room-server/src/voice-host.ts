@@ -105,7 +105,10 @@ export const memoryVoiceStore = (): VoiceStore => {
 
 export type VoiceOutcome = Data.TaggedEnum<{
   Replied: { readonly reply: VoiceReply };
-  Refused: { readonly refusal: "VoiceRefused" | "VoiceUnavailable" };
+  Refused: {
+    readonly refusal: "VoiceRefused" | "VoiceUnavailable";
+    readonly detail: string;
+  };
 }>;
 
 export const VoiceOutcomes = Data.taggedEnum<VoiceOutcome>();
@@ -125,8 +128,8 @@ export interface VoiceHostOptions {
   readonly failed: (failure: RealtimeFailed) => Effect.Effect<void>;
 }
 
-const refused = (refusal: "VoiceRefused" | "VoiceUnavailable") =>
-  VoiceOutcomes.Refused({ refusal });
+const refused = (refusal: "VoiceRefused" | "VoiceUnavailable", detail = "") =>
+  VoiceOutcomes.Refused({ detail, refusal });
 
 const replied = (reply: VoiceReply) => VoiceOutcomes.Replied({ reply });
 
@@ -482,7 +485,13 @@ export const voiceHost = (options: VoiceHostOptions) => {
       });
     }).pipe(
       Effect.catchTag("RealtimeFailed", (failure) =>
-        options.failed(failure).pipe(Effect.as(refused("VoiceUnavailable")))
+        options
+          .failed(failure)
+          .pipe(
+            Effect.as(
+              refused("VoiceUnavailable", `${failure.step} ${failure.code}`)
+            )
+          )
       )
     );
 

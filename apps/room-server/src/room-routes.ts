@@ -92,6 +92,8 @@ export const CHECK_ROUTE = "/rooms/:code/check";
 
 export const VOICE_ROUTE = "/rooms/:code/voice";
 
+export const VOICE_DETAIL_HEADER = "x-voice-detail";
+
 const withDevice = (device: Option.Option<string>) =>
   Option.match(device, {
     onNone: () => ({}),
@@ -368,10 +370,14 @@ export const roomRoutes = <R>(
         Invalid: () => refuse("BadRequest"),
         NotAuthorized: () => refuse("NotAuthorized"),
         NotFound: () => refuse("NotFound"),
-        Refused: ({ refusal }) =>
+        Refused: ({ detail, refusal }) =>
           voiceRefusalBody(
             { refusal },
-            { status: VOICE_REFUSAL_STATUS[refusal] }
+            {
+              headers:
+                detail.length > 0 ? { [VOICE_DETAIL_HEADER]: detail } : {},
+              status: VOICE_REFUSAL_STATUS[refusal],
+            }
           ).pipe(Effect.orDie),
         Replied: ({ reply }) =>
           Effect.succeed(HttpServerResponse.jsonUnsafe(reply)),
