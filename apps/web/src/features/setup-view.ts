@@ -9,13 +9,14 @@ import type { OpenView } from "./room.js";
 import { isLive } from "./room.js";
 import { PRESET_LABELS } from "./rules-copy.js";
 import { controlView } from "./rules-view.js";
-import { presetOf, presetsInOrder } from "./rules.js";
+import { isRelevant, presetOf, presetsInOrder } from "./rules.js";
 import type { RuleLine } from "./rules.js";
 import { settingsFrom } from "./settings.js";
 import {
   BLIND_LINES,
   BUY_IN_LINES,
   EXTRAS,
+  GAME_LINES,
   extraFlipped,
   extraLabel,
   roomDraft,
@@ -182,12 +183,15 @@ const gamePart = (room: InRoom, draft: SettingsDraft, h: H): Html => {
           ),
         ]
       ),
+      ...GAME_LINES.map((line) => amountLine(line, draft, h)),
       pairRow(BLIND_LINES, draft, h),
       pairRow(BUY_IN_LINES, draft, h),
       styleRow(draft, h),
       h.div(
         [h.Class("setup-extras")],
-        EXTRAS.map((extra) => extraView(extra, draft, h))
+        EXTRAS.filter((extra) => isRelevant(extra.line, draft)).map((extra) =>
+          extraView(extra, draft, h)
+        )
       ),
       fits ? h.empty : h.p([h.Class("problem")], ["Check the numbers."]),
       Option.match(room.notice, {

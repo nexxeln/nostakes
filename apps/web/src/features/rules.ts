@@ -200,6 +200,19 @@ const numberIn = (text: string | undefined) => {
   return Number.isFinite(value) ? value : Number.NaN;
 };
 
+export const ruleChange = (
+  draft: SettingsDraft,
+  path: string,
+  value: string
+): SettingsDraft =>
+  path === "table.game" && draft[path] !== value
+    ? {
+        ...draft,
+        [path]: value,
+        "table.limit._tag": value === "Omaha" ? "PotLimit" : "NoLimit",
+      }
+    : { ...draft, [path]: value };
+
 export type Press = "Less" | "More" | "Toggle";
 
 export const pressed = (

@@ -136,7 +136,7 @@ import {
   viewOf,
 } from "./room.js";
 import type { OpenView } from "./room.js";
-import { withPreset } from "./rules.js";
+import { ruleChange, withPreset } from "./rules.js";
 import { settingsFrom } from "./settings.js";
 import {
   beforeFirstHand,
@@ -1551,7 +1551,7 @@ export const update = (model: Model, message: Message): Return =>
     ChangedSetting: ({ path, value }) =>
       editRules(model, (sheet) => ({
         ...sheet,
-        draft: { ...sheet.draft, [path]: value },
+        draft: ruleChange(sheet.draft, path, value),
       })),
     ChangedSetupSetting: ({ path, value }) =>
       editSetup(

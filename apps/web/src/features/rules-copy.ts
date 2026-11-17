@@ -3,6 +3,7 @@ import { Option, Schema } from "effect";
 import type { SettingsDraft } from "./model.js";
 
 export const RuleGroupSchema = Schema.Literals([
+  "Game",
   "Table",
   "Blinds",
   "Clock",
@@ -24,6 +25,7 @@ export const GROUP_TITLES: Readonly<Record<RuleGroup, string>> = {
   Blinds: "Blinds",
   Clock: "Clock",
   Fairness: "Fairness",
+  Game: "Game",
   Other: "Other",
   Showdown: "Showdown",
   Straddles: "Straddles",
@@ -160,7 +162,33 @@ const straddleBrief = (draft: SettingsDraft) => {
   return said(count === 1 ? "straddle UTG" : `${count} straddles`);
 };
 
+const gameShorthand = (draft: SettingsDraft) =>
+  `${draft["table.limit._tag"] === "PotLimit" ? "PL" : "NL"}${draft["table.game"] === "Omaha" ? "O" : "H"}`;
+
+const playsHoldem = (draft: SettingsDraft) =>
+  (draft["table.game"] ?? "Holdem") === "Holdem";
+
 export const RULES: readonly RuleCopy[] = [
+  rule(
+    "table.game",
+    "Game",
+    "Game",
+    segments({ Holdem: "Hold'em", Omaha: "Omaha" }),
+    {
+      help: "Omaha deals four cards, and a hand uses exactly two of them with three from the board.",
+    }
+  ),
+  rule(
+    "table.limit._tag",
+    "Game",
+    "Betting",
+    segments({ NoLimit: "No limit", PotLimit: "Pot limit" }),
+    {
+      brief: (draft) => said(gameShorthand(draft)),
+      card: "Headline",
+      help: "Pot limit: a bet or raise can be at most the pot, counting the call.",
+    }
+  ),
   rule("buyIn.min", "Table", "Smallest buy-in", stepper("", 1, buyInStep)),
   rule("buyIn.max", "Table", "Largest buy-in", stepper("", 1, buyInStep), {
     brief: (draft) => said(`${draft["buyIn.min"]}–${draft["buyIn.max"]}`),
@@ -441,7 +469,7 @@ export const RULES: readonly RuleCopy[] = [
           draft["table.voluntaryShows"] === "BothCards",
           () => "show both or none"
         ),
-      help: "After a hand, a player may show just one card.",
+      help: "After a hand, a player may show just some of their cards.",
     }
   ),
   rule("table.rabbitHunt", "Showdown", "Rabbit hunt", toggle(), {
@@ -474,6 +502,7 @@ export const RULES: readonly RuleCopy[] = [
           () => `7-2 bounty ${draft["table.sevenDeuce.amount"]}`
         ),
       help: "Win with seven-deuce and everyone dealt in pays you.",
+      relevant: playsHoldem,
     }
   ),
   rule(
@@ -698,6 +727,8 @@ export const STANDARD = new Map<string, string>(
     sitOutAfterTimeouts: "1",
     "table.ante._tag": "NoAnte",
     "table.bombPot._tag": "NoBombPots",
+    "table.game": "Holdem",
+    "table.limit._tag": "NoLimit",
     "table.sevenDeuce._tag": "NoBounty",
     topUps: "UpToMax",
   })

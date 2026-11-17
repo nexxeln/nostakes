@@ -11,6 +11,7 @@ import {
   isRelevant,
   openDraft,
   RULE_LINES,
+  ruleChange,
   rulesCardOf,
   withPreset,
 } from "./rules.js";
@@ -36,6 +37,11 @@ const lineAt = (path: string): readonly RuleLine[] =>
 export const BLIND_LINES: readonly RuleLine[] = [
   "table.smallBlind",
   "table.bigBlind",
+].flatMap(lineAt);
+
+export const GAME_LINES: readonly RuleLine[] = [
+  "table.game",
+  "table.limit._tag",
 ].flatMap(lineAt);
 
 export const BUY_IN_LINES: readonly RuleLine[] = [
@@ -183,7 +189,7 @@ export const setupChange = (
   path: string,
   value: string
 ): SettingsDraft => {
-  const next = { ...draft, [path]: value };
+  const next = ruleChange(draft, path, value);
 
   return path === "table.bigBlind" ? followBigBlind(draft, next) : next;
 };
@@ -228,7 +234,12 @@ const briefsOf = (lines: readonly RuleLine[], draft: SettingsDraft) =>
     isRelevant(line, draft) ? Option.toArray(line.copy.brief(draft)) : []
   );
 
-const MONEY_PATHS = ["table.bigBlind", "buyIn.max", "table.ante._tag"];
+const MONEY_PATHS = [
+  "table.limit._tag",
+  "table.bigBlind",
+  "buyIn.max",
+  "table.ante._tag",
+];
 
 export const shorthandOf = (draft: SettingsDraft): FeltRules => ({
   extras: briefsOf(

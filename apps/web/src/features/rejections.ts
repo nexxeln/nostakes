@@ -70,7 +70,7 @@ const illegalText = (action: Action, legal: LegalActions) =>
           onNone: () => "You cannot raise here.",
           onSome: ({ maxTo, minTo }) =>
             minTo === maxTo
-              ? `You can only go all in, to ${chips(maxTo)}.`
+              ? `A raise here can only go to ${chips(maxTo)}.`
               : `A raise here goes to between ${chips(minTo)} and ${chips(maxTo)}, not ${chips(to)}.`,
         }),
     })
@@ -140,7 +140,7 @@ const tableText = (
         `${capital(voice.seatName(seat))} ${voice.seatName(seat) === "you" ? "are" : "is"} in the hand right now.`,
       SeatTaken: ({ occupant, seat }) =>
         `${voice.subject(occupant)} already ${voice.isYou(occupant) ? "sit" : "sits"} in ${seatLabel(seat)}.`,
-      ShowBothCards: () => "This room shows both cards or none.",
+      ShowBothCards: () => "This room shows all your cards or none.",
       StraddleAboveChipLimit: () =>
         "That straddle is more than the table allows.",
       StraddleNotAllowed: ({ reason }) => STRADDLE_TEXT[reason],

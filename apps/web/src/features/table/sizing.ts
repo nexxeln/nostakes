@@ -1,6 +1,7 @@
 export interface RaiseSpot {
   readonly min: number;
   readonly max: number;
+  readonly allInTo: number;
   readonly isBet: boolean;
   readonly bigBlind: number;
   readonly potTotal: number;
@@ -58,7 +59,7 @@ export const raiseDetents = (spot: RaiseSpot): readonly Detent[] =>
     { label: spot.isBet ? "Min" : "Min raise", value: spot.min },
     { label: "½ pot", value: halfPotRoundedDown(spot) },
     { label: "Pot", value: spot.callTo + spot.potTotal + spot.toCall },
-    { label: "All in", value: spot.max },
+    { label: spot.max >= spot.allInTo ? "All in" : "Max", value: spot.max },
   ].filter(
     ({ value }, index, all) =>
       value >= spot.min &&

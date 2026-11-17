@@ -208,7 +208,7 @@ const placeDetents = (detents: readonly Detent[], min: number, max: number) => {
     const previous = placed.at(-1);
 
     if (previous !== undefined && t - previous.t < DETENT_GAP) {
-      if (detent.label === "All in") {
+      if (detent.value === max) {
         placed[placed.length - 1] = { ...detent, t };
       }
     } else {
@@ -517,15 +517,15 @@ const raiseSizing = (spot: RaiseSpot): Sizing => ({
   amount: formatChips,
   commit: (to) => TableIntents.Raise.make({ to }),
   detents: detentsFor(spot),
-  heading: (value) => (value >= spot.max ? "All in" : raiseHeading(spot)),
-  holding: `you have ${formatChips(spot.max)}`,
+  heading: (value) => (value >= spot.allInTo ? "All in" : raiseHeading(spot)),
+  holding: `you have ${formatChips(spot.allInTo)}`,
   how: `Let go to ${spot.isBet ? "bet" : "raise"} · drag down to cancel`,
   ladder: raiseLadder(spot),
   lesson: "Raise",
   max: spot.max,
   min: spot.min,
   typing: true,
-  word: (value) => raiseWord(spot, value >= spot.max),
+  word: (value) => raiseWord(spot, value >= spot.allInTo),
 });
 
 const runSizing = (most: number): Sizing => {
@@ -3987,6 +3987,7 @@ export class NostakesTable extends HTMLElement {
     const toCall = snapshot.legal?.call ?? 0;
 
     return raiseSizing({
+      allInTo: me.bet + me.stack,
       bigBlind: snapshot.bigBlind,
       callTo: me.bet + toCall,
       isBet: raise.isBet,
