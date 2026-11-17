@@ -1362,40 +1362,20 @@ export class NostakesTable extends HTMLElement {
     const { target } = shown;
 
     if (target === null || target === shown.seat) {
-      this.#rise(shown, from);
+      if (shown.seat === null) {
+        this.#rise(shown, from);
+      } else {
+        this.#gagAt(shown, shown.seat, from);
+      }
 
       return;
     }
 
-    const gag = GAGS[shown.reaction];
-    const size = target === this.#snap?.heroSeat ? geo.self.size : geo.tile;
     const to = this.#tilePoint(target);
     const glyph = REACTION_GLYPHS[shown.reaction];
 
     const landing = () => {
-      this.#sound.sample(shown.reaction, gag.sound);
-      this.#flinch(target, gag.mood, gag.moodMs);
-
-      const riseAfterMs = this.#reduced
-        ? 0
-        : gag.play({
-            at: to,
-            face: this.#faceOf(target),
-            fx: this.#fx,
-            glyph,
-            reaction: shown.reaction,
-            room: roomAround(geo, to, size),
-            size,
-          });
-
-      if (riseAfterMs !== null) {
-        this.#later.push({
-          at: performance.now() + riseAfterMs,
-          run: () => {
-            this.#rise(shown, to);
-          },
-        });
-      }
+      this.#gagAt(shown, target, to);
     };
 
     if (this.#reduced) {
@@ -1442,6 +1422,41 @@ export class NostakesTable extends HTMLElement {
       node.remove();
       landing();
     });
+  }
+
+  #gagAt(shown: TableSnapshot["reactions"][number], seat: number, at: Pt) {
+    const geo = this.#geo;
+
+    if (geo === null) {
+      return;
+    }
+
+    const gag = GAGS[shown.reaction];
+    const size = seat === this.#snap?.heroSeat ? geo.self.size : geo.tile;
+
+    this.#sound.sample(shown.reaction, gag.sound);
+    this.#flinch(seat, gag.mood, gag.moodMs);
+
+    const riseAfterMs = this.#reduced
+      ? 0
+      : gag.play({
+          at,
+          face: this.#faceOf(seat),
+          fx: this.#fx,
+          glyph: REACTION_GLYPHS[shown.reaction],
+          reaction: shown.reaction,
+          room: roomAround(geo, at, size),
+          size,
+        });
+
+    if (riseAfterMs !== null) {
+      this.#later.push({
+        at: performance.now() + riseAfterMs,
+        run: () => {
+          this.#rise(shown, at);
+        },
+      });
+    }
   }
 
   #prepareOneSound() {

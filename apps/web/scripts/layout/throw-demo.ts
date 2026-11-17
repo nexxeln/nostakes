@@ -12,8 +12,8 @@ import { wavOf } from "../launch/score.ts";
 
 interface Scripted {
   readonly atMs: number;
-  readonly from: number;
-  readonly at: number;
+  readonly from: number | null;
+  readonly at: number | null;
   readonly reaction: Reaction;
 }
 
@@ -40,6 +40,18 @@ const NINE: readonly (readonly [number, number, Reaction])[] = [
   [3, 0, "Bird"],
 ];
 
+const SELF: readonly (readonly [number, Reaction])[] = [
+  [1, "Clap"],
+  [0, "Laugh"],
+  [4, "Wow"],
+  [2, "Cry"],
+  [3, "Fire"],
+  [5, "Dead"],
+  [0, "Fish"],
+  [1, "Eyes"],
+  [0, "Bird"],
+];
+
 const SCRIPTS = {
   nine: {
     lengthMs: 11_600,
@@ -50,9 +62,23 @@ const SCRIPTS = {
       reaction,
     })),
   },
+  self: {
+    lengthMs: 12_800,
+    throws: [
+      ...SELF.map(([from, reaction], index) => ({
+        at: null,
+        atMs: 400 + index * 1250,
+        from,
+        reaction,
+      })),
+      { at: null, atMs: 11_650, from: null, reaction: "Laugh" },
+    ],
+  },
   pileup: {
     lengthMs: 5600,
     throws: [
+      { at: null, atMs: 400, from: 4, reaction: "Laugh" },
+      { at: null, atMs: 2600, from: 2, reaction: "Cry" },
       { at: 3, atMs: 400, from: 0, reaction: "Fish" },
       { at: 4, atMs: 400, from: 2, reaction: "Fire" },
       { at: 1, atMs: 400, from: 5, reaction: "Laugh" },
@@ -60,6 +86,15 @@ const SCRIPTS = {
       { at: 3, atMs: 2600, from: 1, reaction: "Clap" },
       { at: 3, atMs: 2600, from: 5, reaction: "Eyes" },
     ],
+  },
+  yourself: {
+    lengthMs: 9600,
+    throws: REACTIONS.map((reaction, index) => ({
+      at: null,
+      atMs: 300 + index * 1000,
+      from: 0,
+      reaction,
+    })),
   },
   you: {
     lengthMs: 9600,
@@ -80,7 +115,7 @@ type ScriptName = keyof typeof SCRIPTS;
 const LIVE_WARM_UP_MS = 2000;
 
 const isScript = (text: string | null): text is ScriptName =>
-  text === "nine" || text === "pileup" || text === "you";
+  text !== null && Object.hasOwn(SCRIPTS, text);
 
 const seekAnimations = (
   born: WeakMap<Animation, { at: number; base: number }>,
@@ -216,6 +251,18 @@ export const stageThrows = (
 
     for (const index of due) {
       sent.add(index);
+
+      const each = script[index];
+
+      if (each !== undefined && each.at === null && each.from !== null) {
+        cues.push({
+          atMs: each.atMs,
+          ms: 0,
+          pan: 0,
+          reaction: each.reaction,
+          sound: "Hit",
+        });
+      }
     }
 
     table.snapshot = {
@@ -226,8 +273,8 @@ export const stageThrows = (
         return {
           id: index + 1,
           reaction: each?.reaction ?? "Clap",
-          seat: each?.from ?? 0,
-          target: each?.at ?? 1,
+          seat: each === undefined ? 0 : each.from,
+          target: each === undefined ? 1 : each.at,
         };
       }),
     };

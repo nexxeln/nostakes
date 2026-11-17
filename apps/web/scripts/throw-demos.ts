@@ -9,8 +9,17 @@ import type { Browser, Page } from "playwright-core";
 import { localWebApp, mutedBrowser } from "./local-site.ts";
 
 const DEMOS = [
-  { file: "gags-all-nine", script: "nine" },
-  { file: "gags-pileup", script: "pileup" },
+  {
+    file: "gags-all-nine",
+    script: "nine",
+    sheet: Array.from({ length: 9 }, (_, index) => 1400 + index * 1150),
+  },
+  {
+    file: "gags-self",
+    script: "self",
+    sheet: Array.from({ length: 9 }, (_, index) => 850 + index * 1250),
+  },
+  { file: "gags-pileup", script: "pileup", sheet: [] },
 ] as const;
 
 const YOUR_FACE_STILLS_MS = [
@@ -115,7 +124,8 @@ const filmed = (
   app: string,
   script: string,
   dir: string,
-  file: string
+  file: string,
+  sheet: readonly number[]
 ) =>
   Effect.gen(function* film() {
     const files = yield* FileSystem.FileSystem;
@@ -199,6 +209,25 @@ const filmed = (
     yield* files.remove(frames, { recursive: true });
     yield* files.remove(sound);
     yield* Console.log(`wrote ${dir}/${file}.mp4`);
+
+    if (sheet.length > 0) {
+      const picked = sheet
+        .map((ms) => `eq(n,${Math.round((ms * FPS) / 1000)})`)
+        .join("+");
+
+      yield* ffmpeg(`contact sheet for ${file}`, [
+        "-i",
+        `${dir}/${file}.mp4`,
+        "-vf",
+        `select='${picked}',scale=390:-1,tile=${Math.ceil(sheet.length / 3)}x3`,
+        "-fps_mode",
+        "vfr",
+        "-frames:v",
+        "1",
+        `${dir}/${file}-sheet.png`,
+      ]);
+      yield* Console.log(`wrote ${dir}/${file}-sheet.png`);
+    }
   });
 
 const reducedStill = (
@@ -258,9 +287,14 @@ const coversYourHand = (page: Page) =>
     })
   );
 
-const yourFace = (browser: Browser, app: string, dir: string) =>
+const yourFace = (
+  browser: Browser,
+  app: string,
+  dir: string,
+  script: "you" | "yourself"
+) =>
   Effect.gen(function* youAreHit() {
-    const page = yield* opened(browser, app, "you", "no-preference");
+    const page = yield* opened(browser, app, script, "no-preference");
     const problems: string[] = [];
     const last = Math.max(...YOUR_FACE_STILLS_MS) + 600;
 
@@ -280,7 +314,7 @@ const yourFace = (browser: Browser, app: string, dir: string) =>
         yield* attempt("take the still", () =>
           page.screenshot({
             clip: { height: 260, width: 390, x: 0, y: 584 },
-            path: `${dir}/you-${String(at).padStart(5, "0")}.png`,
+            path: `${dir}/${script}-${String(at).padStart(5, "0")}.png`,
           })
         );
       }
@@ -292,7 +326,7 @@ const yourFace = (browser: Browser, app: string, dir: string) =>
 
     yield* problems.length === 0
       ? Console.log(
-          `every gag at your own face stayed off your cards and the chip; stills in ${dir}/you-*.png`
+          `every gag at your own face (${script}) stayed off your cards and the chip; stills in ${dir}/${script}-*.png`
         )
       : new DemoFailed({
           detail: problems.slice(0, 8).join(", "),
@@ -374,12 +408,13 @@ const program = Effect.gen(function* makeDemos() {
       continue;
     }
 
-    yield* filmed(browser, web.url, demo.script, dir, demo.file);
+    yield* filmed(browser, web.url, demo.script, dir, demo.file, demo.sheet);
   }
 
   if (!perfOnly) {
     yield* reducedStill(browser, web.url, "nine", dir, "gags");
-    yield* yourFace(browser, web.url, dir);
+    yield* yourFace(browser, web.url, dir, "you");
+    yield* yourFace(browser, web.url, dir, "yourself");
   }
 
   yield* framesUnderLoad(browser, web.url);
