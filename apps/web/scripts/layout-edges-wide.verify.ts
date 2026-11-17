@@ -6,6 +6,7 @@ import {
   steps,
   sweptWithEveryDeal,
   WIDEST_AMOUNT,
+  YOUR_ARCS_UNDER_A_GROWN_CAPTION,
 } from "./layout/sweep.js";
 
 const SHORTEST = grid(
@@ -29,3 +30,13 @@ sweptWithEveryDeal(
   FULLEST_TABLES,
   WIDEST_AMOUNT
 );
+
+for (const band of YOUR_ARCS_UNDER_A_GROWN_CAPTION) {
+  sweptWithEveryDeal(
+    `your speaking arcs keep clear of a neighbour's caption as it grows on its turn, on the band from ${band.screens[0]?.width}x${band.screens[0]?.height}`,
+    "where your arcs met a grown caption",
+    band.screens,
+    band.seatings,
+    WIDEST_AMOUNT
+  );
+}

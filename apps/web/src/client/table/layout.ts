@@ -5482,8 +5482,8 @@ export const voiceArcSides = (table: Table): readonly ArcSide[] => {
     self,
   ];
 
-  const moments: readonly (readonly SeatPlace[])[] = [
-    resting,
+  const moments: readonly (readonly (readonly SeatPlace[])[])[] = [
+    resting.map((place) => [place]),
     ...ACTING_PLANS(tags).flatMap((plan) =>
       table.seats.map((__, actor) => {
         const places = placesWhileSeatActs(table, actor, plan);
@@ -5491,50 +5491,54 @@ export const voiceArcSides = (table: Table): readonly ArcSide[] => {
         return [
           ...table.seats.map(({ x, y }, index) => {
             const place = places.find((placed) => placed.index === index);
-            const scale = place?.scale ?? 1;
 
-            return {
-              scale: index === actor ? Math.max(scale, fullest) : scale,
+            const drawn = {
+              scale: place?.scale ?? 1,
               x: place?.x ?? x,
               y: place?.y ?? y,
             };
+
+            return index === actor && drawn.scale < fullest
+              ? [drawn, { ...drawn, scale: fullest }]
+              : [drawn];
           }),
-          self,
+          [self],
         ];
       })
     ),
   ];
 
   const clearAt = (
-    places: readonly SeatPlace[],
+    poses: readonly (readonly SeatPlace[])[],
     owner: number,
     side: ArcSide
   ) => {
-    const own = places[owner] ?? self;
-    const box = voiceArcsBox(own, table.tile * own.scale, side);
-
-    const widened = (by: number, across = by) => ({
-      h: box.h + 2 * by,
-      w: box.w + 2 * across,
-      x: box.x - across,
-      y: box.y - by,
-    });
-
     const blocked = [
       ...laid,
-      ...places.flatMap((place, other) =>
-        other === owner ? [] : roomyBoxes(table, place)
+      ...poses.flatMap((seat, other) =>
+        other === owner ? [] : seat.flatMap((place) => roomyBoxes(table, place))
       ),
     ];
 
-    return (
-      onTable(table, widened(ARC_EDGE)) &&
-      clearIn(
-        table,
-        blocked,
-        widened(ARC_MARGIN, Math.max(ARC_MARGIN, table.tile * ARC_ROOM))
-      )
-    );
+    return (poses[owner] ?? [self]).every((own) => {
+      const box = voiceArcsBox(own, table.tile * own.scale, side);
+
+      const widened = (by: number, across = by) => ({
+        h: box.h + 2 * by,
+        w: box.w + 2 * across,
+        x: box.x - across,
+        y: box.y - by,
+      });
+
+      return (
+        onTable(table, widened(ARC_EDGE)) &&
+        clearIn(
+          table,
+          blocked,
+          widened(ARC_MARGIN, Math.max(ARC_MARGIN, table.tile * ARC_ROOM))
+        )
+      );
+    });
   };
 
   const sidesFor = (owner: number, inward: boolean): readonly ArcSide[] => {
@@ -5551,7 +5555,7 @@ export const voiceArcSides = (table: Table): readonly ArcSide[] => {
 
     return (
       sides.find((side) =>
-        moments.every((places) => clearAt(places, owner, side))
+        moments.every((poses) => clearAt(poses, owner, side))
       ) ??
       (inward && owner < table.seats.length ? "InsideAfter" : "InsideBefore")
     );

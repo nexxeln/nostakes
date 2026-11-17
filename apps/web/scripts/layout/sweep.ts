@@ -59,6 +59,17 @@ export const once = (screens: readonly Screen[]): readonly Screen[] => [
   ).values(),
 ];
 
+export interface Band {
+  readonly screens: readonly Screen[];
+  readonly seatings: readonly number[];
+}
+
+export const YOUR_ARCS_UNDER_A_GROWN_CAPTION: readonly Band[] = [
+  { screens: grid(steps(1000, 1018, 1), steps(767, 778, 1)), seatings: [6, 7] },
+  { screens: grid(steps(1240, 1304, 2), steps(897, 918, 1)), seatings: [6, 7] },
+  { screens: grid(steps(1023, 1030, 1), steps(787, 793, 1)), seatings: [8] },
+];
+
 const dealtAs = ({ boards, hole }: Dealt) =>
   `${boards === 1 ? "one board" : "a double board"} and ${hole} hole cards`;
 
