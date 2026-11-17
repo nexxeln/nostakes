@@ -48,7 +48,7 @@ const boardOf = (step: ReplayStep): readonly Card[] =>
     Dealt: () => [],
     Gathered: () => [],
     Mucked: () => [],
-    Odds: ({ board }) => board,
+    Odds: ({ board, dead }) => [...board, ...dead],
     Posted: () => [],
     Returned: () => [],
     Runs: () => [],
@@ -85,6 +85,36 @@ const replaysOf = (events: readonly Event[]) => ({
     replayOf(feedFor(events, audience), uncounted)
   ),
   spectator: replayOf(spectatorFeed(events), uncounted),
+});
+
+const doubleBoard = (seed: number) =>
+  generatedHand(seededRandom(seed), { doubleBoard: true });
+
+describe("a double board's replay", () => {
+  it.prop(
+    "counts no odds on a card of either board before the table saw it, holds no card nobody showed, and tells every device the same hand",
+    { seed: handSeed },
+    ({ seed }) => {
+      const events = doubleBoard(seed);
+      const spectator = spectatorFeed(events);
+      const told = everyDevice(events);
+
+      expect(
+        told.flatMap((replay) => [
+          ...boardTooSoon(replay.steps, spectator),
+          ...neverShown(replay, spectator).map((card) => ({
+            at: -1,
+            card,
+            step: "Held",
+          })),
+        ])
+      ).toStrictEqual([]);
+      expect(told.map((replay) => replay.steps)).toStrictEqual(
+        told.map(() => told[0]?.steps)
+      );
+    },
+    generated(25, 60)
+  );
 });
 
 describe("a hand's replay", () => {

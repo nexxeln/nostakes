@@ -250,6 +250,7 @@ type Decisive =
 type Reacted = Extract<ReplayNote, { kind: "Reacted" }>;
 
 interface Told {
+  readonly boards: number;
   readonly cast: Cast;
   readonly decisive: Decisive;
   readonly game: Game;
@@ -273,8 +274,11 @@ const chancesOf = (step: OddsStep | null, told: Told): Chances | null => {
 
   const lead = percentOf(step, told.lead);
   const other = percentOf(step, told.other);
+  const board = told.boards > 1 ? step.run : null;
 
-  return lead === undefined || other === undefined ? null : { lead, other };
+  return lead === undefined || other === undefined
+    ? null
+    : { board, lead, other };
 };
 
 const winnersOf = (replay: Replay) => {
@@ -462,6 +466,7 @@ const toldOf = (replay: Replay, facts: ReplayFacts): Told => {
   };
 
   return {
+    boards: replay.boards,
     cast: {
       lead: person(lead),
       other: other === null ? null : person(other),
@@ -698,12 +703,21 @@ interface Walk {
   readonly bets: Map<SeatIndex, number>;
   readonly boards: Card[][];
   folds: SeatIndex[];
+  readonly lastOdds: Map<number, OddsStep>;
   odds: OddsStep | null;
   pot: number;
   reacting: readonly Reacted[];
   shared: OddsStep | null;
   readonly stacks: Map<SeatIndex, number>;
 }
+
+const holdOdds = (walk: Walk, step: OddsStep | null) => {
+  walk.odds = step;
+
+  if (step !== null) {
+    walk.lastOdds.set(step.run, step);
+  }
+};
 
 const add = (
   walk: Walk,
@@ -1029,7 +1043,8 @@ const swungCard = (
   add(walk, { firm: true, hold: BREATH_MS, section: "Payoff" }, (show) => {
     show.cut("Board");
     show.draft.odds = before;
-    show.draft.caption = [];
+    show.draft.caption =
+      told.boards > 1 ? captionLines(REPLAY_WORDS.board(dealt.run)) : [];
     show.apply();
   });
   add(walk, { firm: true, hold: HIT_MS, section: "Payoff" }, (show) => {
@@ -1059,6 +1074,10 @@ const swungCard = (
 };
 
 const beforeStreet = (walk: Walk, told: Told, street: StreetStep) => {
+  if (told.boards > 1) {
+    walk.odds = walk.lastOdds.get(street.run) ?? walk.odds;
+  }
+
   const waiting = walk.odds;
 
   const outs =
@@ -1073,10 +1092,11 @@ const beforeStreet = (walk: Walk, told: Told, street: StreetStep) => {
   flushFolds(walk, told);
 
   if (walk.boards.length > 1 && !walk.announced.has(street.run)) {
-    const before = chancesOf(walk.shared, told);
+    const from = told.boards > 1 ? walk.odds : walk.shared;
+    const before = chancesOf(from, told);
 
     walk.announced.add(street.run);
-    walk.odds = walk.shared;
+    walk.odds = from;
     add(walk, { hold: 800, section: "Build" }, (show) => {
       show.cut("Board");
       show.draft.odds = before;
@@ -1156,7 +1176,7 @@ const dealtStreet = (
       });
     }
 
-    walk.odds = counted ?? walk.odds;
+    holdOdds(walk, counted ?? walk.odds);
   }
 
   if (walk.boards.length > 1 && board.length === FULL_BOARD) {
@@ -1328,6 +1348,7 @@ const openingOf = (replay: Replay, facts: ReplayFacts, told: Told): Walk => {
     bets: new Map(),
     boards: Array.from({ length: replay.boards }, () => []),
     folds: [],
+    lastOdds: new Map(),
     odds: null,
     pot: 0,
     reacting: [],
@@ -1369,7 +1390,7 @@ const openingOf = (replay: Replay, facts: ReplayFacts, told: Told): Walk => {
 
   const line = hookOf(facts, told, dealt);
 
-  walk.odds = dealt;
+  holdOdds(walk, dealt);
   add(walk, { firm: true, hold: HOOK_MS, section: "Hook" }, (show) => {
     for (const seat of replay.dealtIn) {
       show.draft.seats.set(seat, {
@@ -1492,7 +1513,7 @@ const beatsOf = (replay: Replay, facts: ReplayFacts, told: Told) => {
       },
       Odds: (each) => {
         if (!counted.has(each)) {
-          walk.odds = each;
+          holdOdds(walk, each);
           quietly(walk, (show) => {
             show.draft.odds = chancesOf(each, told);
           });

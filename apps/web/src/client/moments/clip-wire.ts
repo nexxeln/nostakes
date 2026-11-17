@@ -39,6 +39,7 @@ const DrawnShotSchema = Schema.Struct({
 
 export const ChancesRequestSchema = Schema.Struct({
   board: Schema.Array(CardSchema),
+  dead: Schema.Array(CardSchema),
   game: GameSchema,
   holes: Schema.Array(Schema.Array(CardSchema)),
   kind: Schema.Literal("Chances"),

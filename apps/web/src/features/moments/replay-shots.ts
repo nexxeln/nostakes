@@ -21,6 +21,7 @@ export interface SeatScene {
 }
 
 export interface Chances {
+  readonly board: number | null;
   readonly lead: number;
   readonly other: number;
 }
@@ -267,6 +268,19 @@ const barOf = (
         enter: "Stamp",
       },
     ],
+    ...(odds.board === null
+      ? []
+      : [
+          [
+            `bar:board${odds.board}`,
+            label(`Board ${odds.board}`, {
+              size: 40,
+              tone: "Muted",
+              x: BAR.x + BAR.width / 2,
+              y: y - 30,
+            }),
+          ] as const,
+        ]),
   ];
 };
 

@@ -288,6 +288,7 @@ const chancesOf = (worker: ClipWorker, record: readonly SeenTableEvent[]) =>
         .ask(
           {
             board: asked.board,
+            dead: asked.dead,
             game: asked.game,
             holes: asked.holes,
             kind: "Chances",

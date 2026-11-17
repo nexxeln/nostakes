@@ -56,17 +56,17 @@ const seat = (index: number) => SeatIndexSchema.make(index);
 
 const chipCount = (amount: number) => ChipsSchema.make(amount);
 
-type House = "BombPot" | "Bounty" | "Plain";
+type House = "BombPot" | "Bounty" | "DoubleBoard" | "Plain";
 
 const configOf = (maxRuns: number, house: House, game: Game): TableConfig =>
   TableConfigSchema.make({
     ante: Antes.NoAnte(),
     bigBlind: chipCount(10),
     bombPot:
-      house === "BombPot"
+      house === "BombPot" || house === "DoubleBoard"
         ? BombPots.BombPots({
             ante: chipCount(50),
-            boardCount: 1,
+            boardCount: house === "DoubleBoard" ? 2 : 1,
             everyHands: 1,
           })
         : BombPots.NoBombPots(),
@@ -223,6 +223,23 @@ export const REPLAY_HANDS = {
     players: [
       { look: 17, name: "Ana", stack: 1500 },
       { look: 29, name: "Ben", stack: 1500 },
+    ],
+  },
+  DoubleBoard: {
+    deck: "Ah Kc 7s Ad Qc 2d Ac 9c 4h Kd Kh 5c 2s 8s 7d As",
+    house: "DoubleBoard",
+    maxRuns: 1,
+    moves: [
+      act(1, checks),
+      act(2, raises(200)),
+      act(0, folds),
+      act(1, raises(1450)),
+      act(2, calls),
+    ],
+    players: [
+      { look: 61, name: "Kit", stack: 1500 },
+      { look: 23, name: "Priya", stack: 1500 },
+      { look: 41, name: "Jonas", stack: 1500 },
     ],
   },
   HeroCall: {
@@ -406,7 +423,9 @@ const boardsOf = (feed: readonly SeenTableEvent[]) => {
   let split = false;
 
   for (const event of feed) {
-    if (Events.$is("RunsAgreed")(event)) {
+    if (Events.$is("HandStarted")(event)) {
+      split = event.bombPot?.boardCount === 2;
+    } else if (Events.$is("RunsAgreed")(event)) {
       split = true;
     } else if (Events.$is("StreetDealt")(event)) {
       if (split) {
