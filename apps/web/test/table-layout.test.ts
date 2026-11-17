@@ -13,6 +13,8 @@ import {
   flightsOverTheHint,
   FELT_RULES_PLACED_WELL,
   feltRulesPlaced,
+  HAND_PLACED_WELL,
+  handPlaced,
   HINT_PLACED_WELL,
   hintPlaced,
   laneProblemsOf,
@@ -82,6 +84,8 @@ const FOUND_BEFORE: readonly Table[] = [
   { height: 315, others: 5, runs: 2, width: 568 },
   { height: 524, others: 1, runs: 1, width: 626 },
 ];
+
+const HOLE_CARDS = [2, 4] as const;
 
 const between = (minimum: number, maximum: number) =>
   Schema.Int.check(Schema.isBetween({ maximum, minimum }));
@@ -535,11 +539,88 @@ describe("the seat whose turn it is", () => {
   });
 });
 
+const HandTableSchema = Schema.Struct({
+  hole: Schema.Literals(HOLE_CARDS),
+  others: between(1, 8),
+  screen: Schema.Union(SUPPORTED_TABLES),
+});
+
+const everyPart = (
+  parts: Readonly<Record<string, boolean>>,
+  what: string,
+  where: string
+) =>
+  Object.entries(parts).flatMap(([part, well]) =>
+    well ? [] : [`${where}: ${what} fails ${part}`]
+  );
+
+const fourCardProblems = (
+  screen: { readonly height: number; readonly width: number },
+  others: number,
+  hole: number
+) => {
+  const geo = computeGeo(screen.width, screen.height, others, 9999, 1, hole);
+  const where = `${screen.width}x${screen.height}, ${others + 1} seats, ${hole} hole cards`;
+
+  return [
+    ...everyPart(handPlaced(geo, screen), "your cards", where),
+    ...everyPart(hintPlaced(geo, screen), "the hint", where),
+    ...everyPart(entryPlaced(geo, screen), "the posting card", where),
+    ...everyPart(feltRulesPlaced(geo, screen), "the rules on the felt", where),
+    ...buttonsPlaced(geo, screen).flatMap((button, owner) =>
+      everyPart(
+        {
+          clearOfOthers: !button.coversAnotherSeatOrTheMiddle,
+          nearestIsOwner: button.nearestIsOwner,
+          onTable: button.onTable,
+        },
+        `seat ${owner}'s button`,
+        where
+      )
+    ),
+    ...flightsOverTheHint(geo).map((problem) => `${where}: ${problem}`),
+  ];
+};
+
+describe("your cards", () => {
+  it.prop(
+    "lie between your face and the chip, on the table, with every corner showing in a peek and, with four, every card wide enough to tap, on every table the app supports",
+    { table: Arbitrary.schema(HandTableSchema) },
+    ({ table }) => {
+      expect(
+        handPlaced(
+          computeGeo(
+            table.screen.width,
+            table.screen.height,
+            table.others,
+            9999,
+            1,
+            table.hole
+          ),
+          table.screen
+        )
+      ).toStrictEqual(HAND_PLACED_WELL);
+    },
+    { arbitrary: { runs: 100 } }
+  );
+
+  it("leave the hint, the posting card, the rules on the felt, every button, and the chips going to a winner where they hold, with four hole cards on the smallest tables the app supports and on the boxes it gives the table", () => {
+    const found = SMALLEST_TABLES.flatMap((screen) =>
+      [1, 2, 3, 4, 5, 6, 7, 8].flatMap((others) =>
+        fourCardProblems(screen, others, 4)
+      )
+    );
+
+    expect(found).toStrictEqual([]);
+  });
+});
+
 const LaneTableSchema = Schema.Struct({
   boards: Schema.Literals([1, 2]),
   button: between(0, 8),
   buttonFolded: Schema.Boolean,
   folded: Schema.Array(between(0, 7)),
+  hole: Schema.Literals(HOLE_CARDS),
   most: between(1, 9999),
   others: between(1, 8),
   posted: Schema.Array(between(0, 8)),
@@ -557,7 +638,7 @@ const TooSmallSchema = Schema.Struct({
 
 describe("each seat's lane", () => {
   it.prop(
-    "holds its bet, its tag, and the button clear of every face, name, stack, other bet, the board, the pot tab, your cards, and the chip, with the bet in front of its seat and each nearer its own seat than any other, with nobody acting and with each seat acting, on every table the app supports",
+    "holds its bet, its tag, and the button clear of every face, name, stack, other bet, the board, the pot tab, your two or four cards, and the chip, with the bet in front of its seat and each nearer its own seat than any other, with nobody acting and with each seat acting, on every table the app supports",
     { table: laneTables },
     ({ table }) => {
       expect(laneProblemsOf(table)).toStrictEqual([]);
@@ -565,12 +646,14 @@ describe("each seat's lane", () => {
     { arbitrary: { runs: 100 } }
   );
 
-  it("fits with every seat betting and four-digit amounts, whoever holds the button and whether they folded, with one board or two, on the smallest tables the app supports and on the boxes it gives the table", () => {
+  it("fits with every seat betting and four-digit amounts, whoever holds the button and whether they folded, with one board or two and two hole cards or four, on the smallest tables the app supports and on the boxes it gives the table", () => {
     const found = SMALLEST_TABLES.flatMap((screen) =>
-      [1, 2, 3, 4, 5, 6, 7, 8].flatMap((others) => [
-        ...everyOwnerProblems(screen, others),
-        ...everyOwnerProblems(screen, others, 2),
-      ])
+      [1, 2, 3, 4, 5, 6, 7, 8].flatMap((others) =>
+        HOLE_CARDS.flatMap((hole) => [
+          ...everyOwnerProblems(screen, others, 1, hole),
+          ...everyOwnerProblems(screen, others, 2, hole),
+        ])
+      )
     );
 
     expect(found).toStrictEqual([]);

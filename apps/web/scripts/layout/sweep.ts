@@ -1,4 +1,4 @@
-import { expect } from "@effect/vitest";
+import { expect, it } from "@effect/vitest";
 import { Console, Effect } from "effect";
 
 import { computeGeo } from "../../src/client/table/layout.js";
@@ -9,6 +9,7 @@ import {
   everyoneBetting,
   feltRulesPlaced,
   flightsOverTheHint,
+  handPlaced,
   hintPlaced,
   laneProblemsOn,
 } from "./lane-checks.js";
@@ -21,6 +22,24 @@ export const FULLEST_TABLES = [7, 8];
 export const EVERY_AMOUNT = [9, 99, 999, 9999];
 
 export const WIDEST_AMOUNT = [9999];
+
+export const HOLE_CARDS = [2, 4];
+
+export interface Dealt {
+  readonly boards: BoardRows;
+  readonly hole: number;
+}
+
+export const ONE_BOARD_OR_FOUR_CARDS: readonly Dealt[] = [
+  { boards: 1, hole: 2 },
+  { boards: 2, hole: 2 },
+  { boards: 1, hole: 4 },
+];
+
+export const EVERY_DEAL: readonly Dealt[] = [
+  ...ONE_BOARD_OR_FOUR_CARDS,
+  { boards: 2, hole: 4 },
+];
 
 export const steps = (from: number, to: number, step: number) =>
   Array.from(
@@ -40,19 +59,33 @@ export const once = (screens: readonly Screen[]): readonly Screen[] => [
   ).values(),
 ];
 
+const dealtAs = ({ boards, hole }: Dealt) =>
+  `${boards === 1 ? "one board" : "a double board"} and ${hole} hole cards`;
+
 const problemsOn = (
   screen: Screen,
   others: number,
   sample: number,
   amounts: readonly number[],
-  boards: BoardRows
+  { boards, hole }: Dealt
 ) => {
   const most = amounts[sample % amounts.length] ?? 9999;
-  const geo = computeGeo(screen.width, screen.height, others, most, boards);
+
+  const geo = computeGeo(
+    screen.width,
+    screen.height,
+    others,
+    most,
+    boards,
+    hole
+  );
+
   const button = sample % (others + 1);
-  const table = everyoneBetting(screen, others, button, sample % 2 === 0);
+
+  const table = everyoneBetting(screen, others, button, sample % 2 === 0, hole);
+
   const hint = hintPlaced(geo, screen);
-  const where = `${screen.width}x${screen.height}, ${others + 1} seats, ${boards} board${boards === 1 ? "" : "s"}, up to ${most}, button ${button}`;
+  const where = `${screen.width}x${screen.height}, ${others + 1} seats, ${boards} board${boards === 1 ? "" : "s"}, ${hole} hole cards, up to ${most}, button ${button}`;
 
   return [
     ...laneProblemsOn({ ...table, most }, geo),
@@ -60,6 +93,9 @@ const problemsOn = (
     ...flightsOverTheHint(geo),
     ...Object.entries(hint).flatMap(([part, well]) =>
       well ? [] : [`the hint's ${part} is not placed well`]
+    ),
+    ...Object.entries(handPlaced(geo, screen)).flatMap(([part, well]) =>
+      well ? [] : [`your cards fail ${part}`]
     ),
     ...Object.entries(feltRulesPlaced(geo, screen)).flatMap(([part, well]) =>
       well ? [] : [`the rules on the felt fail ${part}`]
@@ -70,12 +106,12 @@ const problemsOn = (
   ].map((problem) => `${where}: ${problem}`);
 };
 
-export const swept = (
+const swept = (
   name: string,
   screens: readonly Screen[],
   seatings: readonly number[],
   amounts: readonly number[],
-  boards: BoardRows = 1
+  dealt: Dealt
 ) =>
   Effect.gen(function* sweep() {
     const started = performance.now();
@@ -87,7 +123,7 @@ export const swept = (
           others,
           at + others,
           amounts,
-          boards
+          dealt
         );
 
         return problems.length === 0 ? [] : [problems];
@@ -95,10 +131,25 @@ export const swept = (
     );
 
     yield* Console.log(
-      `layout sweep, ${name}: ${screens.length * seatings.length} tables, ${found.length} with problems, ${Math.round(performance.now() - started)} ms`
+      `layout sweep, ${name}, ${dealtAs(dealt)}: ${screens.length * seatings.length} tables, ${found.length} with problems, ${Math.round(performance.now() - started)} ms`
     );
 
     expect(
       found.flatMap((problems) => problems.slice(0, 2)).slice(0, 40)
     ).toStrictEqual([]);
   });
+
+export const sweptWithEveryDeal = (
+  holds: string,
+  name: string,
+  screens: readonly Screen[],
+  seatings: readonly number[],
+  amounts: readonly number[],
+  deals: readonly Dealt[] = ONE_BOARD_OR_FOUR_CARDS
+) => {
+  for (const dealt of deals) {
+    it.live(`${holds}, with ${dealtAs(dealt)}`, () =>
+      swept(name, screens, seatings, amounts, dealt)
+    );
+  }
+};

@@ -19,6 +19,17 @@ export interface Box {
   readonly h: number;
 }
 
+export interface HandFan {
+  readonly cards: number;
+  readonly cardW: number;
+  readonly step: number;
+  readonly span: number;
+  readonly row: number;
+  readonly reach: number;
+  readonly sway: number;
+  readonly rowCardW: number;
+}
+
 export interface Geo {
   readonly w: number;
   readonly h: number;
@@ -44,6 +55,7 @@ export interface Geo {
   readonly heroBet: Pt;
   readonly hand: Pt;
   readonly handCardW: number;
+  readonly handFan: HandFan;
   readonly self: Pt & { readonly size: number };
   readonly chip: Pt & { readonly size: number };
   readonly railTop: number;
@@ -364,10 +376,212 @@ const sideOf = (p: TrackPoint, cx: number): Side => {
   return p.x < cx ? "left" : "right";
 };
 
+const CARD_ASPECT = 1.4;
+
+export const HOLDEM_HOLE_CARDS = 2;
+
+export const MOST_HAND_CARDS = 5;
+
+export const handCardsFor = (hole: number) =>
+  clamp(Math.round(hole), HOLDEM_HOLE_CARDS, MOST_HAND_CARDS);
+
+export const HAND_STRIP = 44;
+
+export const HAND_CARD_FLOOR = 44;
+
+export const HAND_INDEX_SHARE = 0.45;
+
+const HERO_ROW_EDGE = 4;
+
+const FAN_GAP_BY_FACE = 8;
+
+const FAN_GAP_BY_CHIP = 4;
+
+const FAN_SWAY_ROOM = 6;
+
+const PEEK_PUSH = 12;
+
+const PEEK_TILT_REACH = 0.1;
+
+const holdemFan = (cardW: number): HandFan => ({
+  cardW,
+  cards: HOLDEM_HOLE_CARDS,
+  reach: cardW * 2.2,
+  row: cardW * 1.5 + 2 * PEEK_PUSH,
+  rowCardW: cardW,
+  span: cardW * 1.5,
+  step: cardW * 0.5,
+  sway: 1,
+});
+
+const fanFor = (hole: number, holdemCardW: number, room: number): HandFan => {
+  const cards = handCardsFor(hole);
+
+  if (cards === HOLDEM_HOLE_CARDS) {
+    return holdemFan(holdemCardW);
+  }
+
+  const gaps = cards - 1;
+
+  const cardW = clamp(
+    room - gaps * HAND_STRIP - 2 * FAN_SWAY_ROOM,
+    Math.min(HAND_CARD_FLOOR, holdemCardW),
+    holdemCardW
+  );
+
+  const step = Math.max(
+    cardW * HAND_INDEX_SHARE,
+    Math.min(Math.max(HAND_STRIP, cardW / 2), (room - cardW) / gaps)
+  );
+
+  const span = cardW + gaps * step;
+  const swayRoom = PEEK_PUSH + cardW * PEEK_TILT_REACH;
+  const margin = clamp((room - span) / 2, 0, swayRoom);
+
+  return {
+    cardW,
+    cards,
+    reach: span + 2 * margin,
+    row: span + 2 * margin,
+    rowCardW: holdemCardW,
+    span,
+    step,
+    sway: margin / swayRoom,
+  };
+};
+
+interface HandAsked {
+  readonly cards: number;
+  readonly within: number;
+}
+
+export interface CardPose {
+  readonly x: number;
+  readonly y: number;
+  readonly tilt: number;
+}
+
+export interface HandPoses {
+  readonly resting: readonly CardPose[];
+  readonly peeking: readonly CardPose[];
+}
+
+const RESTING_FAN = { drop: 3, from: -5, to: 4 };
+
+const PEEKING_FAN = { from: -8, lift: [-28, -25], to: 7 } as const;
+
+export const handPoses = (fan: HandFan): HandPoses => {
+  const along = Array.from({ length: fan.cards }, (_, index) =>
+    fan.cards === 1 ? 0.5 : index / (fan.cards - 1)
+  );
+
+  const push = PEEK_PUSH * fan.sway;
+
+  return {
+    peeking: along.map((u, index) => ({
+      tilt:
+        (PEEKING_FAN.from + (PEEKING_FAN.to - PEEKING_FAN.from) * u) * fan.sway,
+      x: index * fan.step - push + 2 * push * u,
+      y: PEEKING_FAN.lift[0] + (PEEKING_FAN.lift[1] - PEEKING_FAN.lift[0]) * u,
+    })),
+    resting: along.map((u, index) => ({
+      tilt:
+        (RESTING_FAN.from + (RESTING_FAN.to - RESTING_FAN.from) * u) * fan.sway,
+      x: index * fan.step,
+      y: RESTING_FAN.drop * u,
+    })),
+  };
+};
+
+interface Extent {
+  readonly left: number;
+  readonly right: number;
+  readonly top: number;
+  readonly bottom: number;
+}
+
+const extentOf = (fan: HandFan, poses: readonly CardPose[]): Extent => {
+  const cardH = fan.cardW * CARD_ASPECT;
+
+  const cards = poses.map(({ tilt, x, y }) => {
+    const turn = (Math.abs(tilt) * Math.PI) / 180;
+
+    const halfW = (fan.cardW * Math.cos(turn) + cardH * Math.sin(turn)) / 2;
+
+    const halfH = (fan.cardW * Math.sin(turn) + cardH * Math.cos(turn)) / 2;
+
+    const middle = x + fan.cardW / 2 - fan.span / 2;
+
+    return {
+      bottom: y + halfH,
+      left: middle - halfW,
+      right: middle + halfW,
+      top: y - halfH,
+    };
+  });
+
+  return {
+    bottom: Math.max(...cards.map(({ bottom }) => bottom)),
+    left: Math.min(-fan.reach / 2, ...cards.map(({ left }) => left)),
+    right: Math.max(fan.reach / 2, ...cards.map(({ right }) => right)),
+    top: Math.min(...cards.map(({ top }) => top)),
+  };
+};
+
+const boxAt = (centre: Pt, extent: Extent): Box => ({
+  h: extent.bottom - extent.top,
+  w: extent.right - extent.left,
+  x: centre.x + extent.left,
+  y: centre.y + extent.top,
+});
+
+const holdemBox = (geo: Geo): Box => {
+  const h = geo.handCardW * CARD_ASPECT;
+
+  return {
+    h,
+    w: geo.handFan.reach,
+    x: geo.hand.x - geo.handFan.reach / 2,
+    y: geo.hand.y - h / 2,
+  };
+};
+
+export const handBox = (geo: Geo): Box =>
+  geo.handFan.cards === HOLDEM_HOLE_CARDS
+    ? holdemBox(geo)
+    : boxAt(geo.hand, extentOf(geo.handFan, handPoses(geo.handFan).resting));
+
+const PEEK_LIFT = 30;
+
+const liftedHand = (geo: Geo): Box => {
+  const resting = handBox(geo);
+
+  if (geo.handFan.cards === HOLDEM_HOLE_CARDS) {
+    return { ...resting, h: resting.h + PEEK_LIFT, y: resting.y - PEEK_LIFT };
+  }
+
+  const lifted = boxAt(
+    geo.hand,
+    extentOf(geo.handFan, handPoses(geo.handFan).peeking)
+  );
+
+  const top = Math.min(resting.y - PEEK_LIFT, lifted.y);
+  const left = Math.min(resting.x, lifted.x);
+
+  return {
+    h: resting.y + resting.h - top,
+    w: Math.max(resting.x + resting.w, lifted.x + lifted.w) - left,
+    x: left,
+    y: top,
+  };
+};
+
 interface HeroRow {
   readonly selfX: number;
   readonly chipX: number;
+  readonly handX: number;
   readonly handW: number;
+  readonly fan: HandFan;
 }
 
 const heroRow = (
@@ -378,22 +592,54 @@ const heroRow = (
     readonly self: number;
     readonly chip: number;
     readonly gap: number;
-  }
+  },
+  asked: HandAsked
 ): HeroRow => {
   const cx = w / 2;
-  const handW = sizes.handCardW * 1.5 + 24;
+  const holdem = asked.cards <= HOLDEM_HOLE_CARDS;
+  const chipEdge = holdem ? HERO_ROW_EDGE : 0;
 
-  return {
-    chipX: Math.min(
-      w - pad - sizes.chip / 2 - 4,
-      cx + handW / 2 + sizes.gap + sizes.chip / 2
-    ),
-    handW,
-    selfX: Math.max(
-      pad + sizes.self / 2 + 4,
-      cx - handW / 2 - sizes.gap - sizes.self / 2
-    ),
-  };
+  const fan = fanFor(
+    asked.cards,
+    sizes.handCardW,
+    Math.min(
+      asked.within,
+      w -
+        2 * pad -
+        HERO_ROW_EDGE -
+        sizes.self -
+        sizes.chip -
+        FAN_GAP_BY_FACE -
+        FAN_GAP_BY_CHIP
+    )
+  );
+
+  const handW = fan.row;
+
+  const chipX = Math.min(
+    w - pad - sizes.chip / 2 - chipEdge,
+    cx + handW / 2 + sizes.gap + sizes.chip / 2
+  );
+
+  const rightmost = chipX - sizes.chip / 2 - FAN_GAP_BY_CHIP - handW / 2;
+  const reachOfFace = sizes.self / 2 + FAN_GAP_BY_FACE + handW / 2;
+
+  const selfX = Math.max(
+    pad + sizes.self / 2 + HERO_ROW_EDGE,
+    Math.min(
+      cx - handW / 2 - sizes.gap - sizes.self / 2,
+      holdem ? Number.POSITIVE_INFINITY : rightmost - reachOfFace
+    )
+  );
+
+  const leftmost = selfX + reachOfFace;
+
+  const amid =
+    leftmost <= rightmost
+      ? clamp(cx, leftmost, rightmost)
+      : (leftmost + rightmost) / 2;
+
+  return { chipX, fan, handW, handX: holdem ? cx : amid, selfX };
 };
 
 const ITERATIONS = 8;
@@ -410,6 +656,7 @@ interface Room {
   readonly pileW: number;
   readonly round: number;
   readonly spacing: Spacing;
+  readonly hand: HandAsked;
 }
 
 interface Solved {
@@ -457,8 +704,6 @@ const solveStadium = (
 };
 
 const TIGHTEST_TALL = { h: 600, w: 360 };
-
-const CARD_ASPECT = 1.4;
 
 const HAND_CARD_PER_WIDTH = 0.225;
 
@@ -849,15 +1094,21 @@ const tallGeo = (w: number, h: number, count: number, room: Room): Geo => {
   const sizes = tallSizes(w, h);
   const cx = w / 2;
   const handH = sizes.handCardW * 1.4;
-  const hand = { x: cx, y: h - sizes.bottomInset - handH / 2 - 18 };
-  const heroTop = hand.y - handH / 2 - HERO_ROW_ROOM;
 
-  const row = heroRow(w, sizes.pad, {
-    chip: sizes.chip,
-    gap: sizes.gap,
-    handCardW: sizes.handCardW,
-    self: sizes.self,
-  });
+  const row = heroRow(
+    w,
+    sizes.pad,
+    {
+      chip: sizes.chip,
+      gap: sizes.gap,
+      handCardW: sizes.handCardW,
+      self: sizes.self,
+    },
+    room.hand
+  );
+
+  const hand = { x: row.handX, y: h - sizes.bottomInset - handH / 2 - 18 };
+  const heroTop = hand.y - handH / 2 - HERO_ROW_ROOM;
 
   const chip = {
     size: sizes.chip,
@@ -904,7 +1155,8 @@ const tallGeo = (w: number, h: number, count: number, room: Room): Geo => {
     deck: middle.deck,
     h,
     hand,
-    handCardW: sizes.handCardW,
+    handCardW: row.fan.cardW,
+    handFan: row.fan,
     handKeys: { x: hand.x, y: hand.y + handH / 2 + 14 },
     heroBet: { x: cx, y: heroTop + 18 },
     interior: middle.interior,
@@ -1036,19 +1288,24 @@ const wideGeo = (
   const cx = w / 2;
   const handH = sizes.handCardW * 1.4;
 
+  const row = heroRow(
+    w,
+    sizes.pad,
+    {
+      chip: sizes.chip,
+      gap: sizes.gap,
+      handCardW: sizes.handCardW,
+      self: sizes.self,
+    },
+    room.hand
+  );
+
   const hand = {
-    x: cx,
+    x: row.handX,
     y: h - sizes.bottomInset - handH / 2 - (sizes.compact ? 6 : 12),
   };
 
   const heroTop = hand.y - handH / 2 - 30;
-
-  const row = heroRow(w, sizes.pad, {
-    chip: sizes.chip,
-    gap: sizes.gap,
-    handCardW: sizes.handCardW,
-    self: sizes.self,
-  });
 
   const chip = {
     size: sizes.chip,
@@ -1117,7 +1374,8 @@ const wideGeo = (
     deck: { x: cx, y: boardY - cardW * 0.7 - 10 },
     h,
     hand,
-    handCardW: sizes.handCardW,
+    handCardW: row.fan.cardW,
+    handFan: row.fan,
     handKeys: { x: hand.x, y: hand.y + handH / 2 + 14 },
     heroBet: { x: cx, y: heroTop + 6 },
     interior: { x: cx, y: boardY },
@@ -1198,8 +1456,7 @@ const outside = (box: Box, geo: Geo) =>
   overlap(box, { h: geo.h - geo.top, w: geo.w, x: 0, y: geo.top });
 
 export const tableObstacles = (geo: Geo): readonly Box[] => {
-  const handW = geo.handCardW * 2.2;
-  const handH = geo.handCardW * 1.4;
+  const hand = liftedHand(geo);
 
   return [
     ...geo.seats.map(({ x, y }) => ({
@@ -1214,12 +1471,7 @@ export const tableObstacles = (geo: Geo): readonly Box[] => {
       x: geo.self.x - geo.self.size / 2,
       y: geo.self.y - geo.self.size / 2,
     },
-    {
-      h: handH + 30,
-      w: handW,
-      x: geo.hand.x - handW / 2,
-      y: geo.hand.y - handH / 2 - 30,
-    },
+    hand,
     {
       h: geo.chip.size,
       w: geo.chip.size,
@@ -1535,16 +1787,9 @@ export interface PostTagGround {
 export const postTagGround = (geo: Geo): readonly PostTagGround[] => {
   const piles = pilesOf(geo);
   const owners = ownersOf(geo);
-  const handW = geo.handCardW * 2.2;
-  const handH = geo.handCardW * 1.4;
 
   const middle = [
-    {
-      h: handH,
-      w: handW,
-      x: geo.hand.x - handW / 2,
-      y: geo.hand.y - handH / 2,
-    },
+    handBox(geo),
     {
       h: geo.chip.size,
       w: geo.chip.size,
@@ -1637,9 +1882,10 @@ export const handHintGround = (geo: Geo): readonly Box[] => [
   ...geo.seats.map(({ bet }) => pileBox(bet, geo.pileW)),
 ];
 
-const handTopOf = (geo: Geo) => geo.hand.y - (geo.handCardW * 1.4) / 2;
+const handTopOf = (geo: Geo) => geo.hand.y - (geo.handCardW * CARD_ASPECT) / 2;
 
-const handBottomOf = (geo: Geo) => geo.hand.y + (geo.handCardW * 1.4) / 2;
+const handBottomOf = (geo: Geo) =>
+  geo.hand.y + (geo.handFan.rowCardW * CARD_ASPECT) / 2;
 
 const crowdingIn = (geo: Geo, blocked: readonly Box[], box: Box) =>
   coveredBy(box, blocked) + (onTable(geo, box) ? 0 : box.w * box.h);
@@ -1775,20 +2021,6 @@ const hintBoxOf = ({ foot, say }: HandHint): Box => {
 
 export const handHintBox = (geo: Geo, hint = handHint(geo)): Box =>
   hintBoxOf(hint);
-
-const PEEK_LIFT = 30;
-
-const liftedHand = (geo: Geo): Box => {
-  const handW = geo.handCardW * 2.2;
-  const handH = geo.handCardW * 1.4;
-
-  return {
-    h: handH + PEEK_LIFT,
-    w: handW,
-    x: geo.hand.x - handW / 2,
-    y: geo.hand.y - handH / 2 - PEEK_LIFT,
-  };
-};
 
 const middleObstacles = (geo: Geo, hint: Box): readonly Box[] => [
   ...pilesOf(geo).map((pile) => pileBox(pile, geo.pileW)),
@@ -2496,27 +2728,17 @@ const ridingButton = (
 
 type BoxesOf = (geo: Geo, place: SeatPlace) => readonly Box[];
 
-const middleGround = (geo: Geo): readonly Box[] => {
-  const handW = geo.handCardW * 2.2;
-  const handH = geo.handCardW * 1.4;
-
-  return [
-    geo.strip,
-    potTabBox(geo),
-    {
-      h: handH,
-      w: handW,
-      x: geo.hand.x - handW / 2,
-      y: geo.hand.y - handH / 2,
-    },
-    {
-      h: geo.chip.size,
-      w: geo.chip.size,
-      x: geo.chip.x - geo.chip.size / 2,
-      y: geo.chip.y - geo.chip.size / 2,
-    },
-  ];
-};
+const middleGround = (geo: Geo): readonly Box[] => [
+  geo.strip,
+  potTabBox(geo),
+  handBox(geo),
+  {
+    h: geo.chip.size,
+    w: geo.chip.size,
+    x: geo.chip.x - geo.chip.size / 2,
+    y: geo.chip.y - geo.chip.size / 2,
+  },
+];
 
 const actorGround = (
   geo: Geo,
@@ -4529,12 +4751,13 @@ export const flightControl = (
   );
 };
 
-export const computeGeo = (
+const laidWith = (
   w: number,
   h: number,
   count: number,
-  most = DEFAULT_MOST,
-  boards: BoardRows = 1
+  most: number,
+  boards: BoardRows,
+  hand: HandAsked
 ): Table => {
   const seated = Math.max(1, count);
   const wide = w > h * WIDE_RATIO;
@@ -4550,6 +4773,7 @@ export const computeGeo = (
     {
       boards,
       cap: Number.POSITIVE_INFINITY,
+      hand,
       laneW: full,
       pileW: full,
       round: 0,
@@ -4607,6 +4831,7 @@ export const computeGeo = (
     return {
       boards,
       cap,
+      hand,
       laneW,
       pileW,
       round,
@@ -4765,6 +4990,102 @@ export const computeGeo = (
   };
 };
 
+const FAN_STRIPS = [HAND_STRIP, 36, 28] as const;
+
+const FACES_KEPT = 0.9;
+
+const tightestFan = (cards: number) =>
+  HAND_CARD_FLOOR * (1 + (cards - 1) * HAND_INDEX_SHARE);
+
+const fansFor = (w: number, h: number, cards: number): readonly HandAsked[] => {
+  const holdemCardW =
+    w > h * WIDE_RATIO ? wideSizes(w, h).handCardW : tallSizes(w, h).handCardW;
+
+  const holdemStrip = holdemFan(holdemCardW).step;
+  const gaps = cards - 1;
+
+  return [
+    Number.POSITIVE_INFINITY,
+    holdemCardW + gaps * HAND_STRIP,
+    ...[...FAN_STRIPS.filter((strip) => strip > holdemStrip), holdemStrip].map(
+      (strip) => HAND_CARD_FLOOR + gaps * strip
+    ),
+  ].map((within) => ({ cards, within }));
+};
+
+const HOLDEM_HAND: HandAsked = {
+  cards: HOLDEM_HOLE_CARDS,
+  within: Number.POSITIVE_INFINITY,
+};
+
+const fanThatFits = (
+  w: number,
+  h: number,
+  count: number,
+  most: number,
+  boards: BoardRows,
+  roomiest: Table
+): Table => {
+  const holdem = laidWith(w, h, count, most, boards, HOLDEM_HAND);
+  let best = roomiest;
+  let drawn = "";
+
+  for (const asked of fansFor(w, h, roomiest.handFan.cards)) {
+    const table = laidWith(w, h, count, most, boards, asked);
+    const fan = JSON.stringify(table.handFan);
+
+    if (fan !== drawn) {
+      drawn = fan;
+
+      if (
+        table.fits &&
+        table.tile >= holdem.tile * FACES_KEPT &&
+        (holdem.compactPiles || !table.compactPiles)
+      ) {
+        return table;
+      }
+
+      if (
+        (table.fits && !best.fits) ||
+        (table.fits === best.fits && table.tile > best.tile)
+      ) {
+        best = table;
+      }
+    }
+  }
+
+  return best.fits
+    ? best
+    : laidWith(w, h, count, most, boards, {
+        cards: roomiest.handFan.cards,
+        within: tightestFan(roomiest.handFan.cards),
+      });
+};
+
+export const computeGeo = (
+  w: number,
+  h: number,
+  count: number,
+  most = DEFAULT_MOST,
+  boards: BoardRows = 1,
+  hole = HOLDEM_HOLE_CARDS
+): Table => {
+  const cards = handCardsFor(hole);
+
+  if (cards === HOLDEM_HOLE_CARDS) {
+    return laidWith(w, h, count, most, boards, HOLDEM_HAND);
+  }
+
+  const roomiest = laidWith(w, h, count, most, boards, {
+    cards,
+    within: Number.POSITIVE_INFINITY,
+  });
+
+  return w <= h * WIDE_RATIO && roomiest.fits
+    ? roomiest
+    : fanThatFits(w, h, count, most, boards, roomiest);
+};
+
 export const REACTION_TARGET = 44;
 
 export const REACTION_GAP = 4;
@@ -4790,25 +5111,15 @@ export const reactionsSize = (count: number) => {
   };
 };
 
-export const reactionsGround = (geo: Geo): readonly Box[] => {
-  const handW = geo.handCardW * 2.2;
-  const handH = geo.handCardW * 1.4;
-
-  return [
-    {
-      h: handH,
-      w: handW,
-      x: geo.hand.x - handW / 2,
-      y: geo.hand.y - handH / 2,
-    },
-    {
-      h: geo.chip.size,
-      w: geo.chip.size,
-      x: geo.chip.x - geo.chip.size / 2,
-      y: geo.chip.y - geo.chip.size / 2,
-    },
-  ];
-};
+export const reactionsGround = (geo: Geo): readonly Box[] => [
+  handBox(geo),
+  {
+    h: geo.chip.size,
+    w: geo.chip.size,
+    x: geo.chip.x - geo.chip.size / 2,
+    y: geo.chip.y - geo.chip.size / 2,
+  },
+];
 
 const clampedInto = (geo: Geo, box: Box): Box => ({
   ...box,

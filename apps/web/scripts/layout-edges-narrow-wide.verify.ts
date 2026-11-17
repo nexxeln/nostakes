@@ -1,11 +1,9 @@
-import { it } from "@effect/vitest";
-
 import { SMALLEST_WIDE } from "./layout/lane-checks.js";
 import {
   FULLEST_TABLES,
   grid,
   steps,
-  swept,
+  sweptWithEveryDeal,
   WIDEST_AMOUNT,
 } from "./layout/sweep.js";
 
@@ -19,19 +17,10 @@ const NARROWEST = grid(
   ]
 );
 
-it.live(
+sweptWithEveryDeal(
   "eight and nine seats hold on every second pixel of the narrowest wide tables",
-  () => swept("narrowest wide", NARROWEST, FULLEST_TABLES, WIDEST_AMOUNT)
-);
-
-it.live(
-  "with a double board, eight and nine seats hold on every second pixel of the narrowest wide tables",
-  () =>
-    swept(
-      "narrowest wide, double board",
-      NARROWEST,
-      FULLEST_TABLES,
-      WIDEST_AMOUNT,
-      2
-    )
+  "narrowest wide",
+  NARROWEST,
+  FULLEST_TABLES,
+  WIDEST_AMOUNT
 );

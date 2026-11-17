@@ -16,7 +16,12 @@ import {
   flightControl,
   FELT_RULES_TAP_PX,
   feltRulesBox,
+  HAND_CARD_FLOOR,
+  HAND_INDEX_SHARE,
+  HAND_STRIP,
   handHintBox,
+  handPoses,
+  HOLDEM_HOLE_CARDS,
   restingPlaces,
   waitingCallBox,
   handHintGround,
@@ -32,6 +37,7 @@ import type {
   Box,
   ButtonSpot,
   ButtonSpots,
+  CardPose,
   EntryForm,
   Geo,
   Pt,
@@ -190,6 +196,7 @@ export interface LaneTable {
   readonly button: number;
   readonly buttonFolded: boolean;
   readonly folded: readonly number[];
+  readonly hole: number;
   readonly most: number;
   readonly others: number;
   readonly posted: readonly number[];
@@ -316,9 +323,64 @@ const tagBox = (geo: Table, pile: Box, seat: number): Box => {
   return { h: DRAWN_TAG_HEIGHT, w: width, ...at };
 };
 
-const middleOf = (geo: Geo): readonly Named[] => {
+const CARD_HEIGHT_PER_WIDTH = 1.4;
+
+const tiltedCard = (geo: Geo, pose: CardPose): Box => {
+  const { cardW, span } = geo.handFan;
+  const cardH = cardW * CARD_HEIGHT_PER_WIDTH;
+  const turn = (Math.abs(pose.tilt) * Math.PI) / 180;
+  const w = cardW * Math.cos(turn) + cardH * Math.sin(turn);
+  const h = cardW * Math.sin(turn) + cardH * Math.cos(turn);
+
+  return {
+    h,
+    w,
+    x: geo.hand.x - span / 2 + pose.x + cardW / 2 - w / 2,
+    y: geo.hand.y + pose.y - h / 2,
+  };
+};
+
+const around = (boxes: readonly Box[]): Box => {
+  const left = Math.min(...boxes.map(({ x }) => x));
+  const top = Math.min(...boxes.map(({ y }) => y));
+
+  return {
+    h: Math.max(...boxes.map(({ h, y }) => y + h)) - top,
+    w: Math.max(...boxes.map(({ w, x }) => x + w)) - left,
+    x: left,
+    y: top,
+  };
+};
+
+const cardsDrawn = (geo: Geo) => {
+  const poses = handPoses(geo.handFan);
+  const resting = poses.resting.map((pose) => tiltedCard(geo, pose));
+  const peeking = poses.peeking.map((pose) => tiltedCard(geo, pose));
+
+  return {
+    peeking: around([...resting, ...peeking]),
+    resting: around(resting),
+  };
+};
+
+const holdemCards = (geo: Geo): Box => {
   const handW = geo.handCardW * 2.2;
-  const handH = geo.handCardW * 1.4;
+  const handH = geo.handCardW * CARD_HEIGHT_PER_WIDTH;
+
+  return {
+    h: handH,
+    w: handW,
+    x: geo.hand.x - handW / 2,
+    y: geo.hand.y - handH / 2,
+  };
+};
+
+const yourCards = (geo: Geo): Box =>
+  geo.handFan.cards === HOLDEM_HOLE_CARDS
+    ? holdemCards(geo)
+    : cardsDrawn(geo).resting;
+
+const middleOf = (geo: Geo): readonly Named[] => {
   const tab = potTabOf(geo);
 
   return [
@@ -327,15 +389,7 @@ const middleOf = (geo: Geo): readonly Named[] => {
       "the pot tab",
       { h: tab.h, w: tab.w, x: tab.x - tab.w / 2, y: tab.y - tab.h / 2 },
     ],
-    [
-      "your cards",
-      {
-        h: handH,
-        w: handW,
-        x: geo.hand.x - handW / 2,
-        y: geo.hand.y - handH / 2,
-      },
-    ],
+    ["your cards", yourCards(geo)],
     [
       "the chip",
       {
@@ -349,15 +403,13 @@ const middleOf = (geo: Geo): readonly Named[] => {
 };
 
 const liftedCards = (geo: Geo): Box => {
-  const handW = geo.handCardW * 2.2;
-  const handH = geo.handCardW * 1.4;
+  if (geo.handFan.cards !== HOLDEM_HOLE_CARDS) {
+    return cardsDrawn(geo).peeking;
+  }
 
-  return {
-    h: handH + PEEK_LIFT_PX,
-    w: handW,
-    x: geo.hand.x - handW / 2,
-    y: geo.hand.y - handH / 2 - PEEK_LIFT_PX,
-  };
+  const cards = holdemCards(geo);
+
+  return { ...cards, h: cards.h + PEEK_LIFT_PX, y: cards.y - PEEK_LIFT_PX };
 };
 
 const covering = (item: Laid, ground: readonly Named[]) =>
@@ -644,7 +696,8 @@ export const laneProblemsOf = (table: LaneTable) =>
       table.screen.height,
       table.others,
       table.most,
-      table.boards ?? 1
+      table.boards ?? 1,
+      table.hole
     )
   );
 
@@ -652,11 +705,13 @@ export const everyoneBetting = (
   screen: Screen,
   others: number,
   button: number,
-  buttonFolded: boolean
+  buttonFolded: boolean,
+  hole = HOLDEM_HOLE_CARDS
 ): LaneTable => ({
   button,
   buttonFolded,
   folded: [],
+  hole,
   most: 9999,
   others,
   posted: Array.from({ length: others + 1 }, (__, seat) => seat),
@@ -666,22 +721,98 @@ export const everyoneBetting = (
 export const everyOwnerProblems = (
   screen: Screen,
   others: number,
-  boards: BoardRows = 1
+  boards: BoardRows = 1,
+  hole = HOLDEM_HOLE_CARDS
 ) => {
-  const geo = computeGeo(screen.width, screen.height, others, 9999, boards);
+  const geo = computeGeo(
+    screen.width,
+    screen.height,
+    others,
+    9999,
+    boards,
+    hole
+  );
 
   return Array.from({ length: others + 1 }, (__, button) =>
     [false, true].flatMap((folded) =>
-      laneProblemsOn(everyoneBetting(screen, others, button, folded), geo).map(
+      laneProblemsOn(
+        everyoneBetting(screen, others, button, folded, hole),
+        geo
+      ).map(
         (problem) =>
-          `${screen.width}x${screen.height}, ${others + 1} seats, button ${button}${folded ? " folded" : ""}: ${problem}`
+          `${screen.width}x${screen.height}, ${others + 1} seats, ${boards} board${boards === 1 ? "" : "s"}, ${hole} hole cards, button ${button}${folded ? " folded" : ""}: ${problem}`
       )
     )
   ).flat();
 };
 
-export const fallbackOf = (screen: Screen, others: number, most: number) => {
-  const geo = computeGeo(screen.width, screen.height, others, most);
+const RING_REACH_PX = 8.25;
+
+const WIDE_FROM = 1.08;
+
+export const handPlaced = (geo: Table, screen: Screen) => {
+  const { cardW, cards, step } = geo.handFan;
+  const drawn = cardsDrawn(geo);
+  const half = geo.self.size / 2;
+
+  const face: Box = {
+    h: geo.self.size,
+    w: geo.self.size,
+    x: geo.self.x - half,
+    y: geo.self.y - half,
+  };
+
+  const ring: Box = {
+    h: face.h + 2 * RING_REACH_PX,
+    w: face.w + 2 * RING_REACH_PX,
+    x: face.x - RING_REACH_PX,
+    y: face.y - RING_REACH_PX,
+  };
+
+  const chip: Box = {
+    h: geo.chip.size,
+    w: geo.chip.size,
+    x: geo.chip.x - geo.chip.size / 2,
+    y: geo.chip.y - geo.chip.size / 2,
+  };
+
+  const holdem = cards === HOLDEM_HOLE_CARDS;
+  const tall = screen.width <= screen.height * WIDE_FROM;
+
+  const holdemStrip = geo.handFan.rowCardW / 2;
+
+  return {
+    cardsWideEnoughToTap: holdem || cardW >= HAND_CARD_FLOOR,
+    everyCardTakesATap:
+      holdem ||
+      step >= HAND_STRIP - VISIBLE_PX / 2 ||
+      (!tall && step >= holdemStrip - VISIBLE_PX / 2),
+    everyCornerShowsInAPeek: step >= cardW * HAND_INDEX_SHARE,
+    liftedClearOfYourFaceAndTheChip:
+      !covers(drawn.peeking, face) && !covers(drawn.peeking, chip),
+    onScreen: onScreen(drawn.peeking, geo, screen),
+    restingClearOfYourRingAndTheChip:
+      !covers(drawn.resting, holdem ? face : ring) &&
+      !covers(drawn.resting, chip),
+  };
+};
+
+export const HAND_PLACED_WELL = {
+  cardsWideEnoughToTap: true,
+  everyCardTakesATap: true,
+  everyCornerShowsInAPeek: true,
+  liftedClearOfYourFaceAndTheChip: true,
+  onScreen: true,
+  restingClearOfYourRingAndTheChip: true,
+};
+
+export const fallbackOf = (
+  screen: Screen,
+  others: number,
+  most: number,
+  hole = HOLDEM_HOLE_CARDS
+) => {
+  const geo = computeGeo(screen.width, screen.height, others, most, 1, hole);
 
   return {
     facesAtLeastTheFloor: geo.tile >= SMALLEST_FACE_PX,

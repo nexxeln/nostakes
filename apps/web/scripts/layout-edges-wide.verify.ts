@@ -1,12 +1,10 @@
-import { it } from "@effect/vitest";
-
 import { SMALLEST_WIDE } from "./layout/lane-checks.js";
 import {
   FULLEST_TABLES,
   grid,
   once,
   steps,
-  swept,
+  sweptWithEveryDeal,
   WIDEST_AMOUNT,
 } from "./layout/sweep.js";
 
@@ -24,25 +22,10 @@ const WHERE_TALL_TURNS_WIDE = steps(600, 1000, 8).flatMap((height) =>
   }))
 );
 
-it.live(
+sweptWithEveryDeal(
   "eight and nine seats hold on the shortest wide tables and where a tall table turns wide",
-  () =>
-    swept(
-      "wide edges",
-      once([...SHORTEST, ...WHERE_TALL_TURNS_WIDE]),
-      FULLEST_TABLES,
-      WIDEST_AMOUNT
-    )
-);
-
-it.live(
-  "with a double board, eight and nine seats hold on the shortest wide tables and where a tall table turns wide",
-  () =>
-    swept(
-      "wide edges, double board",
-      once([...SHORTEST, ...WHERE_TALL_TURNS_WIDE]),
-      FULLEST_TABLES,
-      WIDEST_AMOUNT,
-      2
-    )
+  "wide edges",
+  once([...SHORTEST, ...WHERE_TALL_TURNS_WIDE]),
+  FULLEST_TABLES,
+  WIDEST_AMOUNT
 );

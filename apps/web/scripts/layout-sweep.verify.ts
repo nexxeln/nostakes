@@ -11,10 +11,12 @@ import {
 import type { Screen } from "./layout/lane-checks.js";
 import {
   EVERY_AMOUNT,
+  EVERY_DEAL,
   EVERY_TABLE,
   grid,
+  HOLE_CARDS,
   steps,
-  swept,
+  sweptWithEveryDeal,
 } from "./layout/sweep.js";
 
 const SUPPORTED: readonly Screen[] = [
@@ -37,24 +39,24 @@ const TOO_SMALL: readonly Screen[] = grid(
   steps(240, 1000, 40)
 ).filter((screen) => !supports(screen));
 
-const fallbackOn = (screen: Screen, others: number) => {
-  const fallback = fallbackOf(screen, others, 99_999);
+const fallbackOn = (screen: Screen, others: number) =>
+  HOLE_CARDS.flatMap((hole) => {
+    const fallback = fallbackOf(screen, others, 99_999, hole);
 
-  return fallback.facesAtLeastTheFloor && fallback.saysWhenLanesDoNotFit
-    ? []
-    : [
-        `${screen.width}x${screen.height}, ${others + 1} seats: ${JSON.stringify(fallback)}`,
-      ];
-};
+    return fallback.facesAtLeastTheFloor && fallback.saysWhenLanesDoNotFit
+      ? []
+      : [
+          `${screen.width}x${screen.height}, ${others + 1} seats, ${hole} hole cards: ${JSON.stringify(fallback)}`,
+        ];
+  });
 
-it.live(
-  "every lane, the button, the hint, the rules on the felt, and the chips flying past it hold with two to nine seats on a grid of every table the app supports",
-  () => swept("every seat count", SUPPORTED, EVERY_TABLE, EVERY_AMOUNT)
-);
-
-it.live(
-  "with a double board, every lane, the button, the hint, and the chips flying past them hold with two to nine seats on the same grid",
-  () => swept("double board", SUPPORTED, EVERY_TABLE, EVERY_AMOUNT, 2)
+sweptWithEveryDeal(
+  "every lane, the button, the hint, your cards, the rules on the felt, and the chips flying past it hold with two to nine seats on a grid of every table the app supports",
+  "every seat count",
+  SUPPORTED,
+  EVERY_TABLE,
+  EVERY_AMOUNT,
+  EVERY_DEAL
 );
 
 it.live(
@@ -66,7 +68,7 @@ it.live(
       );
 
       yield* Console.log(
-        `layout sweep, below the range: ${TOO_SMALL.length * EVERY_TABLE.length} tables, ${fallbacks.length} problems`
+        `layout sweep, below the range: ${TOO_SMALL.length * EVERY_TABLE.length * HOLE_CARDS.length} tables, ${fallbacks.length} problems`
       );
 
       expect(fallbacks.slice(0, 40)).toStrictEqual([]);
