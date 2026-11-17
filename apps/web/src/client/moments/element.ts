@@ -32,7 +32,7 @@ const STYLE = `
 .card svg { display: block; width: 100%; height: auto; overflow: visible; }
 .card .part { transform-box: fill-box; transform-origin: center; }
 .wrap { transform-origin: 50% 40%; }
-.clip-it { position: absolute; left: 50%; bottom: 8px; transform: translateX(-50%); pointer-events: auto; font: 700 var(--text-2, 15px)/1 var(--font-body, sans-serif); color: var(--color-raised-ink, #1f1c31); background: var(--color-raised, #fffdf8); border: 0; border-radius: var(--radius-3, 10px); padding: 10px 14px; min-height: 44px; box-shadow: var(--shadow-sheet-1); display: flex; gap: 8px; align-items: center; }
+.clip-it { position: absolute; left: 50%; top: var(--clip-top, auto); bottom: var(--clip-bottom, 8px); transform: translateX(-50%); pointer-events: auto; font: 700 var(--text-2, 15px)/1 var(--font-body, sans-serif); color: var(--color-raised-ink, #1f1c31); background: var(--color-raised, #fffdf8); border: 0; border-radius: var(--radius-3, 10px); padding: 10px 14px; min-height: 44px; box-shadow: var(--shadow-sheet-1); display: flex; gap: 8px; align-items: center; }
 .clip-it:active { transform: translate(-50%, 0) translate(var(--press-1, 1px 1.8px)); }
 .clip-it svg { width: 16px; height: 16px; }
 .clip-it[aria-pressed="true"] { color: var(--color-ink-muted, #716a79); }
@@ -40,6 +40,8 @@ const STYLE = `
 `;
 
 const CLIP_IT_MS = 9000;
+
+const CLIP_IT_HEIGHT = 44;
 
 const ENTRY_MS = 1400;
 
@@ -302,10 +304,28 @@ class NostakesMoment extends HTMLElement {
 
     this.#clipIt.className = "clip-it";
     this.#renderClipIt();
+    this.#placeClipIt();
     this.#offering = this.#clipIt.animate(STILL, { duration: CLIP_IT_MS });
     this.#offering.onfinish = () => {
       this.#closeClipIt();
     };
+  }
+
+  #placeClipIt() {
+    requestAnimationFrame(() => {
+      const card = this.#card.getBoundingClientRect();
+      const host = this.getBoundingClientRect();
+      const room = host.height - CLIP_IT_HEIGHT - FLOOR_GAP;
+      const below = card.bottom - host.top + FLOOR_GAP;
+
+      if (card.height > 0 && below <= room) {
+        this.#clipIt.style.setProperty("--clip-top", `${below}px`);
+        this.#clipIt.style.setProperty("--clip-bottom", "auto");
+      } else {
+        this.#clipIt.style.removeProperty("--clip-top");
+        this.#clipIt.style.removeProperty("--clip-bottom");
+      }
+    });
   }
 
   #closeClipIt() {

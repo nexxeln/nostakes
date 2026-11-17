@@ -1,5 +1,6 @@
 import "../../src/client/tokens.css";
 import "../../src/client/app.css";
+import { Events } from "@nostakes/engine";
 import { Effect, Option } from "effect";
 
 import { defineMoment } from "../../src/client/moments/element.js";
@@ -17,6 +18,7 @@ import {
 import { fileNameOf } from "../../src/features/pictures/paper.js";
 import type { KeptFrame } from "../../src/features/pictures/paper.js";
 import { TONIGHT_TAG } from "../../src/features/tonight/element.js";
+import { sampleSettleUp } from "../night/samples.js";
 import { BLUFF_HAND } from "./bluff-hand.js";
 import { replayHand } from "./replay-hands.js";
 import { SAMPLE_NAMES, samplePicture } from "./samples.js";
@@ -100,36 +102,79 @@ const titleBoxOf = (hand: MomentHand) => {
   return { height: box.height, width: box.width, x: box.x, y: box.y };
 };
 
+const renumbered = (hand: MomentHand, number: number): MomentHand => ({
+  ...hand,
+  lastHand: { ...hand.lastHand, handNumber: number },
+  record: hand.record.map((event) =>
+    Events.$is("HandStarted")(event) || Events.$is("HandEnded")(event)
+      ? { ...event, handNumber: number }
+      : event
+  ),
+});
+
+const handsAsked = () => {
+  const named = (params.get("hands") ?? params.get("hand") ?? "AcesCracked")
+    .split(",")
+    .filter((name) => name.length > 0);
+
+  return named.map((name, index) =>
+    renumbered(replayHand(name, { deck, theme }), 12 + index * 17)
+  );
+};
+
+const fed = (host: MomentHost, hands: readonly MomentHand[]) =>
+  Effect.runFork(
+    Effect.forEach(
+      hands,
+      (hand) =>
+        Effect.sync(() => {
+          host.hand = hand;
+        }).pipe(Effect.andThen(Effect.sleep("700 millis"))),
+      { discard: true }
+    )
+  );
+
 const tonight = (into: Element) => {
   defineMoment();
   defineTonight();
 
   const room = params.get("room") ?? "STAGE1";
+  const only = params.get("drawer") === "only";
+  const settled = params.get("settled") === "true";
   const table = document.createElement("div");
   const host = document.createElement(MOMENT_TAG);
   const drawer = document.createElement(TONIGHT_TAG);
 
   Object.assign(table.style, {
     background: "var(--color-felt)",
-    height: "60vh",
+    height: only ? "1px" : "60vh",
+    overflow: "hidden",
     position: "relative",
   });
   Object.assign(drawer.style, { padding: "16px" });
   table.append(host);
   into.append(table, drawer);
-  Object.assign(drawer, { deck, mode: "Drawer", room, theme });
+  Object.assign(drawer, {
+    deck,
+    mode: settled ? "Settled" : "Drawer",
+    room,
+    settled: settled ? sampleSettleUp("six") : null,
+    theme,
+  });
 
   if (isMomentHost(host)) {
-    const hand = replayHand(params.get("hand") ?? "AcesCracked", {
-      deck,
-      theme,
-    });
+    const hands = handsAsked();
+    const [first] = hands;
 
     host.sound = false;
     host.room = room;
     host.dealing = params.get("turn") === "true";
-    host.hand = hand;
-    Reflect.set(globalThis, "__titleBox", titleBoxOf(hand));
+    fed(host, hands);
+
+    if (first !== undefined) {
+      Reflect.set(globalThis, "__titleBox", titleBoxOf(first));
+    }
+
     Reflect.set(globalThis, "__turn", (yours: boolean) => {
       host.dealing = yours;
     });

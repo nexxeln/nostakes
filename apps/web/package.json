@@ -31,7 +31,8 @@
     "clips": "node scripts/keep-clips.ts",
     "reels": "node scripts/clip-reels.ts",
     "night": "node scripts/night-pictures.ts",
-    "launch-video": "node scripts/launch/video.ts"
+    "launch-video": "node scripts/launch/video.ts",
+    "tonight-shots": "node scripts/tonight-shots.ts"
   },
   "dependencies": {
     "@effect/platform-browser": "4.1.4",
