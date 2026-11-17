@@ -70,6 +70,10 @@
   --size-bar: 3rem;
   --size-door-line: 3rem;
   --size-page: 26rem;
+  --size-reading: 42rem;
+  --size-reading-wide: 64rem;
+  --size-reading-side: 17rem;
+  --measure: 68ch;
   --size-sheet: 34rem;
   --size-face-bar: 2rem;
   --size-face-row: 3.5rem;

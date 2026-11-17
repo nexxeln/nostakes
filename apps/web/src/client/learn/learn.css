@@ -1637,6 +1637,19 @@ kbd {
   font-variant-numeric: normal;
 }
 
+.guide .rank [data-cards] {
+  display: flex;
+  gap: 2px;
+}
+
+@media (min-width: 48rem) {
+  .guide .ranked {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    column-gap: var(--space-4);
+  }
+}
+
 .guide .rank {
   padding-inline: 0;
 }

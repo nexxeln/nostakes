@@ -49,6 +49,43 @@
 .guide-page .answer {
   font-size: var(--text-4);
   line-height: var(--leading-tight);
+  max-width: var(--size-reading);
+}
+
+.guide-body,
+.guide-main,
+.guide-side {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+@media (min-width: 48rem) {
+  .guide-page .ranked {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    column-gap: var(--space-4);
+  }
+}
+
+@media (min-width: 64rem) {
+  .reading.guide-page {
+    max-width: calc(
+      var(--size-reading-wide) + var(--inset-left) + var(--inset-right)
+    );
+  }
+
+  .guide-body {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) var(--size-reading-side);
+    align-items: start;
+    gap: var(--space-5);
+  }
+
+  .guide-side {
+    position: sticky;
+    top: var(--space-4);
+  }
 }
 
 .cards {
