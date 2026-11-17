@@ -1046,7 +1046,7 @@ const sharesTheSettleUp = (page: Page) =>
     );
   });
 
-const FELT_RULES = "2/2 · 40–400";
+const FELT_RULES = "NLH · 2/2 · 40–400";
 
 const POSTED = ["2", "2"];
 
