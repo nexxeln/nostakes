@@ -141,15 +141,15 @@ const legalFor = (state: InHand, betting: Betting): LegalActions => {
     othersCanRespond(state.hand, betting.toAct) &&
     reopenedFor(betting, betting.toAct);
 
+  const minTo = Math.min(betting.currentBet + betting.lastFullRaise, allInTo);
+
   return {
     call: owed > 0 ? Option.some(chips(Math.min(owed, stack))) : Option.none(),
     canCheck: owed === 0,
     raise: canRaise
       ? Option.some({
           maxTo: chips(allInTo),
-          minTo: chips(
-            Math.min(betting.currentBet + betting.lastFullRaise, allInTo)
-          ),
+          minTo: chips(minTo),
         })
       : Option.none(),
     seat: betting.toAct,
@@ -237,7 +237,7 @@ const actionEvents = (
             ? Result.succeed([
                 Events.RaisedTo({
                   added: chips(to - committed),
-                  allIn: to === range.maxTo,
+                  allIn: to - committed === stack,
                   full: to - betting.currentBet >= betting.lastFullRaise,
                   seat,
                   to,

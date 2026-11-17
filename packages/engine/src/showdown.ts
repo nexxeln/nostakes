@@ -1,7 +1,6 @@
 import { Data, Option } from "effect";
 
 import type { Card } from "./cards.js";
-import { evaluate } from "./evaluation.js";
 import type { HandRank } from "./evaluation.js";
 import { Events } from "./events.js";
 import type { Event, EventOf } from "./events.js";
@@ -15,6 +14,8 @@ import {
   whenInHand,
 } from "./state.js";
 import type { HandPlayer, InHand, TableState } from "./state.js";
+import { rankHand } from "./variants.js";
+import type { Game } from "./variants.js";
 
 export type ShowdownEntry = Data.TaggedEnum<{
   Mucked: { readonly seat: SeatIndex };
@@ -33,12 +34,13 @@ interface Ranked {
 }
 
 export const rankOnBoard = (
+  game: Game,
   players: readonly HandPlayer[],
   board: readonly Card[]
 ): readonly Ranked[] =>
   players.map((player) => ({
     player,
-    rank: evaluate([...player.holeCards, ...board]),
+    rank: rankHand(game, player.holeCards, board),
   }));
 
 export const startingWith = (
@@ -102,11 +104,12 @@ export const showOrMuck = (
 };
 
 export const shownAcrossRuns = (
+  game: Game,
   ordered: readonly HandPlayer[],
   boards: readonly (readonly Card[])[],
   pots: readonly Pot[]
 ): ReadonlySet<SeatIndex> => {
-  const ranks = boards.map((board) => rankOnBoard(ordered, board));
+  const ranks = boards.map((board) => rankOnBoard(game, ordered, board));
   const shown = new Set<SeatIndex>();
 
   const rankAt = (run: number, seat: SeatIndex) =>
@@ -164,6 +167,7 @@ export const showdown = (
   const pots = buildPots(state.hand);
 
   const ranked = rankOnBoard(
+    state.hand.game,
     startingWith(state, lastAggressor),
     state.hand.board
   );

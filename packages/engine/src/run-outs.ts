@@ -175,12 +175,12 @@ export const runOut = (state: InHand, runs: RunCount): readonly Event[] => {
   }
 
   const shown = hidden
-    ? shownAcrossRuns(contenders, dealt.boards, pots)
+    ? shownAcrossRuns(state.hand.game, contenders, dealt.boards, pots)
     : new Set(contenders.map((player) => player.seat));
 
   const showdowns = dealt.boards.flatMap((board, index) => {
     const run = index + 1;
-    const ranked = rankOnBoard(contenders, board);
+    const ranked = rankOnBoard(state.hand.game, contenders, board);
 
     return [
       Events.ShowdownReached({

@@ -10,6 +10,7 @@ import {
 } from "./primitives.js";
 import type { RunCount, TableConfig } from "./rules.js";
 import type { ShowdownEntry } from "./showdown.js";
+import type { Game } from "./variants.js";
 
 export const StreetSchema = Schema.Literals([
   "Preflop",
@@ -124,6 +125,7 @@ export interface Hand {
   readonly board: readonly Card[];
   readonly deadMoney: Chips;
   readonly deck: readonly Card[];
+  readonly game: Game;
   readonly paused: Option.Option<Rotation>;
   readonly phase: Phase;
   readonly players: readonly HandPlayer[];

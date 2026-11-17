@@ -182,3 +182,16 @@ export {
 export { setting, type SettingLabel } from "./setting.js";
 
 export { decide, evolve, evolveAll, replay } from "./table.js";
+
+export {
+  GameSchema,
+  HAND_SIZE,
+  MOST_HOLE_CARDS,
+  VARIANTS,
+  bestHand,
+  handsMadeFrom,
+  rankHand,
+  variantOf,
+  type Game,
+  type Variant,
+} from "./variants.js";

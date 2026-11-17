@@ -369,6 +369,7 @@ const potsWithEveryBet = (hand: HandView): readonly number[] => {
       )
     ),
     deck: [],
+    game: "Holdem",
     paused: Option.none(),
     phase: Phases.Settling({ lastAggressor: Option.none() }),
     players: hand.players.map((player) => ({

@@ -44,6 +44,8 @@ import type {
   Straddle,
   TableState,
 } from "./state.js";
+import { HOLDEM, variantOf } from "./variants.js";
+import type { Game } from "./variants.js";
 
 export const dealtInSeats = (state: TableState) =>
   SEAT_INDEXES.filter((seat) => {
@@ -447,12 +449,17 @@ const postings = (
   ];
 };
 
-const holeCards = (deck: readonly Card[], dealOrder: readonly SeatIndex[]) =>
-  dealOrder.map((seat, index) =>
+const holeCards = (
+  game: Game,
+  deck: readonly Card[],
+  dealOrder: readonly SeatIndex[]
+) =>
+  dealOrder.map((seat, turn) =>
     Events.HoleCardsDealt({
-      cards: [deck[index], deck[dealOrder.length + index]].filter(
-        (card) => card !== undefined
-      ),
+      cards: Array.from(
+        { length: variantOf(game).holeCards },
+        (_, pass) => deck[pass * dealOrder.length + turn]
+      ).filter((card) => card !== undefined),
       seat,
     })
   );
@@ -535,7 +542,7 @@ const startBombPot = (
         seat,
       });
     }),
-    ...holeCards(command.deck, dealOrder),
+    ...holeCards(HOLDEM, command.deck, dealOrder),
   ]);
 };
 
@@ -581,7 +588,7 @@ const startBlindHand = (
       smallBlindSeat: blinds.small,
     }),
     ...postings(state, dealOrder, blinds, straddles.success, entries),
-    ...holeCards(command.deck, dealOrder),
+    ...holeCards(HOLDEM, command.deck, dealOrder),
   ]);
 };
 
@@ -704,6 +711,7 @@ export const beginHand = (
       board: [],
       deadMoney: NO_CHIPS,
       deck: event.deck,
+      game: HOLDEM,
       paused: pausedBy(state, event),
       phase: Phases.Settling({ lastAggressor: Option.none() }),
       players: event.dealtIn.flatMap((seat) => dealtInPlayer(state, seat)),

@@ -1,7 +1,6 @@
 import { Option, Result, Schema } from "effect";
 
 import type { CommandOf } from "./commands.js";
-import { evaluate } from "./evaluation.js";
 import type { HandRank } from "./evaluation.js";
 import { Events } from "./events.js";
 import type { Event, EventOf } from "./events.js";
@@ -28,6 +27,7 @@ import type {
   ShowingDown,
   TableState,
 } from "./state.js";
+import { rankHand } from "./variants.js";
 
 export const ShowdownChoicesSchema = Schema.Struct({
   canMuck: Schema.Boolean,
@@ -69,7 +69,7 @@ const tabledRanks = (entries: readonly ShowdownEntry[]) => {
 };
 
 const rankInHand = (hand: Hand, player: HandPlayer) =>
-  evaluate([...player.holeCards, ...hand.board]);
+  rankHand(hand.game, player.holeCards, hand.board);
 
 const hasEntry = (entries: readonly ShowdownEntry[], seat: SeatIndex) =>
   entries.some((entry) => entry.seat === seat);
