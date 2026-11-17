@@ -1,5 +1,5 @@
 import { avatarFor } from "@nostakes/avatar";
-import type { PlayerId } from "@nostakes/protocol";
+import type { CloseReason, PlayerId } from "@nostakes/protocol";
 import { MemberCommandSchema, RoomViews } from "@nostakes/room";
 import type { KnockView } from "@nostakes/room";
 import { Option } from "effect";
@@ -79,7 +79,24 @@ type H = HtmlBuilder<Message>;
 
 const Commands = MemberCommandSchema.cases;
 
-export const OPENED_ELSEWHERE_LINE = "Open on another device.";
+export const OPENED_ELSEWHERE_LINE = "This room is open on another device.";
+
+const CLOSE_LINES: Readonly<Record<CloseReason, string>> = {
+  ClientOutdated: "This page is out of date. Reload to update it.",
+  FrameTooLarge: "The connection broke. Reload to try again.",
+  HelloTimeout: "Connecting took too long. Reload to try again.",
+  Knocking: "Waiting at the door.",
+  NotAuthorized: "This room doesn't know this device.",
+  NotFound: "This room is gone.",
+  OpenedElsewhere: OPENED_ELSEWHERE_LINE,
+  ProtocolViolation: "The connection broke. Reload to try again.",
+  Removed: "The host removed you from this room.",
+  RoomHalted: "The table stopped because of a fault.",
+  ServerOutdated: "The room server is updating. Reload in a moment.",
+  TooManyFrames: "This device sent too much too fast. Reload to try again.",
+  TooManySockets: "Too many devices are connecting. Reload in a moment.",
+  Unresponsive: "The connection went quiet. Reload to try again.",
+};
 
 const openedElsewhereLine = (h: H): Html =>
   h.span(
@@ -108,7 +125,7 @@ const connectionLine = (room: InRoom, h: H): Html =>
       if (phase === "Outdated") {
         return h.span(
           [h.Class("connection"), h.Role("status")],
-          ["Out of date"]
+          ["This page is out of date"]
         );
       }
 
@@ -123,7 +140,12 @@ const connectionLine = (room: InRoom, h: H): Html =>
       if (phase === "Refused") {
         return h.span(
           [h.Class("connection is-refused"), h.Role("status")],
-          [`Refused: ${Option.getOrElse(refusal, () => "closed")}`]
+          [
+            Option.match(refusal, {
+              onNone: () => "The room closed the connection.",
+              onSome: (reason) => CLOSE_LINES[reason],
+            }),
+          ]
         );
       }
 
@@ -417,7 +439,7 @@ const sitSheet = (room: InRoom, view: OpenView, seat: number, h: H): Html =>
             h.span(
               [h.Class("field-label")],
               [
-                `Chips to bring, ${view.settings.buyIn.min} to ${view.settings.buyIn.max}`,
+                `Buy-in, ${view.settings.buyIn.min} to ${view.settings.buyIn.max}`,
               ]
             ),
             h.input([
@@ -968,7 +990,7 @@ const doorView = (model: Model, door: DoorAnswer, h: H): Html =>
         [
           h.p(
             [h.Class("problem"), h.Role("alert")],
-            [`The door could not be checked: ${reason}. Trying again.`]
+            [`Can't check the door. ${reason} Trying again.`]
           ),
           homeButton("Back home", h),
         ]
@@ -1010,8 +1032,8 @@ const leftRoomView = (room: InRoom, view: OpenView, h: H): Html =>
         [h.Class("muted")],
         [
           stillPlayingOut(view)
-            ? "Your seat plays out this hand, then your chips are counted for the settle-up. You can come back as yourself."
-            : "Your chips count in the settle-up. You can come back as yourself.",
+            ? "Your seat finishes this hand. Then your chips count toward the settle-up. You can come back any time."
+            : "Your chips count toward the settle-up. You can come back any time.",
         ]
       ),
       comeBackName(room, h),
@@ -1056,7 +1078,7 @@ const refusedView = (room: InRoom, h: H): Html =>
     : h.section(
         [h.Class("card-panel settlement")],
         [
-          h.p([], ["This room is no longer open to you."]),
+          h.p([], ["You can't get back into this room."]),
           homeButton("Back home", h),
         ]
       );
@@ -1101,9 +1123,9 @@ export const REMOVED_LINE = "The host removed you from this room.";
 
 const removedLines = (result: RemovedResult, h: H): readonly Html[] =>
   RemovedResults.match(result, {
-    Asking: () => [h.p([h.Class("muted")], ["Reading your result…"])],
+    Asking: () => [h.p([h.Class("muted")], ["Getting your result…"])],
     Missing: ({ reason }) => [
-      h.p([h.Class("problem")], [`Your result could not be read: ${reason}.`]),
+      h.p([h.Class("problem")], [`Can't get your result. ${reason}`]),
     ],
     Shown: ({ result: shown }) => {
       const name = (player: PlayerId) =>
@@ -1121,7 +1143,7 @@ const removedLines = (result: RemovedResult, h: H): readonly Html[] =>
         return [
           h.p(
             [h.Class("removed-line")],
-            ["You did not buy in, so nothing is owed either way."]
+            ["You didn't buy in, so nobody owes anything."]
           ),
         ];
       }
@@ -1140,14 +1162,14 @@ const removedLines = (result: RemovedResult, h: H): readonly Html[] =>
         shown.finishing
           ? h.p(
               [h.Class("muted")],
-              ["Your seat plays out this hand first, so this can still change."]
+              ["Your seat finishes this hand first, so this can still change."]
             )
           : h.empty,
         Option.match(shown.transfers, {
           onNone: () =>
             h.p(
               [h.Class("muted")],
-              ["Who pays whom shows once the night ends."]
+              ["Who pays whom shows up when the night ends."]
             ),
           onSome: (transfers) =>
             h.ul(
@@ -1193,7 +1215,7 @@ const haltedView = (room: InRoom, standing: HaltedStanding, h: H): Html =>
     Asking: () =>
       h.p(
         [h.Class("muted opening")],
-        ["The table stopped. Reading the standings…"]
+        ["The table stopped. Getting the standings…"]
       ),
     Missing: ({ reason }) =>
       h.section(
@@ -1201,10 +1223,7 @@ const haltedView = (room: InRoom, standing: HaltedStanding, h: H): Html =>
         [
           h.h2([h.Class("sheet-title")], ["The table stopped"]),
           h.p([h.Class("halted-line")], [HALTED_LINE]),
-          h.p(
-            [h.Class("problem")],
-            [`The standings could not be read: ${reason}.`]
-          ),
+          h.p([h.Class("problem")], [`Can't get the standings. ${reason}`]),
           homeButton("Back home", h),
         ]
       ),
@@ -1219,7 +1238,7 @@ const haltedView = (room: InRoom, standing: HaltedStanding, h: H): Html =>
               h.p([h.Class("halted-line")], [HALTED_LINE]),
               h.p(
                 [h.Class("problem")],
-                ["The room could not settle its last hand."]
+                ["The room couldn't settle its last hand."]
               ),
               homeButton("Back home", h),
             ]

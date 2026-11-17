@@ -130,12 +130,20 @@ const entryFrom = (url: string, body: Schema.Json, request: JoinRequest) =>
       )
     ),
     Effect.mapError(
-      () => new EntryRefused({ reason: "The room server is not answering." })
+      () =>
+        new EntryRefused({
+          reason:
+            "Can't reach the room server. Check your connection and try again.",
+        })
     ),
     Effect.flatMap((response) =>
       response.json.pipe(
         Effect.mapError(
-          () => new EntryRefused({ reason: "The room server sent nonsense." })
+          () =>
+            new EntryRefused({
+              reason:
+                "The room server sent an answer this page can't read. Try again.",
+            })
         ),
         Effect.flatMap((json) =>
           decodeEntry(json).pipe(
@@ -147,7 +155,7 @@ const entryFrom = (url: string, body: Schema.Json, request: JoinRequest) =>
                     Schema.decodeUnknownOption(EntryRefusalSchema)(json),
                     {
                       onNone: () =>
-                        "The room server sent an answer this page cannot read. Try again.",
+                        "The room server sent an answer this page can't read. Try again.",
                       onSome: entryRefusalText,
                     }
                   ),
@@ -277,18 +285,18 @@ export const JoinRoom = Command.define("JoinRoom", {
 });
 
 const LOST_TEXT = {
-  ClientRefused: "the room turned this device away",
-  ClientStopped: "the connection closed first",
-  CommandCancelled: "it was cancelled",
-  CommandInvalid: "the page could not put it into words the room reads",
-  CommandTooLarge: "it was too large to send",
-  ResourceNotAvailable: "the page is not connected to the room",
+  ClientRefused: "The room turned this device away.",
+  ClientStopped: "The connection closed first.",
+  CommandCancelled: "It was cancelled.",
+  CommandInvalid: "This page couldn't send it.",
+  CommandTooLarge: "It was too big to send.",
+  ResourceNotAvailable: "This page isn't connected to the room.",
 } as const;
 
 const UNAVAILABLE_TEXT = {
-  RoomFault: "the room hit a fault and did not take it",
-  RoomHalted: "the room has stopped",
-  StorageFailed: "the room could not save it",
+  RoomFault: "The room hit a problem and didn't take it.",
+  RoomHalted: "The table has stopped.",
+  StorageFailed: "The room couldn't save it.",
 } as const satisfies Record<UnavailableReason, string>;
 
 export const SendToRoom = Command.define("SendToRoom", {
@@ -301,7 +309,7 @@ export const SendToRoom = Command.define("SendToRoom", {
           Messages.ReceivedReply({
             key,
             outcome: ReplyOutcomes.Lost({
-              reason: `${LOST_TEXT[failure._tag]}.`,
+              reason: LOST_TEXT[failure._tag],
             }),
           }),
         onSuccess: (result) =>
@@ -312,7 +320,7 @@ export const SendToRoom = Command.define("SendToRoom", {
               Rejected: ({ rejection }) =>
                 ReplyOutcomes.Rejected({ rejection }),
               Unavailable: ({ reason }) =>
-                ReplyOutcomes.Lost({ reason: `${UNAVAILABLE_TEXT[reason]}.` }),
+                ReplyOutcomes.Lost({ reason: UNAVAILABLE_TEXT[reason] }),
             }),
           }),
       })
@@ -326,7 +334,9 @@ const ownResultBody = revokedStandings(Schema.toCodecJson(RemovedViewSchema));
 
 const askedStandings = <Body extends Schema.Top>(code: string, body: Body) =>
   storedPass(code).pipe(
-    Effect.mapError(() => "this device no longer holds a pass for the room"),
+    Effect.mapError(
+      () => "This device doesn't have a pass for this room anymore."
+    ),
     Effect.flatMap((pass) =>
       HttpClientRequest.post(
         new URL(`/rooms/${code}/standings`, globalThis.location.href)
@@ -336,14 +346,15 @@ const askedStandings = <Body extends Schema.Top>(code: string, body: Body) =>
         ),
         HttpClient.execute,
         Effect.flatMap((response) => response.json),
-        Effect.mapError(() => "the room server is not answering")
+        Effect.mapError(() => "The room server isn't answering.")
       )
     ),
     Effect.flatMap((json) =>
       Schema.decodeUnknownEffect(body)(json).pipe(
         Effect.mapError(() =>
           Option.match(Schema.decodeUnknownOption(HttpRefusalSchema)(json), {
-            onNone: () => "the room server sent nonsense",
+            onNone: () =>
+              "The room server sent an answer this page can't read.",
             onSome: refusalText,
           })
         )

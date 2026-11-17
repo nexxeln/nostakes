@@ -189,7 +189,7 @@ const lastRulesLine = (model: Model, h: H): Html =>
               h.Class("last-rules-reset"),
               h.OnClick(Messages.ClickedStandardRules()),
             ],
-            ["Use standard"]
+            ["Use standard rules"]
           ),
         ]
       ),
@@ -230,7 +230,7 @@ const homeView = (
               h.p(
                 [h.Class("tagline")],
                 [
-                  "Poker night with friends. No money on the table, just the count.",
+                  "Poker night with friends. Play for chips. The app keeps the count.",
                 ]
               ),
             ]
@@ -256,7 +256,7 @@ const homeView = (
           h.form(
             [h.Class("join-panel"), h.OnSubmit(Messages.SubmittedJoin())],
             [
-              h.span([h.Class("field-label")], ["Have a code?"]),
+              h.span([h.Class("field-label")], ["Have a room code?"]),
               h.div(
                 [h.Class("join-row")],
                 [

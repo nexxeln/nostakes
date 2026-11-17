@@ -3,18 +3,21 @@ import { TooManyRequestsSchema } from "@nostakes/protocol";
 import { Schema } from "effect";
 
 const PLAIN_TEXT = {
-  BadOrigin: "The room server does not accept this page's address.",
-  BadRequest: "The server could not read that. Check the name.",
-  BodyTooLarge: "That was too much to send at once. Try a shorter name.",
-  NoFreeCode: "No free room code right now. Try again.",
-  NotAuthorized: "The room does not know this device's pass.",
-  NotFound: "No room has that code.",
+  BadOrigin:
+    "The room server doesn't accept this page's address. Open nostakes.club and try again.",
+  BadRequest: "The server couldn't read that. Check your name and try again.",
+  BodyTooLarge: "That's too long to send. Try a shorter name.",
+  NoFreeCode: "Couldn't find a free room code. Try again.",
+  NotAuthorized:
+    "This room doesn't know this device. Open the room link to join.",
+  NotFound: "No room has that code. Check it and try again.",
   RoomFull: "That room is full.",
-  RoomHalted: "That room has stopped.",
+  RoomHalted: "That room stopped because of a fault.",
   RoomOpen: "That room is still open.",
-  RoomUnavailable: "The room is not answering yet. Try again in a few seconds.",
-  ServerFault: "The room server hit a fault. Try again.",
-  UpgradeRequired: "The room server wanted a live connection.",
+  RoomUnavailable: "The room isn't answering yet. Try again in a few seconds.",
+  ServerFault: "Something went wrong on the server. Try again.",
+  UpgradeRequired:
+    "Couldn't open a live connection to the room. Reload the page.",
 } satisfies Record<PlainRefusal["refusal"], string>;
 
 const SECONDS_PER_MINUTE = 60;
@@ -33,5 +36,5 @@ const isTooManyRequests = Schema.is(TooManyRequestsSchema);
 
 export const refusalText = (refusal: HttpRefusal) =>
   isTooManyRequests(refusal)
-    ? `Too many tries from this network. Try again in ${waitText(refusal.retryAfterSeconds)}.`
+    ? `Too many tries from this network. Wait ${waitText(refusal.retryAfterSeconds)} and try again.`
     : PLAIN_TEXT[refusal.refusal];

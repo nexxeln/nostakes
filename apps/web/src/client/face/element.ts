@@ -395,8 +395,8 @@ class NostakesFace extends HTMLElement {
 
   #paintFoot(face: Avatar, held: Part | null) {
     this.#hint.textContent = this.#fine.matches
-      ? "Click a part. Scroll to flip."
-      : "Tap a part. Swipe to flip.";
+      ? "Click a part. Scroll to change it."
+      : "Tap a part. Swipe to change it.";
     this.#hint.toggleAttribute("hidden", !this.#hintShown);
     this.#dots.toggleAttribute("hidden", this.#hintShown || held === null);
     this.#dots.replaceChildren(

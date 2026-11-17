@@ -1215,7 +1215,7 @@ const settle = (room: InRoom, key: number, outcome: ReplyOutcome): InRoom => {
     Lost: ({ reason }) => ({
       ...room,
       clearing,
-      notice: Option.some(`${sent.label} did not reach the room: ${reason}`),
+      notice: Option.some(`${sent.label} didn't go through. ${reason}`),
       pending,
     }),
     Rejected: ({ rejection }) => ({
@@ -1904,7 +1904,7 @@ export const update = (model: Model, message: Message): Return =>
         ...freshRoom(code, player),
         notice: rulesDropped
           ? Option.some(
-              "Your last rules could not be used, so the room opened with the standard ones."
+              "Your last rules didn't work, so the room opened with the standard ones."
             )
           : Option.none(),
         setup: opened ? Option.some(FRESH_SETUP) : Option.none(),
@@ -2252,7 +2252,7 @@ export const update = (model: Model, message: Message): Return =>
             ...model,
             screen: Screens.Home({
               busy: false,
-              problem: Option.some("A room code is six letters and digits."),
+              problem: Option.some("A room code is 6 letters and numbers."),
             }),
           },
         }),
