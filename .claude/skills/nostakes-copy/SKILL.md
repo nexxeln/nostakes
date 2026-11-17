@@ -16,7 +16,7 @@ Plain language is the floor, not the ceiling. nostakes has a voice, and the fix 
 - Say "you" to the player. Say "the host", "the room", "the table" for the rest. Never "we" for the app, never "the user".
 - Poker words a regular uses: blinds, straddle, run it twice, muck, bomb pot. Explain one only where a beginner meets it, in a few words, the first time.
 - Sentence case everywhere: titles, buttons, tabs, labels.
-- Numbers as digits: "2 players", "Seat 3", "10 minutes".
+- Numbers as digits: "2 players", "Seat 3", "10 minutes". Spell out a number that starts a sentence: "Two minutes, and you can sit at a friend's table."
 - No em dashes or en dashes. Use a period or a comma.
 - Contractions: can't, don't, you're, it's. "Cannot" sounds like a form.
 - Straight quotes and apostrophes in code (`'`, `"`).

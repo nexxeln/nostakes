@@ -34,7 +34,7 @@ export const LEARN_ARTICLE = {
   description:
     "Learn Texas hold'em by playing five short hands: what happens in a hand, what beats what, and four habits that keep your chips.",
   educationalLevel: "Beginner",
-  headline: "How to play poker: Texas hold'em in two minutes",
+  headline: "How to play poker: Texas hold'em in 2 minutes",
   image: canonicalOf(PREVIEW_IMAGE.path),
   inLanguage: "en",
   isAccessibleForFree: true,

@@ -103,7 +103,7 @@ const WHOLE_BEATS: readonly Beat[] = [
     cue: "Drag the chip up to bet 40",
     hand: "Whole",
     id: "Whole.Bet",
-    line: "Three cards for everyone: the flop. You have a pair of kings. That is good, so bet it.",
+    line: "Three cards for everyone: the flop. You have a pair of kings. That's good, so bet it.",
     lit: ["Kh", "Kd"],
     moves: [fold("bo"), check("mara"), street("Flop"), check("mara")],
   }),
@@ -112,7 +112,7 @@ const WHOLE_BEATS: readonly Beat[] = [
     cue: "Tap the chip to check",
     hand: "Whole",
     id: "Whole.Check",
-    line: "One more card: the turn. Nobody has bet, so a tap is a check. It costs nothing.",
+    line: "One more card: the turn. Nobody has bet, so a tap checks. It's free.",
     moves: [call("mara"), street("Turn"), check("mara")],
   }),
   play({
@@ -191,7 +191,7 @@ const FOLD_BEATS: readonly Beat[] = [
     ],
     next: "Ranks.Flop",
     talk: [
-      { who: "mara", words: "Good. That is most of poker." },
+      { who: "mara", words: "Good. That's most of poker." },
       { who: "jonas", words: "Never had to show." },
     ],
   }),
@@ -203,7 +203,7 @@ const FOLD_BEATS: readonly Beat[] = [
     cue: "Flick your cards up to fold",
     hand: "Fold",
     id: "Fold.Flop",
-    line: "You missed. Seven high, and he is betting again.",
+    line: "You missed. Seven high, and he's betting again.",
     moves: [
       call("bo"),
       fold("mara"),
@@ -392,7 +392,7 @@ const RIVER_BEATS: readonly Beat[] = [
     moves: [show("jonas")],
     next: "Yours.Start",
     tabled: [HIS_FLUSH],
-    talk: [{ who: "mara", words: "Sometimes he is bluffing. Not often." }],
+    talk: [{ who: "mara", words: "Sometimes he's bluffing. Not often." }],
   }),
   outcome({
     faces: { jonas: "Happy", you: "Gutted" },
