@@ -25,6 +25,18 @@ export const REACTION_GLYPHS: Readonly<Record<Reaction, string>> = {
   Wow: "😮",
 };
 
+export const REACTION_LABELS: Readonly<Record<Reaction, string>> = {
+  Bird: "Middle finger",
+  Clap: "Clap",
+  Cry: "Cry",
+  Dead: "Dead",
+  Eyes: "Eyes",
+  Fire: "Fire",
+  Fish: "Fish",
+  Laugh: "Laugh",
+  Wow: "Wow",
+};
+
 export const reacted = (
   room: InRoom,
   player: PlayerId,

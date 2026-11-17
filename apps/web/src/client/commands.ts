@@ -679,7 +679,7 @@ const feedbackRefusalText = (refusal: typeof HttpRefusalSchema.Type) =>
   Match.value(refusal).pipe(
     Match.when(
       { refusal: "BadRequest" },
-      () => "The server could not read that note."
+      () => "The server couldn't read that note."
     ),
     Match.when(
       { refusal: "BodyTooLarge" },
@@ -693,7 +693,7 @@ const feedbackFailure = (
   refused: Option.Option<typeof HttpRefusalSchema.Type>
 ) =>
   Option.match(refused, {
-    onNone: () => `The server could not take the note (${status}). Try again.`,
+    onNone: () => `The server couldn't take the note (${status}). Try again.`,
     onSome: feedbackRefusalText,
   });
 
@@ -721,7 +721,7 @@ export const SendFeedback = Command.define("SendFeedback", {
         ),
         HttpClient.execute,
         Effect.mapError(
-          () => "The note did not reach the server. Check your connection."
+          () => "The note didn't reach the server. Check your connection."
         ),
         Effect.flatMap((response) =>
           response.status === 204

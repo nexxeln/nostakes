@@ -141,7 +141,7 @@ export const deviceToggles = (
         {
           className: counting ? "is-on counting" : "counting",
           icon: "Counts",
-          label: "Anonymous counts",
+          label: "Share anonymous counts",
           pressed: counting,
         },
         Messages.SwitchedCounting({ on: !counting })

@@ -284,7 +284,11 @@ const token = (draft: Avatar, part: Part, theme: Theme, h: H): Html => {
 
 const plate = (draft: Avatar, held: Part | null, theme: Theme, h: H): Html =>
   h.div(
-    [h.Class("face-plate"), h.Role("group"), h.AriaLabel("The fish itself")],
+    [
+      h.Class("face-plate"),
+      h.Role("group"),
+      h.AriaLabel("Fish, colour, and suit"),
+    ],
     PLACELESS_PARTS.map((part) =>
       h.button(
         [
