@@ -1,6 +1,6 @@
 # Vision
 
-nostakes is poker night with your friends, in the browser. One person opens a room and drops the link in the group chat. Up to nine friends join, build an avatar, sit down, and play no-limit hold'em. When the night ends, the app says who pays whom.
+nostakes is poker night with your friends, in the browser. One person opens a room and drops the link in the group chat. Up to nine friends join, build an avatar, sit down, and play no-limit hold'em, or pot-limit Omaha if the host picks it. When the night ends, the app says who pays whom.
 
 It should feel like sitting in the same room. It should not feel like an online casino.
 
@@ -14,7 +14,7 @@ A group of friends who already play together, or would if they lived closer. The
 
 1. **The chips are right.** Every chip is an integer and is accounted for after every hand. A wrongly awarded pot is a real loss between friends. The rules are checked against an independent poker implementation, and whole nights are played by bots on every push.
 2. **Nobody sees a card they should not.** A player's device receives only what that seat may see. Folded and mucked hands stay hidden for good, as they would at a real table.
-3. **It plays the way the group already plays.** Antes, straddles, running it more than once, rabbit hunts, showing one card, mucking, conceding face down. Everything outside core hold'em is a host setting with a sensible default. We do not pick one house rule and hard-code it.
+3. **It plays the way the group already plays.** Antes, straddles, running it more than once, rabbit hunts, showing one card, mucking, conceding face down. Everything outside core hold'em, Omaha included, is a host setting with a sensible default. We do not pick one house rule and hard-code it.
 4. **Your friends' faces are the interface.** Faces sit around the table. They look at their cards, take their time, react. You hold to peek, drag a chip to raise, tap to call, flick your cards away to fold. That interaction is settled. New work fits into it.
 5. **Calm, cute, and simple.** A light and a dark theme from one set of tokens. Avatars people enjoy making. One primary action on a screen. When in doubt, remove something.
 6. **A bad connection never costs a hand.** Phones sleep, lose signal, and switch networks in the middle of a bet. The client reconnects, catches up without missing or repeating anything, and never loses an action the player took.

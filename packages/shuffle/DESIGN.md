@@ -10,7 +10,7 @@ Labels: "run" means I ran it here and give the output. "inferred" means reasonin
 
 ## Facts from the code (read, not inferred)
 
-- The engine deals with no burn cards. With n players dealt in, in deal order from the button, the player at deal-order index i gets deck[i] and deck[n+i] (packages/engine/src/forced-bets.ts `holeCards`). Streets take the next cards (betting.ts `nextStreet`). Runs take further cards, run by run (run-outs.ts `dealRuns`). A rabbit hunt shows the next undealt board cards (pots.ts `undealtBoard`).
+- The engine deals with no burn cards. Hole cards go out by passes: with n players dealt in and h hole cards a seat (2 in hold'em, 4 in Omaha, from the variant table in packages/engine/src/variants.ts), the player at deal-order index i gets deck[p·n + i] on pass p, for p from 0 to h − 1 (packages/engine/src/forced-bets.ts `holeCards`), and the board starts at deck[h·n]. Streets take the next cards (betting.ts `nextStreet`). Runs take further cards, run by run (run-outs.ts `dealRuns`). A rabbit hunt shows the next undealt board cards (pots.ts `undealtBoard`).
 - Today the server's entropy bytes become the deck (room/src/dealing.ts `deckFromBytes`, 128 bytes from poker-room.ts `DEAL_SHUFFLE_BYTES`). The whole deck sits in the stored HandStarted event, and `redact` strips it from every player's feed (room/src/views.ts). The operator can read every card, live or later.
 
 ## 1. Threat model
@@ -215,7 +215,7 @@ Pure functions. No I/O, no clock, and no randomness read inside: decks, salt sec
 | `verifyBeacon` | A round's BLS signature → its 32 bytes of randomness, or a tagged error |
 | `seedOf` | Seed from the hand, the seal and a beacon |
 | `dealingPlan` | Seed → dealt slot, spare slot, and order[deal index] = sealed position |
-| `dealIndexOf` | Role → deal index: Hole{turn, pass} = pass·n + turn; Community{drawn} = 2n + drawn |
+| `dealIndexOf` | Role → deal index: Hole{turn, pass} = pass·n + turn; Community{drawn} = h·n + drawn, where h is the seal's hole-card count |
 | `roundToSeal`, `sealTiming`, `sealsWithNoDeal` | The round a seal names; the device's timing check; sealed hands with no deal |
 | `verifyHand` | The openings, order, round and seats for a beacon already checked |
 | `judgeHand` | The whole verdict for one device: Checked, NotChecked, or Failed with a reason |
@@ -325,7 +325,11 @@ Removed with B: "drop or alter a player's value", "grind over subsets of player 
 
 ## 11. Not built in the package task (built since, see section 12)
 
-Every room, server, and client change in section 7, and a client fetch of round r after a "beacon unavailable" claim (which turned out to prove nothing, section 12). `dealIndexOf` mirrors the engine's layout (hole cards at i and n+i, then community cards in draw order). If the engine ever burns cards, `dealIndexOf` must change with it.
+Every room, server, and client change in section 7, and a client fetch of round r after a "beacon unavailable" claim (which turned out to prove nothing, section 12). `dealIndexOf` mirrors the engine's layout (hole cards at p·n + i for each pass p, then community cards in draw order). If the engine ever burns cards, `dealIndexOf` must change with it.
+
+### The layout is sealed
+
+The hole-card count decides where every card of a hand is dealt from, so the seal names it: `Seal.holeCardCount`, absent for two, so every hold'em seal and seed is byte for byte what it was before Omaha. When present it is hashed into the seed after the seats. Without that, a server that saw the beacon could choose between a two-card and a four-card reading of the same sealed deck, two deals where the design promises one; with it, a four-card hand passed off under a two-card seal fails for every player shown a card (`test/cheats.test.ts`). The room seals the hole-card count of the game in force (`sealNextHand`), queues any rules change while a seal holds, and its openings and the witness read the count from the seal. A variant with more hole cards needs nothing more here as long as hole cards and the board fit the 52-card deck; a smaller deck (short deck) would change `DECK_SIZE`, the Merkle trees, and the spare-deck check.
 
 ## 12. Wired into real hands (built)
 
