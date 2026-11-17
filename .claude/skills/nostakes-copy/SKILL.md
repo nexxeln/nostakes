@@ -7,6 +7,8 @@ description: The standard for every word a nostakes player reads, hears, or gets
 
 The reader is a friend at a home game, often on a phone, often mid-hand. They should find what they need, understand it on the first read, and know what to do next. That is plain language as ISO 24495-1 defines it: relevant, findable, understandable, usable.
 
+Plain language is the floor, not the ceiling. nostakes has a voice, and the fix for copy that is too long is fewer words with the same character, never blander words. Every line must be clear and usable first. Then it can have a wink.
+
 ## The voice
 
 - Short declarative sentences. One idea each.
@@ -16,8 +18,26 @@ The reader is a friend at a home game, often on a phone, often mid-hand. They sh
 - Sentence case everywhere: titles, buttons, tabs, labels.
 - Numbers as digits: "2 players", "Seat 3", "10 minutes".
 - No em dashes or en dashes. Use a period or a comma.
+- Contractions: can't, don't, you're, it's. "Cannot" sounds like a form.
 - Straight quotes and apostrophes in code (`'`, `"`).
 - Few words. The House look is restraint. If a line still works without a word, cut the word. If a screen still works without a line, cut the line.
+
+## Personality
+
+Keep the wit, the poker flavour, and the warm home-game feel. Cut the excess: long explanations, stacked clauses, a thing said twice, careful hedging, and help text nobody needs at that moment. One idea per line. Of two phrasings, take the punchier one.
+
+|  | Line | Verdict |
+| --- | --- | --- |
+| Too long | Your seat plays out this hand, then your chips are counted for the settle-up. You can come back as yourself. | Two clauses and a passive. |
+| Too plain | Your seat finishes this hand. Then your chips are counted. You may return later. | Clear, and nobody's talking. |
+| Just right | Your seat finishes this hand, then your chips go to the settle-up. Come back any time. |  |
+| Too long | A bomb pot is a hand where every player puts the same amount in before the cards are dealt, the flop comes out at once, and the betting starts on the flop. | Three facts in one breath. |
+| Too plain | A bomb pot is a hand with antes and no preflop betting. | Correct and dead. |
+| Just right | Everyone antes, the flop comes out, and the betting starts there. |  |
+| Too plain | Use gestures to play. | Says nothing. |
+| Just right | No buttons to hunt for. Your hands already know how. | Keep lines like this. |
+
+Lines that already land stay: "Your friends moved. Poker night didn't.", "Deal your friends in.", "Your house, your rules." Don't rewrite a good line to prove the pass happened.
 
 ## Microcopy rules
 
@@ -44,6 +64,7 @@ Apply `pstack-unslop` to every string. The usual offenders in UI copy:
 - Fancy verbs: "utilize", "facilitate", "leverage", "ensure". Use "use", "help", "make sure".
 - Passive voice that hides who acts: "Your seat was taken" becomes "Kit took your seat" when the copy knows who.
 - Hedging: "may possibly", "could potentially".
+- Padding for search engines. A guide page gives a short intro line, the rule, an example, and stops. Short and useful beats long.
 - Exclamation marks, emoji in copy, "Oops!", "Uh oh!".
 
 ## Fixed lines
@@ -59,15 +80,16 @@ Apply `pstack-unslop` to every string. The usual offenders in UI copy:
 | Refused: TooManySockets | Too many people are connecting to this room. Try again in a moment. | Never show a tag. Say what to do. |
 | Chips to bring, 400 to 2000 | Buy-in, 400 to 2000 | The word a regular uses. |
 | The door could not be checked: offline. Trying again. | Can't reach the room. Trying again. | Plain words, active voice. |
-| No money on the table, just the count. | Play for chips. The app keeps the count. | Say what happens, not a riddle. |
 | Use standard | Use standard rules | A button names its object. |
-| Your seat plays out this hand, then your chips are counted for the settle-up. | Your seat finishes this hand. Then your chips count toward the settle-up. | Two short sentences, active voice. |
+| You cannot check. It costs 20 chips to call. | You can't check. It's 20 chips to call. | Contractions, same facts. |
+| The host didn't let you in. You can knock again in 10 min. | The host didn't let you in. You can knock again in 10 minutes. | No abbreviations in a sentence. |
 
 ## Where copy lives
 
 - Landing: `apps/web/index.html`, `src/features/landing/view.ts` (`LANDING_WORDS`), `src/features/landing/prerender.ts`.
 - Screens and sheets: `src/features/*-view.ts`, `view.ts`, `chrome.ts`, `door.ts`, `halted.ts`, `stuck-line.ts`.
 - Rules: `src/features/rules-copy.ts`. Rejections: `src/features/rejections.ts`.
+- Guides: `apps/web/hand-rankings.html`, `host-a-poker-night.html`, `rules/*.html`, with titles and descriptions in `src/features/guides.ts`.
 - Table: `src/features/table/*.ts`, `src/client/table/element.ts`.
 - Learn: `src/features/learn/*.ts`, `src/client/learn/*.ts`, `learn.html`.
 - Previews and titles: `src/features/link-preview.ts`, `structured-data.ts`, `public/manifest.webmanifest`.
