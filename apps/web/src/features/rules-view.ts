@@ -261,7 +261,7 @@ const presetRow = (draft: SettingsDraft, h: H): Html => {
   const current = presetOf(draft);
 
   return h.div(
-    [h.Class("segments presets"), h.Role("radiogroup"), h.AriaLabel("Game")],
+    [h.Class("segments presets"), h.Role("radiogroup"), h.AriaLabel("Style")],
     presetsInOrder.map((preset) =>
       h.button(
         [

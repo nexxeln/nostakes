@@ -93,7 +93,7 @@ const styleRow = (draft: SettingsDraft, h: H): Html => {
     [
       h.Class("segments presets setup-styles"),
       h.Role("radiogroup"),
-      h.AriaLabel("Game"),
+      h.AriaLabel("Style"),
     ],
     presetsInOrder.map((preset) =>
       h.button(

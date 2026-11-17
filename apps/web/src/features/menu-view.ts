@@ -865,7 +865,7 @@ const heirLine = (
         [
           h.Class("segments heirs"),
           h.Role("radiogroup"),
-          h.AriaLabel("Host next"),
+          h.AriaLabel("Who hosts next"),
         ],
         heirs.map((player) =>
           h.button(

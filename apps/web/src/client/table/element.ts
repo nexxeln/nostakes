@@ -4,7 +4,11 @@ import { REACTIONS } from "@nostakes/room";
 import type { Reaction } from "@nostakes/room";
 
 import type { Mono } from "../../features/moments/sound/dsp.js";
-import { PEEK_REFRESH_MS, REACTION_GLYPHS } from "../../features/signals.js";
+import {
+  PEEK_REFRESH_MS,
+  REACTION_GLYPHS,
+  REACTION_LABELS,
+} from "../../features/signals.js";
 import {
   FELT_SOUNDS,
   THROWN_SOUNDS,
@@ -1228,8 +1232,8 @@ export class NostakesTable extends HTMLElement {
       el("span", "reaction-glyph", choice, REACTION_GLYPHS[reaction]);
       el("kbd", "reaction-key", choice, String(index + 1));
       choice.type = "button";
-      choice.title = `${reaction} (${index + 1})`;
-      choice.setAttribute("aria-label", reaction);
+      choice.title = `${REACTION_LABELS[reaction]} (${index + 1})`;
+      choice.setAttribute("aria-label", REACTION_LABELS[reaction]);
       choice.addEventListener("click", () => {
         this.#react(reaction);
       });

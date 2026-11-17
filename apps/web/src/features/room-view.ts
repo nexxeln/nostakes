@@ -195,7 +195,7 @@ const voiceLabel = (room: InRoom, access: VoiceAccess, you: PlayerId) => {
   }
 
   if (voice.status.phase !== "Live") {
-    return { icon: "MicOff" as const, label: "Voice is out", pressed: false };
+    return { icon: "MicOff" as const, label: "Voice is down", pressed: false };
   }
 
   if (voice.status.deaf) {

@@ -34,7 +34,7 @@ export const sheetLayer = (
         [
           h.Type("button"),
           h.Class("sheet-scrim"),
-          h.AriaLabel("Dismiss"),
+          h.AriaLabel("Close"),
           h.OnClick(Messages.ClosedSheet()),
         ],
         []
