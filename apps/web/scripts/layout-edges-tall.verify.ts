@@ -30,3 +30,15 @@ it.live(
       WIDEST_AMOUNT
     )
 );
+
+it.live(
+  "with a double board, eight and nine seats hold on every second pixel of the shortest and the narrowest tall tables",
+  () =>
+    swept(
+      "tall edges, double board",
+      once([...SHORTEST, ...NARROWEST]),
+      FULLEST_TABLES,
+      WIDEST_AMOUNT,
+      2
+    )
+);

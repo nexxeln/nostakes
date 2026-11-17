@@ -3,6 +3,7 @@ import {
   Actions,
   Antes,
   BettingLimits,
+  BombPots,
   ChipsSchema,
   Commands,
   DeckSchema,
@@ -150,6 +151,14 @@ const playedHand = (seed: number) => {
           ? Antes.EveryPlayer({ amount: chipCount(1 + below(5)) })
           : Antes.NoAnte(),
       bigBlind: chipCount(10),
+      bombPot:
+        below(4) === 0
+          ? BombPots.BombPots({
+              ante: chipCount(10 + below(30)),
+              boardCount: below(3) === 0 ? 1 : 2,
+              everyHands: 1,
+            })
+          : BombPots.NoBombPots(),
       game: seed % 3 === 0 ? "Omaha" : "Holdem",
       limit:
         seed % 3 === 0 ? BettingLimits.PotLimit() : BettingLimits.NoLimit(),

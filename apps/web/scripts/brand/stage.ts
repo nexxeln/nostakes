@@ -145,6 +145,7 @@ const opening: TableSnapshot = {
   bigBlind: BIG_BLIND,
   boards: [BOARD],
   buttonSeat: 4,
+  doubleBoard: false,
   clock: { key: "hero", remainingMs: 21_000, seat: 0, totalMs: 30_000 },
   entry: null,
   events: [

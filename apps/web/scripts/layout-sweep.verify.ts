@@ -53,6 +53,11 @@ it.live(
 );
 
 it.live(
+  "with a double board, every lane, the button, the hint, and the chips flying past them hold with two to nine seats on the same grid",
+  () => swept("double board", SUPPORTED, EVERY_TABLE, EVERY_AMOUNT, 2)
+);
+
+it.live(
   "a table below the range keeps faces at the floor and says when its lanes do not fit",
   () =>
     Effect.gen(function* sweep() {

@@ -2,6 +2,7 @@ import {
   buildPots,
   cardText,
   ChipsSchema,
+  Events,
   handCategory,
   Phases,
 } from "@nostakes/engine";
@@ -33,7 +34,7 @@ import type {
   TableSnapshot,
 } from "./snapshot.js";
 
-const HAPPENINGS_PER_EVENT = 16;
+const HAPPENINGS_PER_EVENT = 32;
 
 export const KEPT_EVENTS = 64;
 
@@ -243,28 +244,78 @@ export const facingEach = <Entry extends { readonly event: SeenEvent }>(
   return faced;
 };
 
-const startsBombPot = (event: SeenEvent): Option.Option<boolean> =>
+interface HandKind {
+  readonly bombPot: boolean;
+  readonly doubleBoard: boolean;
+}
+
+const startedKind = (event: SeenEvent): Option.Option<HandKind> =>
   SeenEvents.$is("Table")(event)
     ? Match.value(event.event).pipe(
         Match.tag("HandStarted", ({ bombPot }) =>
-          Option.some(bombPot !== undefined)
+          Option.some({
+            bombPot: bombPot !== undefined,
+            doubleBoard: bombPot?.boardCount === 2,
+          })
         ),
-        Match.orElse(() => Option.none<boolean>())
+        Match.orElse(() => Option.none<HandKind>())
       )
     : Option.none();
+
+const winnersText = (seats: readonly number[]) =>
+  seats.toSorted((left, right) => left - right).join(" ");
+
+const boardSays = (
+  event: SeenEvent,
+  firstBoard: Map<number, string>
+): readonly Happening[] => {
+  if (
+    !SeenEvents.$is("Table")(event) ||
+    !Events.$is("PotAwarded")(event.event)
+  ) {
+    return [];
+  }
+
+  const { pot, run, winners } = event.event;
+  const seats = winners.map(({ seat }) => seat);
+
+  if (run === 1) {
+    firstBoard.set(pot, winnersText(seats));
+  }
+
+  const both = run === 2 && firstBoard.get(pot) === winnersText(seats);
+
+  return seats.map((seat) =>
+    Happenings.Say.make({ seat, text: both ? "Both boards" : `Board ${run}` })
+  );
+};
 
 export const happeningsFrom = (
   facingFirst: number,
   applied: readonly { readonly event: SeenEvent; readonly seq: number }[]
 ): readonly TableEvent[] => {
   const happenings: TableEvent[] = [];
-  let bombPot = false;
+  const firstBoard = new Map<number, string>();
+  let kind: HandKind = { bombPot: false, doubleBoard: false };
 
   for (const { event, facing, seq } of facingEach(facingFirst, applied)) {
-    const started = startsBombPot(event);
+    const started = startedKind(event);
 
-    bombPot = Option.isSome(started) ? started.value : bombPot;
-    happenings.push(...happeningsOf(seq, event, facing, bombPot));
+    if (Option.isSome(started)) {
+      kind = started.value;
+      firstBoard.clear();
+    }
+
+    const own = happeningsOf(seq, event, facing, kind.bombPot);
+    const says = kind.doubleBoard ? boardSays(event, firstBoard) : [];
+
+    happenings.push(
+      ...own,
+      ...says.map((happening, index) => ({
+        happening,
+        id: seq * HAPPENINGS_PER_EVENT + own.length + index,
+      }))
+    );
   }
 
   return happenings;
@@ -763,6 +814,7 @@ const handFields = (view: OpenView) =>
       return {
         boards: (last?.boards ?? []).map(texts),
         buttonSeat: null,
+        doubleBoard: last?.doubleBoard ?? false,
         handId: last?.handNumber ?? 0,
         heroCards: texts(last?.yourCards ?? []),
         pots: [],
@@ -773,6 +825,7 @@ const handFields = (view: OpenView) =>
     onSome: (hand) => ({
       boards: hand.boards.map(texts),
       buttonSeat: hand.button,
+      doubleBoard: hand.doubleBoard,
       handId: hand.handNumber,
       heroCards: texts(view.holeCards),
       pots: potsOnTheTable(hand),

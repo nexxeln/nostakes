@@ -536,6 +536,7 @@ describe("the seat whose turn it is", () => {
 });
 
 const LaneTableSchema = Schema.Struct({
+  boards: Schema.Literals([1, 2]),
   button: between(0, 8),
   buttonFolded: Schema.Boolean,
   folded: Schema.Array(between(0, 7)),
@@ -564,11 +565,12 @@ describe("each seat's lane", () => {
     { arbitrary: { runs: 100 } }
   );
 
-  it("fits with every seat betting and four-digit amounts, whoever holds the button and whether they folded, on the smallest tables the app supports and on the boxes it gives the table", () => {
+  it("fits with every seat betting and four-digit amounts, whoever holds the button and whether they folded, with one board or two, on the smallest tables the app supports and on the boxes it gives the table", () => {
     const found = SMALLEST_TABLES.flatMap((screen) =>
-      [1, 2, 3, 4, 5, 6, 7, 8].flatMap((others) =>
-        everyOwnerProblems(screen, others)
-      )
+      [1, 2, 3, 4, 5, 6, 7, 8].flatMap((others) => [
+        ...everyOwnerProblems(screen, others),
+        ...everyOwnerProblems(screen, others, 2),
+      ])
     );
 
     expect(found).toStrictEqual([]);

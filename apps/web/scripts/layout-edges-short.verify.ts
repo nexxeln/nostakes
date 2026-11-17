@@ -32,3 +32,15 @@ it.live(
       WIDEST_AMOUNT
     )
 );
+
+it.live(
+  "with a double board, eight and nine seats hold on the short wide tables",
+  () =>
+    swept(
+      "short wide, double board",
+      once([...EVERY_WIDTH, ...NARROWEST]),
+      FULLEST_TABLES,
+      WIDEST_AMOUNT,
+      2
+    )
+);

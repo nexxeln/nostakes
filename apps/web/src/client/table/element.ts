@@ -51,6 +51,7 @@ import {
   runLanes,
 } from "./layout.js";
 import type {
+  BoardRows,
   Box,
   ButtonRide,
   ButtonSpot,
@@ -815,6 +816,8 @@ export class NostakesTable extends HTMLElement {
   #pot!: Counter;
   #potSide!: HTMLDivElement;
   #slots: HTMLDivElement[] = [];
+  #secondSlots: HTMLDivElement[] = [];
+  #secondShown: readonly string[] = [];
   #runs!: HTMLDivElement;
   #feltRules!: HTMLButtonElement;
   #feltHeadline!: HTMLSpanElement;
@@ -1081,6 +1084,9 @@ export class NostakesTable extends HTMLElement {
 
       return slot;
     });
+    this.#secondSlots = Array.from({ length: 5 }, () =>
+      el("div", "slot second gone", this.#room)
+    );
     this.#runs = el("div", "runs", this.#room);
     this.#feltRules = el("button", "felt-rules gone", this.#room);
     this.#feltRules.type = "button";
@@ -1718,19 +1724,21 @@ export class NostakesTable extends HTMLElement {
 
     const count = Math.max(1, this.#tiles.size);
     const most = mostOnTable(this.#snap);
+    const boards = this.#snap?.doubleBoard === true ? 2 : 1;
 
     const same =
       this.#geo !== null &&
       this.#geo.w === w &&
       this.#geo.h === h &&
       this.#geo.seats.length === count &&
+      this.#geo.secondBoard.length === (boards === 2 ? 5 : 0) &&
       this.#geo.pileW === pileWidthFor(most, this.#geo.compactPiles);
 
     if (same && !force) {
       return;
     }
 
-    const geo = this.#laidOut(w, h, count, most);
+    const geo = this.#laidOut(w, h, count, most, boards);
 
     this.#geo = geo;
     this.#spots = geo.buttons;
@@ -1817,6 +1825,21 @@ export class NostakesTable extends HTMLElement {
       }
     }
 
+    for (const [index, slot] of this.#secondSlots.entries()) {
+      const point = geo.secondBoard[index];
+
+      toggle(slot, "gone", point === undefined);
+
+      if (point !== undefined) {
+        Object.assign(slot.style, {
+          height: `${geo.cardW * 1.4 + 2}px`,
+          left: `${point.x}px`,
+          top: `${point.y}px`,
+          width: `${geo.cardW + 2}px`,
+        });
+      }
+    }
+
     const rules = feltRulesBox(geo);
     const call = waitingCallBox(geo);
     const stage = this.parentElement;
@@ -1836,8 +1859,9 @@ export class NostakesTable extends HTMLElement {
     });
 
     this.#boardShown = [];
+    this.#secondShown = [];
 
-    for (const slot of this.#slots) {
+    for (const slot of [...this.#slots, ...this.#secondSlots]) {
       slot.replaceChildren();
     }
   }
@@ -1978,15 +2002,21 @@ export class NostakesTable extends HTMLElement {
     return { x: point.x, y: point.y + (geo?.tile ?? 0) * 0.3 };
   }
 
-  #laidOut(w: number, h: number, count: number, most: number): Table {
-    const key = `${w}x${h}:${count}:${String(Math.trunc(Math.max(0, most))).length}`;
+  #laidOut(
+    w: number,
+    h: number,
+    count: number,
+    most: number,
+    boards: BoardRows
+  ): Table {
+    const key = `${w}x${h}:${count}:${String(Math.trunc(Math.max(0, most))).length}:${boards}`;
     const kept = this.#layouts.get(key);
 
     if (kept !== undefined) {
       return kept;
     }
 
-    const geo = computeGeo(w, h, count, most);
+    const geo = computeGeo(w, h, count, most, boards);
 
     this.#layouts.set(key, geo);
 
@@ -2049,8 +2079,9 @@ export class NostakesTable extends HTMLElement {
     this.#self.classList.remove("acting");
     delete this.#self.dataset.awarded;
     this.#boardShown = [];
+    this.#secondShown = [];
 
-    for (const slot of this.#slots) {
+    for (const slot of [...this.#slots, ...this.#secondSlots]) {
       slot.replaceChildren();
     }
 
@@ -2767,8 +2798,46 @@ export class NostakesTable extends HTMLElement {
     }
 
     this.#boardShown = [...board];
+    this.#renderSecondBoard(snapshot, geo, animate);
     this.#renderHunt(snapshot, board.length);
     this.#renderRuns(snapshot, geo);
+  }
+
+  #renderSecondBoard(snapshot: TableSnapshot, geo: Table, animate: boolean) {
+    const board = snapshot.doubleBoard ? (snapshot.boards[1] ?? []) : [];
+
+    if (
+      board.length < this.#secondShown.length ||
+      board.some(
+        (card, index) =>
+          index < this.#secondShown.length && this.#secondShown[index] !== card
+      )
+    ) {
+      this.#secondShown = [];
+
+      for (const slot of this.#secondSlots) {
+        slot.replaceChildren();
+      }
+    }
+
+    const start = this.#secondShown.length;
+
+    for (let index = start; index < board.length; index += 1) {
+      const slot = this.#secondSlots[index];
+      const card = board[index];
+
+      if (slot !== undefined && card !== undefined) {
+        const node = cardEl(card, geo.cardW, true);
+
+        slot.append(node);
+
+        if (animate) {
+          this.#dealToBoard(node, index, index - start, geo, geo.secondBoard);
+        }
+      }
+    }
+
+    this.#secondShown = [...board];
   }
 
   #renderHunt(snapshot: TableSnapshot, filled: number) {
@@ -2796,7 +2865,8 @@ export class NostakesTable extends HTMLElement {
   }
 
   #renderRuns(snapshot: TableSnapshot, geo: Geo) {
-    const [first = [], ...extra] = snapshot.boards;
+    const [first = [], ...runs] = snapshot.boards;
+    const extra = snapshot.doubleBoard ? [] : runs;
     const key = JSON.stringify([extra, Math.round(geo.w), Math.round(geo.h)]);
 
     if (this.#runs.dataset.key === key) {
@@ -2844,7 +2914,13 @@ export class NostakesTable extends HTMLElement {
     }
   }
 
-  #dealToBoard(node: HTMLDivElement, index: number, order: number, geo: Geo) {
+  #dealToBoard(
+    node: HTMLDivElement,
+    index: number,
+    order: number,
+    geo: Geo,
+    spots: readonly Pt[] = geo.board
+  ) {
     const wait = Math.max(0, this.#collectEndsAt - performance.now());
 
     if (this.#reduced) {
@@ -2859,7 +2935,7 @@ export class NostakesTable extends HTMLElement {
     }
 
     const delay = wait + order * 150;
-    const spot = geo.board[index] ?? geo.deck;
+    const spot = spots[index] ?? geo.deck;
     const from = { x: geo.deck.x - spot.x, y: geo.deck.y - spot.y };
     const face = node.querySelector<HTMLElement>(".face");
     const back = node.querySelector<HTMLElement>(".back");

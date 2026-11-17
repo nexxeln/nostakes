@@ -38,6 +38,7 @@ export interface Geo {
   readonly potStacked: boolean;
   readonly pot: Pt;
   readonly board: readonly Pt[];
+  readonly secondBoard: readonly Pt[];
   readonly cardW: number;
   readonly deck: Pt;
   readonly heroBet: Pt;
@@ -67,6 +68,66 @@ interface Track {
 }
 
 const BOARD_CARDS = 5;
+
+const SECOND_BOARD_CARD = 0.84;
+
+const BOARD_ROW_GAP = 4;
+
+const STRIP_PAD = 18;
+
+const DOUBLE_STRIP_PAD = 6;
+
+const BOARDS_APART = 16;
+
+const SIDE_BY_SIDE_SHARE = 1;
+
+const SIDE_BY_SIDE_CARDS = 2 * BOARD_CARDS + 2 * (BOARD_CARDS - 1) * 0.12;
+
+const boardCardW = (
+  cardW: number,
+  boards: BoardRows,
+  scale = SECOND_BOARD_CARD
+) => (boards === 2 ? Math.round(cardW * scale) : cardW);
+
+const SHORT_STRIP = { h: 590, scale: 0.56 };
+
+const TALL_STRIP = { h: 760, scale: SECOND_BOARD_CARD };
+
+const stackedScale = (h: number) =>
+  clamp(
+    SHORT_STRIP.scale +
+      ((h - SHORT_STRIP.h) * (TALL_STRIP.scale - SHORT_STRIP.scale)) /
+        (TALL_STRIP.h - SHORT_STRIP.h),
+    SHORT_STRIP.scale,
+    TALL_STRIP.scale
+  );
+
+const rowOf = (left: number, y: number, cardW: number, gap: number) =>
+  Array.from({ length: BOARD_CARDS }, (_, index) => ({
+    x: left + cardW / 2 + index * (cardW + gap),
+    y,
+  }));
+
+const boardsHigh = (cardW: number, boards: BoardRows) =>
+  boards * cardW * 1.4 + (boards - 1) * BOARD_ROW_GAP;
+
+const stackedBoards = (
+  left: number,
+  middle: number,
+  cardW: number,
+  gap: number,
+  boards: BoardRows
+) => {
+  const first = middle - (boardsHigh(cardW, boards) - cardW * 1.4) / 2;
+
+  return {
+    board: rowOf(left, first, cardW, gap),
+    secondBoard:
+      boards === 2
+        ? rowOf(left, first + cardW * 1.4 + BOARD_ROW_GAP, cardW, gap)
+        : [],
+  };
+};
 
 const CAPTION = 40;
 
@@ -339,7 +400,10 @@ const ITERATIONS = 8;
 
 type Spacing = "Column" | "Aside" | "AsideBelow" | "TopRow";
 
+export type BoardRows = 1 | 2;
+
 interface Room {
+  readonly boards: BoardRows;
   readonly cap: number;
   readonly tabW: number;
   readonly laneW: number;
@@ -445,6 +509,7 @@ interface Middle {
   readonly tile: number;
   readonly pts: readonly TrackPoint[];
   readonly board: readonly Pt[];
+  readonly secondBoard: readonly Pt[];
   readonly cardW: number;
   readonly pot: Pt;
   readonly strip: Box;
@@ -457,14 +522,19 @@ const stripMiddle = (
   sizes: ReturnType<typeof tallSizes>,
   heroTop: number,
   count: number,
-  cap: number,
-  round: number
+  room: Room,
+  h: number
 ): Middle => {
+  const { cap, round } = room;
   const { pad } = sizes;
   const cx = w / 2;
-  const cardW = sizes.stripCardW;
+  const cardW = boardCardW(sizes.stripCardW, room.boards, stackedScale(h));
   const gap = Math.max(5, cardW * 0.12);
-  const stripH = cardW * 1.4 + 18;
+
+  const stripH =
+    boardsHigh(cardW, room.boards) +
+    (room.boards === 2 ? DOUBLE_STRIP_PAD : STRIP_PAD);
+
   const stripY = heroTop - stripH + 4;
 
   const solved = solveStadium(
@@ -490,10 +560,7 @@ const stripMiddle = (
   };
 
   return {
-    board: Array.from({ length: BOARD_CARDS }, (_, index) => ({
-      x: boardX0 + cardW / 2 + index * (cardW + gap),
-      y: mid,
-    })),
+    ...stackedBoards(boardX0, mid, cardW, gap, room.boards),
     cardW,
     deck: { x: cx, y: stripY - 10 },
     interior,
@@ -504,30 +571,36 @@ const stripMiddle = (
   };
 };
 
-const ovalMiddle = (w: number, inside: Solved, cardW: number): Middle => {
+const ovalMiddle = (
+  w: number,
+  inside: Solved,
+  oneBoardCardW: number,
+  boards: BoardRows
+): Middle => {
   const cx = w / 2;
   const gap = 8;
+  const cardW = boardCardW(oneBoardCardW, boards);
   const boardW = cardW * BOARD_CARDS + gap * (BOARD_CARDS - 1);
   const yTop = TOP + inside.tile / 2 + 6;
   const yBottom = inside.t.pts[0]?.y ?? yTop;
+  const high = boardsHigh(cardW, boards);
 
   const midY =
     (yTop + inside.tile / 2 + CAPTION + yBottom) / 2 + inside.tile * 0.3;
 
-  const pot = { x: cx, y: midY - cardW * 0.7 - 40 };
+  const top = midY - high / 2;
+  const pot = { x: cx, y: top - 40 };
+  const rows = stackedBoards(cx - boardW / 2, midY, cardW, gap, boards);
 
   return {
-    board: Array.from({ length: BOARD_CARDS }, (_, index) => ({
-      x: cx - boardW / 2 + cardW / 2 + index * (cardW + gap),
-      y: midY,
-    })),
+    ...rows,
     cardW,
-    deck: { x: cx, y: midY - cardW * 0.7 - 10 },
-    interior: { x: cx, y: midY - cardW * 0.7 },
+    deck: { x: cx, y: top - 10 },
+    interior: { x: cx, y: top },
     pot,
     pts: inside.pts,
     strip: {
-      h: midY + cardW * 0.7 + 12 - (pot.y - 30),
+      h: midY + high / 2 + 12 - (pot.y - 30),
       w: boardW + 32,
       x: cx - boardW / 2 - 16,
       y: pot.y - 30,
@@ -809,11 +882,13 @@ const tallGeo = (w: number, h: number, count: number, room: Room): Geo => {
 
   const innerW = w - 2 * sizes.pad - 2 * inside.tile - 32;
   const cardInside = Math.min(76, (innerW - 32) / BOARD_CARDS);
-  const boardInStrip = sizes.compact || cardInside < 54 || count >= 6;
+
+  const boardInStrip =
+    sizes.compact || cardInside < 54 || count >= 6 || room.boards === 2;
 
   const middle = boardInStrip
-    ? stripMiddle(w, sizes, heroTop, count, room.cap, room.round)
-    : ovalMiddle(w, inside, cardInside);
+    ? stripMiddle(w, sizes, heroTop, count, room, h)
+    : ovalMiddle(w, inside, cardInside, room.boards);
 
   const railTop = Math.max(
     TOP + 40,
@@ -846,6 +921,7 @@ const tallGeo = (w: number, h: number, count: number, room: Room): Geo => {
           y: TOP + (middle.strip.y - TOP) * READOUT_DEPTH,
         }
       : { align: "right", x: chip.x - 170, y: (railTop + chip.y) / 2 - 40 },
+    secondBoard: middle.secondBoard,
     seats: spacedColumns(
       middle.pts,
       middle.tile,
@@ -1004,12 +1080,23 @@ const wideGeo = (
     y: oval.cy,
   };
 
-  const cardW = sizes.compact
+  const oneBoardCardW = sizes.compact
     ? clamp(table.ry * 0.36, 34, 44)
     : clamp(Math.min(table.rx * 0.16, table.ry * 0.36), 46, 92);
 
+  const cardW =
+    room.boards === 2
+      ? Math.min(
+          boardCardW(oneBoardCardW, 2),
+          Math.floor(
+            (table.rx * SIDE_BY_SIDE_SHARE - BOARDS_APART) / SIDE_BY_SIDE_CARDS
+          )
+        )
+      : oneBoardCardW;
+
   const gap = Math.max(5, cardW * 0.12);
-  const boardW = cardW * BOARD_CARDS + gap * (BOARD_CARDS - 1);
+  const rowW = cardW * BOARD_CARDS + gap * (BOARD_CARDS - 1);
+  const boardW = room.boards * rowW + (room.boards - 1) * BOARDS_APART;
   const potStacked = !sizes.compact && cardW * 1.2 >= POT_STACKED_MIN;
   const tabH = potHeight(potStacked, cardW);
   const boardY = oval.cy + (sizes.compact ? 6 : tile * 0.08) - lift;
@@ -1022,10 +1109,7 @@ const wideGeo = (
   const railTop = Math.max(TOP + 20, chip.y - 46 - railLength);
 
   return {
-    board: Array.from({ length: BOARD_CARDS }, (_, index) => ({
-      x: cx - boardW / 2 + cardW / 2 + index * (cardW + gap),
-      y: boardY,
-    })),
+    board: rowOf(cx - boardW / 2, boardY, cardW, gap),
     boardInStrip: false,
     caption: CAPTION,
     cardW,
@@ -1048,6 +1132,10 @@ const wideGeo = (
       x: chip.x - 170,
       y: (railTop + chip.y) / 2 - 30,
     },
+    secondBoard:
+      room.boards === 2
+        ? rowOf(cx - boardW / 2 + rowW + BOARDS_APART, boardY, cardW, gap)
+        : [],
     seats: oval.pts.map((p) => {
       const dx = cx - p.x;
       const dy = boardY - p.y;
@@ -2956,8 +3044,9 @@ interface TabPlace {
 const TAB_SHIFTS = [0, -0.25, 0.25, -0.5, 0.5] as const;
 
 export const boardCardsBox = (geo: Geo): Box => {
-  const xs = geo.board.map(({ x }) => x);
-  const ys = geo.board.map(({ y }) => y);
+  const cards = [...geo.board, ...geo.secondBoard];
+  const xs = cards.map(({ x }) => x);
+  const ys = cards.map(({ y }) => y);
   const halfW = geo.cardW / 2;
   const halfH = geo.cardW * 0.7;
 
@@ -4444,7 +4533,8 @@ export const computeGeo = (
   w: number,
   h: number,
   count: number,
-  most = DEFAULT_MOST
+  most = DEFAULT_MOST,
+  boards: BoardRows = 1
 ): Table => {
   const seated = Math.max(1, count);
   const wide = w > h * WIDE_RATIO;
@@ -4458,6 +4548,7 @@ export const computeGeo = (
 
   const today = laidOut(
     {
+      boards,
       cap: Number.POSITIVE_INFINITY,
       laneW: full,
       pileW: full,
@@ -4513,7 +4604,15 @@ export const computeGeo = (
     const pileW = pileWidthFor(most, compact);
     const laneW = Math.max(pileW, pileWidthFor(DEFAULT_MOST, compact));
 
-    return { cap, laneW, pileW, round, spacing, tabW: awardTabWidthFor(most) };
+    return {
+      boards,
+      cap,
+      laneW,
+      pileW,
+      round,
+      spacing,
+      tabW: awardTabWidthFor(most),
+    };
   };
 
   const restedAt = (attempt: Attempt) =>

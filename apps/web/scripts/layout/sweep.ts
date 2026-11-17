@@ -2,6 +2,7 @@ import { expect } from "@effect/vitest";
 import { Console, Effect } from "effect";
 
 import { computeGeo } from "../../src/client/table/layout.js";
+import type { BoardRows } from "../../src/client/table/layout.js";
 import {
   buttonsMisplaced,
   entryPlaced,
@@ -43,14 +44,15 @@ const problemsOn = (
   screen: Screen,
   others: number,
   sample: number,
-  amounts: readonly number[]
+  amounts: readonly number[],
+  boards: BoardRows
 ) => {
   const most = amounts[sample % amounts.length] ?? 9999;
-  const geo = computeGeo(screen.width, screen.height, others, most);
+  const geo = computeGeo(screen.width, screen.height, others, most, boards);
   const button = sample % (others + 1);
   const table = everyoneBetting(screen, others, button, sample % 2 === 0);
   const hint = hintPlaced(geo, screen);
-  const where = `${screen.width}x${screen.height}, ${others + 1} seats, up to ${most}, button ${button}`;
+  const where = `${screen.width}x${screen.height}, ${others + 1} seats, ${boards} board${boards === 1 ? "" : "s"}, up to ${most}, button ${button}`;
 
   return [
     ...laneProblemsOn({ ...table, most }, geo),
@@ -72,14 +74,21 @@ export const swept = (
   name: string,
   screens: readonly Screen[],
   seatings: readonly number[],
-  amounts: readonly number[]
+  amounts: readonly number[],
+  boards: BoardRows = 1
 ) =>
   Effect.gen(function* sweep() {
     const started = performance.now();
 
     const found = screens.flatMap((screen, at) =>
       seatings.flatMap((others) => {
-        const problems = problemsOn(screen, others, at + others, amounts);
+        const problems = problemsOn(
+          screen,
+          others,
+          at + others,
+          amounts,
+          boards
+        );
 
         return problems.length === 0 ? [] : [problems];
       })

@@ -1326,7 +1326,7 @@ const openingOf = (replay: Replay, facts: ReplayFacts, told: Told): Walk => {
     asked: "",
     beats: [],
     bets: new Map(),
-    boards: [[]],
+    boards: Array.from({ length: replay.boards }, () => []),
     folds: [],
     odds: null,
     pot: 0,
@@ -1598,7 +1598,7 @@ export const replayPlan = (replay: Replay, facts: ReplayFacts): ReplayPlan => {
   const timeline: { at: number; ms: number }[] = [];
 
   const draft: Draft = {
-    boards: [[]],
+    boards: Array.from({ length: replay.boards }, () => []),
     caption: [],
     facing: 0,
     focus: told.lead,

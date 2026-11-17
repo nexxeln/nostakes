@@ -23,3 +23,15 @@ it.live(
   "eight and nine seats hold on every second pixel of the narrowest wide tables",
   () => swept("narrowest wide", NARROWEST, FULLEST_TABLES, WIDEST_AMOUNT)
 );
+
+it.live(
+  "with a double board, eight and nine seats hold on every second pixel of the narrowest wide tables",
+  () =>
+    swept(
+      "narrowest wide, double board",
+      NARROWEST,
+      FULLEST_TABLES,
+      WIDEST_AMOUNT,
+      2
+    )
+);

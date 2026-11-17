@@ -91,6 +91,7 @@ const showdown: TableSnapshot = {
   boards: BOARDS.slice(0, boards),
   buttonSeat: 2,
   clock: null,
+  doubleBoard: false,
   entry: null,
   events: [],
   handId: 7,
@@ -553,6 +554,29 @@ const awardTo = (winner: number): readonly Happening[] => [
   Happenings.Win.make({ amount: RIVER_TOTAL, seat: winner }),
 ];
 
+const SECOND_BOARD = ["Ks", "5c", "Jd", "8s", "4h"];
+
+const doubled = (base: TableSnapshot): TableSnapshot => ({
+  ...base,
+  boards: [AFTER_BOARD, SECOND_BOARD],
+  doubleBoard: true,
+});
+
+const doubleBetting = doubled(riverOut(1 % players));
+
+const doubleShowdown = doubled(splitBetween([]));
+
+const boardAwards = (first: number, second: number): readonly Happening[] => [
+  ...shows([0, RIVER_WINNER]),
+  Happenings.Win.make({ amount: RIVER_TOTAL / 2, seat: first }),
+  Happenings.Say.make({ seat: first, text: "Board 1" }),
+  Happenings.Win.make({ amount: RIVER_TOTAL / 2, seat: second }),
+  Happenings.Say.make({
+    seat: second,
+    text: first === second ? "Both boards" : "Board 2",
+  }),
+];
+
 type HandStep = readonly [TableSnapshot, readonly Happening[], TableSnapshot?];
 
 const HAND_STEPS: readonly HandStep[] = [
@@ -617,11 +641,16 @@ const [handSnapshot, handTold, handFrom] = HAND_STEPS[handStep] ?? [
 
 const TOLD = new Map<string, readonly Happening[]>([
   ["bounty", bountyTold],
+  ["double-split", boardAwards(0, RIVER_WINNER)],
+  ["double-scoop", boardAwards(RIVER_WINNER, RIVER_WINNER)],
   ["hand", handTold],
 ]);
 
 const SCENES = new Map<string, TableSnapshot>([
   ["acting", acting],
+  ["double", doubleBetting],
+  ["double-split", doubleShowdown],
+  ["double-scoop", doubleShowdown],
   ["hand", handSnapshot],
   ["bounty", bountyPaid],
   ["after", afterHand([], false)],

@@ -169,6 +169,7 @@ export const TableSnapshotSchema = Schema.Struct({
   bigBlind: Schema.Int,
   boards: Schema.Array(Schema.Array(CardTextSchema)),
   buttonSeat: Schema.NullOr(Schema.Int),
+  doubleBoard: Schema.Boolean,
   clock: Schema.NullOr(ActionClockSchema),
   entry: Schema.NullOr(EntryOfferSchema),
   events: Schema.Array(TableEventSchema),

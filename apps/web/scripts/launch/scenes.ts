@@ -58,6 +58,7 @@ const tableOf = (change: Partial<TableSnapshot>): TableSnapshot => ({
   boards: [[]],
   buttonSeat: 0,
   clock: null,
+  doubleBoard: false,
   entry: null,
   events: [],
   handId: 12,

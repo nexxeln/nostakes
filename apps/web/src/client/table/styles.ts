@@ -151,7 +151,7 @@ export const tableCss = `
 }
 .felt-rules:active { translate: var(--press-1); box-shadow: var(--shadow-sheet-0); }
 .felt-rules:focus-visible { outline: 2px solid var(--color-ink); outline-offset: 2px; }
-.felt-rules.gone, .felt-extras.gone { display: none; }
+.felt-rules.gone, .felt-extras.gone, .slot.second.gone { display: none; }
 .felt-headline {
   font-family: var(--font-display); font-weight: var(--weight-display); font-variation-settings: var(--settings-display);
   font-size: clamp(var(--text-3), calc(var(--cw) * 0.42), var(--text-5)); letter-spacing: -0.01em; line-height: 1.1;

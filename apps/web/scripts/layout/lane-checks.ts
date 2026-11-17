@@ -28,6 +28,7 @@ import {
   ridingScale,
 } from "../../src/client/table/layout.js";
 import type {
+  BoardRows,
   Box,
   ButtonSpot,
   ButtonSpots,
@@ -185,6 +186,7 @@ export interface Screen {
 }
 
 export interface LaneTable {
+  readonly boards?: BoardRows;
   readonly button: number;
   readonly buttonFolded: boolean;
   readonly folded: readonly number[];
@@ -526,8 +528,8 @@ export const laneProblemsOn = (
     );
 
   const halfCard = { h: geo.cardW * 0.7, w: geo.cardW / 2 };
-  const cardXs = geo.board.map(({ x }) => x);
-  const cardYs = geo.board.map(({ y }) => y);
+  const cardXs = [...geo.board, ...geo.secondBoard].map(({ x }) => x);
+  const cardYs = [...geo.board, ...geo.secondBoard].map(({ y }) => y);
 
   const boardCards: Box = {
     h: Math.max(...cardYs) - Math.min(...cardYs) + halfCard.h * 2,
@@ -641,7 +643,8 @@ export const laneProblemsOf = (table: LaneTable) =>
       table.screen.width,
       table.screen.height,
       table.others,
-      table.most
+      table.most,
+      table.boards ?? 1
     )
   );
 
@@ -660,8 +663,12 @@ export const everyoneBetting = (
   screen,
 });
 
-export const everyOwnerProblems = (screen: Screen, others: number) => {
-  const geo = computeGeo(screen.width, screen.height, others, 9999);
+export const everyOwnerProblems = (
+  screen: Screen,
+  others: number,
+  boards: BoardRows = 1
+) => {
+  const geo = computeGeo(screen.width, screen.height, others, 9999, boards);
 
   return Array.from({ length: others + 1 }, (__, button) =>
     [false, true].flatMap((folded) =>
