@@ -4,6 +4,7 @@ import { REACTIONS } from "@nostakes/room";
 import type { Reaction } from "@nostakes/room";
 
 import { PEEK_REFRESH_MS, REACTION_GLYPHS } from "../../features/signals.js";
+import { whoosh } from "../../features/table/gag-sounds.js";
 import { showdownWords, showOffer } from "../../features/table/showing.js";
 import type { ShowOffer } from "../../features/table/showing.js";
 import { raiseDetents, raiseLadder } from "../../features/table/sizing.js";
@@ -28,6 +29,8 @@ import type {
 import { adoptEarlyProperties } from "../early-properties.js";
 import { Counter, formatChips } from "./counter.js";
 import { cardEl, el, svgEl, toggle } from "./dom.js";
+import { GAGS } from "./gags.js";
+import type { Mood } from "./gags.js";
 import {
   awardTabBox,
   clamp,
@@ -38,6 +41,7 @@ import {
   pileWidthFor,
   placeSeats,
   POST_TAG_WIDTHS,
+  reactionsGround,
   reactionsPlace,
   postTagBox,
   feltRulesBox,
@@ -61,8 +65,6 @@ import { paintAvatar } from "./markup.js";
 import { TableSound } from "./sound.js";
 import { Spring } from "./spring.js";
 import { tableCss } from "./styles.js";
-import { bump } from "./thrown.js";
-import type { Hit } from "./thrown.js";
 
 const FOLD_DISTANCE = 120;
 
@@ -668,7 +670,30 @@ const REACTION_RISE_MS = 1800;
 
 const REACTION_KEY = "e";
 
-const THROW_HIT: Hit = bump;
+const THROW_LIFT = 0.3;
+
+const THROW_SPIN = 240;
+
+const WHOOSH_STEP_MS = 50;
+
+const roomAround = (geo: Geo, centre: Pt, size: number) => {
+  const level = reactionsGround(geo).filter(
+    (box) => box.y < centre.y + size * 0.6 && box.y + box.h > centre.y - size
+  );
+
+  return {
+    left: Math.min(
+      centre.x,
+      ...level
+        .filter((box) => box.x + box.w <= centre.x)
+        .map((box) => centre.x - box.x - box.w)
+    ),
+    right: Math.min(
+      geo.w - centre.x,
+      ...level.filter((box) => box.x >= centre.x).map((box) => box.x - centre.x)
+    ),
+  };
+};
 
 const PICKER_NAVIGATION = new Set(["Enter", " ", "Tab"]);
 
@@ -682,8 +707,6 @@ const labelThrowable = (tile: Tile, info: SeatSnapshot) => {
     tile.root.setAttribute("aria-label", label);
   }
 };
-
-const THROW_ARC = 0.28;
 
 const throwMs = (from: Pt, to: Pt) =>
   Math.round(
@@ -861,6 +884,7 @@ export class NostakesTable extends HTMLElement {
   #pickerMore!: HTMLButtonElement;
   #pickerOpen = false;
   #pickerFor: number | null = null;
+  readonly #unprepared: Reaction[] = [...REACTIONS];
   #pressPeek = false;
   #hoverPeek = false;
   #keyPeek = false;
@@ -872,6 +896,7 @@ export class NostakesTable extends HTMLElement {
   #winner = -1;
   #heroWinUntil = 0;
   #heroGuttedUntil = 0;
+  #heroJoyUntil = 0;
   #hushBeat = 0;
   #lastTick = -1;
   readonly #taught = new Set<Hint>();
@@ -1278,43 +1303,54 @@ export class NostakesTable extends HTMLElement {
       return;
     }
 
-    const to = this.#tilePoint(target);
+    const gag = GAGS[shown.reaction];
     const size = target === this.#snap?.heroSeat ? geo.self.size : geo.tile;
+    const to = this.#tilePoint(target);
+    const glyph = REACTION_GLYPHS[shown.reaction];
 
     const landing = () => {
-      THROW_HIT.land({
-        at: to,
-        face: this.#faceOf(target),
-        fx: this.#fx,
-        glyph: REACTION_GLYPHS[shown.reaction],
-        reaction: shown.reaction,
-        reduced: this.#reduced,
-        size,
-      });
+      this.#sound.sample(shown.reaction, gag.sound);
+      this.#flinch(target, gag.mood, gag.moodMs);
+
+      const riseAfterMs = this.#reduced
+        ? 0
+        : gag.play({
+            at: to,
+            face: this.#faceOf(target),
+            fx: this.#fx,
+            glyph,
+            reaction: shown.reaction,
+            room: roomAround(geo, to, size),
+            size,
+          });
+
+      if (riseAfterMs !== null) {
+        this.#later.push({
+          at: performance.now() + riseAfterMs,
+          run: () => {
+            this.#rise(shown, to);
+          },
+        });
+      }
     };
 
     if (this.#reduced) {
       landing();
-      this.#rise(shown, to);
 
       return;
     }
 
     const duration = throwMs(from, to);
 
-    const node = el(
-      "div",
-      "reaction thrown",
-      this.#fx,
-      REACTION_GLYPHS[shown.reaction]
-    );
+    const node = el("div", "reaction thrown", this.#fx, glyph);
 
     node.dataset.reaction = shown.reaction;
     node.dataset.target = String(target);
 
-    const lift = Math.hypot(to.x - from.x, to.y - from.y) * THROW_ARC + 24;
+    const lift = Math.hypot(to.x - from.x, to.y - from.y) * THROW_LIFT + 24;
+
     const mid = { x: (from.x + to.x) / 2, y: Math.min(from.y, to.y) - lift };
-    const steps = 12;
+    const steps = 16;
 
     const frames: Keyframe[] = Array.from({ length: steps + 1 }, (_, index) => {
       const u = index / steps;
@@ -1324,23 +1360,61 @@ export class NostakesTable extends HTMLElement {
       return {
         offset: u,
         opacity: u < 0.08 ? u / 0.08 : 1,
-        transform: `translate(${x}px, ${y}px) translate(-50%, -50%) rotate(${u * 200}deg) scale(${0.7 + u * 0.4})`,
+        transform: `translate(${x}px, ${y}px) translate(-50%, -50%) rotate(${u * THROW_SPIN}deg) scale(${0.7 + u * 0.4})`,
       };
     });
 
-    this.#sound.toss(duration / 1000);
+    const whooshMs = Math.round(duration / WHOOSH_STEP_MS) * WHOOSH_STEP_MS;
+
+    this.#sound.sample(`whoosh:${whooshMs}`, () => whoosh(whooshMs / 1000));
 
     const flight = node.animate(frames, {
       duration,
-      easing: "cubic-bezier(.3,.1,.6,1)",
+      easing: "cubic-bezier(.4,0,.85,.75)",
       fill: "both",
     });
 
     flight.addEventListener("finish", () => {
       node.remove();
       landing();
-      this.#rise(shown, to);
     });
+  }
+
+  #prepareOneSound() {
+    const [next] = this.#unprepared;
+
+    if (
+      next !== undefined &&
+      this.#sound.prepare(next, GAGS[next].sound) !== null
+    ) {
+      this.#unprepared.shift();
+    }
+  }
+
+  #flinch(seat: number, expression: Mood, ms: number) {
+    const until = performance.now() + ms;
+
+    if (seat === this.#snap?.heroSeat) {
+      if (expression === "Happy") {
+        this.#heroJoyUntil = Math.max(this.#heroJoyUntil, until);
+      } else {
+        this.#heroGuttedUntil = Math.max(this.#heroGuttedUntil, until);
+      }
+
+      return;
+    }
+
+    const tile = this.#tiles.get(seat);
+
+    if (tile === undefined) {
+      return;
+    }
+
+    if (expression === "Happy") {
+      tile.joyUntil = Math.max(tile.joyUntil, until);
+    } else {
+      tile.surpriseUntil = Math.max(tile.surpriseUntil, until);
+    }
   }
 
   #rise(shown: TableSnapshot["reactions"][number], from: Pt) {
@@ -4484,6 +4558,7 @@ export class NostakesTable extends HTMLElement {
     this.#frameDealer(geo);
     this.#frameShowUntil(now);
     this.#placePicker();
+    this.#prepareOneSound();
     expireStatus(this.#selfStatus, now);
 
     for (const tile of this.#tiles.values()) {
@@ -4752,7 +4827,7 @@ export class NostakesTable extends HTMLElement {
         expressionFor({
           folded: me.status === "Folded" || me.status === "Out",
           gutted: this.#heroGuttedUntil > now,
-          happy: this.#heroWinUntil > now,
+          happy: this.#heroWinUntil > now || this.#heroJoyUntil > now,
           lookingDown: this.#peekOn || me.peeking,
           thinking: false,
         }),

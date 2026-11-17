@@ -283,7 +283,7 @@ const reactsWhileWatched = (page: Page, other: Page) =>
 
 const THROWN_FISH = `${TABLE} .reaction.thrown[data-reaction="Fish"]`;
 
-const RISING_FISH = `${TABLE} .reaction:not(.thrown)[data-reaction="Fish"]`;
+const SLAPPING_FISH = `${TABLE} .gag-glyph`;
 
 const landedOnOwnFace = (other: Page) =>
   attempt("measure where the fish landed", () =>
@@ -292,9 +292,7 @@ const landedOnOwnFace = (other: Page) =>
       const root = table?.shadowRoot;
       const face = root?.querySelector(".self .frame")?.getBoundingClientRect();
 
-      const fish = root?.querySelector<HTMLElement>(
-        '.reaction:not(.thrown)[data-reaction="Fish"]'
-      );
+      const fish = root?.querySelector<HTMLElement>(".gag-glyph");
 
       const host = table?.getBoundingClientRect();
 
@@ -332,8 +330,8 @@ const throwsWhileWatched = (page: Page, other: Page) =>
     yield* attempt("the other player sees a fish thrown at their face", () =>
       other.locator(THROWN_FISH).waitFor({ state: "attached", timeout: 5000 })
     );
-    yield* attempt("the fish lands and rises from their face", () =>
-      other.locator(RISING_FISH).waitFor({ state: "attached", timeout: 5000 })
+    yield* attempt("the fish lands and slaps their face", () =>
+      other.locator(SLAPPING_FISH).waitFor({ state: "attached", timeout: 5000 })
     );
 
     const away = yield* landedOnOwnFace(other);
@@ -341,7 +339,7 @@ const throwsWhileWatched = (page: Page, other: Page) =>
     yield* away > 0.5
       ? Effect.fail(
           new NightFailed({
-            detail: `it rose ${away.toFixed(2)} face widths from the centre of their own face`,
+            detail: `it slapped ${away.toFixed(2)} face widths from the centre of their own face`,
             step: "see the fish land on the right face",
           })
         )

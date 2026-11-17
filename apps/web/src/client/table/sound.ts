@@ -37,6 +37,8 @@ const CHORD = [
   [784, 0.24],
 ] as const;
 
+const SAMPLE_RATE = 48_000;
+
 const playTone = (voice: Voice, tone: Tone) => {
   const { ctx } = voice;
   const oscillator = ctx.createOscillator();
@@ -60,6 +62,7 @@ export class TableSound {
   #voice: Voice | null = null;
   #seed = 7;
   #on = true;
+  readonly #samples = new Map<string, AudioBuffer>();
 
   get on(): boolean {
     return this.#on;
@@ -215,26 +218,45 @@ export class TableSound {
     }
   }
 
-  toss(flightSeconds: number) {
+  prepared(key: string): boolean {
+    return this.#samples.has(key);
+  }
+
+  prepare(key: string, make: () => Float32Array): AudioBuffer | null {
     const voice = this.#ready();
 
     if (voice === null) {
+      return null;
+    }
+
+    const kept = this.#samples.get(key);
+
+    if (kept !== undefined) {
+      return kept;
+    }
+
+    const sound = make();
+    const buffer = voice.ctx.createBuffer(1, sound.length, SAMPLE_RATE);
+
+    buffer.copyToChannel(Float32Array.from(sound), 0);
+    this.#samples.set(key, buffer);
+
+    return buffer;
+  }
+
+  sample(key: string, make: () => Float32Array) {
+    const voice = this.#ready();
+    const buffer = this.prepare(key, make);
+
+    if (voice === null || buffer === null) {
       return;
     }
 
-    const now = voice.ctx.currentTime;
-    const landsAt = now + flightSeconds;
+    const source = voice.ctx.createBufferSource();
 
-    this.#burst(voice, {
-      at: now,
-      dur: flightSeconds,
-      freq: 500,
-      gain: 0.12,
-      q: 1.5,
-      sweepTo: 1800,
-    });
-    playTone(voice, { at: landsAt, dur: 0.08, from: 240, gain: 0.35, to: 110 });
-    this.#burst(voice, { at: landsAt, dur: 0.04, freq: 900, gain: 0.2, q: 2 });
+    source.buffer = buffer;
+    source.connect(voice.out);
+    source.start(voice.ctx.currentTime);
   }
 
   tick(strong = false) {
