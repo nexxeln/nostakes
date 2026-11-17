@@ -360,7 +360,10 @@ export const tableCss = `
 .reaction-choice:active { translate: var(--press-1); }
 .reaction-choice:focus-visible { outline: 2px solid var(--color-accent); }
 .reaction-choice.more { font-size: var(--text-3); font-weight: var(--weight-strong); }
-.reaction-key { display: none; position: absolute; right: 1px; bottom: 1px; font-size: 10px; line-height: 1; padding: 1px 3px; }
+.reaction-key {
+  display: none; position: absolute; right: 3px; bottom: 3px; min-width: 0; height: auto; padding: 0; box-shadow: none;
+  font: var(--weight-strong) 9px/1 var(--font-body); color: var(--color-ink-muted); pointer-events: none;
+}
 .reactions.keyed .reaction-key { display: block; }
 .self .frame { cursor: pointer; }
 
