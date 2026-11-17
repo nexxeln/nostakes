@@ -170,8 +170,12 @@ const voiceLabel = (room: InRoom, access: VoiceAccess, you: PlayerId) => {
     return { icon: "MicOff" as const, label: "Voice is out", pressed: false };
   }
 
-  if (access === "Listen" || voice.status.micBlocked) {
+  if (access === "Listen") {
     return { icon: "MicOff" as const, label: "Listening", pressed: false };
+  }
+
+  if (voice.status.micBlocked) {
+    return { icon: "MicOff" as const, label: "Mic blocked", pressed: false };
   }
 
   if (mutedForEveryone(voice.roster, you)) {
