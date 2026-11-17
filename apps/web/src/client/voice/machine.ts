@@ -3,7 +3,7 @@ import { createEffectEventStreamLogic, setupEffect } from "@xstate/effect";
 import { Effect, Option, Stream } from "effect";
 import { types } from "xstate";
 
-import { pullPlan } from "../../features/voice.js";
+import { inVoice, pullPlan } from "../../features/voice.js";
 import type { PullPlan } from "../../features/voice.js";
 import {
   closeLocally,
@@ -247,6 +247,24 @@ export const voiceMachine = () => {
 
             return { context: { micOpen: event.open } };
           },
+          Roster: ({ context, event }, enq) => {
+            if (
+              inVoice(context.roster, context.pass.player) &&
+              !inVoice(event.roster, context.pass.player)
+            ) {
+              return {
+                ...afterTrouble("Broken", context.failures),
+                context: {
+                  ...afterTrouble("Broken", context.failures).context,
+                  roster: event.roster,
+                },
+              };
+            }
+
+            enq.raise({ type: "SyncDue" });
+
+            return { context: { roster: event.roster } };
+          },
           Speaking: ({ event }) => ({ context: { speaking: event.players } }),
         },
         states: {
@@ -259,11 +277,6 @@ export const voiceMachine = () => {
               }
             },
             on: {
-              Roster: ({ event }, enq) => {
-                enq.raise({ type: "SyncDue" });
-
-                return { context: { roster: event.roster } };
-              },
               SyncDue: ({ context }) =>
                 Option.exists(context.session, (session) =>
                   hasWork(planOf(context, session))
