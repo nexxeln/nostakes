@@ -20,7 +20,7 @@
     <title>Poker hand rankings, best to worst · nostakes</title>
     <meta
       name="description"
-      content="Every poker hand from royal flush to high card, with pictures, how kickers break ties, and the mix-ups that start arguments at the table."
+      content="Every poker hand from royal flush to high card, with pictures, kickers, and the mix-ups that start arguments."
     />
     <link rel="canonical" href="https://nostakes.club/hand-rankings" />
     <meta property="og:type" content="article" />
@@ -63,274 +63,185 @@
         Best to worst: royal flush, straight flush, four of a kind, full house,
         flush, straight, three of a kind, two pair, one pair, high card.
       </p>
-      <p class="lede">
-        In Texas hold'em you make the best five-card hand you can from your two
-        cards and the five on the table. You may use both of your cards, one, or
-        none.
-      </p>
-
-      <section class="sheet">
-        <h2>The ten hands, best first</h2>
-        <p>
-          The figure under each hand is how often your two cards and a full
-          board make it, if you stay to the river.
-        </p>
-        <ol class="ranked">
-          <li>
-            <span class="cards" data-cards="As Ks Qs Js Ts"
-              >A&#9824;&#xFE0E; K&#9824;&#xFE0E; Q&#9824;&#xFE0E;
-              J&#9824;&#xFE0E; 10&#9824;&#xFE0E;</span
-            >
+      <div class="guide-body">
+        <article class="guide-main">
+          <section class="sheet">
+            <h2>The ten hands, best first</h2>
             <p>
-              <b>Royal flush.</b> Ace, king, queen, jack and ten, all one suit.
-              It is the best straight flush.
+              Make your best 5 cards from your 2 and the 5 on the table. The
+              figure is how often you make it if you see the river.
             </p>
-            <p class="often">0.003% of the time</p>
-          </li>
-          <li>
-            <span class="cards" data-cards="9h 8h 7h 6h 5h"
-              >9&#9829;&#xFE0E; 8&#9829;&#xFE0E; 7&#9829;&#xFE0E;
-              6&#9829;&#xFE0E; 5&#9829;&#xFE0E;</span
-            >
-            <p><b>Straight flush.</b> Five in a row, all one suit.</p>
-            <p class="often">0.03%</p>
-          </li>
-          <li>
-            <span class="cards" data-cards="Qs Qh Qd Qc 4s"
-              >Q&#9824;&#xFE0E; Q&#9829;&#xFE0E; Q&#9830;&#xFE0E;
-              Q&#9827;&#xFE0E; 4&#9824;&#xFE0E;</span
-            >
+            <ol class="ranked">
+              <li>
+                <span class="cards" data-cards="As Ks Qs Js Ts"
+                  >A&#9824;&#xFE0E; K&#9824;&#xFE0E; Q&#9824;&#xFE0E;
+                  J&#9824;&#xFE0E; 10&#9824;&#xFE0E;</span
+                >
+                <p><b>Royal flush.</b> Ace to ten, all one suit.</p>
+                <p class="often">0.003% of the time</p>
+              </li>
+              <li>
+                <span class="cards" data-cards="9h 8h 7h 6h 5h"
+                  >9&#9829;&#xFE0E; 8&#9829;&#xFE0E; 7&#9829;&#xFE0E;
+                  6&#9829;&#xFE0E; 5&#9829;&#xFE0E;</span
+                >
+                <p><b>Straight flush.</b> Five in a row, all one suit.</p>
+                <p class="often">0.03%</p>
+              </li>
+              <li>
+                <span class="cards" data-cards="Qs Qh Qd Qc 4s"
+                  >Q&#9824;&#xFE0E; Q&#9829;&#xFE0E; Q&#9830;&#xFE0E;
+                  Q&#9827;&#xFE0E; 4&#9824;&#xFE0E;</span
+                >
+                <p><b>Four of a kind.</b> All four of one rank. Quads.</p>
+                <p class="often">0.17%</p>
+              </li>
+              <li>
+                <span class="cards" data-cards="Ks Kh Kd 6c 6s"
+                  >K&#9824;&#xFE0E; K&#9829;&#xFE0E; K&#9830;&#xFE0E;
+                  6&#9827;&#xFE0E; 6&#9824;&#xFE0E;</span
+                >
+                <p>
+                  <b>Full house.</b> Three of one rank and two of another. A
+                  boat.
+                </p>
+                <p class="often">2.6%</p>
+              </li>
+              <li>
+                <span class="cards" data-cards="Ah Jh 8h 5h 2h"
+                  >A&#9829;&#xFE0E; J&#9829;&#xFE0E; 8&#9829;&#xFE0E;
+                  5&#9829;&#xFE0E; 2&#9829;&#xFE0E;</span
+                >
+                <p><b>Flush.</b> Five of one suit.</p>
+                <p class="often">3.0%</p>
+              </li>
+              <li>
+                <span class="cards" data-cards="9s 8d 7h 6c 5h"
+                  >9&#9824;&#xFE0E; 8&#9830;&#xFE0E; 7&#9829;&#xFE0E;
+                  6&#9827;&#xFE0E; 5&#9829;&#xFE0E;</span
+                >
+                <p><b>Straight.</b> Five in a row, any suits.</p>
+                <p class="often">4.6%</p>
+              </li>
+              <li>
+                <span class="cards" data-cards="8s 8h 8d Kc 3s"
+                  >8&#9824;&#xFE0E; 8&#9829;&#xFE0E; 8&#9830;&#xFE0E;
+                  K&#9827;&#xFE0E; 3&#9824;&#xFE0E;</span
+                >
+                <p>
+                  <b>Three of a kind.</b> Three of one rank. Trips, or a set
+                  with a pair in your hand.
+                </p>
+                <p class="often">4.8%</p>
+              </li>
+              <li>
+                <span class="cards" data-cards="Js Jd 4h 4c As"
+                  >J&#9824;&#xFE0E; J&#9830;&#xFE0E; 4&#9829;&#xFE0E;
+                  4&#9827;&#xFE0E; A&#9824;&#xFE0E;</span
+                >
+                <p><b>Two pair.</b> Two of one rank and two of another.</p>
+                <p class="often">23.5%</p>
+              </li>
+              <li>
+                <span class="cards" data-cards="Ts Th Ad 7c 4s"
+                  >10&#9824;&#xFE0E; 10&#9829;&#xFE0E; A&#9830;&#xFE0E;
+                  7&#9827;&#xFE0E; 4&#9824;&#xFE0E;</span
+                >
+                <p><b>One pair.</b> Two of one rank.</p>
+                <p class="often">43.8%</p>
+              </li>
+              <li>
+                <span class="cards" data-cards="As Jd 8h 6c 3s"
+                  >A&#9824;&#xFE0E; J&#9830;&#xFE0E; 8&#9829;&#xFE0E;
+                  6&#9827;&#xFE0E; 3&#9824;&#xFE0E;</span
+                >
+                <p>
+                  <b>High card.</b> Nothing matches. The highest card plays.
+                </p>
+                <p class="often">17.4%</p>
+              </li>
+            </ol>
+          </section>
+          <section class="sheet">
+            <h2>Ties and kickers</h2>
             <p>
-              <b>Four of a kind.</b> All four cards of one rank. Also called
-              quads.
+              Same hand? Compare the cards that make it, highest first. Still
+              tied? The other cards in your five are kickers, and they decide.
             </p>
-            <p class="often">0.17%</p>
-          </li>
-          <li>
-            <span class="cards" data-cards="Ks Kh Kd 6c 6s"
-              >K&#9824;&#xFE0E; K&#9829;&#xFE0E; K&#9830;&#xFE0E;
-              6&#9827;&#xFE0E; 6&#9824;&#xFE0E;</span
-            >
+            <div class="example">
+              <span class="label">Board</span
+              ><span class="cards" data-cards="Kh 9d 7c 4s 2h"
+                >K&#9829;&#xFE0E; 9&#9830;&#xFE0E; 7&#9827;&#xFE0E;
+                4&#9824;&#xFE0E; 2&#9829;&#xFE0E;</span
+              >
+            </div>
+            <div class="example">
+              <span class="label">You</span
+              ><span class="cards" data-cards="Ad Kc"
+                >A&#9830;&#xFE0E; K&#9827;&#xFE0E;</span
+              >
+            </div>
+            <div class="example">
+              <span class="label">Them</span
+              ><span class="cards" data-cards="Ks Qs"
+                >K&#9824;&#xFE0E; Q&#9824;&#xFE0E;</span
+              >
+            </div>
+            <p>Both of you have kings. Your ace beats their queen.</p>
             <p>
-              <b>Full house.</b> Three of one rank and two of another. Also
-              called a boat.
+              Only 5 cards play. If the board is your best five, everyone still
+              in plays it too, and the pot is split. Suits never break a tie.
+              When an exact tie leaves an odd chip, nostakes gives it to the
+              winner closest to the left of the button.
             </p>
-            <p class="often">2.6%</p>
-          </li>
-          <li>
-            <span class="cards" data-cards="Ah Jh 8h 5h 2h"
-              >A&#9829;&#xFE0E; J&#9829;&#xFE0E; 8&#9829;&#xFE0E;
-              5&#9829;&#xFE0E; 2&#9829;&#xFE0E;</span
-            >
-            <p><b>Flush.</b> Five of one suit, in any order.</p>
-            <p class="often">3.0%</p>
-          </li>
-          <li>
-            <span class="cards" data-cards="9s 8d 7h 6c 5h"
-              >9&#9824;&#xFE0E; 8&#9830;&#xFE0E; 7&#9829;&#xFE0E;
-              6&#9827;&#xFE0E; 5&#9829;&#xFE0E;</span
-            >
-            <p><b>Straight.</b> Five in a row, of any suits.</p>
-            <p class="often">4.6%</p>
-          </li>
-          <li>
-            <span class="cards" data-cards="8s 8h 8d Kc 3s"
-              >8&#9824;&#xFE0E; 8&#9829;&#xFE0E; 8&#9830;&#xFE0E;
-              K&#9827;&#xFE0E; 3&#9824;&#xFE0E;</span
-            >
+          </section>
+          <section class="sheet">
+            <h2>The mix-ups that start arguments</h2>
+            <ul>
+              <li><b>A flush beats a straight.</b> A full house beats both.</li>
+              <li>
+                <b>An ace can be low.</b> A-2-3-4-5 is the lowest straight.
+                Q-K-A-2-3 isn't a straight at all.
+                <div class="example">
+                  <span class="cards" data-cards="5c 4d 3h 2s Ac"
+                    >5&#9827;&#xFE0E; 4&#9830;&#xFE0E; 3&#9829;&#xFE0E;
+                    2&#9824;&#xFE0E; A&#9827;&#xFE0E;</span
+                  >
+                </div>
+              </li>
+              <li>
+                <b>Three pairs are still two pair.</b> Play the best two, and
+                the best card left is your kicker.
+              </li>
+              <li>
+                <b>Four to a flush is nothing.</b> It's a draw until the fifth
+                card comes.
+              </li>
+            </ul>
+          </section>
+        </article>
+        <aside class="guide-side">
+          <section class="sheet state">
+            <h2>Let the table read the hands</h2>
             <p>
-              <b>Three of a kind.</b> Three of one rank. Also called trips, or a
-              set when two of them are in your hand.
+              nostakes reads every showdown, names the hand, and pays the pot,
+              side pots included. Nobody argues about a kicker. New to this?
+              <a href="/learn">Play five short hands</a>.
             </p>
-            <p class="often">4.8%</p>
-          </li>
-          <li>
-            <span class="cards" data-cards="Js Jd 4h 4c As"
-              >J&#9824;&#xFE0E; J&#9830;&#xFE0E; 4&#9829;&#xFE0E;
-              4&#9827;&#xFE0E; A&#9824;&#xFE0E;</span
-            >
-            <p><b>Two pair.</b> Two cards of one rank and two of another.</p>
-            <p class="often">23.5%</p>
-          </li>
-          <li>
-            <span class="cards" data-cards="Ts Th Ad 7c 4s"
-              >10&#9824;&#xFE0E; 10&#9829;&#xFE0E; A&#9830;&#xFE0E;
-              7&#9827;&#xFE0E; 4&#9824;&#xFE0E;</span
-            >
-            <p><b>One pair.</b> Two cards of one rank.</p>
-            <p class="often">43.8%</p>
-          </li>
-          <li>
-            <span class="cards" data-cards="As Jd 8h 6c 3s"
-              >A&#9824;&#xFE0E; J&#9830;&#xFE0E; 8&#9829;&#xFE0E;
-              6&#9827;&#xFE0E; 3&#9824;&#xFE0E;</span
-            >
-            <p>
-              <b>High card.</b> Nothing matches. The highest card plays, then
-              the next.
-            </p>
-            <p class="often">17.4%</p>
-          </li>
-        </ol>
-        <p>
-          The order comes from five-card poker, where a rarer hand always ranks
-          higher. With seven cards to choose from, one pair and two pair come up
-          more often than no pair at all. The order stays the same.
-        </p>
-      </section>
-
-      <section class="sheet">
-        <h2>Ties and kickers</h2>
-        <p>
-          When two players have the same kind of hand, compare the cards that
-          make it, highest first. A pair of kings beats a pair of eights. If
-          those match too, compare the other cards in the five, highest first.
-          Those other cards are the kickers.
-        </p>
-        <div class="example">
-          <span class="label">Board</span
-          ><span class="cards" data-cards="Kh 9d 7c 4s 2h"
-            >K&#9829;&#xFE0E; 9&#9830;&#xFE0E; 7&#9827;&#xFE0E; 4&#9824;&#xFE0E;
-            2&#9829;&#xFE0E;</span
-          >
-        </div>
-        <div class="example">
-          <span class="label">You</span
-          ><span class="cards" data-cards="Ad Kc"
-            >A&#9830;&#xFE0E; K&#9827;&#xFE0E;</span
-          >
-        </div>
-        <div class="example">
-          <span class="label">Them</span
-          ><span class="cards" data-cards="Ks Qs"
-            >K&#9824;&#xFE0E; Q&#9824;&#xFE0E;</span
-          >
-        </div>
-        <p>
-          You both have a pair of kings. Your ace beats their queen, so you win.
-        </p>
-        <h3>What to compare, hand by hand</h3>
-        <dl>
-          <dt>Straight, straight flush</dt>
-          <dd>The top card of the straight. Nothing else counts.</dd>
-          <dt>Four of a kind</dt>
-          <dd>The rank of the four, then the fifth card.</dd>
-          <dt>Full house</dt>
-          <dd>
-            The three first, then the pair. Kings full of sixes beats queens
-            full of aces.
-          </dd>
-          <dt>Flush</dt>
-          <dd>The highest card, then the next, down through all five.</dd>
-          <dt>Three of a kind</dt>
-          <dd>The three, then the two kickers in order.</dd>
-          <dt>Two pair</dt>
-          <dd>The higher pair, then the lower pair, then the fifth card.</dd>
-          <dt>One pair</dt>
-          <dd>The pair, then the three kickers in order.</dd>
-          <dt>High card</dt>
-          <dd>All five cards, highest first.</dd>
-        </dl>
-        <h3>Only five cards play</h3>
-        <p>
-          A sixth card never breaks a tie. If your best five are the five on the
-          board, everyone still in can play them too, and the best you can do is
-          split.
-        </p>
-        <div class="example">
-          <span class="label">Board</span
-          ><span class="cards" data-cards="As Ad Kc Kh Qs"
-            >A&#9824;&#xFE0E; A&#9830;&#xFE0E; K&#9827;&#xFE0E; K&#9829;&#xFE0E;
-            Q&#9824;&#xFE0E;</span
-          >
-        </div>
-        <div class="example">
-          <span class="label">You</span
-          ><span class="cards" data-cards="Jc Td"
-            >J&#9827;&#xFE0E; 10&#9830;&#xFE0E;</span
-          >
-        </div>
-        <div class="example">
-          <span class="label">Them</span
-          ><span class="cards" data-cards="9s 2c"
-            >9&#9824;&#xFE0E; 2&#9827;&#xFE0E;</span
-          >
-        </div>
-        <p>
-          Both of you play aces and kings with a queen. Your jack is not in the
-          best five, so the pot is split.
-        </p>
-        <h3>Exact ties split the pot</h3>
-        <p>
-          When the best five cards are the same rank for rank, the pot is split
-          evenly. If it does not divide, groups give the odd chip in different
-          ways. nostakes gives it to the winner closest to the left of the
-          button.
-        </p>
-      </section>
-
-      <section class="sheet">
-        <h2>The mix-ups that start arguments</h2>
-        <h3>A flush beats a straight</h3>
-        <p>
-          Five of one suit is rarer than five in a row, so it ranks higher. A
-          full house beats both.
-        </p>
-        <h3>An ace can be low</h3>
-        <p>
-          The ace plays high or low in a straight. Ace to five is a straight,
-          the lowest one, and counts as five high. Ten to ace is the highest.
-        </p>
-        <div class="example">
-          <span class="cards" data-cards="5c 4d 3h 2s Ac"
-            >5&#9827;&#xFE0E; 4&#9830;&#xFE0E; 3&#9829;&#xFE0E; 2&#9824;&#xFE0E;
-            A&#9827;&#xFE0E;</span
-          >
-        </div>
-        <p>
-          A straight cannot go round the corner. Queen, king, ace, two, three is
-          not a straight.
-        </p>
-        <h3>Suits never break a tie</h3>
-        <p>
-          In hold'em no suit beats another. A flush in spades and a flush in
-          hearts are compared by their ranks alone, and if those match, the pot
-          is split.
-        </p>
-        <h3>Three pairs are still two pair</h3>
-        <p>
-          Seven cards can hold three pairs. You play the best two, and the best
-          card left over is your kicker.
-        </p>
-        <h3>Four to a flush is nothing</h3>
-        <p>
-          A flush or a straight needs all five cards. Four of them is a draw,
-          and at the showdown it counts as whatever else it makes.
-        </p>
-      </section>
-
-      <section class="sheet state">
-        <h2>Let the table read the hands</h2>
-        <p>
-          nostakes reads every hand at the showdown, names it, and pays the pot,
-          side pots and split pots included. Nobody at the table has to argue
-          about a kicker. New to the game?
-          <a href="/learn">Learn hold'em by playing five short hands</a>.
-        </p>
-        <a class="button" href="/">Open a room</a>
-      </section>
-
-      <nav class="guide-links" aria-label="Guides">
-        <h2>Guides</h2>
-        <ul class="guide-list">
-          <li><a href="/rules/seven-deuce">The seven-deuce game</a></li>
-          <li><a href="/rules/bomb-pot">Bomb pots</a></li>
-          <li><a href="/rules/run-it-twice">Running it twice</a></li>
-          <li><a href="/rules/straddle">The straddle</a></li>
-          <li><a href="/host-a-poker-night">Hosting a poker night</a></li>
-        </ul>
-      </nav>
-
+            <a class="button" href="/">Open a room</a>
+          </section>
+          <nav class="guide-links" aria-label="Guides">
+            <h2>Guides</h2>
+            <ul class="guide-list">
+              <li><a href="/rules/seven-deuce">The seven-deuce game</a></li>
+              <li><a href="/rules/bomb-pot">Bomb pots</a></li>
+              <li><a href="/rules/run-it-twice">Running it twice</a></li>
+              <li><a href="/rules/straddle">The straddle</a></li>
+              <li><a href="/host-a-poker-night">Hosting a poker night</a></li>
+            </ul>
+          </nav>
+        </aside>
+      </div>
       <footer class="reading-foot">
         <a href="/">Home</a>
         <a href="/learn">Learn to play</a>
