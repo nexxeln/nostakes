@@ -248,6 +248,7 @@ export {
   momentsCountingEveryBoard,
   momentsOf,
   nothingOfItsOwn,
+  namesTwoSeats,
   ranked,
 } from "./moments.js";
 

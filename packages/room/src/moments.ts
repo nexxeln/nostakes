@@ -1010,10 +1010,17 @@ const recognised = (
 
 const kindOrder = (moment: Moment) => MOMENT_KINDS.indexOf(moment._tag);
 
+export const namesTwoSeats = (moment: Moment) =>
+  new Set(moment.seats).size >= 2;
+
+const twoSeatsFirst = (moment: Moment) => (namesTwoSeats(moment) ? 0 : 1);
+
 export const ranked = (moments: readonly Moment[]): readonly Moment[] =>
   moments.toSorted(
     (left, right) =>
-      right.tier - left.tier || kindOrder(left) - kindOrder(right)
+      right.tier - left.tier ||
+      twoSeatsFirst(left) - twoSeatsFirst(right) ||
+      kindOrder(left) - kindOrder(right)
   );
 
 const momentsFrom = (

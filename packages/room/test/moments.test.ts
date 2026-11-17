@@ -1,9 +1,14 @@
 import { describe, expect, it } from "@effect/vitest";
-import { ShowdownEntries } from "@nostakes/engine";
+import {
+  ChipsSchema,
+  HandRankSchema,
+  SeatIndexSchema,
+  ShowdownEntries,
+} from "@nostakes/engine";
 import { Match, Schema } from "effect";
 import * as Arbitrary from "effect/Arbitrary";
 
-import { Moments, momentsOf } from "../src/index.js";
+import { Moments, momentsOf, ranked } from "../src/index.js";
 import type { SeenTableEvent } from "../src/index.js";
 import {
   feedFor,
@@ -107,4 +112,27 @@ describe("moments any device can compute", () => {
     },
     generated(20, 40)
   );
+});
+
+describe("the moment a hand leads with", () => {
+  it("is the one about two seats when a nut flush is also a cooler", () => {
+    const pot = ChipsSchema.make(1200);
+    const rank = HandRankSchema.make(2_400_000);
+    const winner = SeatIndexSchema.make(2);
+    const loser = SeatIndexSchema.make(4);
+
+    const [lead] = ranked([
+      Moments.BigHand({ pot, rank, seats: [winner], tier: 2 }),
+      Moments.Cooler({
+        pot,
+        rank,
+        seats: [loser, winner],
+        street: "River",
+        tier: 2,
+        winningRank: rank,
+      }),
+    ]);
+
+    expect(lead?._tag).toBe("Cooler");
+  });
 });
