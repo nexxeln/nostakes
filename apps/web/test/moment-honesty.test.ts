@@ -56,6 +56,7 @@ import {
   storyOf,
 } from "../src/features/moments/scene.js";
 import type { MomentPicture } from "../src/features/moments/schema.js";
+import { slipOf } from "../src/features/moments/slip.js";
 import type { SeatStack } from "../src/features/moments/watch.js";
 
 const handSeed = Arbitrary.schema(
@@ -491,7 +492,7 @@ const eachDevice = <A>(
 
 describe("a moment's picture and clip", () => {
   it.prop(
-    "never show a card face up that the table was not shown, on any device",
+    "never show a card face up that the table was not shown, in the picture, the slip, or the clip, on any device",
     { seed: handSeed },
     ({ seed }) => {
       expect(
@@ -499,8 +500,30 @@ describe("a moment's picture and clip", () => {
           const shown = shownBy(spectator);
           const { picture } = sceneFor(told, feed);
 
+          const slipped = Option.match(
+            slipOf(
+              {
+                callouts: "All",
+                deck: "TwoColour",
+                lastHand: told.lastHand,
+                people: told.people,
+                record: feed,
+                theme: "Light",
+              },
+              picture
+            ),
+            {
+              onNone: () => [],
+              onSome: (slip) => [
+                ...slip.streets.flatMap((street) => street.cards),
+                ...slip.players.flatMap((player) => player.cards),
+              ],
+            }
+          );
+
           return [
             ...pictured(picture),
+            ...slipped,
             ...faceUp(planFor(told, feed, seed)).map(({ card }) => card),
           ].filter((card) => !shown.has(card));
         }).flat()

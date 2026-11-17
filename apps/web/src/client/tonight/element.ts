@@ -1,15 +1,16 @@
-import { Effect } from "effect";
+import { Effect, Option } from "effect";
 
 import type { Deck, Theme } from "../../features/model.js";
 import { chipsText } from "../../features/moments/captions.js";
 import { pictureSvg } from "../../features/moments/picture.js";
 import type { MomentPicture } from "../../features/moments/picture.js";
+import { slipAloneSvg, slipOf, slipSvg } from "../../features/moments/slip.js";
 import { TONIGHT_TAG, tonightElement } from "../../features/tonight/element.js";
 import type { TonightMode } from "../../features/tonight/element.js";
 import { tonightSummary } from "../../features/tonight/words.js";
 import { adoptEarlyProperties } from "../early-properties.js";
 import { offer } from "../pictures/keeper.js";
-import { paintLabel, paintThumb } from "./markup.js";
+import { paintLabel, paintSvg, paintThumb } from "./markup.js";
 import { nightOf } from "./night.js";
 import type { Night, NightMoment, PictureKind } from "./night.js";
 
@@ -42,6 +43,12 @@ button.act.primary { background: var(--color-accent, #ef5326); color: var(--colo
 button.act:active { transform: translate(var(--press-1, 1px 1.8px)); }
 button.act[aria-disabled="true"] { opacity: 0.55; }
 .empty { color: var(--color-ink-muted, #716a79); }
+.open { all: unset; cursor: pointer; display: block; }
+.open:focus-visible { outline: 2px solid var(--color-accent, #ef5326); outline-offset: 2px; }
+.thumb { cursor: pointer; }
+li.detail { display: block; }
+li.detail .buttons { margin-bottom: var(--space-4, 16px); }
+.slip svg { display: block; width: 100%; max-width: 480px; height: auto; margin: 0 auto; }
 .kept { margin-top: var(--space-5, 24px); color: var(--color-ink-muted, #716a79); font-size: var(--text-1, 13px); }
 `;
 
@@ -74,6 +81,7 @@ class NostakesTonight extends HTMLElement {
   #theme: Theme = "Light";
   #deck: Deck = "TwoColour";
   #night: Night | null = null;
+  #opened: number | null = null;
   #unlisten: (() => void) | null = null;
   readonly #rows = new Map<
     number,
@@ -212,12 +220,19 @@ class NostakesTonight extends HTMLElement {
     );
 
     for (const moment of moments) {
-      night.drawPictures(moment.hand, ["Chat", "Story"], (kind, fonts) =>
-        pictureSvg(moment.scene.picture, {
-          ...this.#look(kind === "Story" ? "Story" : "Chat"),
-          fonts,
-        })
+      night.drawPictures(
+        moment.hand,
+        ["Chat", "Story", "Slip"],
+        (kind, fonts) => this.#pictureOf(moment, kind, fonts)
       );
+    }
+
+    const opened = moments.find((moment) => moment.hand === this.#opened);
+
+    if (opened !== undefined) {
+      this.#list.replaceChildren(this.#detail(opened));
+
+      return;
     }
 
     const items = moments.map((moment) => this.#row(night, moment));
@@ -232,6 +247,59 @@ class NostakesTonight extends HTMLElement {
         "No moments yet tonight. When a hand is worth talking about, it lands here.";
       this.#list.replaceChildren(empty);
     }
+  }
+
+  #pictureOf(moment: NightMoment, kind: PictureKind, fonts: string) {
+    const look = { ...this.#look(kind === "Story" ? "Story" : "Chat"), fonts };
+
+    if (kind !== "Slip") {
+      return pictureSvg(moment.scene.picture, look);
+    }
+
+    return Option.match(slipOf(moment.source, moment.scene.picture), {
+      onNone: () => pictureSvg(moment.scene.picture, look),
+      onSome: (slip) => slipSvg(slip, look),
+    });
+  }
+
+  #open(hand: number | null) {
+    this.#opened = hand;
+    this.#rows.clear();
+    this.#render();
+  }
+
+  #detail(moment: NightMoment): HTMLLIElement {
+    const item = document.createElement("li");
+
+    const back = actOf(null, "Back to tonight", false, () => {
+      this.#open(null);
+    });
+
+    item.className = "detail";
+    item.dataset.slip = String(moment.hand);
+
+    const paper = document.createElement("div");
+
+    paper.className = "slip";
+
+    Option.match(slipOf(moment.source, moment.scene.picture), {
+      onNone: () => {
+        paper.textContent = "This hand's record is not on this device.";
+      },
+      onSome: (slip) => {
+        paintSvg(paper, () =>
+          slipAloneSvg(slip, { deck: this.#deck, theme: this.#theme })
+        );
+      },
+    });
+
+    const buttons = document.createElement("div");
+
+    buttons.className = "buttons";
+    buttons.append(back, pictureButton(moment, "Slip", "Share the slip"));
+    item.append(buttons, paper);
+
+    return item;
   }
 
   #row(night: Night, moment: NightMoment): HTMLLIElement {
@@ -299,7 +367,19 @@ class NostakesTonight extends HTMLElement {
     who.className = "who";
     who.textContent = whoLine(picture);
 
-    body.append(tags, title, who);
+    const open = document.createElement("button");
+
+    open.type = "button";
+    open.className = "open";
+    open.setAttribute("aria-label", `Open the slip for hand ${moment.hand}`);
+    open.addEventListener("click", () => {
+      this.#open(moment.hand);
+    });
+    open.append(title);
+    thumb.addEventListener("click", () => {
+      this.#open(moment.hand);
+    });
+    body.append(tags, open, who);
 
     if (moment.clip.tag === "Making" || moment.clip.tag === "Queued") {
       const making = document.createElement("div");

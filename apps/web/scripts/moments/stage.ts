@@ -9,6 +9,11 @@ import { MOMENT_TAG } from "../../src/features/moments/element.js";
 import type { MomentHand } from "../../src/features/moments/element.js";
 import { pictureSvg } from "../../src/features/moments/picture.js";
 import { sceneOf } from "../../src/features/moments/scene.js";
+import {
+  slipAloneSvg,
+  slipOf,
+  slipSvg,
+} from "../../src/features/moments/slip.js";
 import { fileNameOf } from "../../src/features/pictures/paper.js";
 import type { KeptFrame } from "../../src/features/pictures/paper.js";
 import { TONIGHT_TAG } from "../../src/features/tonight/element.js";
@@ -169,6 +174,17 @@ if (root !== null) {
   if (view === "names") {
     if (root instanceof HTMLElement) {
       root.dataset.result = JSON.stringify(SAMPLE_NAMES);
+    }
+  } else if (view === "slip") {
+    const [name = "AcesCracked"] = (params.get("sample") ?? "").split("-");
+    const hand = replayHand(name, { deck, theme });
+    const slip = slipOf(hand, picture);
+
+    if (Option.isSome(slip)) {
+      root.innerHTML =
+        params.get("alone") === "true"
+          ? slipAloneSvg(slip.value, { deck, theme })
+          : slipSvg(slip.value, { deck, fonts: "", frame, theme });
     }
   } else if (view === "tonight") {
     tonight(root);
