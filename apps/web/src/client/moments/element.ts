@@ -1,13 +1,13 @@
-import type { SeatIndex } from "@nostakes/engine";
-import { Effect, Option } from "effect";
+import { Option } from "effect";
 
 import type { Deck, Theme } from "../../features/model.js";
-import type { ClipStyle } from "../../features/moments/clip-style.js";
 import { MOMENT_TAG, momentElement } from "../../features/moments/element.js";
-import type { MomentHand } from "../../features/moments/element.js";
+import type {
+  MomentHand,
+  TonightCount,
+} from "../../features/moments/element.js";
 import { NewestHand } from "../../features/moments/newest-hand.js";
 import type { MomentPicture } from "../../features/moments/picture.js";
-import { pictureSvg } from "../../features/moments/picture.js";
 import { shownMomentOf } from "../../features/moments/scene.js";
 import { BUZZES, FAMILIES, momentScore } from "../../features/moments/score.js";
 import {
@@ -18,15 +18,10 @@ import {
   transformOf,
 } from "../../features/moments/timeline.js";
 import type { Plan, Pose } from "../../features/moments/timeline.js";
-import { KEPT_FRAMES } from "../../features/pictures/paper.js";
-import type { KeptFrame } from "../../features/pictures/paper.js";
 import { adoptEarlyProperties } from "../early-properties.js";
-import { Keeper } from "../pictures/keeper.js";
-import { measureParts } from "./clip-measure.js";
-import type { PartBox } from "./clip-measure.js";
-import { rememberStyle, rememberedStyle } from "./clip-style.js";
-import type { Clipper, ClipMaking, ClipState } from "./clipper.js";
-import { paintPicture } from "./markup.js";
+import { nightOf } from "../tonight/night.js";
+import type { Night } from "../tonight/night.js";
+import { paintClipIt, paintPicture } from "./markup.js";
 import { noiseFor, perform, seededNoise } from "./synth.js";
 import type { Synth } from "./synth.js";
 
@@ -37,37 +32,22 @@ const STYLE = `
 .card svg { display: block; width: 100%; height: auto; overflow: visible; }
 .card .part { transform-box: fill-box; transform-origin: center; }
 .wrap { transform-origin: 50% 40%; }
-.keeping { position: absolute; left: 8px; right: 8px; top: 6px; display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; pointer-events: none; }
-.keeping button { pointer-events: auto; font: 700 var(--text-2, 15px)/1 var(--font-body, sans-serif); color: var(--color-raised-ink, #1f1c31); background: var(--color-raised, #fffdf8); border: 0; border-radius: var(--radius-3, 10px); padding: 8px 12px; box-shadow: var(--shadow-sheet-1); display: flex; gap: 6px; align-items: center; min-height: 36px; }
-.keeping button:active { transform: translate(var(--press-1, 1px 1.8px)); }
-.keeping b { color: var(--color-accent-ink, #d63a00); }
-.keeping .story, .keeping .clip, .keeping .hide, .keeping .style { color: var(--color-ink-muted, #716a79); font-weight: 600; padding: 8px 10px; }
-.keeping .style[aria-pressed="true"] { color: var(--color-on-accent, #fffaf3); background: var(--color-accent, #ef5326); }
-.keeping .break { display: none; }
-.keeping.carrying .break { display: block; flex-basis: 100%; height: 0; }
-.keeping .clip .hand { display: inline-block; max-width: 13em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: bottom; }
-.keeping .clip small { font: inherit; font-weight: 600; color: var(--color-ink-muted, #716a79); }
-.keeping:not(.lingering):not(.carrying) .hide, .keeping.lingering .keep, .keeping.lingering .story, .keeping.lingering .style, .keeping.carrying .style { display: none; }
-.keeping .clip[aria-busy="true"] { opacity: 0.8; }
-.gone, .keeping .gone { display: none; }
+.clip-it { position: absolute; left: 50%; bottom: 8px; transform: translateX(-50%); pointer-events: auto; font: 700 var(--text-2, 15px)/1 var(--font-body, sans-serif); color: var(--color-raised-ink, #1f1c31); background: var(--color-raised, #fffdf8); border: 0; border-radius: var(--radius-3, 10px); padding: 10px 14px; min-height: 44px; box-shadow: var(--shadow-sheet-1); display: flex; gap: 8px; align-items: center; }
+.clip-it:active { transform: translate(-50%, 0) translate(var(--press-1, 1px 1.8px)); }
+.clip-it svg { width: 16px; height: 16px; }
+.clip-it[aria-pressed="true"] { color: var(--color-ink-muted, #716a79); }
+.gone { display: none; }
 `;
 
-const KEEP_MS = 25_000;
-
-const READY_HOLD_MS = 15_000;
-
-const MAKING: ReadonlySet<ClipState> = new Set([
-  "Asked",
-  "Checking",
-  "Making",
-  "Waiting",
-]);
+const CLIP_IT_MS = 9000;
 
 const ENTRY_MS = 1400;
 
 const STILL: Keyframe[] = [{ opacity: "1" }, { opacity: "1" }];
 
 const FLOOR_GAP = 6;
+
+const NOISE_SEED = 7;
 
 const keyframesOf = (length: number, pose: (ms: number) => Pose): Keyframe[] =>
   samplesOf(length).map((ms) => {
@@ -80,69 +60,11 @@ const keyframesOf = (length: number, pose: (ms: number) => Pose): Keyframe[] =>
     };
   });
 
-const NOISE_SEED = 7;
-
-const madeText = (making: ClipMaking) => {
-  const percent = Math.floor(making.made * 100);
-
-  return percent > 0 ? ` ${percent}%` : "…";
-};
-
-const styleText = (making: ClipMaking) =>
-  making.style === "Drift" ? "Drift" : "clip";
-
-const clipLabel = (
-  state: ClipState,
-  making: ClipMaking | null,
-  told: boolean
-): string => {
-  if (state === "Failed") {
-    return "Clip failed. Try again";
-  }
-
-  if (state === "Share") {
-    return "Share clip";
-  }
-
-  if (making === null || state === "Ready") {
-    return "Clip";
-  }
-
-  return told || state === "Asked"
-    ? `Making ${styleText(making)}${madeText(making)}`
-    : "Clip";
-};
-
-const driftLabel = (making: ClipMaking | null, owed: boolean) =>
-  making !== null && owed
-    ? `Making ${styleText(making)}${madeText(making)}`
-    : "Drift";
-
-const carriedLabel = (
-  state: ClipState,
-  making: ClipMaking | null
-): readonly [string, string] => {
-  if (state === "Failed") {
-    return ["Try again: ", ""];
-  }
-
-  return making === null || state === "Share" || state === "Ready"
-    ? ["Share ", ""]
-    : ["Making ", madeText(making)];
-};
-
-type Tab = "Card" | "Closed" | "Lingering" | "Offered";
-
-export interface SceneStory {
-  readonly hand: MomentHand;
-  readonly seats: readonly SeatIndex[];
-}
-
-export interface MomentScene {
+interface ShownScene {
   readonly deck: Deck;
+  readonly hand: number;
   readonly id: string;
   readonly picture: MomentPicture;
-  readonly story?: SceneStory;
   readonly theme: Theme;
 }
 
@@ -166,35 +88,23 @@ const idle = (work: () => void) => {
 class NostakesMoment extends HTMLElement {
   readonly #root: ShadowRoot;
   readonly #card: HTMLDivElement;
-  readonly #keeping: HTMLDivElement;
-  readonly #keep: HTMLButtonElement;
-  readonly #story: HTMLButtonElement;
-  readonly #clip: HTMLButtonElement;
-  readonly #hide: HTMLButtonElement;
-  readonly #drift: HTMLButtonElement;
-  #style: ClipStyle = rememberedStyle();
-  #keeper: Keeper | null = null;
-  #clipper: Clipper | null = null;
-  #carrying = false;
-  #tab: Tab = "Closed";
-  #measured: {
-    readonly boxes: readonly PartBox[];
-    readonly id: string;
-  } | null = null;
-  #clipLive = false;
+  readonly #clipIt: HTMLButtonElement;
   readonly #motion = globalThis.matchMedia("(prefers-reduced-motion: reduce)");
-  #scene: MomentScene | null = null;
+  #scene: ShownScene | null = null;
   readonly #newest = new NewestHand<MomentHand>(handKey, idle, (hand) => {
     this.#consider(hand);
   });
   #shownId = "";
   #sound = false;
   #dealing = false;
+  #room = "";
+  #night: Night | null = null;
+  #unlisten: (() => void) | null = null;
   #synth: Synth | null = null;
   readonly #random = seededNoise(NOISE_SEED);
   #holding: Animation | null = null;
-  #offered: Animation | null = null;
-  #released: Animation | null = null;
+  #offering: Animation | null = null;
+  #told = "";
 
   constructor() {
     super();
@@ -207,100 +117,77 @@ class NostakesMoment extends HTMLElement {
     this.#card.addEventListener("click", () => {
       this.#leave();
     });
-    this.#keeping = document.createElement("div");
-    this.#keeping.className = "keeping gone";
-    this.#keep = this.#keepButton("keep", "Chat");
-    this.#story = this.#keepButton("story", "Story");
-    this.#story.textContent = "Story";
-    this.#story.title = "A tall picture for a story";
-    this.#clip = document.createElement("button");
-    this.#clip.className = "clip gone";
-    this.#clip.type = "button";
-    this.#clip.textContent = "Clip";
-    this.#clip.title = "A short clip of the moment with its sound";
-    this.#clip.addEventListener("click", () => {
-      this.#clipper?.keep();
+    this.#clipIt = document.createElement("button");
+    this.#clipIt.type = "button";
+    this.#clipIt.className = "clip-it gone";
+    this.#clipIt.addEventListener("click", () => {
+      this.#askClip();
     });
-    this.#hide = document.createElement("button");
-    this.#hide.className = "hide";
-    this.#hide.type = "button";
-    this.#hide.textContent = "Hide";
-    this.#hide.title = "Stop making the clip";
-    this.#hide.addEventListener("click", () => {
-      if (this.#carrying && this.#tab === "Offered") {
-        this.#dropClip();
-        this.#offerOwn();
-        this.#render();
-
-        return;
-      }
-
-      this.#closeKeeping();
-      this.#dropClip();
-    });
-    this.#drift = document.createElement("button");
-    this.#drift.className = "style gone";
-    this.#drift.type = "button";
-    this.#drift.textContent = "Drift";
-    this.#drift.title = "Cut the clip fast, to loud music";
-    this.#drift.setAttribute("aria-pressed", String(this.#style === "Drift"));
-    this.#drift.addEventListener("click", () => {
-      this.#restyle(this.#style === "Drift" ? "Broadcast" : "Drift");
-    });
-    const lineBreak = document.createElement("span");
-
-    lineBreak.className = "break";
-    this.#keeping.append(
-      this.#keep,
-      this.#story,
-      lineBreak,
-      this.#clip,
-      this.#drift,
-      this.#hide
-    );
-    this.#root.append(style, this.#card, this.#keeping);
+    this.#root.append(style, this.#card, this.#clipIt);
     adoptEarlyProperties(this, momentElement.properties);
   }
 
   connectedCallback() {
     globalThis.addEventListener("pointerdown", this.#unlock, { passive: true });
+    this.#attach();
   }
 
   disconnectedCallback() {
     globalThis.removeEventListener("pointerdown", this.#unlock);
     this.#holding?.cancel();
-    this.#offered?.cancel();
-    this.#released?.cancel();
-    this.#keeper?.drop();
-    this.#dropClip();
+    this.#offering?.cancel();
+    this.#unlisten?.();
+    this.#unlisten = null;
   }
 
-  #keepButton(name: string, frame: KeptFrame) {
-    const button = document.createElement("button");
+  get room(): string {
+    return this.#room;
+  }
 
-    button.className = name;
-    button.type = "button";
-    button.addEventListener("click", () => {
-      this.#keepAs(frame);
+  set room(next: string) {
+    if (next === this.#room) {
+      return;
+    }
+
+    this.#room = next;
+    this.#unlisten?.();
+    this.#unlisten = null;
+    this.#night = null;
+    this.#attach();
+  }
+
+  #attach() {
+    if (
+      this.#room.length === 0 ||
+      !this.isConnected ||
+      this.#unlisten !== null
+    ) {
+      return;
+    }
+
+    const night = nightOf(this.#room);
+
+    this.#night = night;
+    night.hold(this.#dealing);
+    this.#unlisten = night.listen(() => {
+      this.#tellCount(night);
+      this.#renderClipIt();
     });
 
-    return button;
+    const { hand } = this.#newest;
+
+    if (hand !== null) {
+      night.saw(hand);
+    }
   }
 
-  #restyle(style: ClipStyle) {
-    this.#style = style;
-    rememberStyle(style);
-    this.dataset.style = style;
-    this.#drift.setAttribute("aria-pressed", String(style === "Drift"));
-    this.#clipper?.restyle(style);
-  }
+  #tellCount(night: Night) {
+    const count: TonightCount = { making: night.making, ready: night.ready };
+    const told = `${count.ready}:${count.making}`;
 
-  #keepAs(frame: KeptFrame) {
-    const keeper = this.#keeper;
-
-    if (keeper !== null) {
-      this.dataset.keeping = frame;
-      keeper.keep(frame);
+    if (told !== this.#told) {
+      this.#told = told;
+      this.dispatchEvent(new CustomEvent("tonight", { detail: count }));
     }
   }
 
@@ -313,20 +200,27 @@ class NostakesMoment extends HTMLElement {
   }
 
   #consider(hand: MomentHand) {
+    this.#night?.look({
+      calm: this.#motion.matches,
+      deck: hand.deck,
+      theme: hand.theme,
+    });
+    this.#night?.saw(hand);
+
     const found = shownMomentOf(hand);
 
     if (Option.isSome(found)) {
-      this.present({
+      this.#present({
         deck: hand.deck,
+        hand: hand.lastHand.handNumber,
         id: found.value.id,
         picture: found.value.picture,
-        story: { hand, seats: found.value.seats },
         theme: hand.theme,
       });
     }
   }
 
-  present(scene: MomentScene) {
+  #present(scene: ShownScene) {
     if (scene.id === this.#shownId) {
       return;
     }
@@ -334,35 +228,6 @@ class NostakesMoment extends HTMLElement {
     this.#scene = scene;
     this.#shownId = scene.id;
     this.dataset.moment = scene.id;
-    this.#keeper?.drop();
-    delete this.dataset.drawn;
-    this.#keeper = new Keeper(
-      {
-        svg: (frame, fonts) =>
-          pictureSvg(scene.picture, {
-            deck: scene.deck,
-            fonts,
-            frame,
-            theme: scene.theme,
-          }),
-        title: scene.picture.title,
-      },
-      (frames) => {
-        this.dataset.drawn = frames.join(" ");
-      }
-    );
-    this.#keeper.prepare(KEPT_FRAMES);
-
-    if (this.#clipper?.owed === true) {
-      this.#carrying = true;
-    } else {
-      this.#dropClip();
-    }
-
-    this.#measured = null;
-    this.#released?.cancel();
-    this.#released = null;
-    this.#clipLive = true;
     this.#show(scene);
   }
 
@@ -381,251 +246,72 @@ class NostakesMoment extends HTMLElement {
   set dealing(next: boolean) {
     if (next && !this.#dealing) {
       this.#leave();
+      this.#closeClipIt();
     }
 
-    this.#clipper?.hold(next);
-
-    if (!next && this.#dealing && this.#clipLive) {
-      this.#clipper?.prepare();
-    }
-
+    this.#night?.hold(next);
     this.#dealing = next;
-    this.#render();
   }
 
-  #dropClip() {
-    this.#clipper?.drop();
-    this.#clipper = null;
-    this.#carrying = false;
-    this.#clip.className = "clip gone";
-    this.#drift.className = "style gone";
-    delete this.dataset.clip;
-    delete this.dataset.carrying;
-  }
-
-  #offerOwn() {
+  #askClip() {
     const scene = this.#scene;
-    const measured = this.#measured;
 
-    if (
-      scene !== null &&
-      measured !== null &&
-      measured.id === scene.id &&
-      this.#clipper === null &&
-      this.#tab === "Offered"
-    ) {
-      this.#offerClip(scene, measured.boxes);
-    }
-  }
-
-  #storyNow(scene: MomentScene): SceneStory | null {
-    const { story } = scene;
-    const latest = this.#newest.hand;
-
-    if (story === undefined) {
-      return null;
-    }
-
-    return latest !== null &&
-      latest.notes !== undefined &&
-      handKey(latest) === handKey(story.hand)
-      ? { ...story, hand: { ...story.hand, notes: latest.notes } }
-      : story;
-  }
-
-  #offerClip(scene: MomentScene, boxes: readonly PartBox[]) {
-    idle(() => {
-      Effect.runFork(
-        Effect.promise(() => import("./clipper.js")).pipe(
-          Effect.flatMap(({ Clipper: Made }) =>
-            Effect.sync(() => {
-              this.#adoptClipper(
-                scene,
-                () =>
-                  new Made(
-                    scene.picture,
-                    {
-                      boxes,
-                      calm: this.#motion.matches,
-                      look: { deck: scene.deck, theme: scene.theme },
-                      story: this.#storyNow(scene),
-                      svg: (frame) =>
-                        pictureSvg(scene.picture, {
-                          deck: scene.deck,
-                          fonts: "",
-                          frame,
-                          theme: scene.theme,
-                        }),
-                    },
-                    {
-                      changed: (state) => {
-                        this.#showClip(state);
-                      },
-                      style: this.#style,
-                    }
-                  )
-              );
-            })
-          )
-        )
-      );
-    });
-  }
-
-  #adoptClipper(scene: MomentScene, made: () => Clipper) {
-    if (this.#shownId !== scene.id || this.#clipper !== null) {
+    if (scene === null || this.#night === null) {
       return;
     }
 
-    const clipper = made();
-
-    this.#clipper = clipper;
-    clipper.hold(this.#dealing);
-    clipper.start(this.#clipLive && !this.#dealing);
+    this.#night.ask(scene.hand);
+    this.dataset.asked = String(scene.hand);
+    this.#renderClipIt();
   }
 
-  #showClip(state: ClipState) {
-    const clipper = this.#clipper;
+  #renderClipIt() {
+    const scene = this.#scene;
+    const night = this.#night;
 
     if (
-      this.#carrying &&
-      clipper !== null &&
-      !clipper.owed &&
-      this.#tab === "Offered"
+      scene === null ||
+      night === null ||
+      this.#clipIt.classList.contains("gone")
     ) {
-      this.#dropClip();
-      this.#offerOwn();
-    } else if (this.#tab === "Lingering" && state === "Unavailable") {
-      this.#closeKeeping();
+      return;
     }
 
-    this.#render();
-  }
+    const moment = night.moments.find((each) => each.hand === scene.hand);
+    const clip = moment?.clip.tag ?? "Idle";
 
-  #render() {
-    const tab = this.#tab;
-    const lingering = tab === "Lingering";
-    const shown = tab === "Offered" || (lingering && !this.#dealing);
+    const taken =
+      moment?.asked === true || moment?.auto === true || clip !== "Idle";
 
-    this.#keeping.className = [
-      "keeping",
-      ...(lingering ? ["lingering"] : []),
-      ...(this.#carrying ? ["carrying"] : []),
-      ...(shown ? [] : ["gone"]),
-    ].join(" ");
-    this.#flag("lingering", lingering);
-    this.#flag("carrying", this.#carrying);
-
-    const clipper = this.#clipper;
-
-    if (clipper !== null) {
-      this.#renderClip(clipper, lingering);
-    }
-  }
-
-  #flag(name: string, on: boolean) {
-    if (on) {
-      this.setAttribute(`data-${name}`, "true");
-    } else {
-      this.removeAttribute(`data-${name}`);
-    }
-  }
-
-  #labelClip(
-    clipper: Clipper,
-    seen: {
-      readonly finished: boolean;
-      readonly lingering: boolean;
-      readonly told: boolean;
-    }
-  ) {
-    const { making, state } = clipper;
-
-    if (this.#carrying) {
-      const [before, after] = carriedLabel(state, making);
-      const hand = document.createElement("span");
-
-      hand.className = "hand";
-      hand.textContent = clipper.title;
-      this.#clip.replaceChildren(before, hand, after);
+    if (clip === "Unavailable") {
+      this.#closeClipIt();
 
       return;
     }
 
-    this.#clip.textContent = clipLabel(state, making, seen.told);
-
-    if (seen.finished && making !== null && seen.lingering) {
-      const note = document.createElement("small");
-
-      note.textContent = ` · ${driftLabel(making, true)}`;
-      this.#clip.append(note);
-    }
+    this.#clipIt.setAttribute("aria-pressed", String(taken));
+    paintClipIt(this.#clipIt, taken);
   }
 
-  #renderClip(clipper: Clipper, lingering: boolean) {
-    const { making, owed, state } = clipper;
-    const told = lingering || this.#carrying || owed;
-    const finished = state === "Ready" || state === "Share";
+  #offerClipIt() {
+    this.#offering?.cancel();
 
-    this.dataset.clip = state;
-    this.dataset.style = this.#style;
-
-    if (making === null) {
-      delete this.dataset.made;
-    } else {
-      this.dataset.made = String(Math.floor(making.made * 100));
-    }
-
-    this.#clip.className =
-      state === "Unavailable" || state === "Checking" ? "clip gone" : "clip";
-    this.#drift.className =
-      clipper.offersDrift && state !== "Unavailable" ? "style" : "style gone";
-    this.#drift.textContent = driftLabel(finished ? making : null, owed);
-
-    this.#labelClip(clipper, { finished, lingering, told });
-
-    this.#clip.title = this.#carrying
-      ? `A clip of ${clipper.title}`
-      : "A short clip of the moment with its sound";
-    this.#clip.disabled = state === "Asked";
-    this.#clip.setAttribute(
-      "aria-busy",
-      String(making !== null && (state === "Asked" || told))
-    );
-
-    if (lingering && !owed && !MAKING.has(state) && this.#released === null) {
-      this.#released = this.#keeping.animate(STILL, {
-        duration: READY_HOLD_MS,
-      });
-      this.#released.onfinish = () => {
-        this.#closeKeeping();
-      };
-    }
-  }
-
-  #offerEnded() {
-    const clipper = this.#clipper;
-
-    if (
-      clipper !== null &&
-      (clipper.owed || (this.#clipLive && MAKING.has(clipper.state)))
-    ) {
-      this.#tab = "Lingering";
-      this.#render();
-
+    if (this.#dealing || this.#night?.clipsAvailable === false) {
       return;
     }
 
-    this.#closeKeeping();
+    this.#clipIt.className = "clip-it";
+    this.#renderClipIt();
+    this.#offering = this.#clipIt.animate(STILL, { duration: CLIP_IT_MS });
+    this.#offering.onfinish = () => {
+      this.#closeClipIt();
+    };
   }
 
-  #closeKeeping() {
-    this.#tab = "Closed";
-    this.#released?.cancel();
-    this.#released = null;
-    this.#clipLive = false;
-    this.#clipper?.abandon();
-    this.#render();
+  #closeClipIt() {
+    this.#offering?.cancel();
+    this.#offering = null;
+    this.#clipIt.className = "clip-it gone";
   }
 
   readonly #unlock = () => {
@@ -698,7 +384,7 @@ class NostakesMoment extends HTMLElement {
     );
   }
 
-  #show(scene: MomentScene) {
+  #show(scene: ShownScene) {
     const { picture } = scene;
     const family = FAMILIES[picture.kind];
     const plan = planFor(family, picture.tier);
@@ -707,7 +393,6 @@ class NostakesMoment extends HTMLElement {
     const still = this.#motion.matches;
 
     this.#holding?.cancel();
-    this.#offered?.cancel();
     this.#fit();
     this.#card.className = small ? "card small" : "card";
     paintPicture(this.#card, picture, {
@@ -716,9 +401,8 @@ class NostakesMoment extends HTMLElement {
       frame: "Table",
       theme: scene.theme,
     });
-    this.#tab = "Card";
-    this.#render();
     this.#play(picture);
+    this.#offerClipIt();
 
     const holding =
       this.#card
@@ -731,7 +415,7 @@ class NostakesMoment extends HTMLElement {
         ) ?? null;
 
     if (!still) {
-      this.#animateParts(scene, plan);
+      this.#animateParts(picture, plan);
     }
 
     if (holding !== null) {
@@ -743,9 +427,8 @@ class NostakesMoment extends HTMLElement {
     this.#holding = holding;
   }
 
-  #animateParts(scene: MomentScene, plan: Plan) {
-    const { kind, tier } = scene.picture;
-    const family = FAMILIES[kind];
+  #animateParts(picture: MomentPicture, plan: Plan) {
+    const family = FAMILIES[picture.kind];
     const entry = Math.min(plan.hold, ENTRY_MS);
 
     for (const part of this.#card.querySelectorAll<SVGGElement>(
@@ -755,39 +438,20 @@ class NostakesMoment extends HTMLElement {
       const index = Number(part.dataset.index ?? "0");
 
       part.animate(
-        keyframesOf(entry, (ms) => partPose(role, index, ms, family, tier)),
+        keyframesOf(entry, (ms) =>
+          partPose(role, index, ms, family, picture.tier)
+        ),
         { duration: entry, fill: "both" }
       );
     }
   }
 
-  #settle(scene: MomentScene) {
-    const drawn = this.#card.querySelector("svg");
-
-    const boxes =
-      drawn === null || this.#shownId !== scene.id ? [] : measureParts(drawn);
-
+  #settle(scene: ShownScene) {
     this.#card.className = "card gone";
 
     if (this.#shownId !== scene.id) {
-      return;
+      this.#closeClipIt();
     }
-
-    if (boxes.length > 0) {
-      this.#measured = { boxes, id: scene.id };
-    }
-
-    this.#tab = "Offered";
-    this.#offerOwn();
-    this.#render();
-    const title = document.createElement("b");
-
-    title.textContent = scene.picture.title;
-    this.#keep.replaceChildren("Keep ", title);
-    this.#offered = this.#keeping.animate(STILL, { duration: KEEP_MS });
-    this.#offered.onfinish = () => {
-      this.#offerEnded();
-    };
   }
 
   #leave() {

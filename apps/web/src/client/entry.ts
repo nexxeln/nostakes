@@ -50,3 +50,7 @@ defineMoment();
 const { defineKeep } = await import("./pictures/element.js");
 
 defineKeep();
+
+const { defineTonight } = await import("./tonight/element.js");
+
+defineTonight();

@@ -62,10 +62,11 @@ import type { ClosedView, OpenView } from "./room.js";
 import { rulesSheet } from "./rules-view.js";
 import { setupSheet } from "./setup-view.js";
 import { beforeFirstHand, PLAYERS_TO_DEAL, seatedCount } from "./setup.js";
-import { sheet } from "./sheet.js";
+import { sheet, sheetLayer } from "./sheet.js";
 import { stuckLine } from "./stuck-line.js";
 import { heroSeatOf, tableSnapshot } from "./table/from-room.js";
 import { tableElement } from "./table/snapshot.js";
+import { tonightElement } from "./tonight/element.js";
 import {
   micLive,
   mutedForEveryone,
@@ -288,8 +289,22 @@ const header = (
                   h.Type("button"),
                   h.Class("bar-button"),
                   h.OnClick(Messages.ClickedMenu()),
+                  ...(room.tonight.ready > 0
+                    ? [h.DataAttribute("ready", String(room.tonight.ready))]
+                    : []),
                 ],
-                ["Menu"]
+                [
+                  "Menu",
+                  room.tonight.ready > 0
+                    ? h.span(
+                        [
+                          h.Class("badge"),
+                          h.AriaLabel(`${room.tonight.ready} clips ready`),
+                        ],
+                        [String(room.tonight.ready)]
+                      )
+                    : h.empty,
+                ]
               )
             : h.empty,
         ]
@@ -469,6 +484,10 @@ const activeSheet = (
 
   if (room.fairnessOpen) {
     return fairnessSheet(room, view, h);
+  }
+
+  if (room.tonight.open) {
+    return tonightSheet(model, room, h);
   }
 
   return room.menu ? menuSheet(model, room, view, presence, h) : h.empty;
@@ -694,8 +713,10 @@ const tableView = (
               Option.getOrNull
             )
           ),
+          moment.Room(room.code),
           moment.Sound(model.sound),
           moment.Dealing(Option.isSome(view.legal)),
+          moment.OnTonight((count) => Messages.CountedTonight({ count })),
         ],
         []
       ),
@@ -703,6 +724,35 @@ const tableView = (
     ]
   );
 };
+
+const tonightOf = (
+  model: Model,
+  room: InRoom,
+  mode: "Drawer" | "Settled",
+  h: H
+): Html => {
+  const tonight = tonightElement.withMessage(h);
+
+  return tonight(
+    [
+      h.Class(mode === "Drawer" ? "tonight-drawer" : "tonight-inline"),
+      tonight.Room(room.code),
+      tonight.Mode(mode),
+      tonight.Theme(pageTheme(model)),
+      tonight.Deck(model.deck),
+      tonight.OnClose(() => Messages.ClosedSheet()),
+    ],
+    []
+  );
+};
+
+const tonightSheet = (model: Model, room: InRoom, h: H): Html =>
+  sheetLayer(h, "Tonight", "tonight-sheet", [
+    tonightOf(model, room, "Drawer", h),
+  ]);
+
+const tonightInline = (model: Model, room: InRoom, h: H): Html =>
+  tonightOf(model, room, "Settled", h);
 
 const openRoomView = (
   model: Model,
@@ -801,6 +851,7 @@ const closedRoomView = (
     [
       h.h2([h.Class("sheet-title")], ["The night is over"]),
       recapSection(model, view, h),
+      tonightInline(model, room, h),
       h.ul(
         [h.Class("member-list")],
         view.settlement.balances

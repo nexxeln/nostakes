@@ -121,17 +121,6 @@ const flip = (ms: number, from: number): Pose => ({
   squeeze: Math.max(0.02, easeOut(progress(ms, from, from + 200))),
 });
 
-const fall = (ms: number, index: number, from: number): Pose => {
-  const amount = easeOut(progress(ms, from, from + 900));
-
-  return {
-    ...REST,
-    dy: between(-520, 0, amount),
-    opacity: progress(ms, from, from + 60),
-    turn: between(45 - ((index * 53) % 90), 0, amount),
-  };
-};
-
 export interface Staging {
   readonly landed: ReadonlySet<string>;
   readonly spread: number;
@@ -169,87 +158,32 @@ export const partPose = (
       ? flip(ms, at(420 + index * 90))
       : rise(ms, at(300 + index * 60), 34);
 
-  const lifted = () => ({
-    ...rise(ms, at(520 + index * 50), 26),
-    opacity: fadeFrom(240 + index * 40, 180).opacity,
-  });
-
   const title = () =>
     groan
       ? fadeFrom(300, 600)
       : { ...stamp(ms, at(family === "Reveal" ? 760 : 140)), dx: shaken };
 
   const poses = new Map<string, () => Pose>([
-    ["also", () => fadeFrom(760, 200)],
+    ["blinds", () => fadeFrom(680, 200)],
     ["board", () => fadeFrom(240 + index * 40, 180)],
     ["face", face],
     ["felt", () => ({ ...REST, dx: shaken })],
+    ["flag", () => stamp(ms, at(560))],
+    ["foot", () => fadeFrom(760, 200)],
+    ["hand", () => fadeFrom(460 + index * 90, 200)],
     ["hole", hole],
-    ["lifted", lifted],
+    ["kicker", () => fadeFrom(80, 200)],
     ["line", () => fadeFrom(groan ? 700 : 380, 300)],
     ["mark", () => fadeFrom(760, 200)],
+    ["meta", () => fadeFrom(80, 200)],
+    ["name", () => fadeFrom(260 + index * 90, 200)],
+    ["note", () => fadeFrom(560 + index * 90, 200)],
+    ["panel", () => rise(ms, at(120 + index * 90), 24)],
     ["pot", () => stamp(ms, at(620))],
-    ["scrap", () => fall(ms, index, at(160 + index * 14))],
+    ["swing", () => stamp(ms, at(520 + index * 90))],
     ["title", title],
-  ]);
-
-  return poses.get(role)?.() ?? REST;
-};
-
-const SHORT_LANDED = new Set(["face", "hole", "mark"]);
-
-const JOLT_FOR = 240;
-
-const jolt = (ms: number, from: number) =>
-  ms > from && ms < from + JOLT_FOR
-    ? Math.sin((ms - from + SHAKE_FROM) / 18) * 6 * (1 - (ms - from) / JOLT_FOR)
-    : 0;
-
-const TITLE_LEAD = 60;
-
-const CARD_EVERY = 110;
-
-const ROW_EVERY = 60;
-
-const BOARD_SIZE = 5;
-
-export interface ShortTiming {
-  readonly boardMs: number;
-  readonly hitMs: number;
-}
-
-export const shortClipPose = (
-  role: string,
-  index: number,
-  ms: number,
-  timing: ShortTiming
-): Pose => {
-  if (SHORT_LANDED.has(role)) {
-    return REST;
-  }
-
-  const card =
-    timing.boardMs +
-    (index % BOARD_SIZE) * CARD_EVERY +
-    Math.floor(index / BOARD_SIZE) * ROW_EVERY;
-
-  const hit = timing.hitMs;
-
-  const poses = new Map<string, () => Pose>([
-    ["also", () => fade(ms, hit + 500, hit + 700)],
-    ["board", () => fade(ms, card, card + 180)],
-    ["felt", () => ({ ...REST, dx: jolt(ms, hit) })],
-    [
-      "lifted",
-      () => ({
-        ...rise(ms, card, 26),
-        opacity: fade(ms, card, card + 180).opacity,
-      }),
-    ],
-    ["line", () => fade(ms, hit + 380, hit + 680)],
-    ["pot", () => stamp(ms, hit + 300)],
-    ["scrap", () => fall(ms, index, hit + index * 14)],
-    ["title", () => ({ ...stamp(ms, hit - TITLE_LEAD), dx: jolt(ms, hit) })],
+    ["verb", () => stamp(ms, at(480))],
+    ["wins", () => stamp(ms, at(440))],
   ]);
 
   return poses.get(role)?.() ?? REST;

@@ -21,6 +21,7 @@ import type { OpenView } from "./room.js";
 import { rulesCard } from "./rules-view.js";
 import { icon, sheet, sheetLayer, sheetTop } from "./sheet.js";
 import { serverNowOf, takeOverLine } from "./stuck-line.js";
+import { tonightCountText } from "./tonight/words.js";
 import { inVoice, mutedForEveryone } from "./voice.js";
 
 type H = HtmlBuilder<Message>;
@@ -613,6 +614,22 @@ const codeButton = (room: InRoom, h: H): Html =>
     [room.copied === "Link" ? "Copied" : room.code, icon("Link", h)]
   );
 
+const tonightButton = (room: InRoom, h: H): Html =>
+  h.button(
+    [
+      h.Type("button"),
+      h.Class("button tonight-button"),
+      h.OnClick(Messages.ClickedTonight()),
+    ],
+    [
+      "Tonight",
+      h.span(
+        [h.Class("tonight-count")],
+        [tonightCountText(room.tonight.ready, room.tonight.making)]
+      ),
+    ]
+  );
+
 export const menuSheet = (
   model: Model,
   room: InRoom,
@@ -631,6 +648,7 @@ export const menuSheet = (
         h.div(
           [h.Class("menu-column")],
           [
+            tonightButton(room, h),
             ...seatBlock(model, room, view, h),
             hostStrip(room, view, h),
             rulesCard(view, h),

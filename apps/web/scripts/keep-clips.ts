@@ -7,12 +7,6 @@ import { chromium, firefox, webkit } from "playwright-core";
 import type { BrowserType, Page } from "playwright-core";
 
 import { MEDIA_PACKAGES } from "../src/client/moments/mediabunny/packages.ts";
-import {
-  FULL_CUT_FROM_GB,
-  LIGHT_CUT_SCALE,
-  NO_CLIP_BELOW_GB,
-  SHORT_ONLY_BELOW_GB,
-} from "../src/features/moments/clip-reach.ts";
 import { mutedBrowser, servedVite } from "./local-site.ts";
 import {
   declaredColour,
@@ -24,12 +18,7 @@ import {
 } from "./moments/clip-colour.ts";
 import type { Picture, Swatches } from "./moments/clip-colour.ts";
 import { policyBreaks, watchPolicy } from "./page-evidence.ts";
-import {
-  SAFARI_ACTIVATION,
-  SHARE_STUB,
-  sharedAtLeast,
-  sharedOrAsked,
-} from "./share-stub.ts";
+import { SAFARI_ACTIVATION, SHARE_STUB, sharedAtLeast } from "./share-stub.ts";
 import { StageOrigin } from "./stage-origin.ts";
 import { PAGE_POLICY_ASKED, pagePolicy } from "./stage-policy.ts";
 
@@ -41,10 +30,6 @@ const SIZES = {
   Chat: { height: 1350, width: 1080 },
   Story: { height: 1920, width: 1080 },
 } as const;
-
-const SHORTEST_SECONDS = 2.9;
-
-const LONGEST_SECONDS = 4.6;
 
 const FPS = 30;
 
@@ -61,7 +46,7 @@ class ClipCheckFailed extends Schema.TaggedError<
   { readonly brand: unique symbol }
 >()("ClipCheckFailed", { detail: Schema.String, step: Schema.String }) {
   override get message() {
-    return `Checking a moment's clip failed at "${this.step}": ${this.detail}. Open ${STAGE}/stage.html?view=live on the stage server, tap the moment away, and tap Clip to see it.`;
+    return `Checking a moment's clip failed at "${this.step}": ${this.detail}. Open ${STAGE}/stage.html?view=tonight&hand=AcesCracked on the stage server and tap Share clip in the drawer to see it.`;
   }
 }
 
@@ -205,8 +190,6 @@ type TitleBox = typeof TitleBoxSchema.Type;
 
 const TITLE_FAR = 0.05;
 
-const NO_TITLE: TitleBox = { height: 0, width: 0, x: 0, y: 0 };
-
 const SharedSchema = Schema.Array(
   Schema.Struct({
     activated: Schema.NullOr(Schema.Boolean),
@@ -251,25 +234,6 @@ const inside = (bytes: Uint8Array, box: Box | undefined, type: string) =>
   box === undefined
     ? undefined
     : boxesIn(bytes, box.body, box.end).find((each) => each.type === type);
-
-const TKHD_WIDTH_AT = 76;
-
-const FIXED_ONE = 65_536;
-
-const videoWidthOf = (bytes: Uint8Array) => {
-  const view = new DataView(bytes.buffer, bytes.byteOffset);
-
-  const moov = boxesIn(bytes, 0, bytes.length).find(
-    (box) => box.type === "moov"
-  );
-
-  const trak = inside(bytes, moov, "trak");
-  const tkhd = inside(bytes, trak, "tkhd");
-
-  return tkhd === undefined
-    ? 0
-    : view.getUint32(tkhd.body + TKHD_WIDTH_AT) / FIXED_ONE;
-};
 
 const atomsOf = (bytes: Uint8Array) => {
   const view = new DataView(bytes.buffer, bytes.byteOffset);
@@ -385,25 +349,11 @@ interface Expected {
   readonly sound: boolean;
 }
 
-const SHORT_CLIP: Told = {
+const MOMENT_CLIP: Told = {
   channels: 2,
-  longest: LONGEST_SECONDS,
+  longest: 10.6,
   mostBytes: MOST_BYTES,
-  shortest: SHORTEST_SECONDS,
-};
-
-const REPLAY: Told = {
-  channels: 2,
-  longest: 25.2,
-  mostBytes: 2_600_000,
-  shortest: 11.9,
-};
-
-const DRIFT_REPLAY: Told = {
-  channels: 2,
-  longest: 13,
-  mostBytes: 2_600_000,
-  shortest: 11,
+  shortest: 10.4,
 };
 
 type Probed = typeof ProbeSchema.Type;
@@ -708,14 +658,74 @@ const judged = (
     };
   }).pipe(Effect.scoped);
 
-const liveClip = (
+const UPLOADS = new WeakMap<Page, string[]>();
+
+const uploadsOf = (page: Page) => {
+  const known = UPLOADS.get(page);
+
+  if (known !== undefined) {
+    return known;
+  }
+
+  const fresh: string[] = [];
+
+  UPLOADS.set(page, fresh);
+
+  return fresh;
+};
+
+const rowOf = (page: Page) =>
+  attempt("read the drawer", () =>
+    page.evaluate(() => {
+      const row = globalThis.document
+        .querySelector("nostakes-tonight")
+        ?.shadowRoot?.querySelector("li[data-hand]");
+
+      return row instanceof HTMLElement
+        ? JSON.stringify({
+            clip: row.dataset.clip ?? "none",
+            made: Number(row.dataset.made ?? "0"),
+          })
+        : JSON.stringify({ clip: "none", made: 0 });
+    })
+  ).pipe(
+    Effect.flatMap(
+      decoded(
+        Schema.Struct({ clip: Schema.String, made: Schema.Finite }),
+        "read the drawer"
+      )
+    )
+  );
+
+const rowBecomes = (page: Page, states: readonly string[], timeout: number) =>
+  attempt(`wait for the drawer to say ${states.join(" or ")}`, () =>
+    page.waitForFunction(
+      (wanted) => {
+        const row = globalThis.document
+          .querySelector("nostakes-tonight")
+          ?.shadowRoot?.querySelector("li[data-hand]");
+
+        return (
+          row instanceof HTMLElement && wanted.includes(row.dataset.clip ?? "")
+        );
+      },
+      states,
+      { timeout }
+    )
+  );
+
+const drawerPage = (
   engine: BrowserType,
   settings: Settings,
-  look: { readonly sample: string; readonly theme: string }
+  look: {
+    readonly hand: string;
+    readonly memory?: number;
+    readonly theme: string;
+    readonly turn?: boolean;
+  }
 ) =>
-  Effect.gen(function* keepClip() {
+  Effect.gen(function* openDrawer() {
     const origin = yield* StageOrigin;
-
     const opened = yield* mutedBrowser(engine);
 
     const context = yield* attempt("open a phone-sized context", () =>
@@ -728,49 +738,155 @@ const liveClip = (
     yield* attempt("stub the share sheet", () =>
       Promise.all([
         context.addInitScript(SHARE_STUB),
+        context.addInitScript(SAFARI_ACTIVATION),
         context.addInitScript(CLIP_TOOLS),
+        ...(look.memory === undefined
+          ? []
+          : [
+              context.addInitScript(
+                `Object.defineProperty(Navigator.prototype, "deviceMemory", { configurable: true, get: () => ${look.memory} });`
+              ),
+            ]),
       ])
     );
 
     const page = yield* attempt("open a page", () => context.newPage());
 
-    yield* policed(page, engine.name());
+    page.on("request", (request) => {
+      const body = request.postDataBuffer();
 
+      if (request.method() !== "GET" || (body?.length ?? 0) > 0) {
+        uploadsOf(page).push(
+          `${request.method()} ${new URL(request.url()).pathname} with ${body?.length ?? 0} bytes`
+        );
+      }
+    });
+
+    yield* policed(page, `${engine.name()} drawer`);
     yield* throttled(page, engine, settings.throttle);
     yield* attempt("open the stage", () =>
       page.goto(
-        `${origin}${STAGE}/stage.html?view=live&sample=${look.sample}&theme=${look.theme}`
+        `${origin}${STAGE}/stage.html?view=tonight&hand=${look.hand}&theme=${look.theme}&turn=${look.turn === true}`
       )
     );
-    yield* attempt("wait for the pictures", () =>
+    yield* attempt("wait for the moment to land in Tonight", () =>
       page
-        .locator('nostakes-moment[data-drawn="Chat Story"]')
+        .locator("nostakes-tonight li[data-hand]")
         .waitFor({ state: "attached", timeout: 60_000 })
     );
 
-    const sound = true;
+    return page;
+  });
 
-    const title = yield* attempt("measure the title on the card", () =>
-      page.locator("nostakes-moment").evaluate((node) => {
-        const part = node.shadowRoot?.querySelector('[data-part="title"]');
+const askIfIdle = (page: Page) =>
+  Effect.gen(function* askForClip() {
+    const row = yield* rowOf(page);
 
-        const box =
-          part instanceof SVGGraphicsElement
-            ? part.getBBox()
-            : { height: 0, width: 0, x: 0, y: 0 };
+    if (row.clip !== "Idle") {
+      return;
+    }
 
-        return JSON.stringify({
-          height: box.height,
-          width: box.width,
-          x: box.x,
-          y: box.y,
-        });
-      })
-    ).pipe(Effect.flatMap(decoded(TitleBoxSchema, "measure the title")));
-
-    yield* attempt("tap the moment away", () =>
-      page.locator("nostakes-moment .card").click()
+    const onTable = yield* attempt("look for Clip it on the table", () =>
+      page.locator("nostakes-moment .clip-it").isVisible()
     );
+
+    yield* attempt("tap Clip it", () =>
+      onTable
+        ? page.locator("nostakes-moment .clip-it").click()
+        : page
+            .locator("nostakes-tonight button.act", { hasText: "Clip it" })
+            .click()
+    );
+  });
+
+const sharedTypes = (page: Page) =>
+  read(
+    page,
+    "JSON.stringify(window.__shared)",
+    SharedSchema,
+    "read what was shared"
+  );
+
+const keptAfterReload = (page: Page, label: string, bytes: number) =>
+  Effect.gen(function* reloadDrawer() {
+    yield* attempt("reload the page", () => page.reload());
+    yield* attempt("wait for the kept moment", () =>
+      page
+        .locator("nostakes-tonight li[data-hand]")
+        .waitFor({ state: "attached", timeout: 30_000 })
+    );
+
+    const kept = yield* rowOf(page);
+    const keptProblems: string[] = [];
+
+    if (kept.clip === "Ready") {
+      yield* attempt("tap Share clip after the reload", () =>
+        page.locator("nostakes-tonight button.act.primary").click()
+      );
+      yield* attempt("wait for the kept clip to reach the share sheet", () =>
+        sharedAtLeast(page, 1, 15_000)
+      );
+
+      const again = yield* attempt("read the kept share", () =>
+        page.evaluate<string>(
+          "window.__report ? JSON.stringify(window.__shared) : '[]'"
+        )
+      ).pipe(
+        Effect.flatMap(
+          decoded(
+            Schema.Array(
+              Schema.Struct({
+                activated: Schema.NullOr(Schema.Boolean),
+                bytes: Schema.Int,
+                sameTask: Schema.Boolean,
+                type: Schema.String,
+              })
+            ),
+            "read the kept share"
+          )
+        )
+      );
+
+      const refused = yield* attempt("count refused shares", () =>
+        page.evaluate<number>("window.__refused")
+      );
+
+      const [first] = again;
+
+      if (
+        first === undefined ||
+        first.type !== "video/mp4" ||
+        first.bytes !== bytes
+      ) {
+        keptProblems.push(
+          `${label}: after a reload the share sheet got ${JSON.stringify(first)}, not the ${bytes} byte clip`
+        );
+      }
+
+      if (refused > 0 || first?.sameTask !== true) {
+        keptProblems.push(
+          `${label}: the kept clip was shared outside its tap (${refused} refused)`
+        );
+      }
+    } else {
+      keptProblems.push(
+        `${label}: after a reload the drawer says ${kept.clip}, so the clip was not kept`
+      );
+    }
+
+    return { kept: kept.clip === "Ready", problems: keptProblems };
+  });
+
+const drawerClip = (
+  engine: BrowserType,
+  settings: Settings,
+  look: { readonly hand: string; readonly theme: string }
+) =>
+  Effect.gen(function* keepFromDrawer() {
+    const page = yield* drawerPage(engine, settings, look);
+    const label = `${engine.name()}-${look.hand}-${look.theme.toLowerCase()}`;
+
+    yield* askIfIdle(page);
 
     const before = yield* read(
       page,
@@ -781,13 +897,7 @@ const liveClip = (
 
     const started = performance.now();
 
-    yield* attempt("wait for the clip to be made or refused", () =>
-      page
-        .locator(
-          'nostakes-moment[data-clip="Ready"], nostakes-moment[data-clip="Unavailable"]'
-        )
-        .waitFor({ state: "attached", timeout: 120_000 })
-    );
+    yield* rowBecomes(page, ["Ready", "Failed", "Unavailable"], 240_000);
 
     const readyMs = Math.round(performance.now() - started);
 
@@ -798,779 +908,151 @@ const liveClip = (
       "count frames"
     );
 
-    const state = yield* attempt("read the clip state", () =>
-      page
-        .locator("nostakes-moment")
-        .evaluate((node) =>
-          node instanceof HTMLElement ? (node.dataset.clip ?? "none") : "none"
-        )
-    );
+    const row = yield* rowOf(page);
 
-    const label = `${engine.name()}-${look.sample}-${look.theme.toLowerCase()}-chat`;
-
-    if (state !== "Ready") {
-      const shown = yield* attempt("look for the Clip button", () =>
-        page.locator("nostakes-moment .clip").isVisible()
-      );
-
+    if (row.clip !== "Ready") {
       return {
         label,
-        line: `${label}: no clip on this browser (${state}), Clip button ${shown ? "shown" : "hidden"}`,
-        problems: [
-          ...(shown
-            ? [`${label}: the Clip button shows though no clip can be made`]
-            : []),
-          ...(settings.require === "nothing"
-            ? []
-            : [`${label}: no clip was made`]),
-        ],
+        line: `${label}: no clip on this browser (${row.clip})`,
+        problems:
+          settings.require === "nothing" ? [] : [`${label}: no clip was made`],
       };
     }
 
-    yield* attempt("tap Keep", () =>
-      page.locator("nostakes-moment .keep").click()
+    const title = yield* attempt("measure the title", () =>
+      page.evaluate<string>("JSON.stringify(window.__titleBox)")
+    ).pipe(Effect.flatMap(decoded(TitleBoxSchema, "measure the title")));
+
+    yield* attempt("wait for the story picture", () =>
+      page
+        .locator(
+          'nostakes-tonight button[data-picture="Story"][aria-disabled="false"]'
+        )
+        .waitFor({ state: "attached", timeout: 60_000 })
     );
-    yield* attempt("tap Clip", () =>
-      page.locator("nostakes-moment .clip").click()
+    yield* attempt("tap Story", () =>
+      page.locator('nostakes-tonight button[data-picture="Story"]').click()
+    );
+    yield* attempt("tap Share clip", () =>
+      page.locator("nostakes-tonight button.act.primary").click()
     );
     yield* attempt("wait for both taps to reach the share sheet", () =>
       sharedAtLeast(page, 2, 15_000)
     );
 
-    const shared = yield* read(
-      page,
-      "JSON.stringify(window.__shared)",
-      SharedSchema,
-      "read what was shared"
-    );
-
+    const shared = yield* sharedTypes(page);
     const clipIndex = shared.findIndex((entry) => entry.type === "video/mp4");
     const stillIndex = shared.findIndex((entry) => entry.type === "image/png");
     const offered = shared[clipIndex];
-    const tapProblems: string[] = [];
 
     if (offered === undefined || stillIndex === -1) {
       return {
         label,
         line: `${label}: the share sheet got ${shared.map((entry) => entry.type).join(", ")}`,
         problems: [
-          `${label}: the clip or the still never reached the share sheet`,
+          `${label}: the clip or the story picture never reached the share sheet`,
         ],
       };
     }
 
-    if (!offered.sameTask || offered.activated === false) {
-      tapProblems.push(
-        `${label}: the clip reached the share sheet outside the tap`
-      );
-    }
+    const tapProblems =
+      offered.sameTask && offered.activated !== false
+        ? []
+        : [`${label}: the clip reached the share sheet outside the tap`];
 
     const verdict = yield* judged(
       page,
       settings,
       { clip: clipIndex, label, still: stillIndex, title },
-      { frame: "Chat", seconds: SHORT_CLIP, sound }
+      { frame: "Story", seconds: MOMENT_CLIP, sound: true }
     );
+
+    const kept = yield* keptAfterReload(page, label, verdict.bytes);
 
     return {
       label,
-      line: `${label}: ${verdict.bytes} bytes, ready ${readyMs} ms after the moment left, ${after.late - before.late} late frames of ${after.frames - before.frames}, title on frame 0 off by ${((verdict.played?.titleFar ?? 1) * 100).toFixed(1)}%, last frame mean difference ${verdict.played?.mean.toFixed(2) ?? "?"} with ${((verdict.played?.far ?? 0) * 100).toFixed(2)}% far off${verdict.probed ? "" : ", no ffprobe"}${sound ? ", with sound" : ", silent"}; ${verdict.colours}`,
+      line: `${label}: ${verdict.bytes} bytes, ready ${readyMs} ms after the moment, ${after.late - before.late} late frames of ${after.frames - before.frames}, title on frame 0 off by ${((verdict.played?.titleFar ?? 1) * 100).toFixed(1)}%, last frame mean difference ${verdict.played?.mean.toFixed(2) ?? "?"} with ${((verdict.played?.far ?? 0) * 100).toFixed(2)}% far off, ${verdict.played?.duration.toFixed(2) ?? "?"} s, kept across a reload: ${kept.kept ? "yes" : "no"}; ${verdict.colours}`,
       problems: [
         ...tapProblems,
-        ...verdict.problems.map((problem) => `${label}: ${problem}`),
-        ...(settings.require === "sound" && !sound
-          ? [`${label}: this browser cannot encode the sting`]
-          : []),
-      ],
-    };
-  }).pipe(Effect.scoped);
-
-const askedClip = (engine: BrowserType, settings: Settings) =>
-  Effect.gen(function* askForClip() {
-    const origin = yield* StageOrigin;
-
-    const opened = yield* mutedBrowser(engine);
-
-    const context = yield* attempt("open a phone-sized context", () =>
-      opened.newContext({
-        hasTouch: true,
-        viewport: { height: 844, width: 390 },
-      })
-    );
-
-    yield* attempt("stub the share sheet", () =>
-      Promise.all([
-        context.addInitScript(SHARE_STUB),
-        context.addInitScript(CLIP_TOOLS),
-      ])
-    );
-
-    const page = yield* attempt("open a page", () => context.newPage());
-
-    yield* policed(page, engine.name());
-    const label = `${engine.name()}-asked`;
-
-    yield* throttled(page, engine, settings.throttle);
-    yield* attempt("open the stage", () =>
-      page.goto(
-        `${origin}${STAGE}/stage.html?view=live&sample=Bluff-2&theme=Dark`
-      )
-    );
-    yield* attempt("wait for the pictures", () =>
-      page
-        .locator('nostakes-moment[data-drawn="Chat Story"]')
-        .waitFor({ state: "attached", timeout: 60_000 })
-    );
-    yield* attempt("tap the moment away", () =>
-      page.locator("nostakes-moment .card").click()
-    );
-
-    const offered = yield* attempt("wait for the Clip button", () =>
-      page
-        .locator("nostakes-moment .clip")
-        .waitFor({ state: "visible", timeout: 30_000 })
-    ).pipe(
-      Effect.as(true),
-      Effect.catchTag("ClipCheckFailed", () => Effect.succeed(false))
-    );
-
-    if (!offered) {
-      return {
-        label,
-        line: `${label}: no Clip button on this browser`,
-        problems:
-          settings.require === "nothing"
-            ? []
-            : [`${label}: the Clip button never showed`],
-      };
-    }
-
-    yield* attempt("tap Clip before it is ready", () =>
-      page.locator("nostakes-moment .clip").click()
-    );
-    yield* attempt("wait for the clip to be shared or to ask for a tap", () =>
-      sharedOrAsked(page, 120_000)
-    );
-
-    const before = yield* read(
-      page,
-      "JSON.stringify(window.__shared)",
-      SharedSchema,
-      "read what was shared"
-    );
-
-    const secondTap = before.length === 0;
-
-    if (secondTap) {
-      yield* attempt("tap Share clip", () =>
-        page.locator("nostakes-moment .clip").click()
-      );
-      yield* attempt("wait for the share sheet", () =>
-        sharedAtLeast(page, 1, 15_000)
-      );
-    }
-
-    const shared = yield* read(
-      page,
-      "JSON.stringify(window.__shared)",
-      SharedSchema,
-      "read what was shared"
-    );
-
-    const [clip] = shared;
-    const problems: string[] = [];
-
-    if (clip?.type !== "video/mp4") {
-      problems.push(`${label}: the share sheet got ${clip?.type ?? "nothing"}`);
-    } else if (secondTap ? !clip.sameTask : clip.activated === false) {
-      problems.push(`${label}: the clip reached the share sheet without a tap`);
-    }
-
-    return {
-      label,
-      line: `${label}: a tap before the clip was ready ${secondTap ? "turned the button into Share clip, and a second tap shared it" : "shared it as soon as it was made"}`,
-      problems,
-    };
-  }).pipe(Effect.scoped);
-
-const refusedClip = (engine: BrowserType) =>
-  Effect.gen(function* refuseClip() {
-    const origin = yield* StageOrigin;
-
-    const opened = yield* mutedBrowser(engine);
-
-    const context = yield* attempt("open a phone-sized context", () =>
-      opened.newContext({
-        hasTouch: true,
-        viewport: { height: 844, width: 390 },
-      })
-    );
-
-    yield* attempt("take the video encoder away", () =>
-      context.addInitScript("delete globalThis.VideoEncoder;")
-    );
-
-    const page = yield* attempt("open a page", () => context.newPage());
-
-    yield* policed(page, engine.name());
-    const label = `${engine.name()}-no-encoder`;
-
-    yield* attempt("open the stage", () =>
-      page.goto(
-        `${origin}${STAGE}/stage.html?view=live&sample=BigHand-2&theme=Light`
-      )
-    );
-    yield* attempt("wait for the pictures", () =>
-      page
-        .locator('nostakes-moment[data-drawn="Chat Story"]')
-        .waitFor({ state: "attached", timeout: 60_000 })
-    );
-    yield* attempt("tap the moment away", () =>
-      page.locator("nostakes-moment .card").click()
-    );
-    yield* attempt("wait for the clip to be refused", () =>
-      page
-        .locator('nostakes-moment[data-clip="Unavailable"]')
-        .waitFor({ state: "attached", timeout: 30_000 })
-    );
-
-    const shown = yield* attempt("look for the Clip button", () =>
-      page.locator("nostakes-moment .clip").isVisible()
-    );
-
-    const kept = yield* attempt("look for Keep", () =>
-      page.locator("nostakes-moment .keep").isVisible()
-    );
-
-    return {
-      label,
-      line: `${label}: Keep ${kept ? "shown" : "hidden"}, Clip ${shown ? "shown" : "hidden"}`,
-      problems: [
-        ...(shown ? [`${label}: the Clip button shows with no encoder`] : []),
-        ...(kept ? [] : [`${label}: Keep is gone with the clip`]),
-      ],
-    };
-  }).pipe(Effect.scoped);
-
-const HELD_MS = 4000;
-
-const stateOf = (page: Page) =>
-  attempt("read the clip state", () =>
-    page
-      .locator("nostakes-moment")
-      .evaluate((node) =>
-        node instanceof HTMLElement ? (node.dataset.clip ?? "none") : "none"
-      )
-  );
-
-const SHORT_LONGEST_SECONDS = 6;
-
-const guardedClip = (engine: BrowserType, gigabytes: number) =>
-  Effect.gen(function* guardClip() {
-    const origin = yield* StageOrigin;
-    const opened = yield* mutedBrowser(engine);
-
-    const context = yield* attempt("open a phone-sized context", () =>
-      opened.newContext({
-        hasTouch: true,
-        viewport: { height: 844, width: 390 },
-      })
-    );
-
-    yield* attempt("report the device's memory", () =>
-      Promise.all([
-        context.addInitScript(SHARE_STUB),
-        context.addInitScript(CLIP_TOOLS),
-        context.addInitScript(
-          `Object.defineProperty(Navigator.prototype, "deviceMemory", { configurable: true, get: () => ${gigabytes} });`
+        ...kept.problems,
+        ...uploadsOf(page).map(
+          (sent) =>
+            `${label}: the page sent ${sent}, but nothing it keeps may leave the device`
         ),
-      ])
-    );
-
-    const page = yield* attempt("open a page", () => context.newPage());
-    const label = `${engine.name()}-memory-${gigabytes}gb`;
-
-    yield* policed(page, engine.name());
-    yield* attempt("open the stage", () =>
-      page.goto(
-        `${origin}${STAGE}/stage.html?view=hand&hand=AcesCracked&theme=Light`
-      )
-    );
-    yield* attempt("wait for the pictures", () =>
-      page
-        .locator('nostakes-moment[data-drawn="Chat Story"]')
-        .waitFor({ state: "attached", timeout: 60_000 })
-    );
-    yield* attempt("tap the moment away", () =>
-      page.locator("nostakes-moment .card").click()
-    );
-    yield* attempt("wait for the clip to be made or refused", () =>
-      page
-        .locator(
-          'nostakes-moment[data-clip="Ready"], nostakes-moment[data-clip="Unavailable"]'
-        )
-        .waitFor({ state: "attached", timeout: 120_000 })
-    );
-
-    const state = yield* stateOf(page);
-
-    if (gigabytes < NO_CLIP_BELOW_GB) {
-      return {
-        label,
-        line: `${label}: clip ${state}`,
-        problems:
-          state === "Unavailable"
-            ? []
-            : [
-                `${label}: a device reporting ${gigabytes} GB still made a clip`,
-              ],
-      };
-    }
-
-    yield* attempt("tap Clip", () =>
-      page.locator("nostakes-moment .clip").click()
-    );
-    yield* attempt("wait for the clip to reach the share sheet", () =>
-      sharedAtLeast(page, 1, 15_000)
-    );
-
-    const bytes = yield* fileOf(page, 0);
-    const { seconds } = atomsOf(bytes);
-    const width = videoWidthOf(bytes);
-    const replayed = seconds > SHORT_LONGEST_SECONDS;
-    const wanted = gigabytes >= SHORT_ONLY_BELOW_GB;
-
-    const wantedWidth =
-      gigabytes >= FULL_CUT_FROM_GB
-        ? 1080
-        : Math.round((1080 * LIGHT_CUT_SCALE) / 2) * 2;
-
-    return {
-      label,
-      line: `${label}: ${replayed ? "the replay" : "the short clip"}, ${seconds.toFixed(2)} s, ${width} wide`,
-      problems: [
-        ...(replayed === wanted
-          ? []
-          : [
-              `${label}: a device reporting ${gigabytes} GB got ${replayed ? "the replay" : "the short clip"}`,
-            ]),
-        ...(!replayed || width === wantedWidth
-          ? []
-          : [
-              `${label}: a device reporting ${gigabytes} GB got a replay ${width} wide, not ${wantedWidth}`,
-            ]),
+        ...verdict.problems.map((problem) => `${label}: ${problem}`),
       ],
     };
   }).pipe(Effect.scoped);
 
-const turnTo = (page: Page, yours: boolean) =>
-  attempt("deal the player in", () =>
-    page.locator("nostakes-moment").evaluate((node, dealing) => {
-      Reflect.set(node, "dealing", dealing);
-    }, yours)
-  );
+const HELD_FOR_MS = 6000;
 
-const TURN_SETTLES_MS = 500;
-
-const madeOf = (page: Page) =>
-  attempt("read how much of the clip is made", () =>
-    page
-      .locator("nostakes-moment")
-      .evaluate((node) =>
-        node instanceof HTMLElement ? Number(node.dataset.made ?? "0") : 0
-      )
-  );
-
-const abandonedClip = (engine: BrowserType) =>
-  Effect.gen(function* abandonClip() {
-    const origin = yield* StageOrigin;
-
-    const opened = yield* mutedBrowser(engine);
-
-    const page = yield* attempt("open a page", () =>
-      opened.newPage({ viewport: { height: 844, width: 390 } })
-    );
-
-    yield* policed(page, engine.name());
-
-    const label = `${engine.name()}-your-turn`;
-
-    yield* attempt("open the stage", () =>
-      page.goto(
-        `${origin}${STAGE}/stage.html?view=live&sample=Cooler-2&theme=Light`
-      )
-    );
-    yield* attempt("wait for the pictures", () =>
-      page
-        .locator('nostakes-moment[data-drawn="Chat Story"]')
-        .waitFor({ state: "attached", timeout: 60_000 })
-    );
-    yield* attempt("tap the moment away", () =>
-      page.locator("nostakes-moment .card").click()
-    );
-
-    const started = yield* attempt("wait for the clip to start", () =>
-      page
-        .locator('nostakes-moment[data-clip="Making"]')
-        .waitFor({ state: "attached", timeout: 30_000 })
-    ).pipe(
-      Effect.as(true),
-      Effect.catchTag("ClipCheckFailed", () => Effect.succeed(false))
-    );
-
-    if (!started) {
-      return { label, line: `${label}: no clip on this browser`, problems: [] };
-    }
-
-    yield* attempt("wait for the first frames", () =>
-      page.waitForFunction(
-        () => {
-          const node = globalThis.document.querySelector("nostakes-moment");
-
-          return node instanceof HTMLElement && Number(node.dataset.made) > 0;
-        },
-        undefined,
-        { timeout: 30_000 }
-      )
-    );
-    yield* turnTo(page, true);
-    yield* attempt("let a frame in flight land", () =>
-      page.waitForTimeout(TURN_SETTLES_MS)
-    );
-
-    const turnStarts = yield* madeOf(page);
-
-    yield* attempt("let the turn run", () => page.waitForTimeout(HELD_MS));
-
-    const during = yield* stateOf(page);
-    const turnEnds = yield* madeOf(page);
-
-    yield* turnTo(page, false);
-
-    const resumed = yield* attempt("wait for the clip after the turn", () =>
-      page
-        .locator('nostakes-moment[data-clip="Ready"]')
-        .waitFor({ state: "attached", timeout: 60_000 })
-    ).pipe(
-      Effect.as(true),
-      Effect.catchTag("ClipCheckFailed", () => Effect.succeed(false))
-    );
-
-    return {
-      label,
-      line: `${label}: ${during} at ${turnStarts}% through ${HELD_MS} ms of the player's turn and ${turnEnds}% at its end, ${resumed ? "made after it" : "never made after it"}`,
-      problems: [
-        ...(during === "Making" && turnEnds === turnStarts
-          ? []
-          : [
-              `${label}: the clip went on to ${during}, ${turnStarts}% to ${turnEnds}%, during the player's turn`,
-            ]),
-        ...(resumed
-          ? []
-          : [`${label}: the clip was not made once the turn passed`]),
-      ],
-    };
-  }).pipe(Effect.scoped);
-
-const OWED_LIMIT_MS = 240_000;
-
-const clipText = (page: Page) =>
-  attempt("read the Clip button", () =>
-    page.locator("nostakes-moment .clip").evaluate((node) => ({
-      shown: node.getClientRects().length > 0,
-      text: node.textContent,
-    }))
-  );
-
-const sharedCount = (page: Page) =>
-  attempt("count what was shared", () =>
-    page.evaluate<number>("window.__shared.length")
-  );
-
-const DRIFT_ANSWERS_WITHIN_MS = 5000;
-
-const owedClip = (engine: BrowserType, settings: Settings) =>
-  Effect.gen(function* oweClip() {
-    const origin = yield* StageOrigin;
-    const opened = yield* mutedBrowser(engine);
-
-    const context = yield* attempt("open a phone-sized context", () =>
-      opened.newContext({
-        hasTouch: true,
-        viewport: { height: 844, width: 390 },
-      })
-    );
-
-    yield* attempt("stub a share sheet that wants a fresh tap", () =>
-      Promise.all([
-        context.addInitScript(SHARE_STUB),
-        context.addInitScript(SAFARI_ACTIVATION),
-      ])
-    );
-
-    const page = yield* attempt("open a page", () => context.newPage());
-    const label = `${engine.name()}-owed`;
-    const moment = page.locator("nostakes-moment");
-    const problems: string[] = [];
-
-    yield* policed(page, engine.name());
-    yield* throttled(page, engine, settings.throttle);
-    yield* attempt("open the stage", () =>
-      page.goto(
-        `${origin}${STAGE}/stage.html?view=hand&hand=AcesCracked&theme=Light`
-      )
-    );
-    yield* attempt("wait for the pictures", () =>
-      page
-        .locator('nostakes-moment[data-drawn="Chat Story"]')
-        .waitFor({ state: "attached", timeout: 60_000 })
-    );
-    yield* attempt("tap the moment away", () =>
-      page.locator("nostakes-moment .card").click()
-    );
-
-    const offered = yield* attempt("wait for Drift", () =>
-      page
-        .locator("nostakes-moment .style")
-        .waitFor({ state: "visible", timeout: 60_000 })
-    ).pipe(
-      Effect.as(true),
-      Effect.catchTag("ClipCheckFailed", () => Effect.succeed(false))
-    );
-
-    if (!offered) {
-      return {
-        label,
-        line: `${label}: no replay clip on this browser`,
-        problems: [],
-      };
-    }
-
-    const asked = performance.now();
-
-    yield* attempt("tap Clip", () =>
-      page.locator("nostakes-moment .clip").click()
-    );
-    yield* attempt("let the clip start", () => page.waitForTimeout(2000));
-    yield* attempt("tap Drift", () =>
-      page.locator("nostakes-moment .style").click()
-    );
-
-    const answered = yield* attempt("read the answer to Drift", () =>
-      page
-        .waitForFunction(
-          () =>
-            [
-              ...(document
-                .querySelector("nostakes-moment")
-                ?.shadowRoot?.querySelectorAll(".clip, .style") ?? []),
-            ].some((button) => (button.textContent ?? "").includes("Drift")),
-          undefined,
-          { timeout: DRIFT_ANSWERS_WITHIN_MS }
-        )
-        .catch(() => null)
-        .then(() =>
-          moment.evaluate((node) =>
-            [...(node.shadowRoot?.querySelectorAll(".clip, .style") ?? [])]
-              .map((button) => button.textContent)
-              .join(" ")
-          )
-        )
-    );
-
-    if (!answered.includes("Drift")) {
-      problems.push(`${label}: a tap on Drift showed nothing: ${answered}`);
-    }
-
-    yield* turnTo(page, true);
-    yield* attempt("hold the next hand's turn", () =>
-      page.waitForTimeout(HELD_MS)
-    );
-    yield* turnTo(page, false);
-    yield* attempt("tell the next hand", () =>
-      page.evaluate<null>("window.__tellHand('QuadsIntoBoat') ?? null")
-    );
-    yield* attempt("wait for the next moment", () =>
-      page
-        .locator('nostakes-moment:not([data-moment="1:BadBeat:2:0,1"])')
-        .waitFor({ state: "attached", timeout: 30_000 })
-    );
-    yield* attempt("tap the next moment away", () =>
-      page.locator("nostakes-moment .card").click()
-    );
-
-    const carried = yield* clipText(page);
-
-    if (!carried.shown) {
-      problems.push(
-        `${label}: the clip the player asked for left with the next moment`
-      );
-    }
-
-    const taps = { count: 0 };
-    const shared = { at: Option.none<number>() };
-
-    while (
-      Option.isNone(shared.at) &&
-      carried.shown &&
-      performance.now() - asked < OWED_LIMIT_MS
-    ) {
-      if ((yield* sharedCount(page)) > 0) {
-        shared.at = Option.some(performance.now() - asked);
-      } else {
-        const now = yield* clipText(page);
-        const text = now.text ?? "";
-
-        if (
-          now.shown &&
-          (text.startsWith("Share") || text.includes("Try again"))
-        ) {
-          taps.count += 1;
-          yield* attempt("tap the clip", () =>
-            page.locator("nostakes-moment .clip").click()
-          );
-        }
-
-        yield* attempt("wait a moment", () => page.waitForTimeout(250));
-      }
-    }
-
-    const took = Option.match(shared.at, {
-      onNone: () => "never shared",
-      onSome: (ms) => `shared ${Math.round(ms / 1000)} s after the tap`,
+const heldClip = (engine: BrowserType, settings: Settings) =>
+  Effect.gen(function* holdForTurn() {
+    const page = yield* drawerPage(engine, settings, {
+      hand: "AcesCracked",
+      theme: "Light",
+      turn: true,
     });
 
-    if (Option.isNone(shared.at)) {
-      problems.push(
-        `${label}: the clip the player asked for was never shared (${(yield* clipText(page)).text ?? ""})`
-      );
-    }
+    const label = `${engine.name()}-held`;
+
+    yield* askIfIdle(page);
+
+    const during = yield* attempt("wait out the turn", () =>
+      page.waitForTimeout(HELD_FOR_MS)
+    ).pipe(Effect.andThen(rowOf(page)));
+
+    yield* attempt("end the turn", () => page.evaluate("window.__turn(false)"));
+    yield* rowBecomes(page, ["Ready", "Failed", "Unavailable"], 240_000);
+
+    const done = yield* rowOf(page);
 
     return {
       label,
-      line: `${label}: Drift answered "${answered}", the clip ${carried.shown ? "stayed" : "left"} through a turn and the next moment, ${took} after ${taps.count} more taps`,
-      problems,
+      line: `${label}: during the turn the drawer said ${during.clip} at ${during.made}%, after it ${done.clip}`,
+      problems: [
+        ...(during.clip === "Ready" || during.made > 5
+          ? [
+              `${label}: the clip was made during the player's turn (${during.clip}, ${during.made}%)`,
+            ]
+          : []),
+        ...(done.clip === "Ready" || done.clip === "Unavailable"
+          ? []
+          : [`${label}: after the turn the clip ended ${done.clip}`]),
+      ],
     };
   }).pipe(Effect.scoped);
 
-const PAST_THE_OFFER_MS = 27_000;
+const guardedClip = (engine: BrowserType, settings: Settings) =>
+  Effect.gen(function* guardSmallDevice() {
+    const page = yield* drawerPage(engine, settings, {
+      hand: "AcesCracked",
+      memory: 1,
+      theme: "Light",
+    });
 
-const lingeredClip = (engine: BrowserType) =>
-  Effect.gen(function* lingerClip() {
-    const origin = yield* StageOrigin;
-    const opened = yield* mutedBrowser(engine);
+    const label = `${engine.name()}-1gb`;
 
-    const context = yield* attempt("open a phone-sized context", () =>
-      opened.newContext({
-        hasTouch: true,
-        viewport: { height: 844, width: 390 },
-      })
+    yield* rowBecomes(page, ["Unavailable", "Ready", "Making"], 30_000).pipe(
+      Effect.catchTag("ClipCheckFailed", () => Effect.void)
     );
 
-    yield* attempt("stub the share sheet", () =>
-      context.addInitScript(SHARE_STUB)
+    const row = yield* rowOf(page);
+
+    const offered = yield* attempt("look for Clip it", () =>
+      page.locator("nostakes-moment .clip-it").isVisible()
     );
-
-    const page = yield* attempt("open a page", () => context.newPage());
-    const label = `${engine.name()}-lingering`;
-    const tab = page.locator("nostakes-moment .keeping");
-
-    yield* policed(page, engine.name());
-    yield* attempt("open the stage", () =>
-      page.goto(
-        `${origin}${STAGE}/stage.html?view=live&sample=Cooler-2&theme=Light`
-      )
-    );
-    yield* attempt("wait for the pictures", () =>
-      page
-        .locator('nostakes-moment[data-drawn="Chat Story"]')
-        .waitFor({ state: "attached", timeout: 60_000 })
-    );
-    yield* attempt("tap the moment away", () =>
-      page.locator("nostakes-moment .card").click()
-    );
-
-    const started = yield* attempt("wait for the clip to start", () =>
-      page
-        .locator('nostakes-moment[data-clip="Making"]')
-        .waitFor({ state: "attached", timeout: 30_000 })
-    ).pipe(
-      Effect.as(true),
-      Effect.catchTag("ClipCheckFailed", () => Effect.succeed(false))
-    );
-
-    if (!started) {
-      return { label, line: `${label}: no clip on this browser`, problems: [] };
-    }
-
-    yield* turnTo(page, true);
-    yield* attempt("hold the turn past the Keep tab's time", () =>
-      page.waitForTimeout(PAST_THE_OFFER_MS)
-    );
-
-    const lingering = yield* attempt("look for a lingering tab", () =>
-      page.locator('nostakes-moment[data-lingering="true"]').count()
-    );
-
-    const hiddenInTurn = !(yield* attempt("look at the tab in the turn", () =>
-      tab.isVisible()
-    ));
-
-    yield* turnTo(page, false);
-
-    const backAfterTurn = yield* attempt("look at the tab after the turn", () =>
-      tab.isVisible()
-    );
-
-    const made = yield* attempt("wait for the clip", () =>
-      page
-        .locator('nostakes-moment[data-clip="Ready"]')
-        .waitFor({ state: "attached", timeout: 60_000 })
-    ).pipe(
-      Effect.as(true),
-      Effect.catchTag("ClipCheckFailed", () => Effect.succeed(false))
-    );
-
-    const offered = made
-      ? yield* attempt("tap Clip on the lingering tab", () =>
-          page.locator("nostakes-moment .clip").click()
-        ).pipe(
-          Effect.andThen(
-            attempt("wait for the clip to reach the share sheet", () =>
-              sharedAtLeast(page, 1, 15_000)
-            )
-          ),
-          Effect.as(true),
-          Effect.catchTag("ClipCheckFailed", () => Effect.succeed(false))
-        )
-      : false;
-
-    yield* attempt("hide the tab", () =>
-      page.locator("nostakes-moment .hide").click()
-    ).pipe(Effect.catchTag("ClipCheckFailed", () => Effect.void));
-
-    const hidden = !(yield* attempt("look at the tab after Hide", () =>
-      tab.isVisible()
-    ));
 
     return {
       label,
-      line: `${label}: ${lingering > 0 ? "lingered" : "left"} past the Keep tab's time, ${hiddenInTurn ? "hidden" : "shown"} in the turn, ${backAfterTurn ? "back" : "gone"} after it, ${made ? "made" : "never made"}, ${offered ? "shared" : "not shared"}, ${hidden ? "gone" : "still there"} after Hide`,
+      line: `${label}: the drawer says ${row.clip}, Clip it ${offered ? "shown" : "hidden"}`,
       problems: [
-        ...(lingering > 0
+        ...(row.clip === "Unavailable"
           ? []
-          : [`${label}: the tab left with the clip still being made`]),
-        ...(hiddenInTurn
-          ? []
-          : [`${label}: the lingering tab stayed through the player's turn`]),
-        ...(backAfterTurn
-          ? []
-          : [`${label}: the tab did not come back after the turn`]),
-        ...(made ? [] : [`${label}: the clip was never made`]),
+          : [`${label}: a 1 GB device was offered a clip (${row.clip})`]),
         ...(offered
-          ? []
-          : [`${label}: Clip on the lingering tab shared nothing`]),
-        ...(hidden ? [] : [`${label}: Hide left the tab on the table`]),
+          ? [`${label}: Clip it shows on a device that cannot make a clip`]
+          : []),
       ],
     };
   }).pipe(Effect.scoped);
@@ -2041,7 +1523,7 @@ const blockedExtension = (engine: BrowserType) =>
     });
   }).pipe(Effect.scoped);
 
-const SHARP_TIMES = [1500, 5000, 9000, 13_000, 17_000];
+const SHARP_TIMES = [1500, 4000, 5600, 7000, 9500];
 
 const LEAST_PSNR = 36;
 
@@ -2235,285 +1717,6 @@ const redrawnFilms = (engine: BrowserType) =>
     return { label, line: `${label}: ${lines.join("; ")}`, problems };
   });
 
-const STORY_CARD_TOP = (SIZES.Story.height - SIZES.Chat.height) / 2;
-
-const replayedClip = (
-  engine: BrowserType,
-  settings: Settings,
-  look: {
-    readonly hand: string;
-    readonly style: "Broadcast" | "Drift";
-    readonly theme: string;
-  }
-) =>
-  Effect.gen(function* keepReplay() {
-    const origin = yield* StageOrigin;
-    const opened = yield* mutedBrowser(engine);
-
-    const context = yield* attempt("open a phone-sized context", () =>
-      opened.newContext({
-        hasTouch: true,
-        viewport: { height: 844, width: 390 },
-      })
-    );
-
-    yield* attempt("stub the share sheet", () =>
-      Promise.all([
-        context.addInitScript(SHARE_STUB),
-        context.addInitScript(CLIP_TOOLS),
-      ])
-    );
-
-    const page = yield* attempt("open a page", () => context.newPage());
-    const label = `${engine.name()}-${look.hand}-${look.theme.toLowerCase()}-replay${look.style === "Drift" ? "-drift" : ""}`;
-
-    yield* throttled(page, engine, settings.throttle);
-    yield* attempt("open the stage", () =>
-      page.goto(
-        `${origin}${STAGE}/stage.html?view=hand&hand=${look.hand}&theme=${look.theme}`
-      )
-    );
-    yield* attempt("wait for the moment", () =>
-      page
-        .locator("nostakes-moment[data-moment]")
-        .waitFor({ state: "attached", timeout: 60_000 })
-    );
-
-    const title = yield* attempt("measure the title on the card", () =>
-      page.locator("nostakes-moment").evaluate((node) => {
-        const part = node.shadowRoot?.querySelector('[data-part="title"]');
-
-        const box =
-          part instanceof SVGGraphicsElement
-            ? part.getBBox()
-            : { height: 0, width: 0, x: 0, y: 0 };
-
-        return JSON.stringify({
-          height: box.height,
-          width: box.width,
-          x: box.x,
-          y: box.y,
-        });
-      })
-    ).pipe(Effect.flatMap(decoded(TitleBoxSchema, "measure the title")));
-
-    const sound = true;
-
-    yield* attempt("wait for the pictures", () =>
-      page
-        .locator('nostakes-moment[data-drawn="Chat Story"]')
-        .waitFor({ state: "attached", timeout: 60_000 })
-    );
-    yield* attempt("tap the moment away", () =>
-      page.locator("nostakes-moment .card").click()
-    );
-
-    if (look.style === "Drift") {
-      yield* attempt("choose Drift", () =>
-        page.locator("nostakes-moment .style").click({ timeout: 60_000 })
-      );
-      yield* attempt("wait for Drift to say it is being made", () =>
-        page.waitForFunction(
-          () =>
-            [
-              ...(globalThis.document
-                .querySelector("nostakes-moment")
-                ?.shadowRoot?.querySelectorAll(".clip, .style") ?? []),
-            ].some((button) =>
-              (button.textContent ?? "").startsWith("Making Drift")
-            ),
-          undefined,
-          { timeout: 15_000 }
-        )
-      );
-    }
-
-    const before = yield* read(
-      page,
-      "JSON.stringify(window.__frames)",
-      FramesSchema,
-      "count frames"
-    );
-
-    const started = performance.now();
-
-    yield* attempt("wait for the replay to be made or refused", () =>
-      page.waitForFunction(
-        () => {
-          const node = globalThis.document.querySelector("nostakes-moment");
-
-          return (
-            node instanceof HTMLElement &&
-            node.dataset.made === undefined &&
-            ["Failed", "Ready", "Share", "Unavailable"].includes(
-              node.dataset.clip ?? ""
-            )
-          );
-        },
-        undefined,
-        { timeout: 240_000 }
-      )
-    );
-
-    const readyMs = Math.round(performance.now() - started);
-
-    const after = yield* read(
-      page,
-      "JSON.stringify(window.__frames)",
-      FramesSchema,
-      "count frames"
-    );
-
-    const state = yield* stateOf(page);
-
-    if (state !== "Ready" && state !== "Share") {
-      return {
-        label,
-        line: `${label}: no replay on this browser (${state})`,
-        problems:
-          settings.require === "nothing"
-            ? []
-            : [`${label}: no replay was made`],
-      };
-    }
-
-    yield* attempt("tap Story", () =>
-      page.locator("nostakes-moment .story").click()
-    );
-    yield* attempt("tap Clip", () =>
-      page.locator("nostakes-moment .clip").click()
-    );
-    yield* attempt("wait for both taps to reach the share sheet", () =>
-      page.waitForFunction("window.__shared.length >= 2", undefined, {
-        timeout: 15_000,
-      })
-    );
-
-    const shared = yield* read(
-      page,
-      "JSON.stringify(window.__shared)",
-      SharedSchema,
-      "read what was shared"
-    );
-
-    const clipIndex = shared.findIndex((entry) => entry.type === "video/mp4");
-    const stillIndex = shared.findIndex((entry) => entry.type === "image/png");
-
-    if (clipIndex === -1 || stillIndex === -1) {
-      return {
-        label,
-        line: `${label}: the share sheet got ${shared.map((entry) => entry.type).join(", ")}`,
-        problems: [
-          `${label}: the replay or the still never reached the share sheet`,
-        ],
-      };
-    }
-
-    const verdict = yield* judged(
-      page,
-      settings,
-      {
-        clip: clipIndex,
-        label,
-        still: stillIndex,
-        title: { ...title, y: title.y + STORY_CARD_TOP },
-      },
-      {
-        frame: "Story",
-        seconds: look.style === "Drift" ? DRIFT_REPLAY : REPLAY,
-        sound,
-      }
-    );
-
-    return {
-      label,
-      line: `${label}: ${verdict.bytes} bytes, ready ${readyMs} ms after the moment left, ${after.late - before.late} late frames of ${after.frames - before.frames}, title on frame 0 off by ${((verdict.played?.titleFar ?? 1) * 100).toFixed(1)}%, last frame mean difference ${verdict.played?.mean.toFixed(2) ?? "?"} with ${((verdict.played?.far ?? 0) * 100).toFixed(2)}% far off, ${verdict.played?.duration.toFixed(2) ?? "?"} s${sound ? ", with sound" : ", silent"}; ${verdict.colours}`,
-      problems: verdict.problems.map((problem) => `${label}: ${problem}`),
-    };
-  }).pipe(Effect.scoped);
-
-const StagedSchema = Schema.Struct({
-  failure: Schema.optional(Schema.String),
-  lateBefore: Schema.optional(Schema.Int),
-  lateDuring: Schema.optional(Schema.Int),
-  longestBeforeMs: Schema.optional(Schema.Int),
-  longestDuringMs: Schema.optional(Schema.Int),
-  ms: Schema.optional(Schema.Int),
-  size: Schema.optional(Schema.Int),
-  slices: Schema.optional(Schema.Array(Schema.Int)),
-  support: Schema.optional(
-    Schema.NullOr(Schema.Struct({ codec: Schema.String }))
-  ),
-  title: Schema.optional(TitleBoxSchema),
-});
-
-const stagedClip = (
-  engine: BrowserType,
-  settings: Settings,
-  look: {
-    readonly frame: Frame;
-    readonly pace: string;
-    readonly sample: string;
-    readonly theme: string;
-  }
-) =>
-  Effect.gen(function* stageClip() {
-    const origin = yield* StageOrigin;
-
-    const opened = yield* mutedBrowser(engine);
-    const context = yield* attempt("open a context", () => opened.newContext());
-
-    yield* attempt("add the judge", () => context.addInitScript(CLIP_TOOLS));
-
-    const page = yield* attempt("open a page", () => context.newPage());
-
-    yield* policed(page, engine.name());
-
-    yield* throttled(page, engine, settings.throttle);
-    yield* attempt("open the clip stage", () =>
-      page.goto(
-        `${origin}${STAGE}/clip.html?sample=${look.sample}&theme=${look.theme}&frame=${look.frame}&pace=${look.pace}`
-      )
-    );
-    yield* attempt("wait for the clip", () =>
-      page
-        .locator("html[data-staged]")
-        .waitFor({ state: "attached", timeout: 180_000 })
-    );
-
-    const staged = yield* attempt("read the stage", () =>
-      page
-        .locator("#stage")
-        .evaluate((node) =>
-          node instanceof HTMLElement ? (node.dataset.result ?? "") : ""
-        )
-    ).pipe(Effect.flatMap(decoded(StagedSchema, "read the stage")));
-
-    const label = `${engine.name()}-${look.sample}-${look.theme.toLowerCase()}-${look.frame.toLowerCase()}`;
-
-    if (staged.support === null || staged.support === undefined) {
-      return {
-        label,
-        line: `${label}: no clip on this browser ${staged.failure ?? ""}`,
-        problems:
-          settings.require === "nothing" ? [] : [`${label}: no clip was made`],
-      };
-    }
-
-    const verdict = yield* judged(
-      page,
-      settings,
-      { clip: 1, label, still: 0, title: staged.title ?? NO_TITLE },
-      { frame: look.frame, seconds: SHORT_CLIP, sound: true }
-    );
-
-    return {
-      label,
-      line: `${label}: ${verdict.bytes} bytes in ${staged.ms ?? 0} ms (${look.pace}), main-thread slices ${(staged.slices ?? []).join(" ")} ms, late frames ${staged.lateDuring ?? 0} during and ${staged.lateBefore ?? 0} in a second before, longest ${staged.longestDuringMs ?? 0} ms against ${staged.longestBeforeMs ?? 0} ms, title on frame 0 off by ${((verdict.played?.titleFar ?? 1) * 100).toFixed(1)}%, last frame mean difference ${verdict.played?.mean.toFixed(2) ?? "?"}`,
-      problems: verdict.problems.map((problem) => `${label}: ${problem}`),
-    };
-  }).pipe(Effect.scoped);
-
 const listOf = (name: string, fallback: string) =>
   Config.String(name).pipe(
     Config.withDefault(fallback),
@@ -2541,9 +1744,12 @@ const namedFlows = (
   engine: BrowserType,
   settings: Settings
 ) => [
-  ...(only.includes("refused") ? [refusedClip(engine)] : []),
-  ...(only.includes("turn") ? [abandonedClip(engine)] : []),
-  ...(only.includes("owed") ? [owedClip(engine, settings)] : []),
+  ...(only.includes("held") ? [heldClip(engine, settings)] : []),
+  ...(only.includes("guard") ? [guardedClip(engine, settings)] : []),
+  ...(only.includes("sharp") ? [sharpFilm(engine)] : []),
+  ...(only.includes("drawer")
+    ? [drawerClip(engine, settings, { hand: "AcesCracked", theme: "Light" })]
+    : []),
 ];
 
 const namedChecks = (
@@ -2578,15 +1784,8 @@ const firefoxChecks = (wanted: boolean) =>
 
 const checks = Effect.gen(function* checkClips() {
   const engines = yield* listOf("CLIP_ENGINES", "chromium,webkit,firefox");
-  const samples = yield* listOf("CLIP_SAMPLES", "BigHand-2,BadBeat-1");
   const hands = yield* listOf("CLIP_HANDS", "AcesCracked");
   const themes = yield* listOf("CLIP_THEMES", "Light");
-  const frames = yield* listOf("CLIP_FRAMES", "Chat");
-
-  const pace = yield* Config.String("CLIP_PACE").pipe(
-    Config.withDefault("Quiet")
-  );
-
   const dir = yield* Config.String("CLIPS_DIR").pipe(Config.option);
 
   const throttle = yield* Config.Number("CLIP_THROTTLE").pipe(
@@ -2599,7 +1798,6 @@ const checks = Effect.gen(function* checkClips() {
   ).pipe(Config.withDefault("nothing" as const));
 
   const settings: Settings = { dir, require, throttle };
-
   const only = yield* listOf("CLIP_ONLY", "");
 
   const chosen = [chromium, webkit].filter((engine) =>
@@ -2611,69 +1809,26 @@ const checks = Effect.gen(function* checkClips() {
     ...(yield* namedChecks(only, chosen, settings)),
   ];
 
-  const quietChat = pace === "Quiet" && frames.includes("Chat");
-
   for (const engine of only.length > 0 ? [] : chosen) {
-    if (quietChat) {
-      for (const flow of [
-        refusedClip(engine),
-        askedClip(engine, settings),
-        abandonedClip(engine),
-        lingeredClip(engine),
-        owedClip(engine, settings),
-        redrawnFilms(engine),
-        syncedFilm(engine, "Browser"),
-        syncedFilm(engine, "Extension"),
-        blockedExtension(engine),
-        sharpFilm(engine),
-        guardedClip(engine, 1),
-        guardedClip(engine, 2),
-        guardedClip(engine, 4),
-        guardedClip(engine, 8),
-      ]) {
-        problems.push(...(yield* reported(yield* flow)));
-      }
-
-      for (const hand of hands) {
-        for (const theme of themes) {
-          problems.push(
-            ...(yield* reported(
-              yield* replayedClip(engine, settings, {
-                hand,
-                style: "Broadcast",
-                theme,
-              })
-            ))
-          );
-        }
-      }
-
-      problems.push(
-        ...(yield* reported(
-          yield* replayedClip(engine, settings, {
-            hand: hands[0] ?? "AcesCracked",
-            style: "Drift",
-            theme: themes[0] ?? "Light",
-          })
-        ))
-      );
+    for (const flow of [
+      heldClip(engine, settings),
+      guardedClip(engine, settings),
+      redrawnFilms(engine),
+      syncedFilm(engine, "Browser"),
+      syncedFilm(engine, "Extension"),
+      blockedExtension(engine),
+      sharpFilm(engine),
+    ]) {
+      problems.push(...(yield* reported(yield* flow)));
     }
 
-    for (const sample of samples) {
+    for (const hand of hands) {
       for (const theme of themes) {
-        for (const frame of frames) {
-          const checked =
-            frame === "Chat" && pace === "Quiet"
-              ? yield* liveClip(engine, settings, { sample, theme })
-              : yield* stagedClip(engine, settings, {
-                  frame: frame === "Story" ? "Story" : "Chat",
-                  pace,
-                  sample,
-                  theme,
-                });
-
-          problems.push(...(yield* reported(checked)));
-        }
+        problems.push(
+          ...(yield* reported(
+            yield* drawerClip(engine, settings, { hand, theme })
+          ))
+        );
       }
     }
   }

@@ -21,6 +21,7 @@ import {
   LinkSchema,
   ThemeSchema,
 } from "./model.js";
+import { TonightCountSchema } from "./moments/element.js";
 import { PresetSchema, RuleGroupSchema } from "./rules-copy.js";
 import { TableIntentSchema } from "./table/snapshot.js";
 import { VoiceStatusSchema } from "./voice-model.js";
@@ -86,6 +87,7 @@ export const Messages = defineMessageUnion({
   ClickedLeave: {},
   ClickedMember: { player: PlayerIdSchema },
   ClickedMenu: {},
+  ClickedTonight: {},
   ClickedOpenRoom: {},
   ClickedRequestChips: {},
   ClickedRoomCommand: { command: MemberCommandSchema, label: Schema.String },
@@ -105,6 +107,7 @@ export const Messages = defineMessageUnion({
   CompletedCopy: { copied: CopiedSchema },
   CompletedForget: { code: RoomCodeSchema },
   CompletedNavigation: { path: Schema.String },
+  CountedTonight: { count: TonightCountSchema },
   CompletedPreference: {},
   CompletedWake: {},
   EnteredRoom: {

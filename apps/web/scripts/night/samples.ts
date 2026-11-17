@@ -116,9 +116,9 @@ const RECAPS = {
     hands: 263,
     length: "5 h 2 min",
     moments: [
-      ["BigHand-3", "Bartholomew Montgomery-Fitzwilliam III"],
-      ["BadBeat-1", "Anastasia Konstantinopoulou-Papadimitri"],
-      ["HeroCall-2", "WWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWW"],
+      ["QuadsIntoBoat-BigHand", "Bartholomew Montgomery-Fitzwilliam III"],
+      ["AcesCracked-BadBeat", "Anastasia Konstantinopoulou-Papadimitri"],
+      ["HeroCall-HeroCall", "WWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWW"],
     ],
     pot: [
       3120,
@@ -133,16 +133,16 @@ const RECAPS = {
     hands: 142,
     length: "3 h 10 min",
     moments: [
-      ["BigHand-3", "Kit"],
-      ["BadBeat-1", "Jonas"],
-      ["Bluff-2", "Lou"],
+      ["QuadsIntoBoat-BigHand", "Kit"],
+      ["AcesCracked-BadBeat", "Jonas"],
+      ["AllInBluff-Bluff", "Lou"],
     ],
     pot: [2400, 87, ["Kit", "Priya", "Sam"]],
   },
   two: {
     hands: 18,
     length: "48 min",
-    moments: [["SevenDeuce-1", "Ana"]],
+    moments: [["SevenDeuce-SevenDeuce", "Ana"]],
     pot: [120, 9, ["Ana"]],
   },
 } satisfies Readonly<Record<string, RecapNight>>;
@@ -174,7 +174,7 @@ export const sampleRecap = (name: string): RecapCard => {
     length: night.length,
     moments: night.moments.map(([sample, player], index) => {
       const picture = samplePicture(sample);
-      const [lead] = picture.faces;
+      const [lead] = picture.seats;
 
       return {
         cards: lead?.cards ?? [],

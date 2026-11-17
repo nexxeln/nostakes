@@ -1,15 +1,17 @@
 import "../../src/client/tokens.css";
 import "../../src/client/app.css";
-import { Effect } from "effect";
+import { Effect, Option } from "effect";
 
 import { defineMoment } from "../../src/client/moments/element.js";
-import type { MomentScene } from "../../src/client/moments/element.js";
 import { EMBEDDED_FONTS, pngFile } from "../../src/client/pictures/png.js";
+import { defineTonight } from "../../src/client/tonight/element.js";
 import { MOMENT_TAG } from "../../src/features/moments/element.js";
 import type { MomentHand } from "../../src/features/moments/element.js";
 import { pictureSvg } from "../../src/features/moments/picture.js";
+import { sceneOf } from "../../src/features/moments/scene.js";
 import { fileNameOf } from "../../src/features/pictures/paper.js";
 import type { KeptFrame } from "../../src/features/pictures/paper.js";
+import { TONIGHT_TAG } from "../../src/features/tonight/element.js";
 import { BLUFF_HAND } from "./bluff-hand.js";
 import { replayHand } from "./replay-hands.js";
 import { SAMPLE_NAMES, samplePicture } from "./samples.js";
@@ -22,7 +24,7 @@ const frame: KeptFrame = params.get("frame") === "Story" ? "Story" : "Chat";
 
 const deck = params.get("deck") === "four" ? "FourColour" : "TwoColour";
 
-const picture = samplePicture(params.get("sample") ?? "");
+const picture = samplePicture(params.get("sample") ?? "", { deck, theme });
 
 document.documentElement.dataset.theme = theme.toLowerCase();
 
@@ -31,8 +33,9 @@ document.body.style.margin = "0";
 const root = document.querySelector("#stage");
 
 interface MomentHost extends HTMLElement {
+  dealing: boolean;
   hand: MomentHand | null;
-  present: (scene: MomentScene) => void;
+  room: string;
   sound: boolean;
 }
 
@@ -54,6 +57,7 @@ const told = (into: Element) => {
 
   if (isMomentHost(host)) {
     host.sound = false;
+    host.room = params.get("room") ?? "STAGE1";
     host.hand = replayHand(params.get("hand") ?? "", { deck, theme });
     Reflect.set(globalThis, "__tellHand", (name: string) => {
       host.hand = replayHand(name, { deck, theme });
@@ -61,29 +65,69 @@ const told = (into: Element) => {
   }
 };
 
-const live = (into: Element) => {
-  defineMoment();
-  const stage = document.createElement("div");
-  const host = document.createElement(MOMENT_TAG);
+const titleBoxOf = (hand: MomentHand) => {
+  const scene = sceneOf(hand);
 
-  Object.assign(stage.style, {
-    background: "var(--color-page)",
-    height: "100vh",
-    position: "relative",
-  });
-  stage.append(host);
-  into.append(stage);
-
-  if (isMomentHost(host)) {
-    host.sound = false;
-    host.present({ deck, id: "stage", picture, theme });
+  if (Option.isNone(scene)) {
+    return { height: 0, width: 0, x: 0, y: 0 };
   }
 
-  const at = Number(params.get("at") ?? "0");
+  const host = document.createElement("div");
 
-  for (const animation of host.shadowRoot?.getAnimations() ?? []) {
-    animation.pause();
-    animation.currentTime = at;
+  host.style.cssText = "position:absolute;left:-4000px;top:0;width:1080px";
+  host.innerHTML = pictureSvg(scene.value.picture, {
+    deck,
+    fonts: "",
+    frame: "Story",
+    theme,
+  });
+  document.body.append(host);
+
+  const part = host.querySelector('[data-part="title"]');
+
+  const box =
+    part instanceof SVGGraphicsElement
+      ? part.getBBox()
+      : { height: 0, width: 0, x: 0, y: 0 };
+
+  host.remove();
+
+  return { height: box.height, width: box.width, x: box.x, y: box.y };
+};
+
+const tonight = (into: Element) => {
+  defineMoment();
+  defineTonight();
+
+  const room = params.get("room") ?? "STAGE1";
+  const table = document.createElement("div");
+  const host = document.createElement(MOMENT_TAG);
+  const drawer = document.createElement(TONIGHT_TAG);
+
+  Object.assign(table.style, {
+    background: "var(--color-felt)",
+    height: "60vh",
+    position: "relative",
+  });
+  Object.assign(drawer.style, { padding: "16px" });
+  table.append(host);
+  into.append(table, drawer);
+  Object.assign(drawer, { deck, mode: "Drawer", room, theme });
+
+  if (isMomentHost(host)) {
+    const hand = replayHand(params.get("hand") ?? "AcesCracked", {
+      deck,
+      theme,
+    });
+
+    host.sound = false;
+    host.room = room;
+    host.dealing = params.get("turn") === "true";
+    host.hand = hand;
+    Reflect.set(globalThis, "__titleBox", titleBoxOf(hand));
+    Reflect.set(globalThis, "__turn", (yours: boolean) => {
+      host.dealing = yours;
+    });
   }
 };
 
@@ -126,8 +170,8 @@ if (root !== null) {
     if (root instanceof HTMLElement) {
       root.dataset.result = JSON.stringify(SAMPLE_NAMES);
     }
-  } else if (view === "live") {
-    live(root);
+  } else if (view === "tonight") {
+    tonight(root);
   } else if (view === "hand") {
     told(root);
   } else if (view === "late") {

@@ -10,10 +10,33 @@ import { ReplaySteps } from "@nostakes/room";
 import type { MomentKind, Replay, ReplayStep } from "@nostakes/room";
 import type { Types } from "effect";
 
+import { fitted } from "../../pictures/text-fit.js";
 import { chipsText } from "../captions.js";
-import type { ReplaySeat } from "../replay-plan.js";
-import { shortName } from "../replay-words.js";
+import type { MomentHand } from "../element.js";
 import type { Outcome } from "../sound/sheet.js";
+
+const NAME_ROOM_EMS = 7.6;
+
+const shortName = (name: string) => fitted(name, 1, NAME_ROOM_EMS).text;
+
+export interface ReplaySeat {
+  readonly avatar: string;
+  readonly name: string;
+  readonly seat: SeatIndex;
+  readonly stack: number | null;
+}
+
+export const replaySeatsOf = (hand: MomentHand): readonly ReplaySeat[] =>
+  hand.lastHand.dealtIn.map(({ player, seat }) => {
+    const person = hand.people.find((each) => each.player === player);
+
+    return {
+      avatar: person?.avatar ?? "",
+      name: person?.name ?? "Someone",
+      seat,
+      stack: hand.stacks?.find((each) => each.seat === seat)?.stack ?? null,
+    };
+  });
 
 export interface DriftPerson {
   readonly avatar: string;

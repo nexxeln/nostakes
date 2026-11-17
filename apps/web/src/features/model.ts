@@ -197,6 +197,14 @@ export const ClearingSchema = Schema.Struct({
 
 export type Clearing = typeof ClearingSchema.Type;
 
+export const TonightStateSchema = Schema.Struct({
+  making: Schema.Int,
+  open: Schema.Boolean,
+  ready: Schema.Int,
+});
+
+export type TonightState = typeof TonightStateSchema.Type;
+
 export const InRoomSchema = Schema.Struct({
   addingChips: Schema.Boolean,
   clearing: Schema.Option(ClearingSchema),
@@ -218,6 +226,7 @@ export const InRoomSchema = Schema.Struct({
   menu: Schema.Boolean,
   moments: MomentWatchSchema,
   notice: Schema.Option(Schema.String),
+  tonight: TonightStateSchema,
   peeks: Schema.Array(
     Schema.Struct({ player: PlayerIdSchema, until: Schema.Int })
   ),

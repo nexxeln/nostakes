@@ -35,11 +35,19 @@ export const MomentHandSchema = Schema.Struct({
 
 export type MomentHand = typeof MomentHandSchema.Type;
 
+export const TonightCountSchema = Schema.Struct({
+  making: Schema.Int,
+  ready: Schema.Int,
+});
+
+export type TonightCount = typeof TonightCountSchema.Type;
+
 export const momentElement = CustomElement.define({
-  events: {},
+  events: { tonight: TonightCountSchema },
   properties: {
     dealing: Schema.Boolean,
     hand: Schema.NullOr(MomentHandSchema),
+    room: Schema.String,
     sound: Schema.Boolean,
   },
   tag: MOMENT_TAG,

@@ -108,9 +108,10 @@ describe("the picture of a moment", () => {
       ]);
 
       const pictured = [
-        ...picture.faces.flatMap((face) => face.cards),
+        ...picture.seats.flatMap((seat) => [...seat.cards, ...seat.playing]),
         ...picture.boards.flat(),
         ...picture.lifted,
+        ...(picture.flag === null ? [] : [picture.flag.card]),
       ];
 
       const svg = pictureSvg(picture, {

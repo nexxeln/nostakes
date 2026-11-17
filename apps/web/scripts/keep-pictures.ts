@@ -25,7 +25,7 @@ class KeepCheckFailed extends Schema.TaggedError<
   { readonly brand: unique symbol }
 >()("KeepCheckFailed", { detail: Schema.String, step: Schema.String }) {
   override get message() {
-    return `Keeping a picture failed at "${this.step}": ${this.detail}. Open ${STAGE}?view=live on the stage server and tap Keep to see it.`;
+    return `Keeping a picture failed at "${this.step}": ${this.detail}. Open ${STAGE}?view=tonight on the stage server and tap Picture in the drawer to see it.`;
   }
 }
 
@@ -124,21 +124,27 @@ const checkEngine = (engine: BrowserType, dir: Option.Option<string>) => {
     policy.listen(page, `${engine.name()} moment`);
 
     yield* attempt("open the stage", () =>
-      page.goto(`${origin}${STAGE}?view=live&sample=BadBeat-1&theme=Dark`)
+      page.goto(`${origin}${STAGE}?view=tonight&hand=AcesCracked&theme=Dark`)
     );
     yield* attempt("wait for both pictures to be drawn before any tap", () =>
       page
-        .locator('nostakes-moment[data-drawn="Chat Story"]')
+        .locator(
+          'nostakes-tonight button[data-picture="Story"][aria-disabled="false"]'
+        )
         .waitFor({ state: "attached", timeout: 30_000 })
     );
-    yield* attempt("tap the moment away", () =>
-      page.locator("nostakes-moment .card").click()
+    yield* attempt("wait for the chat picture", () =>
+      page
+        .locator(
+          'nostakes-tonight button[data-picture="Chat"][aria-disabled="false"]'
+        )
+        .waitFor({ state: "attached", timeout: 30_000 })
     );
-    yield* attempt("tap Keep", () =>
-      page.locator("nostakes-moment .keep").click()
+    yield* attempt("tap Picture", () =>
+      page.locator('nostakes-tonight button[data-picture="Chat"]').click()
     );
     yield* attempt("tap Story", () =>
-      page.locator("nostakes-moment .story").click()
+      page.locator('nostakes-tonight button[data-picture="Story"]').click()
     );
     yield* attempt("wait for both taps to reach the share sheet", () =>
       sharedAtLeast(page, SHARES, 15_000)
@@ -148,8 +154,8 @@ const checkEngine = (engine: BrowserType, dir: Option.Option<string>) => {
     const problems: string[] = [];
 
     for (const [name, width, height] of [
-      ["nostakes-bad-beat.png", 1080, 1350],
-      ["nostakes-bad-beat-story.png", 1080, 1920],
+      ["nostakes-aces-cracked.png", 1080, 1350],
+      ["nostakes-aces-cracked-story.png", 1080, 1920],
     ] as const) {
       Option.match(keptAs(found, name), {
         onNone: () => {
@@ -193,11 +199,11 @@ const checkEngine = (engine: BrowserType, dir: Option.Option<string>) => {
       () =>
         Promise.all([
           page.waitForEvent("download", { timeout: 10_000 }),
-          page.locator("nostakes-moment .keep").click(),
+          page.locator('nostakes-tonight button[data-picture="Chat"]').click(),
         ]).then(([started]) => started.suggestedFilename())
     );
 
-    if (download !== "nostakes-bad-beat.png") {
+    if (download !== "nostakes-aces-cracked.png") {
       problems.push(`the download fallback saved ${download}`);
     }
 

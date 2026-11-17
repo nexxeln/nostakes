@@ -55,7 +55,6 @@ const program = Effect.gen(function* reels() {
   ).pipe(Config.withDefault("chromium" as const));
 
   const hands = yield* listOf("REEL_HANDS", "AcesCracked");
-  const samples = yield* listOf("REEL_SAMPLES", "");
   const themes = yield* listOf("REEL_THEMES", "Light");
 
   const frame = yield* Config.String("REEL_FRAME").pipe(
@@ -65,11 +64,6 @@ const program = Effect.gen(function* reels() {
   const make = yield* Config.String("REEL_MAKE").pipe(
     Config.withDefault("file")
   );
-
-  const style = yield* Config.Literals(
-    ["Broadcast", "Drift"],
-    "REEL_STYLE"
-  ).pipe(Config.withDefault("Broadcast" as const));
 
   const calm = yield* Config.Boolean("REEL_CALM").pipe(
     Config.withDefault(false)
@@ -98,19 +92,16 @@ const program = Effect.gen(function* reels() {
     )
   );
 
-  const told = [
-    ...hands.map((name) => ({ name, query: `hand=${name}` })),
-    ...samples.map((name) => ({ name, query: `sample=${name}` })),
-  ];
+  const told = hands.map((name) => ({ name, query: `hand=${name}` }));
 
   for (const { name: hand, query } of told) {
     for (const theme of themes) {
-      const label = `${engine === "webkit" ? "webkit-" : ""}${hand}-${theme.toLowerCase()}${frame === "Chat" ? "-chat" : ""}${style === "Drift" ? "-drift" : ""}${calm ? "-calm" : ""}`;
+      const label = `${engine === "webkit" ? "webkit-" : ""}${hand}-${theme.toLowerCase()}${frame === "Chat" ? "-chat" : ""}${calm ? "-calm" : ""}`;
       const page = yield* attempt("open a page", () => opened.newPage());
 
       yield* attempt("open the reel stage", () =>
         page.goto(
-          `${origin}${STAGE}?${query}&theme=${theme}&frame=${frame}&make=${make}&style=${style}&calm=${calm}`
+          `${origin}${STAGE}?${query}&theme=${theme}&frame=${frame}&make=${make}&calm=${calm}`
         )
       );
       yield* attempt("wait for the reel", () =>

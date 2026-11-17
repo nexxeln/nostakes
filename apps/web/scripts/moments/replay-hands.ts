@@ -303,6 +303,27 @@ export const REPLAY_HANDS = {
       { look: 37, name: "Dev", stack: 2000 },
     ],
   },
+  QuadsFolded: {
+    deck: "Kd 9s Kc 9h 9c Kh 2s 9d 4c",
+    maxRuns: 1,
+    moves: [
+      act(0, raises(30)),
+      act(1, calls),
+      act(1, checks),
+      act(0, raises(60)),
+      act(1, calls),
+      act(1, checks),
+      act(0, checks),
+      act(1, raises(200)),
+      act(0, raises(700)),
+      act(1, folds),
+      shows(0, "9s 9h"),
+    ],
+    players: [
+      { look: 11, name: "Maya", stack: 2000 },
+      { look: 37, name: "Dev", stack: 2000 },
+    ],
+  },
   RunItTwice: {
     deck: "Ad As 2c Ah 2s 7c 9h 4d 2d 3c 8h Jd Kh Qs",
     maxRuns: 2,

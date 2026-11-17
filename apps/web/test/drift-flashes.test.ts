@@ -6,7 +6,7 @@ import {
   REPLAY_HAND_NAMES,
   replayHand,
 } from "../scripts/moments/replay-hands.js";
-import { CLIP_FPS } from "../src/features/moments/clip-plan.js";
+import { CLIP_FPS } from "../src/features/moments/atlas.js";
 import {
   CENTRE,
   FRAME,
@@ -19,8 +19,10 @@ import {
 } from "../src/features/moments/drift/flashes.js";
 import type { PaintedFilm } from "../src/features/moments/drift/flashes.js";
 import { driftPlan } from "../src/features/moments/drift/plan.js";
-import { driftTold } from "../src/features/moments/drift/told.js";
-import { replaySeatsOf } from "../src/features/moments/replay-plan.js";
+import {
+  driftTold,
+  replaySeatsOf,
+} from "../src/features/moments/drift/told.js";
 import { shownMomentOf } from "../src/features/moments/scene.js";
 import { REST } from "../src/features/moments/timeline.js";
 import { RED } from "../src/features/pictures/paper.js";

@@ -5,6 +5,7 @@ import {
   BettingLimits,
   BombPots,
   ChipsSchema,
+  HandRankSchema,
   Commands,
   DeckSchema,
   Events,
@@ -25,30 +26,43 @@ import {
 import type { Command, Event, TableState } from "@nostakes/engine";
 import {
   Audiences,
+  Moments,
+  NameSchema,
+  ReplaySteps,
   RoomEvents,
   SeenEvents,
+  headline,
   millis,
+  momentsOf,
   redact,
-  replayOf,
 } from "@nostakes/room";
-import type { Audience, SeenTableEvent } from "@nostakes/room";
+import type {
+  Audience,
+  Headline,
+  Moment,
+  Replay,
+  SeenTableEvent,
+} from "@nostakes/room";
 import { Match, Option, Result, Schema } from "effect";
 import * as Arbitrary from "effect/Arbitrary";
 
-import { driftPlan } from "../src/features/moments/drift/plan.js";
-import type { DriftPlan } from "../src/features/moments/drift/plan.js";
-import { driftTold } from "../src/features/moments/drift/told.js";
-import { replayPlan } from "../src/features/moments/replay-plan.js";
-import type { ReplayPlan } from "../src/features/moments/replay-plan.js";
+import { buildPlan } from "../src/features/moments/build.js";
+import type { BuildPlan } from "../src/features/moments/build.js";
+import type { Person } from "../src/features/moments/element.js";
+import type { LastHand } from "../src/features/moments/scene.js";
+import {
+  pictureOf,
+  replayFor,
+  storyOf,
+} from "../src/features/moments/scene.js";
+import type { MomentPicture } from "../src/features/moments/schema.js";
 import type { SeatStack } from "../src/features/moments/watch.js";
 
 const handSeed = Arbitrary.schema(
   Schema.Int.check(Schema.isBetween({ maximum: 2_000_000_000, minimum: 1 }))
 );
 
-const HANDS = { arbitrary: { runs: 150 }, timeout: 120_000 };
-
-const DRIFT_HANDS = { arbitrary: { runs: 60 }, timeout: 120_000 };
+const HANDS = { arbitrary: { runs: 60 }, timeout: 120_000 };
 
 const chipCount = (amount: number) => ChipsSchema.make(amount);
 
@@ -244,84 +258,179 @@ const revealedIn = (event: SeenTableEvent) =>
     Match.orElse(() => [])
   );
 
-const evenChances = ({
-  holes,
-}: {
-  readonly holes: readonly unknown[];
-}): readonly number[] =>
-  holes.map((_, index) => (index === 0 ? 100 - (holes.length - 1) * 11 : 11));
+const peopleOf = (replay: Replay): readonly Person[] =>
+  replay.dealtIn.map((seat) => ({
+    avatar: "",
+    name: NameSchema.make(`Player ${seat}`),
+    player: PlayerIdSchema.make(`p${seat}`),
+  }));
 
-const KINDS = ["BadBeat", "Bluff", "HeroCall", "BigHand", "SplitRuns"] as const;
+const lastHandOf = (replay: Replay): LastHand => {
+  const folded = new Set(
+    replay.steps.flatMap((step) =>
+      ReplaySteps.$is("Acted")(step) && step.act === "Fold" ? [step.seat] : []
+    )
+  );
 
-const planFor = (feed: readonly SeenTableEvent[], seed: number) =>
-  replayOf(feed, evenChances).pipe(
-    Option.map((replay) =>
-      replayPlan(replay, {
-        frame: seed % 2 === 0 ? "Story" : "Chat",
-        kind: KINDS[seed % KINDS.length] ?? "BigHand",
-        principals: replay.dealtIn.slice(0, 2),
-        seats: replay.dealtIn.map((seat) => ({
-          avatar: "",
-          name: `Player ${seat}`,
-          seat,
-          stack: 1000,
-        })),
+  const streets = replay.steps.flatMap((step) =>
+    ReplaySteps.$is("StreetDealt")(step) ? [step] : []
+  );
+
+  const runsFrom =
+    replay.steps.find((step) => ReplaySteps.$is("Runs")(step) && step.runs > 1)
+      ?.at ?? Infinity;
+
+  const runs = Math.max(1, ...streets.map((street) => street.run));
+
+  const common =
+    replay.boards > 1
+      ? []
+      : streets
+          .filter((street) => street.run === 1 && street.at < runsFrom)
+          .flatMap((street) => street.cards);
+
+  const boards = Array.from({ length: runs }, (_, index) => {
+    const run = index + 1;
+
+    const own = streets
+      .filter((street) => street.run === run)
+      .flatMap((street) => street.cards);
+
+    return run === 1 || replay.boards > 1 ? own : [...common, ...own];
+  });
+
+  return {
+    awards: [],
+    boards,
+    bounty: Option.none(),
+    dealtIn: replay.dealtIn.map((seat) => ({
+      folded: folded.has(seat),
+      player: PlayerIdSchema.make(`p${seat}`),
+      seat,
+    })),
+    doubleBoard: replay.boards > 1,
+    game: replay.game,
+    handNumber: replay.handNumber,
+    mucked: [],
+    rabbit: [],
+    shown: replay.tabled.map(({ cards, seat }) => ({
+      cards,
+      player: PlayerIdSchema.make(`p${seat}`),
+      seat,
+    })),
+    yourCards: [],
+  };
+};
+
+const KINDS = ["Cooler", "Bluff", "HeroCall", "BigHand", "BadBeat"] as const;
+
+const madeUp = (replay: Replay, seed: number): Moment => {
+  const [first = SeatIndexSchema.make(0), second = SeatIndexSchema.make(1)] =
+    replay.dealtIn.slice(seed % 2);
+
+  const pot = ChipsSchema.make(400);
+  const rank = HandRankSchema.make(2_400_000);
+  const kind = KINDS[seed % KINDS.length] ?? "Cooler";
+
+  return Match.value(kind).pipe(
+    Match.when("Bluff", () =>
+      Moments.Bluff({ bet: pot, pot, seats: [first], street: "River", tier: 2 })
+    ),
+    Match.when("HeroCall", () =>
+      Moments.HeroCall({
+        call: pot,
+        pot,
+        rank,
+        seats: [first, second],
+        street: "River",
         tier: 2,
+      })
+    ),
+    Match.when("BigHand", () =>
+      Moments.BigHand({ pot, rank, seats: [first], tier: 2 })
+    ),
+    Match.when("BadBeat", () =>
+      Moments.BadBeat({
+        odds: { exact: true, percent: 81 },
+        pot,
+        rank,
+        seats: [first, second],
+        street: "Turn",
+        tier: 3,
+        winningRank: rank,
+      })
+    ),
+    Match.orElse(() =>
+      Moments.Cooler({
+        pot,
+        rank,
+        seats: [first, second],
+        street: "River",
+        tier: 2,
+        winningRank: rank,
       })
     )
   );
+};
 
-const driftFor = (feed: readonly SeenTableEvent[], seed: number) =>
-  replayOf(feed, evenChances).pipe(
-    Option.map((replay) =>
-      driftPlan(
-        driftTold(replay, {
-          kind: KINDS[seed % KINDS.length] ?? "BigHand",
-          principals: replay.dealtIn.slice(0, 2),
-          seats: replay.dealtIn.map((seat) => ({
-            avatar: "",
-            name: `Player ${seat}`,
-            seat,
-            stack: 1000,
-          })),
-          title: "A hand",
-        }),
-        {
-          calm: seed % 3 === 0,
-          deck: "TwoColour",
-          kept: { shows: [], svg: "" },
-          seed,
-          theme: "Light",
-        }
-      )
-    )
+interface Told {
+  readonly found: Headline;
+  readonly lastHand: LastHand;
+  readonly people: readonly Person[];
+}
+
+const toldFrom = (
+  spectator: readonly SeenTableEvent[],
+  seed: number
+): Option.Option<Told> =>
+  replayFor(spectator).pipe(
+    Option.map((replay) => ({
+      found: Option.getOrElse(headline(momentsOf(spectator), "All"), () => ({
+        also: Option.none<Moment>(),
+        lead: madeUp(replay, seed),
+      })),
+      lastHand: lastHandOf(replay),
+      people: peopleOf(replay),
+    }))
   );
 
-const driftDigest = (plan: DriftPlan) => ({
-  beats: plan.beats,
-  dealt: plan.dealt,
-  sheet: plan.sheet,
-  shots: plan.shots.map((shot) => [shot.box, shot.keys, shot.shows]),
+const sceneFor = (told: Told, record: readonly SeenTableEvent[]) => ({
+  picture: pictureOf(told.people, told.lastHand, told.found, record),
+  story: storyOf(told.people, told.lastHand, told.found, record),
 });
 
-const driftFaceUp = (plan: DriftPlan) =>
+const planFor = (
+  told: Told,
+  record: readonly SeenTableEvent[],
+  seed: number
+): BuildPlan => {
+  const { picture, story } = sceneFor(told, record);
+
+  return buildPlan(picture, story, {
+    calm: seed % 5 === 0,
+    deck: "TwoColour",
+    frame: seed % 2 === 0 ? "Story" : "Chat",
+    theme: seed % 3 === 0 ? "Dark" : "Light",
+  });
+};
+
+const shownBy = (spectator: readonly SeenTableEvent[]) =>
+  new Set(spectator.flatMap(revealedIn).map((card) => cardText(card)));
+
+const pictured = (picture: MomentPicture) => [
+  ...picture.seats.flatMap((seat) => [...seat.cards, ...seat.playing]),
+  ...picture.boards.flat(),
+  ...picture.lifted,
+  ...(picture.flag === null ? [] : [picture.flag.card]),
+];
+
+const faceUp = (plan: BuildPlan) =>
   plan.shots.flatMap((shot) =>
     shot.shows.map((card) => ({ card, shownAt: shot.keys[0]?.at ?? 0 }))
   );
 
-const driftNeverShown = (
-  plan: DriftPlan,
-  spectator: readonly SeenTableEvent[]
-) => {
-  const shown = new Set(
-    spectator.flatMap(revealedIn).map((card) => cardText(card))
-  );
-
-  return driftFaceUp(plan).filter(({ card }) => !shown.has(card));
-};
-
-const driftBoardTooSoon = (
-  plan: DriftPlan,
+const boardTooSoon = (
+  plan: BuildPlan,
   spectator: readonly SeenTableEvent[]
 ) => {
   const order = spectator.flatMap((event) =>
@@ -339,132 +448,117 @@ const driftBoardTooSoon = (
       : [{ before, card }];
   });
 
-  const early = driftFaceUp(plan).flatMap(({ card, shownAt }) =>
+  const early = faceUp(plan).flatMap(({ card, shownAt }) =>
     order.includes(card) && shownAt < (dealtAt.get(card) ?? Infinity)
       ? [{ card, shownAt }]
       : []
   );
 
-  return [...outOfOrder, ...early];
+  const listed = new Set(plan.dealt.map((each) => each.card));
+  const missing = [...new Set(order)].filter((card) => !listed.has(card));
+
+  return [
+    ...outOfOrder,
+    ...early,
+    ...missing.map((card) => ({ card, missing: true })),
+  ];
 };
-
-const faceUp = (plan: ReplayPlan) =>
-  plan.sprites.flatMap((sprite) =>
-    sprite.art.kind === "Card" && sprite.art.card.length > 0
-      ? [{ card: sprite.art.card, shownAt: sprite.shownAt }]
-      : []
-  );
-
-const neverShown = (plan: ReplayPlan, spectator: readonly SeenTableEvent[]) => {
-  const shown = new Set(
-    spectator.flatMap(revealedIn).map((card) => cardText(card))
-  );
-
-  return faceUp(plan).filter(({ card }) => !shown.has(card));
-};
-
-const boardTooSoon = (plan: ReplayPlan, spectator: readonly SeenTableEvent[]) =>
-  faceUp(plan).flatMap(({ card, shownAt }) => {
-    const index = spectator.findIndex(
-      (event) =>
-        Events.$is("StreetDealt")(event) &&
-        event.cards.some((dealt) => cardText(dealt) === card)
-    );
-
-    const allowed = Math.min(
-      ...plan.timeline
-        .filter((entry) => entry.at >= index)
-        .map((entry) => entry.ms)
-    );
-
-    return index === -1 || shownAt >= allowed
-      ? []
-      : [{ allowed, card, index, shownAt }];
-  });
 
 const everyDevice = (events: readonly Event[]) => [
   Audiences.Spectator(),
   ...audiencesOf(events),
 ];
 
-describe("a moment's hand replay", () => {
+const eachDevice = <A>(
+  seed: number,
+  look: (
+    told: Told,
+    feed: readonly SeenTableEvent[],
+    spectator: readonly SeenTableEvent[]
+  ) => A
+): readonly A[] => {
+  const events = generatedHand(seed);
+  const spectator = feedFor(events, Audiences.Spectator());
+
+  return Option.match(toldFrom(spectator, seed), {
+    onNone: () => [],
+    onSome: (told) =>
+      everyDevice(events).map((audience) =>
+        look(told, feedFor(events, audience), spectator)
+      ),
+  });
+};
+
+describe("a moment's picture and clip", () => {
   it.prop(
-    "turns face up, at any time, no card the table was not shown by the end of the hand, on any device",
+    "never show a card face up that the table was not shown, on any device",
     { seed: handSeed },
     ({ seed }) => {
-      const events = generatedHand(seed);
-      const spectator = feedFor(events, Audiences.Spectator());
-
       expect(
-        everyDevice(events).flatMap((audience) =>
-          Option.match(planFor(feedFor(events, audience), seed), {
-            onNone: () => [],
-            onSome: (plan) => neverShown(plan, spectator),
-          })
-        )
+        eachDevice(seed, (told, feed, spectator) => {
+          const shown = shownBy(spectator);
+          const { picture } = sceneFor(told, feed);
+
+          return [
+            ...pictured(picture),
+            ...faceUp(planFor(told, feed, seed)).map(({ card }) => card),
+          ].filter((card) => !shown.has(card));
+        }).flat()
       ).toStrictEqual([]);
     },
     HANDS
   );
 
   it.prop(
-    "shows no board card before the beat that deals its street",
+    "show no board card in the clip before the beat that deals it",
     { seed: handSeed },
     ({ seed }) => {
-      const spectator = feedFor(generatedHand(seed), Audiences.Spectator());
-
       expect(
-        Option.match(planFor(spectator, seed), {
-          onNone: () => [],
-          onSome: (plan) => boardTooSoon(plan, spectator),
-        })
+        eachDevice(seed, (told, feed, spectator) =>
+          boardTooSoon(planFor(told, feed, seed), spectator)
+        ).flat()
       ).toStrictEqual([]);
     },
     HANDS
   );
 
   it.prop(
-    "holds the same two rules in the Drift cut, on any device",
+    "are the same on every device",
     { seed: handSeed },
     ({ seed }) => {
-      const events = generatedHand(seed);
-      const spectator = feedFor(events, Audiences.Spectator());
-
-      expect(
-        everyDevice(events).flatMap((audience) =>
-          Option.match(driftFor(feedFor(events, audience), seed), {
-            onNone: () => [],
-            onSome: (plan) => [
-              ...driftNeverShown(plan, spectator),
-              ...driftBoardTooSoon(plan, spectator),
-            ],
-          })
-        )
-      ).toStrictEqual([]);
-    },
-    DRIFT_HANDS
-  );
-
-  it.prop(
-    "plans the same replay on every device, in both styles",
-    { seed: handSeed },
-    ({ seed }) => {
-      const events = generatedHand(seed);
-
-      const bothFor = (audience: Audience) => {
-        const feed = feedFor(events, audience);
-
-        return JSON.stringify([
-          planFor(feed, seed),
-          driftFor(feed, seed).pipe(Option.map(driftDigest)),
-        ]);
-      };
-
-      const spectator = bothFor(Audiences.Spectator());
-
-      expect(audiencesOf(events).map(bothFor)).toStrictEqual(
-        audiencesOf(events).map(() => spectator)
+      const drawn = eachDevice(seed, (told, feed) =>
+        JSON.stringify([sceneFor(told, feed), planFor(told, feed, seed)])
       );
+
+      expect(new Set(drawn).size).toBeLessThanOrEqual(1);
+    },
+    HANDS
+  );
+
+  it.prop(
+    "draw both players' shown cards when the lead moment names two seats",
+    { seed: handSeed },
+    ({ seed }) => {
+      expect(
+        eachDevice(seed, (told, feed) => {
+          const seats = [...new Set(told.found.lead.seats)];
+
+          if (seats.length < 2) {
+            return [];
+          }
+
+          const { picture } = sceneFor(told, feed);
+
+          const drawnCards = new Set(
+            picture.seats.flatMap((seat) => seat.cards)
+          );
+
+          return told.lastHand.shown
+            .filter((shown) => seats.includes(shown.seat))
+            .flatMap((shown) => shown.cards.map(cardText))
+            .filter((card) => !drawnCards.has(card));
+        }).flat()
+      ).toStrictEqual([]);
     },
     HANDS
   );

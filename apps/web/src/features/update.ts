@@ -197,6 +197,7 @@ const freshRoom = (code: InRoom["code"], player: InRoom["player"]): InRoom => ({
   menu: false,
   moments: NO_MOMENTS,
   notice: Option.none(),
+  tonight: { making: 0, open: false, ready: 0 },
   peeks: [],
   pending: [],
   picked: Option.none(),
@@ -1783,6 +1784,17 @@ export const update = (model: Model, message: Message): Return =>
         menu: false,
       })),
     ClickedMenu: () => editRoom(model, (room) => ({ ...room, menu: true })),
+    ClickedTonight: () =>
+      editRoom(model, (room) => ({
+        ...room,
+        menu: false,
+        tonight: { ...room.tonight, open: true },
+      })),
+    CountedTonight: ({ count }) =>
+      editRoom(model, (room) => ({
+        ...room,
+        tonight: { ...room.tonight, making: count.making, ready: count.ready },
+      })),
     ClickedOpenRoom: () =>
       Screens.guards.Welcome(model.screen)
         ? {
@@ -1875,6 +1887,7 @@ export const update = (model: Model, message: Message): Return =>
             picked: Option.none(),
             rules: Option.none(),
             setup: Option.none(),
+            tonight: { ...room.tonight, open: false },
           })
         ).model,
       };

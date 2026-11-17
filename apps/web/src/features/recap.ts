@@ -240,7 +240,7 @@ export const recapCardOf = (view: ClosedView): RecapCard => {
     length: nightLength(recap),
     moments: recap.moments.map((recapped) => {
       const picture = recapPictureOf(view, recapped);
-      const [lead] = picture.faces;
+      const [lead] = picture.seats;
 
       return {
         cards: lead?.cards ?? [],

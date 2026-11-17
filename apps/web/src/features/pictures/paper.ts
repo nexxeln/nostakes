@@ -72,6 +72,8 @@ export interface Palette {
   readonly ink: string;
   readonly muted: string;
   readonly page: string;
+  readonly panel: string;
+  readonly rule: string;
   readonly brandShadow: string;
   readonly shadow: string;
   readonly suits: Readonly<Record<SuitLetter, string>>;
@@ -101,6 +103,8 @@ export const paletteFor = (theme: Theme, deck: Deck): Palette => {
     ink: light ? "#1f1c31" : "#f4efe6",
     muted: light ? "#716a79" : "#9c95a8",
     page: light ? "#f6f1e8" : "#16141d",
+    panel: light ? "#fffdf8" : "#2a2634",
+    rule: light ? "#d9cfbf" : "#3a3546",
     shadow: light ? "rgb(40 24 70 / 0.32)" : "rgb(0 0 0 / 0.62)",
     suits:
       deck === "FourColour"

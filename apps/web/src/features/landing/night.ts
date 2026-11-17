@@ -1,6 +1,5 @@
 import { codeFor } from "@nostakes/avatar";
 
-import { CAPTIONS } from "../moments/captions.js";
 import type { MomentPicture } from "../moments/schema.js";
 import type { SettleUpCard } from "../pictures/settle-up.js";
 import { CAST } from "./cast.js";
@@ -20,44 +19,48 @@ export const POT = 2120;
 
 const TIER = 3;
 
-const caption = CAPTIONS.BadBeat[TIER]?.({
-  against: "Priya",
-  bet: 0,
-  category: "OnePair",
-  hand: "",
-  other: "",
-  percent: FAVOURITE_PERCENT,
-  runs: 1,
-  start: "",
-  who: "Jonas",
-}) ?? { line: "", title: "Bad beat" };
-
 export const BAD_BEAT: MomentPicture = {
-  also: "",
+  blinds: 106,
   boards: [[...BOARD]],
-  faces: [
-    {
-      avatar: codeFor(CAST.Jonas),
-      cards: [...HANDS.Jonas],
-      expression: "Gutted",
-      name: "Jonas",
-      won: false,
-    },
-    {
-      avatar: codeFor(CAST.Priya),
-      cards: [...HANDS.Priya],
-      expression: "Happy",
-      name: "Priya",
-      won: true,
-    },
-  ],
+  flag: { board: 1, card: "Kh", word: "River" },
+  foot: "",
+  hand: 31,
+  kicker: "BAD BEAT",
   kind: "BadBeat",
-  lifted: ["Kd", "Kc", "Kh", "9s", "7h"],
-  line: caption.line,
+  lifted: ["Kh", "9s", "7h"],
+  line: `Jonas was ${FAVOURITE_PERCENT}% to win when the chips went in. Then the river came.`,
+  meta: "Hand 31 · 10/20 hold'em",
   painful: true,
   pot: POT,
+  seats: [
+    {
+      avatar: codeFor(CAST.Priya),
+      backs: 0,
+      cards: [...HANDS.Priya],
+      expression: "Happy",
+      hand: "Three kings",
+      name: "Priya",
+      note: "got there on the river",
+      playing: [...HANDS.Priya],
+      swing: 1060,
+      won: true,
+    },
+    {
+      avatar: codeFor(CAST.Jonas),
+      backs: 0,
+      cards: [...HANDS.Jonas],
+      expression: "Gutted",
+      hand: "A pair of aces",
+      name: "Jonas",
+      note: `was ${FAVOURITE_PERCENT}% to win`,
+      playing: [],
+      swing: -1060,
+      won: false,
+    },
+  ],
   tier: TIER,
-  title: caption.title,
+  title: "Aces cracked",
+  verb: "RIVERS",
 };
 
 export const SETTLE_UP: SettleUpCard = {

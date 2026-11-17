@@ -25,7 +25,7 @@ const whenIdle = Effect.callback<"Idle">((resume) => {
   }
 });
 
-const drawn = (source: PictureSource, frame: KeptFrame) =>
+export const drawn = (source: PictureSource, frame: KeptFrame) =>
   Effect.promise(() => import("./png.js")).pipe(
     Effect.flatMap(({ EMBEDDED_FONTS, pngFile }) =>
       pngFile(

@@ -1,4 +1,4 @@
-import { CLIP_FPS } from "../clip-plan.js";
+import { CLIP_FPS } from "../atlas.js";
 
 export const BEATS_IN_BAR = 4;
 

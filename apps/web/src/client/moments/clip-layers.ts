@@ -1,21 +1,10 @@
 import { Effect, Schema } from "effect";
 
-import {
-  BASE_ROLE,
-  bandsOf,
-  packCells,
-} from "../../features/moments/clip-plan.js";
-import type {
-  Band,
-  Box,
-  Layer,
-  Packed,
-} from "../../features/moments/clip-plan.js";
+import { bandsOf, packCells } from "../../features/moments/atlas.js";
+import type { Band, Packed } from "../../features/moments/atlas.js";
 import { pivotOf } from "../../features/moments/film.js";
-import type { Shot } from "../../features/moments/film.js";
+import type { Box, Point, Shot } from "../../features/moments/film.js";
 import type { DrawnShot } from "./clip-draw.js";
-import { indexOf, isGraphic, roleOf, topParts } from "./clip-measure.js";
-import type { PartBox } from "./clip-measure.js";
 
 export class ClipUnavailable extends Schema.TaggedError<
   ClipUnavailable,
@@ -31,46 +20,10 @@ export const failedAt =
   (cause: unknown): ClipUnavailable =>
     new ClipUnavailable({ detail: String(cause), step });
 
-const MARGIN = 8;
-
 const SVG = "http://www.w3.org/2000/svg";
 
-const offsetOf = (part: SVGGraphicsElement, root: Element) => {
-  const at = { x: 0, y: 0 };
-
-  for (
-    let node = part.parentElement;
-    node !== null && node !== root;
-    node = node.parentElement
-  ) {
-    if (!isGraphic(node) || node.localName === "svg") {
-      throw new Error(`the part ${roleOf(part)} sits inside a nested viewport`);
-    }
-
-    const matrix = node.transform.baseVal.consolidate()?.matrix;
-
-    if (matrix !== undefined) {
-      if (
-        matrix.a !== 1 ||
-        matrix.b !== 0 ||
-        matrix.c !== 0 ||
-        matrix.d !== 1
-      ) {
-        throw new Error(
-          `the part ${roleOf(part)} sits under a transform that is not a plain move`
-        );
-      }
-
-      at.x += matrix.e;
-      at.y += matrix.f;
-    }
-  }
-
-  return at;
-};
-
 interface Measured {
-  readonly centre: Layer["centre"];
+  readonly centre: Point;
   readonly cell: Box;
   readonly index: number;
   readonly local: { readonly x: number; readonly y: number };
@@ -78,89 +31,6 @@ interface Measured {
   readonly role: string;
   readonly view?: { readonly height: number; readonly width: number };
 }
-
-const placed = (
-  part: SVGGraphicsElement,
-  root: Element,
-  measured: PartBox,
-  serializer: XMLSerializer
-): Measured => {
-  if (measured.role !== roleOf(part) || measured.index !== indexOf(part)) {
-    throw new Error(
-      `the table showed ${measured.role} ${measured.index} where the picture has ${roleOf(part)} ${indexOf(part)}`
-    );
-  }
-
-  const offset = offsetOf(part, root);
-  const { box } = measured;
-  const x = Math.floor(box.x + offset.x - MARGIN);
-  const y = Math.floor(box.y + offset.y - MARGIN);
-
-  return {
-    cell: {
-      height: Math.ceil(box.y + offset.y + box.height + MARGIN) - y,
-      width: Math.ceil(box.x + offset.x + box.width + MARGIN) - x,
-      x,
-      y,
-    },
-    centre: {
-      x: box.x + offset.x + box.width / 2,
-      y: box.y + offset.y + box.height / 2,
-    },
-    index: measured.index,
-    local: { x: x - offset.x, y: y - offset.y },
-    markup: serializer.serializeToString(part),
-    role: measured.role,
-  };
-};
-
-const layersIn = (
-  svg: string,
-  boxes: readonly PartBox[],
-  size: { readonly height: number; readonly width: number }
-): readonly Measured[] => {
-  const root = new DOMParser().parseFromString(
-    svg,
-    "image/svg+xml"
-  ).documentElement;
-
-  const serializer = new XMLSerializer();
-  const parts = topParts(root);
-
-  if (parts.length !== boxes.length) {
-    throw new Error(
-      `the table showed ${boxes.length} parts and the picture has ${parts.length}`
-    );
-  }
-
-  const layers = parts.map((part, index) => {
-    const measured = boxes[index];
-
-    if (measured === undefined) {
-      throw new Error(`no measure for part ${index}`);
-    }
-
-    return placed(part, root, measured, serializer);
-  });
-
-  for (const part of parts) {
-    part.remove();
-  }
-
-  return [
-    {
-      cell: { height: size.height, width: size.width, x: 0, y: 0 },
-      centre: { x: size.width / 2, y: size.height / 2 },
-      index: 0,
-      local: { x: 0, y: 0 },
-      markup: [...root.childNodes]
-        .map((node) => serializer.serializeToString(node))
-        .join(""),
-      role: BASE_ROLE,
-    },
-    ...layers,
-  ];
-};
 
 const bandSvg = (
   fonts: string,
@@ -261,34 +131,6 @@ const rasterized = (
         };
       }),
     };
-  });
-
-export interface CardPart {
-  readonly art: string;
-  readonly cell: Box;
-  readonly centre: { readonly x: number; readonly y: number };
-  readonly index: number;
-  readonly role: string;
-}
-
-export const cardParts = (
-  svg: string,
-  boxes: readonly PartBox[],
-  size: { readonly height: number; readonly width: number }
-): Effect.Effect<readonly CardPart[], ClipUnavailable> =>
-  Effect.try({
-    catch: failedAt("lay the picture's parts out"),
-    try: () =>
-      layersIn(svg, boxes, size).map((layer) => ({
-        art:
-          layer.cell.x === layer.local.x && layer.cell.y === layer.local.y
-            ? layer.markup
-            : `<g transform="translate(${layer.cell.x - layer.local.x} ${layer.cell.y - layer.local.y})">${layer.markup}</g>`,
-        cell: layer.cell,
-        centre: layer.centre,
-        index: layer.index,
-        role: layer.role,
-      })),
   });
 
 export interface ShotAtlas {

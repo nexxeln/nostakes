@@ -1,12 +1,10 @@
 import "../../src/client/tokens.css";
 import { codeFor, randomAvatar } from "@nostakes/avatar";
-import { replayOf } from "@nostakes/room";
 import { Clock, Effect, Option } from "effect";
 
 import { drawAreas, placementsAt } from "../../src/client/moments/clip-draw.js";
 import { shotAtlas } from "../../src/client/moments/clip-layers.js";
-import { measureParts } from "../../src/client/moments/clip-measure.js";
-import { filmSupport, replayFilm } from "../../src/client/moments/clip.js";
+import { filmSupport, momentFilm } from "../../src/client/moments/clip.js";
 import { clipWorker, filmOn } from "../../src/client/moments/film-file.js";
 import type { FilmChecks } from "../../src/client/moments/film-file.js";
 import { EMBEDDED_FONTS } from "../../src/client/pictures/png.js";
@@ -17,12 +15,7 @@ import type {
   Shot,
 } from "../../src/features/moments/film.js";
 import { frameTime } from "../../src/features/moments/film.js";
-import { pictureSvg } from "../../src/features/moments/picture.js";
-import {
-  replayNotesOf,
-  replaySeatsOf,
-} from "../../src/features/moments/replay-plan.js";
-import { shownMomentOf } from "../../src/features/moments/scene.js";
+import { sceneOf } from "../../src/features/moments/scene.js";
 import { REST } from "../../src/features/moments/timeline.js";
 import {
   CARD_RATIO,
@@ -367,21 +360,6 @@ const syncFilm = (width: number, height: number, seconds: number): Film => {
   };
 };
 
-const measured = (svg: string) => {
-  const host = document.createElement("div");
-
-  host.style.width = "420px";
-  host.innerHTML = svg;
-  document.body.append(host);
-
-  const root = host.querySelector("svg");
-  const boxes = root === null ? [] : measureParts(root);
-
-  host.remove();
-
-  return boxes;
-};
-
 const filmFor = Effect.gen(function* chooseFilm() {
   const worker = yield* clipWorker;
 
@@ -396,7 +374,7 @@ const filmFor = Effect.gen(function* chooseFilm() {
     };
   }
 
-  if (params.get("scene") !== "replay") {
+  if (params.get("scene") !== "replay" && params.get("scene") !== "moment") {
     return {
       film: panFilm(
         number("width", 1080),
@@ -408,37 +386,18 @@ const filmFor = Effect.gen(function* chooseFilm() {
   }
 
   const hand = replayHand(params.get("hand") ?? "AcesCracked", { deck, theme });
-  const found = shownMomentOf(hand);
-  const replay = replayOf(hand.record);
+  const scene = sceneOf(hand);
 
-  if (Option.isNone(found) || Option.isNone(replay)) {
+  if (Option.isNone(scene)) {
     return yield* Effect.die(new Error("the sample hand has no moment"));
   }
 
-  const { picture, seats } = found.value;
-
   yield* Effect.promise(() => document.fonts.ready);
 
-  const film = yield* replayFilm(
-    worker,
-    picture,
-    { deck, theme },
-    {
-      boxes: measured(
-        pictureSvg(picture, { deck, fonts: "", frame: "Table", theme })
-      ),
-      budgetMs: null,
-      calm: params.get("calm") === "true",
-      frame: cut,
-      notes: replayNotesOf(hand),
-      principals: seats,
-      record: hand.record,
-      seats: replaySeatsOf(hand),
-      slot: Effect.void,
-      style: params.get("style") === "Drift" ? "Drift" : "Broadcast",
-      support: { codec: "" },
-      svg: pictureSvg(picture, { deck, fonts: "", frame: cut, theme }),
-    }
+  const film = yield* momentFilm(
+    scene.value,
+    { calm: params.get("calm") === "true", deck, theme },
+    { frame: cut, slot: Effect.void }
   );
 
   return { film: params.has("fps") ? { ...film, fps } : film, worker };
