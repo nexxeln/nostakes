@@ -14,7 +14,7 @@ export const REACTIONS = [
   "Dead",
   "Fish",
   "Eyes",
-  "Pray",
+  "Bird",
 ] as const;
 
 export const ReactionSchema = Schema.Literals(REACTIONS);

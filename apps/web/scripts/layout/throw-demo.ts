@@ -37,7 +37,7 @@ const NINE: readonly (readonly [number, number, Reaction])[] = [
   [1, 5, "Dead"],
   [0, 2, "Fish"],
   [4, 1, "Eyes"],
-  [3, 0, "Pray"],
+  [3, 0, "Bird"],
 ];
 
 const SCRIPTS = {

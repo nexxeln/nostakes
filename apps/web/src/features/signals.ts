@@ -14,6 +14,7 @@ export const REACTION_SHOWN_MS = 2400;
 export const KEPT_REACTIONS = 12;
 
 export const REACTION_GLYPHS: Readonly<Record<Reaction, string>> = {
+  Bird: "🖕",
   Clap: "👏",
   Cry: "😢",
   Dead: "💀",
@@ -21,7 +22,6 @@ export const REACTION_GLYPHS: Readonly<Record<Reaction, string>> = {
   Fire: "🔥",
   Fish: "🐟",
   Laugh: "😂",
-  Pray: "🙏",
   Wow: "😮",
 };
 

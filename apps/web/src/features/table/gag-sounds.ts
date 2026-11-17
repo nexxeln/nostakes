@@ -179,26 +179,77 @@ const peek = (): Mono =>
     { at: 1.25, sound: blip(900, 300) },
   ]);
 
-const bell = (pitch: number): Mono =>
+const boing = (): Mono =>
+  scaled(
+    contoured(
+      tone(
+        "Sine",
+        (time) =>
+          (170 + 330 * Math.min(1, time / 0.15)) *
+          (1 + 0.07 * Math.sin(2 * Math.PI * 16 * time)),
+        0.22
+      ),
+      held(0.005, 0.12, 0.09)
+    ),
+    0.32
+  );
+
+const honk = (pitch: number, seconds: number): Mono =>
+  scaled(
+    contoured(
+      filtered(
+        tone(
+          "Saw",
+          (time) => pitch * (1 + 0.025 * Math.sin(2 * Math.PI * 7 * time)),
+          seconds
+        ),
+        "Band",
+        steady(1050),
+        2.4
+      ),
+      held(0.006, seconds - 0.05, 0.04)
+    ),
+    0.55
+  );
+
+const raspberry = (): Mono =>
   summed([
-    contoured(tone("Sine", steady(pitch), 0.8), struck(0.004, 0.75)),
     scaled(
-      contoured(tone("Sine", steady(pitch * 2.76), 0.3), struck(0.002, 0.25)),
-      0.2
+      contoured(
+        filtered(
+          tone("Saw", glide(105, 80, 0.3), 0.3),
+          "Band",
+          steady(640),
+          1.3
+        ),
+        (time) =>
+          (0.5 + 0.5 * Math.sin(2 * Math.PI * 31 * time)) *
+          held(0.01, 0.2, 0.09)(time)
+      ),
+      0.6
+    ),
+    scaled(
+      contoured(
+        filtered(hiss(0.3, chanceFrom(91)), "Band", steady(1500), 0.9),
+        (time) =>
+          (0.5 + 0.5 * Math.sin(2 * Math.PI * 31 * time)) *
+          held(0.01, 0.2, 0.09)(time)
+      ),
+      0.18
     ),
   ]);
 
-const chime = (): Mono =>
-  scaled(
-    spliced([
-      { at: 0, sound: bell(1046.5) },
-      { at: 0.16, sound: bell(1318.5) },
-      { at: 0.32, sound: scaled(bell(1568), 0.8) },
-    ]),
-    0.18
-  );
+const blat = (): Mono =>
+  spliced([
+    { at: 0, sound: boing() },
+    { at: 0.36, sound: honk(233, 0.1) },
+    { at: 0.57, sound: honk(262, 0.1) },
+    { at: 0.78, sound: honk(311, 0.16) },
+    { at: 1, sound: raspberry() },
+  ]);
 
 export const GAG_SOUNDS: Readonly<Record<Reaction, () => Mono>> = {
+  Bird: blat,
   Clap: clap,
   Cry: patter,
   Dead: drain,
@@ -206,6 +257,5 @@ export const GAG_SOUNDS: Readonly<Record<Reaction, () => Mono>> = {
   Fire: sizzle,
   Fish: slap,
   Laugh: giggle,
-  Pray: chime,
   Wow: dwoop,
 };

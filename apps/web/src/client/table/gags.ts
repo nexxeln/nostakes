@@ -553,76 +553,174 @@ const eyesPeek = (hit: Hit) => {
   return null;
 };
 
-const halo = (hit: Hit) => {
-  const { at, size } = hit;
-  const glow = placed(hit.fx, "gag-glow", at);
+const BIRD =
+  "M44 52 L44 13 Q44 4 50 4 Q56 4 56 13 L56 46 Q57 40 63 40 Q70 40 70 48 Q72 45 76 46 Q82 48 80 57 L77 74 Q75 82 70 85 L70 97 L34 97 L34 85 Q26 80 24 68 L23 55 Q23 44 32 43 Q41 42 44 52 Z";
 
-  glow.style.width = `${(size * 1.5).toFixed(1)}px`;
-  glow.style.height = `${(size * 1.5).toFixed(1)}px`;
+const BIRD_CREASES = [
+  "M44 52 L44 62",
+  "M56 46 L56 62",
+  "M70 48 L69 61",
+  "M25 68 Q37 63 51 69",
+  "M46 11 Q50 8 54 11",
+] as const;
+
+const BIRD_JABS = [0.24, 0.38, 0.52] as const;
+
+const birdHand = (parent: HTMLElement, size: number) => {
+  const svg = svgBox(parent, size, 100);
+
+  svg.style.display = "block";
+  sheet(svg, BIRD, "var(--color-raised)", true);
+
+  for (const crease of BIRD_CREASES) {
+    const line = svgEl("path", svg);
+
+    line.setAttribute("d", crease);
+    line.setAttribute("fill", "none");
+    line.setAttribute("stroke", "var(--color-ink)");
+    line.setAttribute("stroke-width", "2.2");
+    line.setAttribute("stroke-linecap", "round");
+  }
+};
+
+const jabMarks = (parent: HTMLElement, size: number) => {
+  const svg = svgBox(parent, size, 100);
+
+  for (const angle of [-160, -138, -116, -64, -42, -20]) {
+    const turn = (angle * Math.PI) / 180;
+    const from = { x: 50 + Math.cos(turn) * 30, y: 50 + Math.sin(turn) * 30 };
+    const to = { x: 50 + Math.cos(turn) * 45, y: 50 + Math.sin(turn) * 45 };
+
+    for (const [stroke, dx, dy] of [
+      ["var(--color-sheet-shadow)", 1.6, 2],
+      ["var(--color-accent)", 0, 0],
+    ] as const) {
+      const mark = svgEl("path", svg);
+
+      mark.setAttribute(
+        "d",
+        `M${(from.x + dx).toFixed(1)} ${(from.y + dy).toFixed(1)}L${(to.x + dx).toFixed(1)} ${(to.y + dy).toFixed(1)}`
+      );
+      mark.setAttribute("stroke", stroke);
+      mark.setAttribute("stroke-width", "6");
+      mark.setAttribute("stroke-linecap", "round");
+    }
+  }
+};
+
+const birdJab = (scale: number, tilt: number) =>
+  `translate(-50%, -6%) scale(${scale}) rotate(${tilt}deg)`;
+
+const birdWag = (tilt: number) => `translate(-50%, 4%) rotate(${tilt}deg)`;
+
+const flinch = (tilt: number, deep: number) =>
+  `translate(0, ${deep}%) scale(${1 - deep / 60}) rotate(${tilt}deg)`;
+
+const birdFlip = (hit: Hit) => {
+  const { at, size } = hit;
+  const handSize = size * 0.6;
+
+  const well = placed(hit.fx, "gag-well", {
+    x: at.x,
+    y: at.y - size * 0.5 - size * 0.42,
+  });
+
+  well.style.width = `${(size * 0.9).toFixed(1)}px`;
+  well.style.height = `${(size * 0.84).toFixed(1)}px`;
+
+  const hand = el("div", "gag-peeker", well);
+
+  hand.style.transformOrigin = "50% 100%";
+  birdHand(hand, handSize);
+
+  const rest = "translate(-50%, 4%)";
+
   played(
-    glow,
+    hand,
     [
-      { opacity: 0, transform: "translate(-50%, -50%) scale(0.7)" },
-      {
-        offset: 0.25,
-        opacity: 0.9,
-        transform: "translate(-50%, -50%) scale(1)",
-      },
-      {
-        offset: 0.75,
-        opacity: 0.8,
-        transform: "translate(-50%, -50%) scale(1.04)",
-      },
-      { opacity: 0, transform: "translate(-50%, -50%) scale(1.1)" },
+      { transform: "translate(-50%, 105%)" },
+      { offset: 0.12, transform: "translate(-50%, -6%)", easing: "ease-out" },
+      { offset: 0.17, transform: rest },
+      { offset: 0.24, transform: birdJab(1.16, -5) },
+      { offset: 0.3, transform: rest },
+      { offset: 0.38, transform: birdJab(1.2, 5) },
+      { offset: 0.44, transform: rest },
+      { offset: 0.52, transform: birdJab(1.28, 0) },
+      { offset: 0.6, transform: rest },
+      { offset: 0.66, transform: birdWag(-14) },
+      { offset: 0.72, transform: birdWag(12) },
+      { offset: 0.78, transform: birdWag(-9) },
+      { offset: 0.84, transform: birdWag(0), easing: "ease-in" },
+      { offset: 0.9, transform: rest, easing: "ease-in" },
+      { transform: "translate(-50%, 105%)" },
+    ],
+    { duration: 1500 }
+  );
+  well
+    .animate([{ opacity: 1 }, { opacity: 1 }], { duration: 1500 })
+    .addEventListener("finish", () => {
+      well.remove();
+    });
+
+  const marks = placed(hit.fx, "gag-mark", {
+    x: at.x,
+    y: at.y - size * 0.5 - handSize * 1.02,
+  });
+
+  jabMarks(marks, handSize * 1.3);
+  played(
+    marks,
+    [
+      { offset: 0, opacity: 0, transform: "translate(-50%, -50%) scale(0.7)" },
+      ...BIRD_JABS.flatMap((offset) => [
+        {
+          offset: offset - 0.015,
+          opacity: 0,
+          transform: "translate(-50%, -50%) scale(0.7)",
+        },
+        {
+          offset,
+          opacity: 1,
+          transform: "translate(-50%, -50%) scale(1)",
+        },
+        {
+          offset: offset + 0.06,
+          opacity: 0,
+          transform: "translate(-50%, -50%) scale(1.15)",
+        },
+      ]),
+      { offset: 1, opacity: 0, transform: "translate(-50%, -50%) scale(1.15)" },
     ],
     { duration: 1500 }
   );
 
-  const ring = placed(hit.fx, "gag-mark", { x: at.x, y: at.y - size * 0.68 });
-  const svg = svgBox(ring, size * 0.7, 100);
-
-  for (const [stroke, width, dy] of [
-    ["var(--color-sheet-shadow)", 9, 2.6],
-    ["var(--color-ink)", 11, 0],
-    ["var(--color-raised)", 6.5, 0],
-  ] as const) {
-    const loop = svgEl("ellipse", svg);
-
-    loop.setAttribute("cx", "50");
-    loop.setAttribute("cy", String(50 + dy));
-    loop.setAttribute("rx", "40");
-    loop.setAttribute("ry", "13");
-    loop.setAttribute("fill", "none");
-    loop.setAttribute("stroke", stroke);
-    loop.setAttribute("stroke-width", String(width));
-  }
-
-  played(
-    ring,
-    [
-      { opacity: 0, transform: "translate(-50%, -110%) scale(0.6)" },
-      { offset: 0.25, opacity: 1, transform: "translate(-50%, -50%) scale(1)" },
-      { offset: 0.5, transform: "translate(-50%, -60%) scale(1)" },
-      { offset: 0.75, opacity: 1, transform: "translate(-50%, -50%) scale(1)" },
-      { opacity: 0, transform: "translate(-50%, -70%) scale(1.05)" },
-    ],
-    { duration: 1500, easing: "ease-in-out" }
-  );
   moved(
     hit.face,
     [
-      { transform: "translate(0, 0)" },
-      { offset: 0.3, transform: "translate(0, -3%)" },
-      { offset: 0.75, transform: "translate(0, -3%)" },
-      { transform: "translate(0, 0)" },
+      { transform: "translate(0, 0) scale(1) rotate(0deg)" },
+      { offset: 0.17, transform: flinch(0, 0) },
+      { offset: 0.24, transform: flinch(-3, 3) },
+      { offset: 0.3, transform: flinch(0, 1) },
+      { offset: 0.38, transform: flinch(3, 3) },
+      { offset: 0.44, transform: flinch(0, 1) },
+      { offset: 0.52, transform: flinch(0, 5) },
+      { offset: 0.62, transform: flinch(0, 2) },
+      { offset: 0.84, transform: flinch(0, 2) },
+      { transform: "translate(0, 0) scale(1) rotate(0deg)" },
     ],
     1500
   );
 
-  return 300;
+  return 1200;
 };
 
 export const GAGS: Readonly<Record<Reaction, Gag>> = {
+  Bird: {
+    mood: "Gutted",
+    moodMs: 1400,
+    play: birdFlip,
+    sound: GAG_SOUNDS.Bird,
+  },
   Clap: {
     mood: "Happy",
     moodMs: 1200,
@@ -660,6 +758,5 @@ export const GAGS: Readonly<Record<Reaction, Gag>> = {
     play: laughShake,
     sound: GAG_SOUNDS.Laugh,
   },
-  Pray: { mood: "Happy", moodMs: 1500, play: halo, sound: GAG_SOUNDS.Pray },
   Wow: { mood: "Gutted", moodMs: 1200, play: jawDrop, sound: GAG_SOUNDS.Wow },
 };

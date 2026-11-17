@@ -348,7 +348,6 @@ export const tableCss = `
 .gag-drop { border-radius: 50% 50% 50% 50% / 38% 38% 62% 62%; background: var(--color-ink); }
 .gag-well { overflow: hidden; will-change: auto; }
 .gag-peeker { position: absolute; left: 50%; bottom: 0; line-height: 1; will-change: transform; }
-.gag-glow { border-radius: 50%; background: radial-gradient(circle, transparent 0 44%, var(--color-raised) 50%, transparent 70%); }
 .gag-drained { position: absolute; inset: 0; border-radius: inherit; background: #808080; mix-blend-mode: saturation; pointer-events: none; opacity: 0; will-change: opacity; }
 .reaction.thrown { left: 0; top: 0; z-index: 9; opacity: 1; }
 .reactions {
