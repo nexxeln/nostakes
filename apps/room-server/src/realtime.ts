@@ -16,7 +16,7 @@ import * as HttpClient from "effect/http/HttpClient";
 import * as HttpClientRequest from "effect/http/HttpClientRequest";
 import * as HttpClientResponse from "effect/http/HttpClientResponse";
 
-import { RealtimeFailed } from "./realtime-failed.js";
+import { codeWords, RealtimeFailed } from "./realtime-failed.js";
 import type { RealtimeStep } from "./realtime-failed.js";
 
 export const REALTIME_API = "https://rtc.live.cloudflare.com/v1";
@@ -160,7 +160,7 @@ export const realtimeConfig = Config.all({
 );
 
 const failed = (step: RealtimeStep, code: string) =>
-  new RealtimeFailed({ code, step });
+  new RealtimeFailed({ code: codeWords(code), step });
 
 const turnServers = (
   served: typeof IceServersSchema.Type
@@ -178,7 +178,7 @@ const refusedBy = <A extends { readonly errorCode?: string }>(
 ) =>
   served.errorCode === undefined
     ? Effect.succeed(served)
-    : Effect.fail(failed(step, served.errorCode.slice(0, 64)));
+    : Effect.fail(failed(step, served.errorCode));
 
 const sessionDescription = (sdp: string, type: "offer" | "answer") => ({
   sdp,
@@ -216,12 +216,7 @@ export const realtimeCalls = (
                 Effect.map(({ errorCode }) => errorCode ?? "NoCode"),
                 Effect.orElseSucceed(() => "NoBody"),
                 Effect.flatMap((code) =>
-                  Effect.fail(
-                    failed(
-                      step,
-                      `Status${response.status} ${code.slice(0, 64)}`
-                    )
-                  )
+                  Effect.fail(failed(step, `Status${response.status} ${code}`))
                 )
               )
         )
