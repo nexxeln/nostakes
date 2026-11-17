@@ -25,6 +25,9 @@ type Captions = (facts: CaptionFacts) => Caption;
 export const chipsText = (amount: number) =>
   Math.trunc(amount).toLocaleString("en-US");
 
+export const boardLine = (board: number, line: string) =>
+  `Board ${board}: ${line}`;
+
 const RUN_WORDS = ["", "once", "twice", "three times"];
 
 const runsWord = (runs: number) => RUN_WORDS[runs] ?? `${runs} times`;

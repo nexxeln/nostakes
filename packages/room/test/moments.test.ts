@@ -68,6 +68,30 @@ describe("moments any device can compute", () => {
   );
 
   it.prop(
+    "on a double board, a spectator and any player dealt in compute the same moments, each naming a board the hand dealt",
+    { seed: handSeed },
+    ({ seed }) => {
+      const events = generatedHand(seededRandom(seed), { doubleBoard: true });
+      const seen = momentsOf(spectatorFeed(events));
+
+      for (const audience of seatedAudiences(events)) {
+        expect(momentsOf(feedFor(events, audience))).toStrictEqual(seen);
+      }
+
+      expect(
+        seen.every(
+          (moment) =>
+            !("board" in moment) ||
+            moment.board === undefined ||
+            moment.board === 1 ||
+            moment.board === 2
+        )
+      ).toBe(true);
+    },
+    generated(30, 240)
+  );
+
+  it.prop(
     "a hand in which nobody's two cards were public has no moment except a board run twice that split",
     { seed: handSeed },
     ({ seed }) => {

@@ -197,20 +197,30 @@ const shuffled = (random: SeededRandom) => {
   return decodeDeck(cards);
 };
 
-const generatedConfig = (random: SeededRandom): TableConfig =>
+export interface HandRecipe {
+  readonly doubleBoard: boolean;
+}
+
+const ANY_HAND: HandRecipe = { doubleBoard: false };
+
+const generatedConfig = (
+  random: SeededRandom,
+  recipe: HandRecipe
+): TableConfig =>
   TableConfigSchema.make({
     allInHands: random.chance(1, 3) ? "Hidden" : "FaceUp",
     ante: random.chance(1, 4)
       ? Antes.EveryPlayer({ amount: chipCount(1 + random.below(5)) })
       : Antes.NoAnte(),
     bigBlind: chipCount(10),
-    bombPot: random.chance(1, 4)
-      ? BombPots.BombPots({
-          ante: chipCount(10 + random.below(30)),
-          boardCount: random.chance(2, 3) ? 2 : 1,
-          everyHands: 1,
-        })
-      : BombPots.NoBombPots(),
+    bombPot:
+      recipe.doubleBoard || random.chance(1, 4)
+        ? BombPots.BombPots({
+            ante: chipCount(10 + random.below(30)),
+            boardCount: recipe.doubleBoard || random.chance(2, 3) ? 2 : 1,
+            everyHands: 1,
+          })
+        : BombPots.NoBombPots(),
     game: random.chance(1, 3) ? "Omaha" : "Holdem",
     limit: random.chance(2, 3)
       ? BettingLimits.PotLimit()
@@ -292,7 +302,10 @@ const afterShows = (
   });
 };
 
-export const generatedHand = (random: SeededRandom): readonly Event[] => {
+export const generatedHand = (
+  random: SeededRandom,
+  recipe: HandRecipe = ANY_HAND
+): readonly Event[] => {
   const players = 2 + random.below(8);
   const stacks: Record<number, number> = {};
 
@@ -300,7 +313,7 @@ export const generatedHand = (random: SeededRandom): readonly Event[] => {
     stacks[index] = 50 + random.below(1500);
   }
 
-  let state = seatedTable(generatedConfig(random), stacks);
+  let state = seatedTable(generatedConfig(random, recipe), stacks);
   const events: Event[] = [];
 
   do {

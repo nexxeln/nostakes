@@ -24,7 +24,13 @@ import type {
 } from "@nostakes/engine";
 import { Data, Option, Schema } from "effect";
 
-import { atLeast, atMost, equities, percentOf } from "./equity.js";
+import {
+  EQUITY_BUDGET,
+  atLeast,
+  atMost,
+  equities,
+  percentOf,
+} from "./equity.js";
 import type { Equity } from "./equity.js";
 import {
   moneyInBoard,
@@ -54,9 +60,12 @@ const shared = {
   tier: TierSchema,
 };
 
+const namesItsBoard = { board: Schema.optionalKey(Schema.Int) };
+
 export const MomentSchema = Schema.TaggedUnion({
   BadBeat: {
     ...shared,
+    ...namesItsBoard,
     odds: OddsSchema,
     rank: HandRankSchema,
     street: StreetSchema,
@@ -66,6 +75,7 @@ export const MomentSchema = Schema.TaggedUnion({
   Bluff: { ...shared, bet: ChipsSchema, street: StreetSchema },
   Cooler: {
     ...shared,
+    ...namesItsBoard,
     rank: HandRankSchema,
     street: StreetSchema,
     winningRank: HandRankSchema,
@@ -76,11 +86,16 @@ export const MomentSchema = Schema.TaggedUnion({
     rank: HandRankSchema,
     street: StreetSchema,
   },
-  SameHand: { ...shared, rank: HandRankSchema },
+  SameHand: { ...shared, ...namesItsBoard, rank: HandRankSchema },
   Scoop: { ...shared },
   SevenDeuce: { ...shared, bounty: ChipsSchema, showdown: Schema.Boolean },
   SplitRuns: { ...shared, runs: Schema.Int },
-  Suckout: { ...shared, odds: OddsSchema, street: StreetSchema },
+  Suckout: {
+    ...shared,
+    ...namesItsBoard,
+    odds: OddsSchema,
+    street: StreetSchema,
+  },
 });
 
 export type Moment = typeof MomentSchema.Type;
@@ -465,32 +480,49 @@ const mainWinners = (story: HandStory, run: number) =>
     .filter((result) => result.run === run)
     .flatMap((result) => result.winners);
 
+const winnersOnEvery = (story: HandStory, boards: number) => {
+  const [first = [], ...others] = Array.from({ length: boards }, (_, run) =>
+    mainWinners(story, run + 1)
+  );
+
+  return first.filter((seat) =>
+    others.every((winners) => winners.includes(seat))
+  );
+};
+
 const heroCalls = (story: HandStory, pot: Chips): readonly Moment[] => {
-  if (!story.showdown || story.boards.length !== 1) {
+  if (!story.showdown || (story.boards.length !== 1 && !story.doubleBoard)) {
     return [];
   }
+
+  const judged = story.doubleBoard ? story.boards : [story.common];
 
   return Option.match(lastRaise(story), {
     onNone: () => [],
     onSome: ({ index, wager }) => {
-      const board = story.common.slice(0, wager.board);
-      const winners = mainWinners(story, 1);
+      const atBet = judged.map((board) => board.slice(0, wager.board));
+      const winners = winnersOnEvery(story, judged.length);
       const bettor = shownHand(story, wager.seat);
+
+      const rankOn = (hole: readonly Card[]) =>
+        atBet.map((board) => rankWith(story.game, hole, board));
 
       if (
         wager.board < FLOP ||
-        winners.includes(wager.seat) ||
+        story.results.some(
+          (result) => result.pot === 1 && result.winners.includes(wager.seat)
+        ) ||
         !realBet(wager, story.bigBlind) ||
         !Option.exists(bettor, (hole) =>
-          nothingOfItsOwn(story.game, hole, board)
+          atBet.every((board) => nothingOfItsOwn(story.game, hole, board))
         )
       ) {
         return [];
       }
 
-      const bettorRank = Option.match(bettor, {
-        onNone: () => 0,
-        onSome: (hole) => rankWith(story.game, hole, board),
+      const bettorRanks = Option.match(bettor, {
+        onNone: () => atBet.map(() => 0),
+        onSome: rankOn,
       });
 
       return story.wagers.slice(index + 1).flatMap((call) =>
@@ -499,17 +531,15 @@ const heroCalls = (story: HandStory, pot: Chips): readonly Moment[] => {
           onSome: (hole) =>
             !call.raise &&
             winners.includes(call.seat) &&
-            weakHold(story.game, hole, board) &&
-            rankWith(story.game, hole, board) >= bettorRank
+            atBet.every((board) => weakHold(story.game, hole, board)) &&
+            rankOn(hole).every(
+              (rank, board) => rank >= (bettorRanks[board] ?? 0)
+            )
               ? [
                   Moments.HeroCall({
                     call: chipsOf(call.added),
                     pot,
-                    rank: rankWith(
-                      story.game,
-                      hole,
-                      story.boards[0] ?? story.common
-                    ),
+                    rank: finalRank(story.game, story.boards, hole),
                     seats: [call.seat, wager.seat],
                     street: streetOf(wager.board),
                     tier: call.allIn || bigBet(wager) ? 2 : 1,
@@ -578,10 +608,20 @@ const sevenDeuces = (story: HandStory, pot: Chips): readonly Moment[] => {
 };
 
 interface Showdown {
+  readonly board: Option.Option<number>;
+  readonly boards: readonly (readonly Card[])[];
+  readonly common: readonly Card[];
   readonly contenders: readonly SeatIndex[];
   readonly holes: readonly (readonly Card[])[];
+  readonly others: readonly (readonly Card[])[];
   readonly runs: readonly (readonly SeatIndex[])[];
 }
+
+const boardField = (showdown: Showdown) =>
+  Option.match(showdown.board, {
+    onNone: () => ({}),
+    onSome: (board) => ({ board }),
+  });
 
 const mainShowdown = (story: HandStory): Option.Option<Showdown> => {
   const results = mainResults(story);
@@ -603,12 +643,33 @@ const mainShowdown = (story: HandStory): Option.Option<Showdown> => {
     contenders.length >= 2 &&
     amount >= BIG_POT_BLINDS * story.bigBlind
     ? Option.some({
+        board: Option.none(),
+        boards: story.boards,
+        common: story.common,
         contenders,
         holes,
+        others: [],
         runs: story.boards.map((_, run) => mainWinners(story, run + 1)),
       })
     : Option.none();
 };
+
+const boardShowdowns = (story: HandStory): readonly Showdown[] =>
+  Option.match(mainShowdown(story), {
+    onNone: () => [],
+    onSome: (main) =>
+      story.boards.map((board, index) => ({
+        ...main,
+        board: Option.some(index + 1),
+        boards: [board],
+        common: board,
+        others: story.boards.filter((_, other) => other !== index),
+        runs: [mainWinners(story, index + 1)],
+      })),
+  });
+
+const wonTheMainPot = (story: HandStory, seat: SeatIndex) =>
+  mainResults(story).some((result) => result.winners.includes(seat));
 
 const splitRuns = (
   story: HandStory,
@@ -666,7 +727,7 @@ const sameHands = (
   pot: Chips
 ): readonly Moment[] => {
   const [winners = []] = showdown.runs;
-  const board = story.boards[0] ?? story.common;
+  const board = showdown.boards[0] ?? story.common;
 
   const held = winners.flatMap((seat) =>
     Option.match(shownHand(story, seat), {
@@ -691,17 +752,32 @@ const sameHands = (
     winners.some((seat) => story.allIn.includes(seat)) &&
     held.length === winners.length &&
     held.every((each) => each.ranks === first.ranks)
-    ? [Moments.SameHand({ pot, rank: first.rank, seats: winners, tier: 1 })]
+    ? [
+        Moments.SameHand({
+          ...boardField(showdown),
+          pot,
+          rank: first.rank,
+          seats: winners,
+          tier: 1,
+        }),
+      ]
     : [];
 };
 
-const finalRank = (story: HandStory, hole: readonly Card[]) =>
+const finalRank = (
+  game: Game,
+  boards: readonly (readonly Card[])[],
+  hole: readonly Card[]
+) =>
   HandRankSchema.make(
-    Math.max(...story.boards.map((board) => rankWith(story.game, hole, board)))
+    Math.max(...boards.map((board) => rankWith(game, hole, board)))
   );
 
-const ownsAtTheEnd = (story: HandStory, hole: readonly Card[]) =>
-  story.boards.some((board) => ownsMore(story.game, hole, board));
+const ownsAtTheEnd = (
+  game: Game,
+  boards: readonly (readonly Card[])[],
+  hole: readonly Card[]
+) => boards.some((board) => ownsMore(game, hole, board));
 
 export const QUICK_SWING_BOARDS = 2000;
 
@@ -722,6 +798,7 @@ const coolerStake = (story: HandStory, seat: SeatIndex) =>
 
 const mightSwing = (
   story: HandStory,
+  showdown: Showdown,
   quick: Equity,
   winning: { readonly hole: readonly Card[]; readonly index: number },
   losers: readonly Loser[],
@@ -740,7 +817,7 @@ const mightSwing = (
         lost >= favouriteFloor - QUICK_SWING_MARGIN ||
         (lost + QUICK_SWING_MARGIN >= won &&
           CALIBRATION[story.game].losingHand[
-            handCategory(finalRank(story, hole))
+            handCategory(finalRank(story.game, showdown.boards, hole))
           ] !== undefined) ||
         (coolerStake(story, seat) &&
           collide(story.game, hole, winning.hole, board) &&
@@ -770,7 +847,8 @@ const swings = (
   }
 
   const moneyIn = moneyInBoard(story, showdown.contenders);
-  const board = story.common.slice(0, moneyIn);
+  const board = showdown.common.slice(0, moneyIn);
+  const dead = showdown.others.flatMap((other) => other.slice(0, moneyIn));
   const won = showdown.contenders.indexOf(winner);
   const winnerHole = showdown.holes[won] ?? [];
 
@@ -782,35 +860,44 @@ const swings = (
     story.game,
     showdown.holes,
     board,
-    QUICK_SWING_BOARDS * Math.max(1, showdown.holes.length)
+    QUICK_SWING_BOARDS * Math.max(1, showdown.holes.length),
+    dead
   );
 
   if (
     !everyBoard &&
     !quick.exact &&
-    !mightSwing(story, quick, { hole: winnerHole, index: won }, losers, board)
+    !mightSwing(
+      story,
+      showdown,
+      quick,
+      { hole: winnerHole, index: won },
+      losers,
+      board
+    )
   ) {
     return [];
   }
 
   const equity = quick.exact
     ? quick
-    : equities(story.game, showdown.holes, board);
+    : equities(story.game, showdown.holes, board, EQUITY_BUDGET, dead);
 
   const street = streetOf(moneyIn);
-  const winningRank = finalRank(story, winnerHole);
+  const winningRank = finalRank(story.game, showdown.boards, winnerHole);
+  const emptyHanded = losers.filter(({ seat }) => !wonTheMainPot(story, seat));
 
   const odds = (index: number) => ({
     exact: equity.exact,
     percent: percentOf(equity, index),
   });
 
-  const beats = losers.flatMap(({ hole, index, seat }) => {
-    const rank = finalRank(story, hole);
+  const beats = emptyHanded.flatMap(({ hole, index, seat }) => {
+    const rank = finalRank(story.game, showdown.boards, hole);
 
     const favoured =
       (equity.shares[index] ?? 0) > (equity.shares[won] ?? 0) &&
-      ownsAtTheEnd(story, hole);
+      ownsAtTheEnd(story.game, showdown.boards, hole);
 
     const byOdds =
       moneyIn < FULL_BOARD ? favouriteTier(equity, index) : Option.none();
@@ -837,6 +924,7 @@ const swings = (
       onNone: () => [],
       onSome: (found) => [
         Moments.BadBeat({
+          ...boardField(showdown),
           odds: odds(index),
           pot,
           rank,
@@ -860,6 +948,7 @@ const swings = (
           onNone: () => [],
           onSome: (tier) => [
             Moments.Suckout({
+              ...boardField(showdown),
               odds: odds(won),
               pot,
               seats: [winner, favourite.seat],
@@ -870,14 +959,15 @@ const swings = (
         })
       : [];
 
-  const coolers = losers.flatMap(({ hole, index, seat }) => {
-    const rank = finalRank(story, hole);
+  const coolers = emptyHanded.flatMap(({ hole, index, seat }) => {
+    const rank = finalRank(story.game, showdown.boards, hole);
 
     return coolerStake(story, seat) &&
       collide(story.game, hole, winnerHole, board) &&
       (equity.shares[won] ?? 0) > (equity.shares[index] ?? 0)
       ? [
           Moments.Cooler({
+            ...boardField(showdown),
             pot,
             rank,
             seats: [seat, winner],
@@ -898,17 +988,15 @@ const recognised = (
 ): readonly Moment[] => {
   const pot = chipsOf(potTotal(story));
 
-  const fromShowdown = Option.match(
-    mainShowdown(story).pipe(Option.filter(() => !story.doubleBoard)),
-    {
-      onNone: () => [],
-      onSome: (showdown) => [
-        ...swings(story, showdown, pot, everyBoard),
-        ...sameHands(story, showdown, pot),
-        ...splitRuns(story, showdown, pot),
-      ],
-    }
-  );
+  const showdowns = story.doubleBoard
+    ? boardShowdowns(story)
+    : Option.toArray(mainShowdown(story));
+
+  const fromShowdown = showdowns.flatMap((showdown) => [
+    ...swings(story, showdown, pot, everyBoard),
+    ...sameHands(story, showdown, pot),
+    ...splitRuns(story, showdown, pot),
+  ]);
 
   return [
     ...bigHands(story, pot),

@@ -13,7 +13,7 @@ import type { Headline, Moment } from "@nostakes/room";
 import { Option } from "effect";
 
 import { isolated } from "../names.js";
-import { CAPTIONS } from "./captions.js";
+import { CAPTIONS, boardLine } from "./captions.js";
 import type { Caption, CaptionFacts } from "./captions.js";
 import type { MomentHand, Person } from "./element.js";
 import {
@@ -45,6 +45,12 @@ const wholeHand = (lastHand: LastHand, hole: readonly Card[]) =>
 
 const leadOf = (moment: Moment) => moment.seats[0];
 
+const namedBoard = (moment: Moment): Option.Option<number> =>
+  "board" in moment ? Option.fromUndefinedOr(moment.board) : Option.none();
+
+const boardOf = (lastHand: LastHand, moment: Moment): readonly Card[] =>
+  lastHand.boards[Option.getOrElse(namedBoard(moment), () => 1) - 1] ?? [];
+
 const otherOf = (moment: Moment) => moment.seats[1];
 
 const EXPRESSIONS: Readonly<Record<Moment["_tag"], readonly Expression[]>> = {
@@ -75,7 +81,7 @@ const winnerSeat = (moment: Moment): Option.Option<SeatIndex> =>
   });
 
 const liftedOf = (moment: Moment, lastHand: LastHand) => {
-  const [board = []] = lastHand.boards;
+  const board = boardOf(lastHand, moment);
 
   const holeOnly =
     Moments.$is("Bluff")(moment) || Moments.$is("HeroCall")(moment);
@@ -98,8 +104,11 @@ const liftedOf = (moment: Moment, lastHand: LastHand) => {
   });
 };
 
-const rankOn = (lastHand: LastHand, seat: SeatIndex | undefined) => {
-  const [board = []] = lastHand.boards;
+const rankOn = (
+  lastHand: LastHand,
+  board: readonly Card[],
+  seat: SeatIndex | undefined
+) => {
   const hole = seat === undefined ? [] : shownAt(lastHand, seat);
 
   return wholeHand(lastHand, hole) && board.length >= 3
@@ -120,13 +129,15 @@ const factsFor = (
       seat === undefined ? STRANGER.name : personAt(people, lastHand, seat).name
     );
 
+  const board = boardOf(lastHand, moment);
+
   const leadRank =
-    "rank" in moment ? Option.some(moment.rank) : rankOn(lastHand, lead);
+    "rank" in moment ? Option.some(moment.rank) : rankOn(lastHand, board, lead);
 
   const otherRank =
     "winningRank" in moment
       ? Option.some(moment.winningRank)
-      : rankOn(lastHand, other);
+      : rankOn(lastHand, board, other);
 
   const preflop = "street" in moment && moment.street === "Preflop";
   const leadHole = lead === undefined ? [] : shownAt(lastHand, lead);
@@ -136,8 +147,6 @@ const factsFor = (
     preflop && wholeHand(lastHand, hole)
       ? holdingName(lastHand.game, hole)
       : Option.match(rank, { onNone: () => "", onSome: handName });
-
-  const [board = []] = lastHand.boards;
 
   const start = () => {
     if (!wholeHand(lastHand, leadHole)) {
@@ -184,7 +193,13 @@ export const captionOf = (
   const write = CAPTIONS[moment._tag][moment.tier];
   const facts = factsFor(people, lastHand, moment);
 
-  return write === undefined ? { line: "", title: facts.who } : write(facts);
+  const caption =
+    write === undefined ? { line: "", title: facts.who } : write(facts);
+
+  return Option.match(namedBoard(moment), {
+    onNone: () => caption,
+    onSome: (board) => ({ ...caption, line: boardLine(board, caption.line) }),
+  });
 };
 
 const facesOf = (

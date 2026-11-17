@@ -170,10 +170,11 @@ export const equities = (
   game: Game,
   hands: readonly (readonly Card[])[],
   board: readonly Card[],
-  evaluations: number = EQUITY_BUDGET
+  evaluations: number = EQUITY_BUDGET,
+  dead: readonly Card[] = []
 ): Equity => {
   const budget = Math.floor(evaluations / variantOf(game).evaluationCost);
-  const known = new Set([...hands.flat(), ...board]);
+  const known = new Set([...hands.flat(), ...board, ...dead]);
   const pool = DECK.filter((card) => !known.has(card));
 
   const missing = Math.max(0, BOARD_SIZE - board.length);
@@ -188,7 +189,13 @@ export const equities = (
   if (exact) {
     enumerate(pool, missing, score);
   } else {
-    sample(pool, missing, boards, seedOf([...hands.flat(), ...board]), score);
+    sample(
+      pool,
+      missing,
+      boards,
+      seedOf([...hands.flat(), ...board, ...dead]),
+      score
+    );
   }
 
   return { exact, shares, total: boards * SHARE_UNITS };
