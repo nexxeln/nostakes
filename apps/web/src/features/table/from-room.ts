@@ -20,6 +20,7 @@ import { isActing, isLive, isYou, peopleOf } from "../room.js";
 import type { OpenView } from "../room.js";
 import { feltRulesOf } from "../setup.js";
 import { isPeeking } from "../signals.js";
+import { speakingIn } from "../voice.js";
 import { playingCards } from "./playing.js";
 import { HappeningSchema, Happenings } from "./snapshot.js";
 import type {
@@ -595,6 +596,7 @@ const occupiedSeat = (
     plays: texts(playingCards(game, shown, boardsOf(view))),
     seat,
     shown: texts(shown),
+    speaking: speakingIn(context.room, occupant.player),
     stack: occupant.stack,
     status,
   };
@@ -611,6 +613,7 @@ const emptySeat = (seat: number): SeatSnapshot => ({
   plays: [],
   seat,
   shown: [],
+  speaking: false,
   stack: 0,
   status: "Empty",
 });

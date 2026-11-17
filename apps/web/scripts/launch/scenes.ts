@@ -39,6 +39,7 @@ const seatOf = (index: number, change: Partial<SeatSnapshot> = {}) => {
     name,
     note: "",
     peeking: false,
+    speaking: false,
     plays: [],
     seat: index,
     shown: [],

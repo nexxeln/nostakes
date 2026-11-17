@@ -62,6 +62,16 @@ export const tableCss = `
 .unlit .pic svg { filter: var(--filter-face-unlit); }
 .folded .pic svg { filter: var(--filter-face-folded); }
 .away .frame, .away .pic { opacity: var(--opacity-away); }
+.voice-arcs {
+  position: absolute; left: 100%; top: 18%; width: 24%; height: 42%;
+  pointer-events: none; opacity: 0; transform-origin: 0 50%;
+  transform: scale(0.7); transition: opacity var(--duration-2) var(--ease), transform var(--duration-2) var(--ease);
+}
+.voice-arcs svg { width: 100%; height: 100%; display: block; overflow: visible; }
+.voice-arcs .arc-shadow { stroke: var(--color-sheet-shadow); }
+.voice-arcs .arc-ink { stroke: var(--color-ink); }
+.speaking .voice-arcs { opacity: 1; transform: scale(1); animation: voice-arcs-talk 900ms var(--ease) infinite alternate; }
+@keyframes voice-arcs-talk { from { transform: scale(0.9); } to { transform: scale(1.06); } }
 .tile.empty, .tile.pickable { cursor: pointer; }
 .tile.empty .frame { background: transparent; box-shadow: none; border: 1.5px dashed var(--color-line-strong); }
 .tile.empty .pic { top: 0; color: var(--color-ink-muted); font-size: var(--text-3); font-weight: var(--weight-body); }
@@ -395,5 +405,6 @@ kbd {
 @media (prefers-reduced-motion: reduce) {
   .hand .hc, .hand .hc .card, .hand .hc .face, .hand .hc .back, .pile .posted-tag, .chipctl, .chipctl .disc, .hint, .label .st, .label .act, .pic, .rail .track, .rail .det, .rail .held, .tab { transition-duration: 0.01ms !important; transition-delay: 0s !important; }
   .hand.beckon { animation: none; }
+  .speaking .voice-arcs { animation: none; transition-duration: 0.01ms; }
 }
 `;

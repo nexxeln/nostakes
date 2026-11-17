@@ -15,6 +15,12 @@ export const paintAvatar = (
   pic.innerHTML = render(avatar, options);
 };
 
+const VOICE_ARCS = `<svg viewBox="0 0 24 40" aria-hidden="true"><g fill="none" stroke-linecap="round" stroke-width="3.2"><path class="arc-shadow" d="M5.6 13.6a8 8 0 0 1 0 15.2M11.6 7.6a16 16 0 0 1 0 27.2"/><path class="arc-ink" d="M4.4 12.4a8 8 0 0 1 0 15.2M10.4 6.4a16 16 0 0 1 0 27.2"/></g></svg>`;
+
+export const paintVoiceArcs = (holder: HTMLElement) => {
+  holder.innerHTML = VOICE_ARCS;
+};
+
 export const paintCardFace = (face: HTMLElement, card: string) => {
   const drawn = cardFaceOf(card);
 

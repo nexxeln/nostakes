@@ -21,6 +21,7 @@ import type { OpenView } from "./room.js";
 import { rulesCard } from "./rules-view.js";
 import { icon, sheet, sheetLayer, sheetTop } from "./sheet.js";
 import { serverNowOf, takeOverLine } from "./stuck-line.js";
+import { inVoice, mutedForEveryone } from "./voice.js";
 
 type H = HtmlBuilder<Message>;
 
@@ -679,6 +680,25 @@ const memberTools = (
     "Make host",
     "Handing over the host"
   ),
+  inVoice(room.voice.roster, player)
+    ? h.button(
+        [
+          h.Type("button"),
+          h.Class("button quiet"),
+          h.OnClick(
+            Messages.ClickedMuteForEveryone({
+              muted: !mutedForEveryone(room.voice.roster, player),
+              player,
+            })
+          ),
+        ],
+        [
+          mutedForEveryone(room.voice.roster, player)
+            ? "Let them talk"
+            : "Mute for everyone",
+        ]
+      )
+    : h.empty,
   Option.isSome(occupantOf(view, player))
     ? h.button(
         [

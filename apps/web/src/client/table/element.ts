@@ -76,7 +76,7 @@ import type {
   TagSide,
   TagSides,
 } from "./layout.js";
-import { paintAvatar } from "./markup.js";
+import { paintAvatar, paintVoiceArcs } from "./markup.js";
 import { TableSound } from "./sound.js";
 import { Spring } from "./spring.js";
 import { tableCss } from "./styles.js";
@@ -1186,6 +1186,7 @@ export class NostakesTable extends HTMLElement {
     this.#self = el("div", "self gone", this.#room);
     this.#selfFrame = el("div", "frame", this.#self);
     this.#selfPic = el("div", "pic", this.#selfFrame);
+    paintVoiceArcs(el("div", "voice-arcs", this.#self));
 
     const label = el("div", "label", this.#self);
 
@@ -1812,6 +1813,8 @@ export class NostakesTable extends HTMLElement {
 
     const frame = el("div", "frame", root);
     const pic = el("div", "pic", frame, info.status === "Empty" ? "Sit" : "");
+
+    paintVoiceArcs(el("div", "voice-arcs", root));
     const label = el("div", "label", root);
     const name = el("div", "name", label, info.name);
     const line = el("div", "line", label);
@@ -2405,6 +2408,7 @@ export class NostakesTable extends HTMLElement {
       info.status === "Folded" || info.status === "Out"
     );
     toggle(tile.root, "away", info.away);
+    toggle(tile.root, "speaking", info.speaking);
     renderNote(tile.root, tile.note, info.note);
     labelThrowable(tile, info);
 
@@ -5155,6 +5159,8 @@ export class NostakesTable extends HTMLElement {
     toggle(this.#self, "peeking", this.#peekOn);
 
     const me = this.#seat(snapshot.heroSeat);
+
+    toggle(this.#self, "speaking", me?.speaking === true);
 
     if (me !== undefined) {
       paintFace(

@@ -101,6 +101,7 @@ const seatOf = (index: number): SeatSnapshot => {
     name: NAMES[index] ?? `Seat ${index + 1}`,
     note: "",
     peeking: false,
+    speaking: false,
     plays: PLAYS[shownAt] ?? [],
     seat: index,
     shown,

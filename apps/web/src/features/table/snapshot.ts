@@ -26,6 +26,7 @@ export const SeatSnapshotSchema = Schema.Struct({
   plays: Schema.Array(CardTextSchema),
   seat: Schema.Int,
   shown: Schema.Array(CardTextSchema),
+  speaking: Schema.Boolean,
   stack: Schema.Int,
   status: SeatStatusSchema,
 });

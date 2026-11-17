@@ -98,6 +98,7 @@ const seat = (
   name,
   note: "",
   peeking: false,
+  speaking: false,
   plays: [],
   seat: index,
   shown: [],
