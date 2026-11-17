@@ -24,7 +24,7 @@ const WELL: readonly Rule[] = [
   ],
   [
     (line) => line.turn === "Called",
-    "You did not let one small bet push you off a good pair.",
+    "You didn't let one small bet push you off a good pair.",
   ],
 ];
 
@@ -35,7 +35,7 @@ const REGULAR: readonly Rule[] = [
   ],
   [
     (line) => line.turn === "Folded",
-    "A regular does not fold top pair to one small bet. You had the best hand.",
+    "A regular doesn't fold top pair to one small bet. You had the best hand.",
   ],
   [
     (line) => line.flop === "Checked",

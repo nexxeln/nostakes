@@ -60,9 +60,9 @@ export const HABITS: readonly string[] = [
 ];
 
 export const MANNERS =
-  "Act when it is your turn, and keep your cards to yourself until the hand is over.";
+  "Act on your turn, and keep your cards to yourself until the hand is over.";
 
 export const SHARE = {
   text: "Five short hands and you can sit at a friend's poker night.",
-  title: "How to play poker in two minutes",
+  title: "How to play poker in 2 minutes",
 };
