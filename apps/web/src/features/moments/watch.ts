@@ -29,6 +29,7 @@ export const HandNoteSchema = Schema.Union([
   }),
   Schema.Struct({
     after: Schema.Int,
+    at: Schema.Option(PlayerIdSchema),
     kind: Schema.Literal("Reacted"),
     player: PlayerIdSchema,
     reaction: ReactionSchema,
@@ -207,7 +208,8 @@ export const watchedMoments = (
 export const reactionNoted = (
   watch: MomentWatch,
   player: PlayerId,
-  reaction: Reaction
+  reaction: Reaction,
+  at: Option.Option<PlayerId> = Option.none()
 ): MomentWatch =>
   watch.record.length === 0
     ? watch
@@ -215,6 +217,7 @@ export const reactionNoted = (
         ...watch,
         notes: noted(watch.notes, {
           after: watch.record.length,
+          at,
           kind: "Reacted",
           player,
           reaction,

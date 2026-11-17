@@ -4665,3 +4665,128 @@ export const computeGeo = (
     },
   };
 };
+
+export const REACTION_TARGET = 44;
+
+export const REACTION_GAP = 4;
+
+export const REACTION_PAD = 6;
+
+export const REACTION_COLUMNS = 5;
+
+const REACTIONS_INSET = 8;
+
+const REACTIONS_REACH = 12;
+
+export const reactionsSize = (count: number) => {
+  const columns = Math.min(count, REACTION_COLUMNS);
+  const rows = Math.ceil(count / REACTION_COLUMNS);
+
+  return {
+    h: rows * REACTION_TARGET + (rows - 1) * REACTION_GAP + 2 * REACTION_PAD,
+    w:
+      columns * REACTION_TARGET +
+      (columns - 1) * REACTION_GAP +
+      2 * REACTION_PAD,
+  };
+};
+
+export const reactionsGround = (geo: Geo): readonly Box[] => {
+  const handW = geo.handCardW * 2.2;
+  const handH = geo.handCardW * 1.4;
+
+  return [
+    {
+      h: handH,
+      w: handW,
+      x: geo.hand.x - handW / 2,
+      y: geo.hand.y - handH / 2,
+    },
+    {
+      h: geo.chip.size,
+      w: geo.chip.size,
+      x: geo.chip.x - geo.chip.size / 2,
+      y: geo.chip.y - geo.chip.size / 2,
+    },
+  ];
+};
+
+const clampedInto = (geo: Geo, box: Box): Box => ({
+  ...box,
+  x: Math.min(
+    Math.max(box.x, REACTIONS_INSET),
+    geo.w - REACTIONS_INSET - box.w
+  ),
+  y: Math.min(
+    Math.max(box.y, REACTIONS_INSET),
+    geo.h - REACTIONS_INSET - box.h
+  ),
+});
+
+export const reactionsPlace = (
+  geo: Geo,
+  face: Pt & { readonly size: number },
+  count: number
+): Box => {
+  const { h, w } = reactionsSize(count);
+  const half = face.size / 2 + REACTIONS_REACH;
+
+  const faceBox = {
+    h: face.size,
+    w: face.size,
+    x: face.x - face.size / 2,
+    y: face.y - face.size / 2,
+  };
+
+  const ground = reactionsGround(geo);
+  const blocked = [...ground, faceBox];
+
+  const clearAbove =
+    Math.min(faceBox.y, ...ground.map((box) => box.y)) - REACTIONS_REACH - h;
+
+  const spots = [
+    { x: face.x - w / 2, y: face.y - half - h },
+    { x: face.x - w / 2, y: face.y + half },
+    { x: face.x + half, y: face.y - h / 2 },
+    { x: face.x - half - w, y: face.y - h / 2 },
+    { x: face.x - w / 2, y: clearAbove },
+    { x: face.x + half, y: face.y - half - h },
+    { x: face.x - half - w, y: face.y - half - h },
+    { x: face.x + half, y: face.y + half },
+    { x: face.x - half - w, y: face.y + half },
+  ].map((spot) => clampedInto(geo, { h, w, ...spot }));
+
+  const others = geo.seats.map(({ x, y }) => ({
+    h: geo.tile + geo.caption,
+    w: geo.tile,
+    x: x - geo.tile / 2,
+    y: y - geo.tile / 2,
+  }));
+
+  const covering = (box: Box, boxes: readonly Box[]) => {
+    let area = 0;
+
+    for (const other of boxes) {
+      area += overlap(box, other);
+    }
+
+    return area;
+  };
+
+  let best = clampedInto(geo, { h, w, x: face.x - w / 2, y: face.y - h / 2 });
+  let fewest = Number.POSITIVE_INFINITY;
+  let fewestFaces = Number.POSITIVE_INFINITY;
+
+  for (const box of spots) {
+    const covers = covering(box, blocked);
+    const faces = covering(box, others);
+
+    if (covers < fewest || (covers === fewest && faces < fewestFaces)) {
+      best = box;
+      fewest = covers;
+      fewestFaces = faces;
+    }
+  }
+
+  return best;
+};

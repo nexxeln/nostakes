@@ -22,6 +22,7 @@
     "come-back-shots": "node scripts/come-back-shots.ts",
     "onboarding-shots": "node scripts/onboarding-shots.ts",
     "rules-shots": "node scripts/rules-shots.ts",
+    "reactions-shots": "node scripts/reaction-shots.ts",
     "moments": "node scripts/moment-pictures.ts",
     "keep": "node scripts/keep-pictures.ts",
     "clips": "node scripts/keep-clips.ts",

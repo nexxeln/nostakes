@@ -479,7 +479,10 @@ export const badBeatTold = (): Told => {
   for (const [index, { reaction, seat }] of thrown.entries()) {
     teller.at(3.3 + index * 0.4, (now) => ({
       ...now,
-      reactions: [...now.reactions, { id: index + 1, reaction, seat }],
+      reactions: [
+        ...now.reactions,
+        { id: index + 1, reaction, seat, target: null },
+      ],
     }));
   }
 
@@ -776,7 +779,10 @@ const reactionScene = (): Told => {
   for (const [index, { reaction, seat }] of thrown.entries()) {
     teller.at(0.05 + index * 0.16, (now) => ({
       ...now,
-      reactions: [...now.reactions, { id: index + 1, reaction, seat }],
+      reactions: [
+        ...now.reactions,
+        { id: index + 1, reaction, seat, target: null },
+      ],
     }));
   }
 

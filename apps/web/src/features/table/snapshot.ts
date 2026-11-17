@@ -147,6 +147,7 @@ export const ShownReactionSchema = Schema.Struct({
   id: Schema.Int,
   reaction: ReactionSchema,
   seat: Schema.NullOr(Schema.Int),
+  target: Schema.NullOr(Schema.Int),
 });
 
 export type ShownReaction = typeof ShownReactionSchema.Type;
@@ -201,7 +202,7 @@ export const TableIntentSchema = Schema.TaggedUnion({
   Pick: { seat: Schema.Int },
   Posting: { post: Schema.Boolean },
   Raise: { to: Schema.Int },
-  React: { reaction: ReactionSchema },
+  React: { at: Schema.NullOr(Schema.Int), reaction: ReactionSchema },
   Rules: {},
   Runs: { runs: Schema.Int },
   Show: {},

@@ -1,8 +1,9 @@
 import type { Expression } from "@nostakes/avatar";
 import { cardText, evaluate, rankOf } from "@nostakes/engine";
-import type { Card, SeatIndex } from "@nostakes/engine";
+import type { Card, PlayerId, SeatIndex } from "@nostakes/engine";
 import { ReplaySteps } from "@nostakes/room";
 import type { MomentKind, Replay, ReplayStep, Tier } from "@nostakes/room";
+import { Option } from "effect";
 import type { Types } from "effect";
 
 import { FRAME_SIZES } from "../pictures/paper.js";
@@ -68,6 +69,11 @@ export type ReplayNote =
       readonly name: string;
     };
 
+const nameIn = (hand: MomentHand, player: PlayerId) =>
+  Option.fromUndefinedOr(
+    hand.people.find((each) => each.player === player)
+  ).pipe(Option.map((person) => shortName(person.name)));
+
 export const replayNotesOf = (hand: MomentHand): readonly ReplayNote[] =>
   (hand.notes ?? []).flatMap((note): readonly ReplayNote[] => {
     if (note.kind !== "Reacted") {
@@ -80,16 +86,22 @@ export const replayNotesOf = (hand: MomentHand): readonly ReplayNote[] =>
         : [{ after: note.after, kind: note.kind, seat: dealt.seat }];
     }
 
-    const person = hand.people.find((each) => each.player === note.player);
+    const sender = nameIn(hand, note.player);
 
-    return person === undefined
+    return Option.isNone(sender)
       ? []
       : [
           {
             after: note.after,
             glyph: REACTION_GLYPHS[note.reaction],
             kind: "Reacted",
-            name: shortName(person.name),
+            name: Option.match(
+              note.at.pipe(Option.flatMap((at) => nameIn(hand, at))),
+              {
+                onNone: () => sender.value,
+                onSome: (target) => `${sender.value} at ${target}`,
+              }
+            ),
           },
         ];
   });

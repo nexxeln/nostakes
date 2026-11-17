@@ -1,6 +1,7 @@
 import type { PlayerId } from "@nostakes/protocol";
 import { RoomSignalSchema } from "@nostakes/room";
 import type { Reaction, RoomSignal } from "@nostakes/room";
+import type { Option } from "effect";
 
 import type { InRoom } from "./model.js";
 
@@ -28,13 +29,14 @@ export const reacted = (
   room: InRoom,
   player: PlayerId,
   reaction: Reaction,
+  target: Option.Option<PlayerId>,
   at: number,
   id: number
 ): InRoom => ({
   ...room,
   reactions: [
     ...room.reactions,
-    { id, player, reaction, until: at + REACTION_SHOWN_MS },
+    { at: target, id, player, reaction, until: at + REACTION_SHOWN_MS },
   ].slice(-KEPT_REACTIONS),
 });
 
@@ -53,7 +55,8 @@ export const heard = (
         ...(looking ? [{ player: from, until: at + PEEK_LEASE_MS }] : []),
       ],
     }),
-    Reaction: ({ reaction }) => reacted(room, from, reaction, at, id),
+    Reaction: (thrown) =>
+      reacted(room, from, thrown.reaction, thrown.at, at, id),
   });
 
 export const forgetExpired = (room: InRoom, now: number): InRoom => {

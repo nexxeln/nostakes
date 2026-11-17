@@ -819,10 +819,14 @@ export const tableSnapshot = (
     learned,
     legal: free ? legalOfView(view) : null,
     posts: postsOf(view, room.events),
-    reactions: room.reactions.map(({ id, player, reaction }) => ({
+    reactions: room.reactions.map(({ at, id, player, reaction }) => ({
       id,
       reaction,
       seat: seatHeldBy(view, player),
+      target: Option.match(at, {
+        onNone: () => null,
+        onSome: (target) => seatHeldBy(view, target),
+      }),
     })),
     rules: Option.getOrNull(
       feltRulesOf(view).pipe(

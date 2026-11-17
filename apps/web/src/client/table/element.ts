@@ -38,6 +38,7 @@ import {
   pileWidthFor,
   placeSeats,
   POST_TAG_WIDTHS,
+  reactionsPlace,
   postTagBox,
   feltRulesBox,
   potTabOf,
@@ -60,6 +61,8 @@ import { paintAvatar } from "./markup.js";
 import { TableSound } from "./sound.js";
 import { Spring } from "./spring.js";
 import { tableCss } from "./styles.js";
+import { bump } from "./thrown.js";
+import type { Hit } from "./thrown.js";
 
 const FOLD_DISTANCE = 120;
 
@@ -665,6 +668,31 @@ const REACTION_RISE_MS = 1800;
 
 const REACTION_KEY = "e";
 
+const THROW_HIT: Hit = bump;
+
+const PICKER_NAVIGATION = new Set(["Enter", " ", "Tab"]);
+
+const labelThrowable = (tile: Tile, info: SeatSnapshot) => {
+  const label = `React to ${info.name}`;
+
+  if (
+    info.status !== "Empty" &&
+    tile.root.getAttribute("aria-label") !== label
+  ) {
+    tile.root.setAttribute("aria-label", label);
+  }
+};
+
+const THROW_ARC = 0.28;
+
+const throwMs = (from: Pt, to: Pt) =>
+  Math.round(
+    Math.min(
+      820,
+      Math.max(460, 360 + Math.hypot(to.x - from.x, to.y - from.y) * 0.9)
+    )
+  );
+
 const isShortcutOrTyping = (event: KeyboardEvent) =>
   event.metaKey || event.ctrlKey || event.altKey || isTyping(event);
 
@@ -830,7 +858,9 @@ export class NostakesTable extends HTMLElement {
   #peekSharedAt = 0;
   #lastReactionId: number | null = null;
   #picker!: HTMLDivElement;
+  #pickerMore!: HTMLButtonElement;
   #pickerOpen = false;
+  #pickerFor: number | null = null;
   #pressPeek = false;
   #hoverPeek = false;
   #keyPeek = false;
@@ -871,7 +901,10 @@ export class NostakesTable extends HTMLElement {
         !event
           .composedPath()
           .some(
-            (target) => target === this.#picker || target === this.#selfFrame
+            (target) =>
+              target === this.#picker ||
+              target === this.#selfFrame ||
+              this.#throwableTile(target) !== undefined
           )
       ) {
         this.#closePicker();
@@ -1064,13 +1097,10 @@ export class NostakesTable extends HTMLElement {
     this.#picker.setAttribute("aria-label", "React");
 
     for (const [index, reaction] of REACTIONS.entries()) {
-      const choice = el(
-        "button",
-        "reaction-choice",
-        this.#picker,
-        REACTION_GLYPHS[reaction]
-      );
+      const choice = el("button", "reaction-choice", this.#picker);
 
+      el("span", "reaction-glyph", choice, REACTION_GLYPHS[reaction]);
+      el("kbd", "reaction-key", choice, String(index + 1));
       choice.type = "button";
       choice.title = `${reaction} (${index + 1})`;
       choice.setAttribute("aria-label", reaction);
@@ -1079,28 +1109,127 @@ export class NostakesTable extends HTMLElement {
       });
     }
 
-    this.#selfFrame.addEventListener("click", () => {
-      if (this.#pickerOpen) {
-        this.#closePicker();
-      } else {
-        this.#openPicker();
+    this.#pickerMore = el("button", "reaction-choice more", this.#picker, "⋯");
+    this.#pickerMore.type = "button";
+    this.#pickerMore.addEventListener("click", () => {
+      const seat = this.#pickerFor;
+
+      this.#closePicker(true);
+
+      if (seat !== null) {
+        this.#emit(TableIntents.Pick.make({ seat }));
       }
+    });
+
+    this.#selfFrame.addEventListener("click", () => {
+      this.#togglePicker(null, false);
     });
   }
 
-  #openPicker() {
-    this.#pickerOpen = true;
-    toggle(this.#picker, "gone", false);
+  #throwableTile(target: EventTarget | null): Tile | undefined {
+    return [...this.#tiles.values()].find(
+      (tile) => tile.root === target && !tile.root.classList.contains("empty")
+    );
   }
 
-  #closePicker() {
+  #togglePicker(seat: number | null, byKeyboard: boolean) {
+    if (this.#pickerOpen && this.#pickerFor === seat) {
+      this.#closePicker(byKeyboard);
+    } else {
+      this.#openPicker(seat, byKeyboard);
+    }
+  }
+
+  #openPicker(seat: number | null = null, byKeyboard = false) {
+    const name =
+      seat === null
+        ? undefined
+        : this.#snap?.seats.find((info) => info.seat === seat)?.name;
+
+    const host = seat !== null && this.#snap?.hostTools === true;
+
+    this.#pickerOpen = true;
+    this.#aim(seat);
+    this.#picker.setAttribute(
+      "aria-label",
+      name === undefined ? "React" : `React to ${name}`
+    );
+    this.#pickerMore.setAttribute(
+      "aria-label",
+      name === undefined ? "Host tools" : `Host tools for ${name}`
+    );
+    this.#pickerMore.title = "Host tools";
+    toggle(this.#pickerMore, "gone", !host);
+    toggle(this.#picker, "keyed", this.#fine.matches && !this.#touch.matches);
+    toggle(this.#picker, "gone", false);
+    this.#placePicker();
+
+    if (byKeyboard) {
+      this.#picker.querySelector("button")?.focus();
+    }
+  }
+
+  #closePicker(returnFocus = false) {
+    const seat = this.#pickerFor;
+
     this.#pickerOpen = false;
+    this.#aim(null);
     toggle(this.#picker, "gone", true);
+
+    if (returnFocus && seat !== null) {
+      this.#tiles.get(seat)?.root.focus();
+    }
+  }
+
+  #aim(seat: number | null) {
+    this.#pickerFor = seat;
+
+    for (const tile of this.#tiles.values()) {
+      toggle(tile.root, "aimed", tile.seat === seat);
+    }
+  }
+
+  #placePicker() {
+    const geo = this.#geo;
+
+    if (!this.#pickerOpen || geo === null) {
+      return;
+    }
+
+    const tile =
+      this.#pickerFor === null ? undefined : this.#tiles.get(this.#pickerFor);
+
+    if (
+      this.#pickerFor !== null &&
+      (tile === undefined || tile.root.classList.contains("empty"))
+    ) {
+      this.#closePicker();
+
+      return;
+    }
+
+    const face =
+      tile === undefined
+        ? geo.self
+        : { size: geo.tile, x: tile.x.x, y: tile.y.x };
+
+    const count =
+      REACTIONS.length + (this.#pickerMore.classList.contains("gone") ? 0 : 1);
+
+    const box = reactionsPlace(geo, face, count);
+
+    Object.assign(this.#picker.style, {
+      left: `${box.x}px`,
+      top: `${box.y}px`,
+    });
   }
 
   #react(reaction: Reaction) {
-    this.#closePicker();
-    this.#emit(TableIntents.React.make({ reaction }));
+    const at = this.#pickerFor;
+    const focused = this.#picker.contains(this.#root.activeElement);
+
+    this.#closePicker(focused);
+    this.#emit(TableIntents.React.make({ at, reaction }));
   }
 
   #playReactions(reactions: TableSnapshot["reactions"]) {
@@ -1116,14 +1245,20 @@ export class NostakesTable extends HTMLElement {
 
     for (const shown of reactions) {
       if (shown.id > last) {
-        this.#rise(shown);
+        this.#play(shown);
       }
     }
 
     this.#lastReactionId = Math.max(last, newest);
   }
 
-  #rise(shown: TableSnapshot["reactions"][number]) {
+  #faceOf(seat: number): HTMLElement | null {
+    return seat === this.#snap?.heroSeat
+      ? this.#selfFrame
+      : (this.#tiles.get(seat)?.frame ?? null);
+  }
+
+  #play(shown: TableSnapshot["reactions"][number]) {
     const geo = this.#geo;
 
     if (geo === null) {
@@ -1135,6 +1270,80 @@ export class NostakesTable extends HTMLElement {
         ? { x: geo.pot.x, y: geo.pot.y }
         : this.#tilePoint(shown.seat);
 
+    const { target } = shown;
+
+    if (target === null || target === shown.seat) {
+      this.#rise(shown, from);
+
+      return;
+    }
+
+    const to = this.#tilePoint(target);
+    const size = target === this.#snap?.heroSeat ? geo.self.size : geo.tile;
+
+    const landing = () => {
+      THROW_HIT.land({
+        at: to,
+        face: this.#faceOf(target),
+        fx: this.#fx,
+        glyph: REACTION_GLYPHS[shown.reaction],
+        reaction: shown.reaction,
+        reduced: this.#reduced,
+        size,
+      });
+    };
+
+    if (this.#reduced) {
+      landing();
+      this.#rise(shown, to);
+
+      return;
+    }
+
+    const duration = throwMs(from, to);
+
+    const node = el(
+      "div",
+      "reaction thrown",
+      this.#fx,
+      REACTION_GLYPHS[shown.reaction]
+    );
+
+    node.dataset.reaction = shown.reaction;
+    node.dataset.target = String(target);
+
+    const lift = Math.hypot(to.x - from.x, to.y - from.y) * THROW_ARC + 24;
+    const mid = { x: (from.x + to.x) / 2, y: Math.min(from.y, to.y) - lift };
+    const steps = 12;
+
+    const frames: Keyframe[] = Array.from({ length: steps + 1 }, (_, index) => {
+      const u = index / steps;
+      const x = (1 - u) ** 2 * from.x + 2 * (1 - u) * u * mid.x + u * u * to.x;
+      const y = (1 - u) ** 2 * from.y + 2 * (1 - u) * u * mid.y + u * u * to.y;
+
+      return {
+        offset: u,
+        opacity: u < 0.08 ? u / 0.08 : 1,
+        transform: `translate(${x}px, ${y}px) translate(-50%, -50%) rotate(${u * 200}deg) scale(${0.7 + u * 0.4})`,
+      };
+    });
+
+    this.#sound.toss(duration / 1000);
+
+    const flight = node.animate(frames, {
+      duration,
+      easing: "cubic-bezier(.3,.1,.6,1)",
+      fill: "both",
+    });
+
+    flight.addEventListener("finish", () => {
+      node.remove();
+      landing();
+      this.#rise(shown, to);
+    });
+  }
+
+  #rise(shown: TableSnapshot["reactions"][number], from: Pt) {
     const node = el(
       "div",
       "reaction",
@@ -1369,9 +1578,17 @@ export class NostakesTable extends HTMLElement {
     const tab = el("div", "tab", root);
 
     if (info.status !== "Empty") {
+      root.setAttribute("role", "button");
+      root.setAttribute("aria-label", `React to ${info.name}`);
+      root.tabIndex = 0;
       root.addEventListener("click", () => {
-        if (this.#snap?.hostTools === true) {
-          this.#emit(TableIntents.Pick.make({ seat: info.seat }));
+        this.#togglePicker(info.seat, false);
+      });
+      root.addEventListener("keydown", (event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          event.stopPropagation();
+          this.#togglePicker(info.seat, true);
         }
       });
     }
@@ -1553,11 +1770,6 @@ export class NostakesTable extends HTMLElement {
 
   #layoutHero(geo: Table) {
     const { size } = geo.self;
-
-    Object.assign(this.#picker.style, {
-      left: `${geo.self.x}px`,
-      top: `${geo.self.y - size / 2}px`,
-    });
 
     Object.assign(this.#self.style, {
       height: `${size}px`,
@@ -1873,7 +2085,7 @@ export class NostakesTable extends HTMLElement {
     );
     toggle(tile.root, "away", info.away);
     renderNote(tile.root, tile.note, info.note);
-    this.#renderPickable(tile, info);
+    labelThrowable(tile, info);
 
     const shownKey = info.shown.join(",");
 
@@ -2054,24 +2266,6 @@ export class NostakesTable extends HTMLElement {
     }
 
     toggle(this.#entryNote, "gone", offer.note === "");
-  }
-
-  #renderPickable(tile: Tile, info: SeatSnapshot) {
-    const pickable = this.#snap?.hostTools === true && info.status !== "Empty";
-
-    if (pickable === tile.root.classList.contains("pickable")) {
-      return;
-    }
-
-    toggle(tile.root, "pickable", pickable);
-
-    if (pickable) {
-      tile.root.setAttribute("role", "button");
-      tile.root.setAttribute("aria-label", `Host tools for ${info.name}`);
-    } else {
-      tile.root.removeAttribute("role");
-      tile.root.removeAttribute("aria-label");
-    }
   }
 
   #renderSelf(me: SeatSnapshot, now: number) {
@@ -3549,10 +3743,16 @@ export class NostakesTable extends HTMLElement {
 
   #reactionKey(event: KeyboardEvent) {
     if (this.#pickerOpen) {
+      if (PICKER_NAVIGATION.has(event.key)) {
+        return true;
+      }
+
+      event.preventDefault();
+
       const chosen = REACTIONS[Number(event.key) - 1];
 
       if (event.key === "Escape" || event.key.toLowerCase() === REACTION_KEY) {
-        this.#closePicker();
+        this.#closePicker(this.#picker.contains(this.#root.activeElement));
       } else if (chosen !== undefined) {
         this.#react(chosen);
       }
@@ -3561,6 +3761,7 @@ export class NostakesTable extends HTMLElement {
     }
 
     if (event.key.toLowerCase() === REACTION_KEY && !event.repeat) {
+      event.preventDefault();
       this.#openPicker();
 
       return true;
@@ -3575,8 +3776,6 @@ export class NostakesTable extends HTMLElement {
     }
 
     if (this.#snap !== null && this.#reactionKey(event)) {
-      event.preventDefault();
-
       return;
     }
 
@@ -4284,6 +4483,7 @@ export class NostakesTable extends HTMLElement {
     this.#frameSelf(snapshot, dt, now, clock);
     this.#frameDealer(geo);
     this.#frameShowUntil(now);
+    this.#placePicker();
     expireStatus(this.#selfStatus, now);
 
     for (const tile of this.#tiles.values()) {

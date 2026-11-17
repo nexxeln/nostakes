@@ -1,4 +1,10 @@
-import { PIC_LIFT } from "./layout.js";
+import {
+  PIC_LIFT,
+  REACTION_COLUMNS,
+  REACTION_GAP,
+  REACTION_PAD,
+  REACTION_TARGET,
+} from "./layout.js";
 
 export const tableCss = `
 :host {
@@ -332,10 +338,22 @@ export const tableCss = `
 .fchip { width: 20px; height: 20px; margin: -10px 0 0 -10px; }
 .fcard { width: 30px; height: 42px; margin: -21px 0 0 -15px; }
 .reaction { position: absolute; font-size: var(--text-5); line-height: 1; opacity: 0; will-change: transform, opacity; }
-.reactions { position: absolute; z-index: 8; display: flex; gap: var(--space-1); padding: var(--space-1); transform: translate(-50%, calc(-100% - var(--space-2))); border-radius: var(--radius-round); background: var(--color-raised); box-shadow: var(--shadow-sheet-2); }
-.reactions.gone { display: none; }
-.reaction-choice { font: inherit; font-size: var(--text-4); line-height: 1; padding: var(--space-1); border: 0; border-radius: var(--radius-round); background: transparent; cursor: pointer; }
+.tile.aimed .frame { outline: 2px solid var(--color-ink); outline-offset: 3px; }
+.reaction.thrown { left: 0; top: 0; z-index: 9; opacity: 1; }
+.reactions {
+  position: absolute; z-index: 8; display: grid; grid-template-columns: repeat(${REACTION_COLUMNS}, ${REACTION_TARGET}px); grid-auto-rows: ${REACTION_TARGET}px;
+  gap: ${REACTION_GAP}px; padding: ${REACTION_PAD}px; border-radius: var(--radius-3); background: var(--color-raised); box-shadow: var(--shadow-sheet-2);
+}
+.reactions.gone, .reaction-choice.gone { display: none; }
+.reaction-choice {
+  position: relative; display: grid; place-items: center; width: ${REACTION_TARGET}px; height: ${REACTION_TARGET}px; padding: 0;
+  font: inherit; font-size: var(--text-4); line-height: 1; color: var(--color-raised-ink); border: 0; border-radius: var(--radius-2); background: transparent; cursor: pointer;
+}
+.reaction-choice:active { translate: var(--press-1); }
 .reaction-choice:focus-visible { outline: 2px solid var(--color-accent); }
+.reaction-choice.more { font-size: var(--text-3); font-weight: var(--weight-strong); }
+.reaction-key { display: none; position: absolute; right: 1px; bottom: 1px; font-size: 10px; line-height: 1; padding: 1px 3px; }
+.reactions.keyed .reaction-key { display: block; }
 .self .frame { cursor: pointer; }
 
 .hint {

@@ -215,6 +215,28 @@ export class TableSound {
     }
   }
 
+  toss(flightSeconds: number) {
+    const voice = this.#ready();
+
+    if (voice === null) {
+      return;
+    }
+
+    const now = voice.ctx.currentTime;
+    const landsAt = now + flightSeconds;
+
+    this.#burst(voice, {
+      at: now,
+      dur: flightSeconds,
+      freq: 500,
+      gain: 0.12,
+      q: 1.5,
+      sweepTo: 1800,
+    });
+    playTone(voice, { at: landsAt, dur: 0.08, from: 240, gain: 0.35, to: 110 });
+    this.#burst(voice, { at: landsAt, dur: 0.04, freq: 900, gain: 0.2, q: 2 });
+  }
+
   tick(strong = false) {
     const voice = this.#ready();
 

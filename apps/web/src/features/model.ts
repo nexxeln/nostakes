@@ -223,6 +223,7 @@ export const InRoomSchema = Schema.Struct({
   player: PlayerIdSchema,
   reactions: Schema.Array(
     Schema.Struct({
+      at: Schema.Option(PlayerIdSchema),
       id: Schema.Int,
       player: PlayerIdSchema,
       reaction: ReactionSchema,

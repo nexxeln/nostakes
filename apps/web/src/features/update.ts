@@ -1066,19 +1066,35 @@ const reactionKept = (
   signal: RoomSignal
 ): InRoom =>
   RoomSignalSchema.guards.Reaction(signal)
-    ? { ...room, moments: reactionNoted(room.moments, from, signal.reaction) }
+    ? {
+        ...room,
+        moments: reactionNoted(room.moments, from, signal.reaction, signal.at),
+      }
     : room;
 
-const react = (model: Model, reaction: Reaction): Return =>
+const targetAt = (room: InRoom, seat: number | null) =>
+  seat === null
+    ? Option.some(Option.none<InRoom["player"]>())
+    : openViewOf(room).pipe(
+        Option.flatMap((view) => Option.fromNullishOr(view.seats[seat])),
+        Option.flatMap(({ occupant }) => occupant),
+        Option.filter(
+          ({ leavingRoom, player }) => !leavingRoom && player !== room.player
+        ),
+        Option.map(({ player }) => Option.some(player))
+      );
+
+const react = (model: Model, reaction: Reaction, seat: number | null): Return =>
   inRoom(model, (room) =>
-    isLive(room)
-      ? {
-          commands: [
-            SignalRoom({ signal: Signals.Reaction.make({ reaction }) }),
-          ],
-          model,
-        }
-      : { model }
+    Option.match(isLive(room) ? targetAt(room, seat) : Option.none(), {
+      onNone: () => ({ model }),
+      onSome: (at) => ({
+        commands: [
+          SignalRoom({ signal: Signals.Reaction.make({ at, reaction }) }),
+        ],
+        model,
+      }),
+    })
   );
 
 const fromTable = (model: Model, intent: TableIntent): Return =>
@@ -1105,7 +1121,7 @@ const fromTable = (model: Model, intent: TableIntent): Return =>
           onNone: () => ({ model }),
           onSome: (amount) => act(model, Actions.RaiseTo({ to: amount })),
         }),
-      React: ({ reaction }) => react(model, reaction),
+      React: ({ at, reaction }) => react(model, reaction, at),
       Rules: () => openRules(model),
       Runs: ({ runs }) =>
         Option.match(RunCountSchema.makeOption(runs), {
@@ -2020,6 +2036,7 @@ export const update = (model: Model, message: Message): Return =>
                     forgetExpired(room, at),
                     room.player,
                     signal.reaction,
+                    signal.at,
                     at,
                     model.nextKey
                   ),

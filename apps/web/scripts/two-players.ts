@@ -281,6 +281,78 @@ const reactsWhileWatched = (page: Page, other: Page) =>
     yield* Console.log("  claps, and the other player sees it rise");
   });
 
+const THROWN_FISH = `${TABLE} .reaction.thrown[data-reaction="Fish"]`;
+
+const RISING_FISH = `${TABLE} .reaction:not(.thrown)[data-reaction="Fish"]`;
+
+const landedOnOwnFace = (other: Page) =>
+  attempt("measure where the fish landed", () =>
+    other.evaluate(() => {
+      const table = document.querySelector("nostakes-table");
+      const root = table?.shadowRoot;
+      const face = root?.querySelector(".self .frame")?.getBoundingClientRect();
+
+      const fish = root?.querySelector<HTMLElement>(
+        '.reaction:not(.thrown)[data-reaction="Fish"]'
+      );
+
+      const host = table?.getBoundingClientRect();
+
+      if (
+        face === undefined ||
+        fish === null ||
+        fish === undefined ||
+        host === undefined
+      ) {
+        return Number.POSITIVE_INFINITY;
+      }
+
+      const x = Number(fish.style.left.replace("px", "")) + host.left;
+      const y = Number(fish.style.top.replace("px", "")) + host.top;
+
+      return (
+        Math.hypot(
+          x - (face.left + face.width / 2),
+          y - (face.top + face.height / 2)
+        ) / face.width
+      );
+    })
+  );
+
+const throwsWhileWatched = (page: Page, other: Page) =>
+  Effect.gen(function* throwWithKeys() {
+    yield* attempt("focus the other player's face", () =>
+      page.locator(`${TABLE} .tile:not(.empty)`).first().focus()
+    );
+    yield* press(
+      page,
+      ["Enter", "7"],
+      "open the sheet at that face and pick 7"
+    );
+    yield* attempt("the other player sees a fish thrown at their face", () =>
+      other.locator(THROWN_FISH).waitFor({ state: "attached", timeout: 5000 })
+    );
+    yield* attempt("the fish lands and rises from their face", () =>
+      other.locator(RISING_FISH).waitFor({ state: "attached", timeout: 5000 })
+    );
+
+    const away = yield* landedOnOwnFace(other);
+
+    yield* away > 0.5
+      ? Effect.fail(
+          new NightFailed({
+            detail: `it rose ${away.toFixed(2)} face widths from the centre of their own face`,
+            step: "see the fish land on the right face",
+          })
+        )
+      : Effect.void;
+
+    yield* shoot(other, "thrown.png");
+    yield* Console.log(
+      "  throws a fish at the other player, and it lands on their face"
+    );
+  });
+
 const heard = (page: Page, said: RegExp, step: string) =>
   attempt(step, () =>
     page
@@ -299,6 +371,7 @@ const playHand = (pages: readonly Page[], watcher: Page) =>
 
         yield* peeksWhileWatched(page, other);
         yield* reactsWhileWatched(page, other);
+        yield* throwsWhileWatched(page, other);
       }
 
       yield* gesture.play(page);

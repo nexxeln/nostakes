@@ -35,7 +35,7 @@ import {
   millis,
   redact,
 } from "@nostakes/room";
-import type { SeenTableEvent } from "@nostakes/room";
+import type { Reaction, SeenTableEvent } from "@nostakes/room";
 import { Option, Result, Schema } from "effect";
 
 import type { MomentHand } from "../../src/features/moments/element.js";
@@ -131,8 +131,9 @@ interface Player {
 type Noted =
   | { readonly kind: "Tanked"; readonly seat: number }
   | {
+      readonly at?: number;
       readonly kind: "Reacted";
-      readonly reaction: "Clap" | "Cry" | "Fire" | "Laugh" | "Wow";
+      readonly reaction: Reaction;
       readonly seat: number;
     };
 
@@ -175,7 +176,7 @@ export const REPLAY_HANDS = {
     ],
     noted: [
       { kind: "Tanked", seat: 2 },
-      { kind: "Reacted", reaction: "Laugh", seat: 1 },
+      { at: 2, kind: "Reacted", reaction: "Laugh", seat: 1 },
       { kind: "Reacted", reaction: "Clap", seat: 2 },
     ],
     players: [
@@ -461,6 +462,9 @@ export const replayHand = (
           }
         : {
             after: feed.length,
+            at: Option.fromUndefinedOr(note.at).pipe(
+              Option.map((target) => player(seat(target)))
+            ),
             kind: "Reacted" as const,
             player: player(seat(note.seat)),
             reaction: note.reaction,

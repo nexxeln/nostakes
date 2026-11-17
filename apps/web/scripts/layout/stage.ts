@@ -95,7 +95,7 @@ const showdown: TableSnapshot = {
   handId: 7,
   heroCards: SHOWN[0] ?? [],
   heroSeat: 0,
-  hostTools: false,
+  hostTools: params.get("host") === "1",
   learned: ["Peek", "Fold", "Raise", "Keys"],
   legal: null,
   posts: [],
