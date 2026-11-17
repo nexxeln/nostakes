@@ -7,6 +7,7 @@ import {
   ON_RED,
   RED,
   cardArt,
+  fanFor,
   escaped,
   faceArt,
   markArt,
@@ -213,6 +214,13 @@ const momentRow = (
   const face = Math.min(132, place.height * 0.82);
   const cardWidth = Math.min(70, place.height * 0.42);
   const cardsRoom = moment.cards.length > 0 ? cardWidth * 1.85 + 24 : 0;
+
+  const fan = fanFor(moment.cards.length, {
+    step: cardWidth * 0.8,
+    turns: [-6, 5],
+    width: cardWidth,
+  });
+
   const x = LEFT + face + 32;
   const room = RIGHT - x - cardsRoom;
   const titleFont = Math.min(50, place.height * 0.34);
@@ -243,9 +251,9 @@ const momentRow = (
     ...moment.cards.map((card, index) =>
       cardArt(palette, card, {
         dim: false,
-        turn: index === 0 ? -6 : 5,
-        width: cardWidth,
-        x: RIGHT - cardsRoom + 24 + index * cardWidth * 0.8,
+        turn: fan.turns[index] ?? 0,
+        width: fan.width,
+        x: RIGHT - cardsRoom + 24 + index * fan.step,
         y: place.y + face * 0.08,
       })
     ),

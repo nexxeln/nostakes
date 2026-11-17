@@ -31,6 +31,33 @@ export interface PictureLook {
 
 export const CARD_RATIO = CARD_HEIGHT / 100;
 
+export interface HandFan {
+  readonly step: number;
+  readonly turns: readonly number[];
+  readonly width: number;
+}
+
+const FANNED_WIDTH = 0.8;
+
+const FANNED_TURN = 10;
+
+export const fanFor = (count: number, pair: HandFan): HandFan => {
+  if (count <= pair.turns.length) {
+    return pair;
+  }
+
+  const width = pair.width * FANNED_WIDTH;
+
+  return {
+    step: (pair.width + pair.step - width) / (count - 1),
+    turns: Array.from(
+      { length: count },
+      (_, index) => -FANNED_TURN + (index * 2 * FANNED_TURN) / (count - 1)
+    ),
+    width,
+  };
+};
+
 export interface Palette {
   readonly card: string;
   readonly cardBack: string;

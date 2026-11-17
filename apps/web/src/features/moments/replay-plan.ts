@@ -1,6 +1,6 @@
 import type { Expression } from "@nostakes/avatar";
-import { HOLDEM, cardText, rankHand, rankOf } from "@nostakes/engine";
-import type { Card, PlayerId, SeatIndex } from "@nostakes/engine";
+import { cardText, rankHand, rankOf, variantOf } from "@nostakes/engine";
+import type { Card, Game, PlayerId, SeatIndex } from "@nostakes/engine";
 import { ReplaySteps } from "@nostakes/room";
 import type { MomentKind, Replay, ReplayStep, Tier } from "@nostakes/room";
 import { Option } from "effect";
@@ -10,7 +10,7 @@ import { FRAME_SIZES } from "../pictures/paper.js";
 import type { KeptFrame } from "../pictures/paper.js";
 import { REACTION_GLYPHS } from "../signals.js";
 import type { MomentHand } from "./element.js";
-import { handName, startingHandName } from "./hand-names.js";
+import { handName, holdingName } from "./hand-names.js";
 import { STAGE, captionLines, layoutOf } from "./replay-shots.js";
 import type { Cast, Chances, Person, Shot } from "./replay-shots.js";
 import {
@@ -175,8 +175,6 @@ const SURE_PERCENT = 85;
 
 const MOST_LOUD = 3;
 
-const HOLE_CARDS = 2;
-
 const FLOP_CARDS = 3;
 
 const FULL_BOARD = 5;
@@ -254,6 +252,7 @@ type Reacted = Extract<ReplayNote, { kind: "Reacted" }>;
 interface Told {
   readonly cast: Cast;
   readonly decisive: Decisive;
+  readonly game: Game;
   readonly lead: SeatIndex;
   readonly loud: ReadonlySet<ActedStep>;
   readonly names: ReadonlyMap<SeatIndex, string>;
@@ -477,6 +476,7 @@ const toldOf = (replay: Replay, facts: ReplayFacts): Told => {
       lead,
       swingOf(replay, lead, other, winners)
     ),
+    game: replay.game,
     lead,
     loud: loudOf(replay),
     names: new Map(facts.seats.map((seat) => [seat.seat, seat.name] as const)),
@@ -490,27 +490,46 @@ const toldOf = (replay: Replay, facts: ReplayFacts): Told => {
 const nameOf = (told: Told, seat: SeatIndex) =>
   told.names.get(seat) ?? "Someone";
 
+const holeCardsOf = (told: Told) => variantOf(told.game).holeCards;
+
+const everyHoleCardPlays = (told: Told) =>
+  variantOf(told.game).playsFromHole.most === holeCardsOf(told);
+
 const holeOf = (told: Told, seat: SeatIndex): readonly string[] => {
   const shown = (told.tabled.get(seat) ?? []).map(cardText);
 
   return [
     ...shown,
-    ...Array.from({ length: HOLE_CARDS - shown.length }, () => ""),
+    ...Array.from({ length: holeCardsOf(told) - shown.length }, () => ""),
   ];
 };
 
 const fullHole = (told: Told, seat: SeatIndex | null) => {
   const cards = seat === null ? [] : (told.tabled.get(seat) ?? []);
 
-  return cards.length === HOLE_CARDS ? cards : null;
+  return cards.length === holeCardsOf(told) ? cards : null;
 };
 
-const heldBy = (hole: readonly Card[], board: readonly Card[]) =>
+const heldBy = (told: Told, hole: readonly Card[], board: readonly Card[]) =>
   board.length >= FLOP_CARDS
-    ? handName(rankHand(HOLDEM, hole, board))
-    : startingHandName(hole);
+    ? handName(rankHand(told.game, hole, board))
+    : holdingName(told.game, hole);
 
-const madeBy = (hole: readonly Card[], board: readonly Card[]) => {
+const alikeOf = (
+  told: Told,
+  hole: readonly Card[],
+  board: readonly Card[],
+  rank: number
+) => {
+  const { most } = variantOf(told.game).playsFromHole;
+
+  const ofRank = (cards: readonly Card[]) =>
+    cards.filter((card) => rankOf(card) === rank).length;
+
+  return Math.min(most, ofRank(hole)) + ofRank(board);
+};
+
+const madeBy = (told: Told, hole: readonly Card[], board: readonly Card[]) => {
   const last = board.at(-1);
 
   if (last === undefined) {
@@ -518,12 +537,10 @@ const madeBy = (hole: readonly Card[], board: readonly Card[]) => {
   }
 
   if (board.length >= FLOP_CARDS) {
-    return handName(rankHand(HOLDEM, hole, board));
+    return handName(rankHand(told.game, hole, board));
   }
 
-  const alike = [...hole, ...board].filter(
-    (card) => rankOf(card) === rankOf(last)
-  ).length;
+  const alike = alikeOf(told, hole, board, rankOf(last));
 
   return alike >= 2 && hole.some((card) => rankOf(card) === rankOf(last))
     ? REPLAY_WORDS.twoOfThem(rankOf(last), alike)
@@ -534,13 +551,18 @@ const hookOf = (facts: ReplayFacts, told: Told, dealt: OddsStep | null) => {
   const lead = nameOf(told, told.lead);
   const other = told.other === null ? "" : nameOf(told, told.other);
   const hole = fullHole(told, told.lead);
-  const start = hole === null ? "" : startingHandName(hole);
+  const start = hole === null ? "" : holdingName(told.game, hole);
 
   if (facts.kind === "SevenDeuce") {
     return REPLAY_WORDS.hookSevenDeuce(lead);
   }
 
-  if (facts.kind === "SameHand" && told.other !== null && start.length > 0) {
+  if (
+    facts.kind === "SameHand" &&
+    told.other !== null &&
+    start.length > 0 &&
+    everyHoleCardPlays(told)
+  ) {
     return REPLAY_WORDS.hookSame(lead, other, start);
   }
 
@@ -622,7 +644,7 @@ const actLine = (
 
   const holding =
     hole !== null && seen.board.length === FULL_BOARD
-      ? handName(rankHand(HOLDEM, hole, seen.board))
+      ? handName(rankHand(told.game, hole, seen.board))
       : "";
 
   const mine = (() => {
@@ -647,7 +669,12 @@ const actLine = (
 
   if (mine !== null && mine <= NO_IDEA_PERCENT) {
     return hole !== null && holding.endsWith(" high")
-      ? REPLAY_WORDS.bluffs(name, step.to, step.allIn, startingHandName(hole))
+      ? REPLAY_WORDS.bluffs(
+          name,
+          step.to,
+          step.allIn,
+          holdingName(told.game, hole)
+        )
       : REPLAY_WORDS.noIdea(name, step.to, step.allIn);
   }
 
@@ -759,7 +786,7 @@ const wagered = (walk: Walk, told: Told, step: ActedStep) => {
   });
 
   const hole = fullHole(told, step.seat);
-  const holding = hole === null ? "" : heldBy(hole, [...board]);
+  const holding = hole === null ? "" : heldBy(told, hole, [...board]);
 
   walk.bets.set(step.seat, step.to);
 
@@ -863,7 +890,7 @@ const foldedOut = (walk: Walk, told: Told, step: ActedStep) => {
   const waited = clockLine(told, step);
   const hole = fullHole(told, told.lead);
   const [board = []] = walk.boards;
-  const holding = hole === null ? "" : heldBy(hole, [...board]);
+  const holding = hole === null ? "" : heldBy(told, hole, [...board]);
 
   const pot =
     walk.pot + [...walk.bets.values()].reduce((sum, bet) => sum + bet, 0);
@@ -888,8 +915,11 @@ const foldedOut = (walk: Walk, told: Told, step: ActedStep) => {
     show.draft.caption = captionLines(
       REPLAY_WORDS.fold(nameOf(told, step.seat))
     );
-    show.fly("close:hole:0", { x: -260, y: 120 });
-    show.fly("close:hole:1", { x: -260, y: 120 });
+
+    for (let index = 0; index < holeCardsOf(told); index += 1) {
+      show.fly(`close:hole:${index}`, { x: -260, y: 120 });
+    }
+
     draft.cards = [];
     show.apply();
     show.cue("Fold", 0, step.seat);
@@ -900,7 +930,7 @@ const foldedOut = (walk: Walk, told: Told, step: ActedStep) => {
     show.draft.caption = captionLines(
       hole === null
         ? REPLAY_WORDS.takes(nameOf(told, told.lead), pot)
-        : REPLAY_WORDS.nothing(startingHandName(hole), holding)
+        : REPLAY_WORDS.nothing(holdingName(told.game, hole), holding)
     );
     show.apply();
     show.mark("Hit");
@@ -982,7 +1012,7 @@ const swungCard = (
   const after = chancesOf(swing.step, told);
   const outs = walk.odds?.outs.find((each) => each.seat === swing.gainer);
   const hole = fullHole(told, swing.gainer);
-  const made = hole === null ? "" : madeBy(hole, swing.step.board);
+  const made = hole === null ? "" : madeBy(told, hole, swing.step.board);
   const victimPercent = percentOf(walk.odds ?? swing.step, swing.victim) ?? 0;
 
   add(walk, { firm: true, hold: PAUSE_MS, section: "Pause" }, (show) => {

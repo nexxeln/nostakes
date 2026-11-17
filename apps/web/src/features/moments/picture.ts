@@ -7,6 +7,7 @@ import {
   RED,
   cardArt,
   escaped,
+  fanFor,
   faceArt,
   markArt,
   number,
@@ -150,10 +151,14 @@ const boardArt = (
     .join("");
 };
 
+const PAIR = 2;
+
 const holeArt = (
   palette: Palette,
   face: PictureFace,
   place: {
+    readonly cardsEach: number;
+    readonly lifted: readonly string[];
     readonly owner: number;
     readonly width: number;
     readonly x: number;
@@ -162,23 +167,35 @@ const holeArt = (
 ) => {
   const rise = face.won ? place.width * 0.1 : 0;
 
+  const fan = fanFor(face.cards.length, {
+    step: place.width * 0.78,
+    turns: [-7, 6],
+    width: place.width,
+  });
+
+  const playing = face.cards.filter((card) => place.lifted.includes(card));
+  const picksTwo = face.cards.length > PAIR && playing.length > 0;
+
   return face.cards
     .map((card, index) =>
       part(
         "hole",
-        place.owner * 2 + index,
+        place.owner * place.cardsEach + index,
         cardArt(palette, card, {
-          dim: false,
+          dim: picksTwo && !playing.includes(card),
           lift: face.won ? 0.07 : 0.035,
-          turn: index === 0 ? -7 : 6,
-          width: place.width,
-          x: place.x + index * place.width * 0.78,
+          turn: fan.turns[index] ?? 0,
+          width: fan.width,
+          x: place.x + index * fan.step,
           y: place.y + (index === 0 ? 6 : 0) - rise,
         })
       )
     )
     .join("");
 };
+
+const cardsEachOf = (picture: MomentPicture) =>
+  Math.max(PAIR, ...picture.faces.map((face) => face.cards.length));
 
 const soloBody = (palette: Palette, picture: MomentPicture, theme: Theme) => {
   const [lead] = picture.faces;
@@ -199,6 +216,8 @@ const soloBody = (palette: Palette, picture: MomentPicture, theme: Theme) => {
       })
     ),
     holeArt(palette, lead, {
+      cardsEach: cardsEachOf(picture),
+      lifted: picture.lifted,
       owner: 0,
       width: 180,
       x: 560,
@@ -229,6 +248,8 @@ const duelBody = (palette: Palette, picture: MomentPicture, theme: Theme) => {
           })
         ),
         holeArt(palette, face, {
+          cardsEach: cardsEachOf(picture),
+          lifted: picture.lifted,
           owner: index,
           width: 104,
           x: x + 262,

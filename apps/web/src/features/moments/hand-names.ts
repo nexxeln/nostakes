@@ -1,5 +1,5 @@
-import { describe, rankOf } from "@nostakes/engine";
-import type { Card, HandRank } from "@nostakes/engine";
+import { bestHand, describe, rankOf, variantOf } from "@nostakes/engine";
+import type { Card, Game, HandRank } from "@nostakes/engine";
 
 const ONE: readonly string[] = [
   "two",
@@ -71,3 +71,26 @@ export const startingHandName = (cards: readonly Card[]): string => {
 
   return high === low ? `pocket ${many(high)}` : `${one(high)}-${one(low)}`;
 };
+
+const byRankDown = (cards: readonly Card[]) =>
+  cards.map((card) => rankOf(card)).toSorted((left, right) => right - left);
+
+const PAIR = 2;
+
+export const holdingName = (game: Game, cards: readonly Card[]): string =>
+  variantOf(game).holeCards > PAIR
+    ? byRankDown(cards)
+        .map((rank) => one(rank))
+        .join("-")
+    : startingHandName(cards);
+
+const FLOP_CARDS = 3;
+
+export const playingHole = (
+  game: Game,
+  hole: readonly Card[],
+  board: readonly Card[]
+): readonly Card[] =>
+  variantOf(game).playsFromHole.least > 0 && board.length >= FLOP_CARDS
+    ? bestHand(game, hole, board).filter((card) => hole.includes(card))
+    : hole;

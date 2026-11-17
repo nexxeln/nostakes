@@ -1,6 +1,7 @@
 import type { Expression } from "@nostakes/avatar";
 import type { SeatIndex } from "@nostakes/engine";
 
+import { fanFor } from "../pictures/paper.js";
 import { textWidth } from "../pictures/text-fit.js";
 import { chipsText } from "./captions.js";
 import type { Layout, Placed } from "./replay-stage.js";
@@ -165,20 +166,27 @@ const holes = (
     readonly x: number;
     readonly y: number;
   }
-): readonly (readonly [string, Placed])[] =>
-  cards.map((card, index) => [
+): readonly (readonly [string, Placed])[] => {
+  const fan = fanFor(cards.length, {
+    step: place.width * place.spread,
+    turns: TURNS,
+    width: place.width,
+  });
+
+  return cards.map((card, index) => [
     `${name}:${index}`,
     {
       art: {
         card,
         kind: "Card",
-        turn: TURNS[index] ?? 0,
-        width: place.width,
-        x: Math.round(place.x + index * place.width * place.spread),
+        turn: fan.turns[index] ?? 0,
+        width: fan.width,
+        x: Math.round(place.x + index * fan.step),
         y: place.y + (index === 0 ? 5 : 0),
       },
     },
   ]);
+};
 
 const ALL_IN = "All in";
 

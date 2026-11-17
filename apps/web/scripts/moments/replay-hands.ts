@@ -2,6 +2,7 @@ import { codeFor, randomAvatar } from "@nostakes/avatar";
 import {
   Actions,
   Antes,
+  BettingLimits,
   BombPots,
   CardFromText,
   ChipsSchema,
@@ -24,6 +25,7 @@ import type {
   Card,
   Command,
   Event,
+  Game,
   SeatIndex,
   TableConfig,
   TableState,
@@ -56,7 +58,7 @@ const chipCount = (amount: number) => ChipsSchema.make(amount);
 
 type House = "BombPot" | "Bounty" | "Plain";
 
-const configOf = (maxRuns: number, house: House): TableConfig =>
+const configOf = (maxRuns: number, house: House, game: Game): TableConfig =>
   TableConfigSchema.make({
     ante: Antes.NoAnte(),
     bigBlind: chipCount(10),
@@ -68,6 +70,9 @@ const configOf = (maxRuns: number, house: House): TableConfig =>
             everyHands: 1,
           })
         : BombPots.NoBombPots(),
+    game,
+    limit:
+      game === "Omaha" ? BettingLimits.PotLimit() : BettingLimits.NoLimit(),
     maxRuns: RunCountSchema.make(maxRuns),
     rabbitHunt: false,
     sevenDeuce:
@@ -143,6 +148,7 @@ type Noted =
 
 interface Scripted {
   readonly deck: string;
+  readonly game?: Game;
   readonly house?: House;
   readonly maxRuns: number;
   readonly moves: readonly Command[];
@@ -240,6 +246,26 @@ export const REPLAY_HANDS = {
       { look: 3, name: "Sam", stack: 1500 },
     ],
   },
+  OmahaCooler: {
+    deck: "Jh 9s 8h 9d Qs Ac 6d Kd 9c 9h 7h Th 2c",
+    game: "Omaha",
+    maxRuns: 1,
+    moves: [
+      act(0, raises(30)),
+      act(1, raises(90)),
+      act(0, calls),
+      act(1, checks),
+      act(0, raises(180)),
+      act(1, raises(720)),
+      act(0, calls),
+      act(1, raises(1190)),
+      act(0, calls),
+    ],
+    players: [
+      { look: 11, name: "Maya", stack: 2000 },
+      { look: 37, name: "Dev", stack: 2000 },
+    ],
+  },
   QuadsIntoBoat: {
     deck: "Kd 9s Kc 9h 9c Kh 2s 9d 4c",
     maxRuns: 1,
@@ -299,7 +325,11 @@ export const REPLAY_HAND_NAMES = Object.keys(REPLAY_HANDS);
 
 const playedOut = (scripted: Scripted): readonly Event[] => {
   let state = initialTable(
-    configOf(scripted.maxRuns, scripted.house ?? "Plain")
+    configOf(
+      scripted.maxRuns,
+      scripted.house ?? "Plain",
+      scripted.game ?? "Holdem"
+    )
   );
 
   for (const [index, player] of scripted.players.entries()) {

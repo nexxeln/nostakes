@@ -1,5 +1,11 @@
-import { HOLDEM, cardText, describe, rankHand, rankOf } from "@nostakes/engine";
-import type { Card, HandCategory, SeatIndex } from "@nostakes/engine";
+import {
+  cardText,
+  describe,
+  rankHand,
+  rankOf,
+  variantOf,
+} from "@nostakes/engine";
+import type { Card, Game, HandCategory, SeatIndex } from "@nostakes/engine";
 import { ReplaySteps } from "@nostakes/room";
 import type { MomentKind, Replay, ReplayStep } from "@nostakes/room";
 import type { Types } from "effect";
@@ -102,7 +108,7 @@ export interface DriftFacts {
 
 type StepOf<Tag extends ReplayStep["_tag"]> = Types.ExtractTag<ReplayStep, Tag>;
 
-const HOLE_CARDS = 2;
+const PAIR = 2;
 
 const FLOP_CARDS = 3;
 
@@ -145,7 +151,14 @@ const ALIKE = ["", "", "PAIR", "TRIPS", "QUADS"];
 
 const rankSign = (card: Card) => RANKS[rankOf(card)] ?? "?";
 
-export const startingWord = (hole: readonly Card[]) => {
+export const startingWord = (game: Game, hole: readonly Card[]) => {
+  if (variantOf(game).holeCards > PAIR) {
+    return hole
+      .toSorted((left, right) => rankOf(right) - rankOf(left))
+      .map(rankSign)
+      .join(" ");
+  }
+
   const [high, low] = hole.toSorted(
     (left, right) => rankOf(right) - rankOf(left)
   );
@@ -159,17 +172,30 @@ export const startingWord = (hole: readonly Card[]) => {
     : `${rankSign(high)} HIGH`;
 };
 
-export const madeWord = (hole: readonly Card[], board: readonly Card[]) => {
+const ofRank = (cards: readonly Card[], rank: number) =>
+  cards.filter((card) => rankOf(card) === rank).length;
+
+export const madeWord = (
+  game: Game,
+  hole: readonly Card[],
+  board: readonly Card[]
+) => {
+  const { playsFromHole } = variantOf(game);
+
   if (board.length >= FLOP_CARDS) {
-    return MADE[describe(rankHand(HOLDEM, hole, board)).category];
+    return hole.length < playsFromHole.least
+      ? ""
+      : MADE[describe(rankHand(game, hole, board)).category];
   }
+
+  const fromHole = playsFromHole.most;
 
   const most = Math.max(
     0,
     ...hole.map(
       (held) =>
-        [...hole, ...board].filter((card) => rankOf(card) === rankOf(held))
-          .length
+        Math.min(fromHole, ofRank(hole, rankOf(held))) +
+        ofRank(board, rankOf(held))
     )
   );
 
@@ -304,8 +330,9 @@ const boardsRead = (
             card: cardText(card),
             kind: "Card",
             made:
-              hole.length === HOLE_CARDS
-                ? madeWord(hole, board) || startingWord(hole)
+              hole.length === variantOf(replay.game).holeCards
+                ? madeWord(replay.game, hole, board) ||
+                  startingWord(replay.game, hole)
                 : "",
             odds: oddsOf(
               odds.find(
@@ -482,7 +509,10 @@ const person = (
     avatar: found?.avatar ?? "",
     hole: [
       ...shown,
-      ...Array.from({ length: HOLE_CARDS - shown.length }, () => ""),
+      ...Array.from(
+        { length: variantOf(replay.game).holeCards - shown.length },
+        () => ""
+      ),
     ],
     name: shortName(found?.name ?? "Someone").toUpperCase(),
     seat,
@@ -549,6 +579,7 @@ const swingTurn = (read: Read): Turn | null => {
           split: false,
           victim: swing.victim,
           word: madeWord(
+            read.replay.game,
             read.tabled.get(swing.gainer) ?? [],
             boardUpTo(read.reading, swing.item)
           ),
@@ -563,8 +594,9 @@ const revealOf = (read: Read, seat: SeatIndex): DriftReveal => {
   return {
     seat,
     word:
-      hole.length === HOLE_CARDS
+      hole.length === variantOf(read.replay.game).holeCards
         ? madeWord(
+            read.replay.game,
             hole,
             last === undefined ? [] : boardUpTo(read.reading, last)
           )
@@ -649,6 +681,7 @@ const riverTurn = (read: Read): Turn | null => {
       split: (read.winners.get(final.item.run) ?? []).length > 1,
       victim: winner === seats.lead ? seats.other : seats.lead,
       word: madeWord(
+        read.replay.game,
         read.tabled.get(winner) ?? [],
         boardUpTo(reading, final.item)
       ),
@@ -696,7 +729,9 @@ const hookOf = (
   const wordOf = (seat: SeatIndex | null) => {
     const held = replay.tabled.find((each) => each.seat === seat)?.cards ?? [];
 
-    return held.length === HOLE_CARDS ? startingWord(held) : "";
+    return held.length === variantOf(replay.game).holeCards
+      ? startingWord(replay.game, held)
+      : "";
   };
 
   return order.flatMap((seat, place): readonly DriftHook[] => {

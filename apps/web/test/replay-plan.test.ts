@@ -2,6 +2,7 @@ import { describe, expect, it } from "@effect/vitest";
 import {
   Actions,
   Antes,
+  BettingLimits,
   ChipsSchema,
   Commands,
   DeckSchema,
@@ -149,6 +150,9 @@ const playedHand = (seed: number) => {
           ? Antes.EveryPlayer({ amount: chipCount(1 + below(5)) })
           : Antes.NoAnte(),
       bigBlind: chipCount(10),
+      game: seed % 3 === 0 ? "Omaha" : "Holdem",
+      limit:
+        seed % 3 === 0 ? BettingLimits.PotLimit() : BettingLimits.NoLimit(),
       maxRuns: RunCountSchema.make(1 + below(3)),
       rabbitHunt: false,
       showdown: below(3) === 0 ? "Interactive" : "Automatic",

@@ -1,11 +1,11 @@
 import type { Expression } from "@nostakes/avatar";
 import {
   Events,
-  HOLDEM,
   bestHand,
   cardText,
   handCategory,
   rankHand,
+  variantOf,
 } from "@nostakes/engine";
 import type { Card, HandRank, SeatIndex } from "@nostakes/engine";
 import { Moments, headline, isPainful, momentsOf } from "@nostakes/room";
@@ -16,7 +16,12 @@ import { isolated } from "../names.js";
 import { CAPTIONS } from "./captions.js";
 import type { Caption, CaptionFacts } from "./captions.js";
 import type { MomentHand, Person } from "./element.js";
-import { handName, startingHandName } from "./hand-names.js";
+import {
+  handName,
+  holdingName,
+  playingHole,
+  startingHandName,
+} from "./hand-names.js";
 import type { MomentPicture, PictureFace } from "./picture.js";
 import { handEnded } from "./watch.js";
 
@@ -34,6 +39,9 @@ const personAt = (people: People, lastHand: LastHand, seat: SeatIndex) => {
 
 const shownAt = (lastHand: LastHand, seat: SeatIndex): readonly Card[] =>
   lastHand.shown.find((shown) => shown.seat === seat)?.cards ?? [];
+
+const wholeHand = (lastHand: LastHand, hole: readonly Card[]) =>
+  hole.length === variantOf(lastHand.game).holeCards;
 
 const leadOf = (moment: Moment) => moment.seats[0];
 
@@ -83,8 +91,8 @@ const liftedOf = (moment: Moment, lastHand: LastHand) => {
     onSome: (seat) => {
       const hole = shownAt(lastHand, seat);
 
-      return hole.length === 2 && board.length >= 3
-        ? bestHand(HOLDEM, hole, board)
+      return wholeHand(lastHand, hole) && board.length >= 3
+        ? bestHand(lastHand.game, hole, board)
         : [];
     },
   });
@@ -94,8 +102,8 @@ const rankOn = (lastHand: LastHand, seat: SeatIndex | undefined) => {
   const [board = []] = lastHand.boards;
   const hole = seat === undefined ? [] : shownAt(lastHand, seat);
 
-  return hole.length === 2 && board.length >= 3
-    ? Option.some(rankHand(HOLDEM, hole, board))
+  return wholeHand(lastHand, hole) && board.length >= 3
+    ? Option.some(rankHand(lastHand.game, hole, board))
     : Option.none<HandRank>();
 };
 
@@ -125,9 +133,21 @@ const factsFor = (
   const otherHole = other === undefined ? [] : shownAt(lastHand, other);
 
   const handOf = (rank: Option.Option<HandRank>, hole: readonly Card[]) =>
-    preflop && hole.length === 2
-      ? startingHandName(hole)
+    preflop && wholeHand(lastHand, hole)
+      ? holdingName(lastHand.game, hole)
       : Option.match(rank, { onNone: () => "", onSome: handName });
+
+  const [board = []] = lastHand.boards;
+
+  const start = () => {
+    if (!wholeHand(lastHand, leadHole)) {
+      return "";
+    }
+
+    return Moments.$is("SameHand")(moment)
+      ? startingHandName(playingHole(lastHand.game, leadHole, board))
+      : holdingName(lastHand.game, leadHole);
+  };
 
   return {
     against: named(other),
@@ -151,7 +171,7 @@ const factsFor = (
     other: handOf(otherRank, otherHole),
     percent: "odds" in moment ? moment.odds.percent : 0,
     runs: Moments.$is("SplitRuns")(moment) ? moment.runs : 1,
-    start: leadHole.length === 2 ? startingHandName(leadHole) : "",
+    start: start(),
     who: named(lead),
   };
 };

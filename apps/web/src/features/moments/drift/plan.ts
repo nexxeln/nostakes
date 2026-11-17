@@ -2,7 +2,7 @@ import type { Expression } from "@nostakes/avatar";
 import type { SeatIndex } from "@nostakes/engine";
 
 import type { Deck, Theme } from "../../model.js";
-import { paletteFor } from "../../pictures/paper.js";
+import { fanFor, paletteFor } from "../../pictures/paper.js";
 import type { Palette } from "../../pictures/paper.js";
 import { chipsText } from "../captions.js";
 import type { Ease, FilmKey, Pose, Shot } from "../film.js";
@@ -420,18 +420,26 @@ const card = (
 
 const FAN = [-7, 6];
 
+const fanOf = (person: DriftPerson, width: number, step: number) =>
+  fanFor(person.hole.length, { step, turns: FAN, width });
+
+const swingOf = (person: DriftPerson, index: number) =>
+  index < person.hole.length / 2 ? 1 : -1;
+
 const hole = (
   stage: Stage,
   person: DriftPerson,
   span: Span,
   look: Rest & { readonly entrance: Entrance; readonly width: number }
 ) => {
+  const fan = fanOf(person, look.width, look.width * 0.78);
+
   for (const [index, text] of person.hole.entries()) {
     card(stage, text, span, {
       entrance: look.entrance,
-      turn: FAN[index] ?? 0,
-      width: look.width,
-      x: look.x + index * look.width * 0.78,
+      turn: fan.turns[index] ?? 0,
+      width: fan.width,
+      x: look.x + index * fan.step,
       y: look.y + index * look.width * 0.06,
     });
   }
@@ -1343,19 +1351,16 @@ const windUpScene = (telling: Telling) => {
     tone: "Hot",
   });
 
-  for (const [index, swing] of [1, -1].entries()) {
-    drifting(
-      stage,
-      cardSprite(stage.palette, actor.hole[index] ?? "", CARD_WIDTH),
-      span,
-      {
-        scale: HOLE_AT.width / CARD_WIDTH,
-        swing: swing * 0.4,
-        turn: FAN[index] ?? 0,
-        x: HOLE_AT.x + index * HOLE_AT.width * 0.78,
-        y: HOLE_AT.y + index * 15,
-      }
-    );
+  const fan = fanOf(actor, HOLE_AT.width, HOLE_AT.width * 0.78);
+
+  for (const [index, text] of actor.hole.entries()) {
+    drifting(stage, cardSprite(stage.palette, text, CARD_WIDTH), span, {
+      scale: fan.width / CARD_WIDTH,
+      swing: swingOf(actor, index) * 0.4,
+      turn: fan.turns[index] ?? 0,
+      x: HOLE_AT.x + index * fan.step,
+      y: HOLE_AT.y + index * 15,
+    });
   }
 };
 
@@ -1445,15 +1450,19 @@ const dropScene = (telling: Telling, span: Span) => {
     turn: TILT,
   });
 
-  for (const [index, swing] of [1, -1].entries()) {
+  const fan = fanOf(actor, HOLE_AT.width, HOLE_AT.width * 0.78);
+
+  for (const [index, text] of actor.hole.entries()) {
+    const swing = swingOf(actor, index);
+
     const place = {
-      scale: HOLE_AT.width / CARD_WIDTH,
-      turn: FAN[index] ?? 0,
-      x: HOLE_AT.x + index * HOLE_AT.width * 0.78,
+      scale: fan.width / CARD_WIDTH,
+      turn: fan.turns[index] ?? 0,
+      x: HOLE_AT.x + index * fan.step,
       y: HOLE_AT.y + index * 15,
     };
 
-    put(stage, cardSprite(stage.palette, actor.hole[index] ?? "", CARD_WIDTH), [
+    put(stage, cardSprite(stage.palette, text, CARD_WIDTH), [
       key(span.from, posed(place)),
       key(
         span.to,
@@ -1540,15 +1549,20 @@ const revealScene = (telling: Telling, span: Span) => {
     tone: "Ink",
   });
 
+  const fan = fanOf(shown, HERO_WIDTH * 0.73, 400);
+
   for (const [index, text] of shown.hole.entries()) {
     card(stage, text, span, {
       entrance: "Slam",
-      turn: FAN[index] ?? 0,
-      width: HERO_WIDTH * 0.73,
-      x: 340 + index * 400,
+      turn: fan.turns[index] ?? 0,
+      width: fan.width,
+      x: 340 + index * fan.step,
       y: 1070 + index * 30,
     });
-    cue(stage, span.from, "Card");
+
+    if (index < FAN.length) {
+      cue(stage, span.from, "Card");
+    }
   }
 };
 

@@ -1,6 +1,7 @@
 import { codeFor, randomAvatar } from "@nostakes/avatar";
 import type { Expression } from "@nostakes/avatar";
-import { CardFromText, bestHand, evaluate } from "@nostakes/engine";
+import { CardFromText, bestHand, rankHand } from "@nostakes/engine";
+import type { Game } from "@nostakes/engine";
 import type { MomentKind, Tier } from "@nostakes/room";
 import { Schema } from "effect";
 
@@ -27,14 +28,18 @@ const face = (
   won: false,
 });
 
-const nameOf = (hole: string, board: string) =>
+const nameOf = (game: Game, hole: string, board: string) =>
   handName(
-    evaluate([...cards(hole), ...cards(board)].map((text) => card(text)))
+    rankHand(
+      game,
+      cards(hole).map((text) => card(text)),
+      cards(board).map((text) => card(text))
+    )
   );
 
-const liftedOf = (hole: string, board: string) => {
+const liftedOf = (game: Game, hole: string, board: string) => {
   const found = bestHand(
-    "Holdem",
+    game,
     cards(hole).map((text) => card(text)),
     cards(board).map((text) => card(text))
   );
@@ -62,6 +67,7 @@ interface Sample {
   readonly boards?: readonly string[];
   readonly facts: Partial<CaptionFacts>;
   readonly faces: readonly ReturnType<typeof face>[];
+  readonly game?: Game;
   readonly kind: MomentKind;
   readonly lift: "lead" | "winner" | "none" | "hole";
   readonly pot: number;
@@ -142,6 +148,29 @@ const SAMPLES = {
     pot: 420,
     tier: 2,
   },
+  "Omaha-StraightFlush": {
+    board: "9c 9h 7h Th 2c",
+    faces: [face("Dev", 37, "Happy", "Jh 8h Qs 6d")],
+    facts: { category: "StraightFlush", who: "Dev" },
+    game: "Omaha",
+    kind: "BigHand",
+    lift: "lead",
+    pot: 4000,
+    tier: 2,
+  },
+  "Omaha-Cooler": {
+    board: "9c 9h 7h Th 2c",
+    faces: [
+      face("Maya", 11, "Gutted", "9s 9d Ac Kd"),
+      face("Dev", 37, "Happy", "Jh 8h Qs 6d"),
+    ],
+    facts: { who: "Maya" },
+    game: "Omaha",
+    kind: "Cooler",
+    lift: "winner",
+    pot: 4000,
+    tier: 2,
+  },
   "SameHand-1": {
     board: "2c 7h 9s 4d 3d",
     faces: [
@@ -210,10 +239,12 @@ export const samplePicture = (name: string): MomentPicture => {
 
   const winnerHole = winner?.cards.join(" ") ?? leadHole;
 
+  const game = sample.game ?? "Holdem";
+
   const facts: CaptionFacts = {
     ...NO_FACTS,
-    hand: nameOf(leadHole, sample.board),
-    other: other === undefined ? "" : nameOf(otherHole, sample.board),
+    hand: nameOf(game, leadHole, sample.board),
+    other: other === undefined ? "" : nameOf(game, otherHole, sample.board),
     ...sample.facts,
   };
 
@@ -224,9 +255,9 @@ export const samplePicture = (name: string): MomentPicture => {
 
   const lifted = {
     hole: cards(leadHole),
-    lead: liftedOf(leadHole, sample.board),
+    lead: liftedOf(game, leadHole, sample.board),
     none: [],
-    winner: liftedOf(winnerHole, sample.board),
+    winner: liftedOf(game, winnerHole, sample.board),
   }[sample.lift];
 
   return {
