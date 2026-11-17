@@ -286,7 +286,7 @@ const boardSays = (
   const both = run === 2 && firstBoard.get(pot) === winnersText(seats);
 
   return seats.map((seat) =>
-    Happenings.Say.make({ seat, text: both ? "Both boards" : `Board ${run}` })
+    Happenings.Say.make({ seat, text: both ? "Scoops" : `Board ${run}` })
   );
 };
 

@@ -573,7 +573,7 @@ const boardAwards = (first: number, second: number): readonly Happening[] => [
   Happenings.Win.make({ amount: RIVER_TOTAL / 2, seat: second }),
   Happenings.Say.make({
     seat: second,
-    text: first === second ? "Both boards" : "Board 2",
+    text: first === second ? "Scoops" : "Board 2",
   }),
 ];
 
