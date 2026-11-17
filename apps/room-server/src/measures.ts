@@ -56,7 +56,7 @@ export const MEASURES = {
   TableStalled: { blobs: ["deadline"], doubles: [], from: "Server" },
   VoiceSession: {
     blobs: [],
-    doubles: ["seconds", "pulledSeconds", "talked"],
+    doubles: ["pulledSeconds", "seconds", "talked"],
     from: "Server",
   },
 } as const satisfies Record<string, Layout>;

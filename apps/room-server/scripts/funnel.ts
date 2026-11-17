@@ -18,6 +18,7 @@ export const ROOM_KINDS: readonly MeasureKind[] = [
   "NightSettled",
   "RoomOpened",
   "SeatTaken",
+  "VoiceSession",
 ];
 
 export const COUNT_KINDS: readonly MeasureKind[] = MEASURE_KINDS.filter(
@@ -27,6 +28,10 @@ export const COUNT_KINDS: readonly MeasureKind[] = MEASURE_KINDS.filter(
 export const DOUBLES_KEPT = 4;
 
 export const REAL_NIGHT_HANDS = 20;
+
+export const VOICE_BYTES_PER_STREAM_SECOND = 5200;
+
+export const BYTES_PER_GB = 1_000_000_000;
 
 export const REAL_NIGHT_PLAYERS = 3;
 
@@ -403,6 +408,7 @@ export interface Funnel {
   readonly firstHandMedianMs: Option.Option<number>;
   readonly handsMedian: Option.Option<number>;
   readonly abandoned: number;
+  readonly voiceRooms: number;
   readonly counts: ReadonlyMap<string, ReadonlyMap<string, CountRow>>;
   readonly sources: ReadonlyMap<string, ReadonlyMap<string, number>>;
 }
@@ -536,6 +542,7 @@ export const funnelOf = (grouped: Grouped, period: Period): Funnel => {
 
   return {
     abandoned: weightOf("NightAbandoned"),
+    voiceRooms: sumWeight(rooms, (facts) => facts.kinds.has("VoiceSession")),
     counts,
     created: sumWeight(rooms, () => true),
     firstHand: sumWeight(rooms, (facts) => facts.kinds.has("FirstHand")),
@@ -650,6 +657,26 @@ const measured = (funnel: Funnel, kind: MeasuredBy<"Server">) =>
 const reported = (funnel: Funnel, kind: MeasuredBy<"Page">) =>
   funnel.counts.get(kind);
 
+const voiceGb = (pulledSeconds: number) =>
+  (pulledSeconds * VOICE_BYTES_PER_STREAM_SECOND) / BYTES_PER_GB;
+
+const voiceLines = (funnel: Funnel) => {
+  const sessions = measured(funnel, "VoiceSession");
+  const pulled = total(sessions);
+  const gb = voiceGb(pulled);
+
+  return [
+    line(
+      "voice",
+      `${plural(weight(sessions))} sessions in ${plural(funnel.voiceRooms)} rooms, ${(pulled / 3600).toFixed(1)} stream-hours heard`
+    ),
+    line(
+      "voice egress, est.",
+      `${gb.toFixed(2)} GB, ${funnel.voiceRooms === 0 ? "n/a" : (gb / funnel.voiceRooms).toFixed(2)} GB a room, at ${VOICE_BYTES_PER_STREAM_SECOND / 1000} kB a stream-second, an upper bound while everyone talks`
+    ),
+  ];
+};
+
 export const funnelLines = (funnel: Funnel) => [
   "funnel",
   line(
@@ -688,6 +715,7 @@ export const funnelLines = (funnel: Funnel) => [
   line("hands dealt", listed(funnel.counts.get("HandFinished"))),
   line("7-2 bounties", listed(funnel.counts.get("BountyPaid"))),
   line("abandoned", plural(funnel.abandoned)),
+  ...voiceLines(funnel),
   line("rules changed", ruleKeys(funnel)),
 ];
 

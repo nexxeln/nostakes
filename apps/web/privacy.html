@@ -129,6 +129,34 @@
       </section>
 
       <section class="sheet">
+        <h2>Voice</h2>
+        <ul>
+          <li>
+            When the host turns voice on, it is still off for you until you tap
+            Join voice, and you join muted. The page asks for your microphone
+            only then, and only while you are in voice.
+          </li>
+          <li>
+            Your voice goes from your device to Cloudflare Realtime, which
+            forwards it to the others in the room's voice. Cloudflare relays it
+            through its own network when a direct path does not work. It is
+            encrypted on the way, as every WebRTC call is.
+          </li>
+          <li>
+            Nobody records it. Our server never sees the sound, only that you
+            joined voice, and it does not keep that once you leave. Voice is
+            never in a moment, a clip, a replay, the recap, or a picture you
+            keep.
+          </li>
+          <li>
+            We count how long a room's voice ran and how much sound it carried,
+            with no names, faces, room codes, or recordings, so we can see what
+            voice costs.
+          </li>
+        </ul>
+      </section>
+
+      <section class="sheet">
         <h2>Our server's log</h2>
         <ul>
           <li>
