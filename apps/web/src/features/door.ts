@@ -11,9 +11,9 @@ export const DOOR_POLL_MS = 3000;
 const MS_PER_MINUTE = 60 * 1000;
 
 export const DOOR_LINES: Readonly<Record<KnockAnswer, string>> = {
-  Lapsed: "Nobody came to the door.",
+  Lapsed: "Nobody answered the door.",
   Locked: "The host locked the room.",
-  NameTaken: "Someone here already has that name.",
+  NameTaken: "Someone here already has that name. Pick another.",
   NightOver: "The night is over.",
   TurnedAway: "The host didn't let you in.",
   Waiting: "Waiting for the host to let you in",
@@ -54,8 +54,8 @@ export const pausedUntil = (model: Model, code: string) =>
 export const pauseText = (remainingMs: number) => {
   const minutes = Math.max(1, Math.ceil(remainingMs / MS_PER_MINUTE));
 
-  return `The host didn't let you in. You can knock again in ${minutes} min.`;
+  return `The host didn't let you in. You can knock again in ${minutes} ${minutes === 1 ? "minute" : "minutes"}.`;
 };
 
 export const NAME_TAKEN_PROBLEM =
-  "Someone here already has that name. Pick another one and knock again.";
+  "Someone here already has that name. Pick another and knock again.";
