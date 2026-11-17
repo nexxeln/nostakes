@@ -201,7 +201,7 @@ const program = Effect.gen(function* takeRulesShots() {
   yield* attempt("deal two boards", () =>
     host
       .getByRole("radiogroup", { name: "Bomb pot boards" })
-      .getByRole("radio", { name: "Two" })
+      .getByRole("radio", { name: "2" })
       .click()
   );
   yield* bringUp(host, "Bomb pot boards");

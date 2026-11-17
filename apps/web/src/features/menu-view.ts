@@ -498,11 +498,11 @@ export const clearingText = (
 
   const door = view.settings.locked
     ? "The room stays locked."
-    : "The room locks too, so unlock it to let a friend back in.";
+    : "The room locks too. Unlock it to let someone back in.";
 
   return {
     action: `Remove ${going.length}`,
-    body: `${who} go, and their passes stop working. Seated players stay. ${door}`,
+    body: `${who} will be removed. Seated players stay. ${door}`,
   };
 };
 
@@ -775,20 +775,20 @@ const removalText = (view: OpenView, player: PlayerId) => {
 
   const door = view.settings.locked
     ? ""
-    : " Lock the room to keep the link from letting them back in.";
+    : " Lock the room so they can't rejoin from the link as someone new.";
 
   if (inHand) {
-    return `${name}'s pass stops working. Their seat plays out this hand, then their chips are counted for the settle-up.${door}`;
+    return `${name} is out of the room. Their seat finishes this hand. Then their chips count toward the settle-up.${door}`;
   }
 
   return Option.isSome(occupantOf(view, player))
-    ? `${name}'s pass stops working. Their chips are counted for the settle-up.${door}`
-    : `${name}'s pass stops working.${door}`;
+    ? `${name} is out of the room. Their chips count toward the settle-up.${door}`
+    : `${name} is out of the room.${door}`;
 };
 
 const ENDINGS: Readonly<Record<OpenView["closing"], string>> = {
   AfterHand:
-    "This hand plays out. Then the table closes and everyone sees who pays whom.",
+    "This hand finishes first. Then the table closes and everyone sees who pays whom.",
   CancelsHand:
     "This hand is called off and every chip in it goes back. Then everyone sees who pays whom.",
   Now: "The table closes and everyone sees who pays whom.",
@@ -810,7 +810,7 @@ const confirmText = (view: OpenView, confirm: Confirm) =>
       }),
       LeaveRoom: () => ({
         action: "Leave the room",
-        body: "Your chips count in the settle-up. You can come back as yourself from this device.",
+        body: "Your chips count toward the settle-up. You can come back later from this device.",
         pending: "Leaving",
         title: "Leave the room?",
       }),
@@ -830,7 +830,7 @@ const confirmText = (view: OpenView, confirm: Confirm) =>
   );
 
 const NOBODY_HERE =
-  "Nobody else is here, so the room picks the next host. They can take over when they are back.";
+  "Nobody else is here, so the room picks the next host. They take over when they're back.";
 
 const heirLine = (
   room: InRoom,
@@ -948,7 +948,7 @@ export const chipsSheet = (room: InRoom, view: OpenView, h: H): Html =>
           [
             h.span(
               [h.Class("field-label")],
-              [`Up to ${view.settings.buyIn.max} on the table`]
+              [`You can have up to ${view.settings.buyIn.max} on the table`]
             ),
             h.input([
               h.Type("number"),
