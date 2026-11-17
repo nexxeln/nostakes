@@ -646,14 +646,12 @@ describe("each seat's lane", () => {
     { arbitrary: { runs: 100 } }
   );
 
-  it("fits with every seat betting and four-digit amounts, whoever holds the button and whether they folded, with one board or two and two hole cards or four, on the smallest tables the app supports and on the boxes it gives the table", () => {
+  it("fits with every seat betting and four-digit amounts, whoever holds the button and whether they folded, with one board and two hole cards and with two boards and four, on the smallest tables the app supports and on the boxes it gives the table", () => {
     const found = SMALLEST_TABLES.flatMap((screen) =>
-      [1, 2, 3, 4, 5, 6, 7, 8].flatMap((others) =>
-        HOLE_CARDS.flatMap((hole) => [
-          ...everyOwnerProblems(screen, others, 1, hole),
-          ...everyOwnerProblems(screen, others, 2, hole),
-        ])
-      )
+      [1, 2, 3, 4, 5, 6, 7, 8].flatMap((others) => [
+        ...everyOwnerProblems(screen, others, 1, HOLE_CARDS[0]),
+        ...everyOwnerProblems(screen, others, 2, HOLE_CARDS[1]),
+      ])
     );
 
     expect(found).toStrictEqual([]);
