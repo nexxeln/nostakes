@@ -1,5 +1,5 @@
-import { CardSchema, DECK_SIZE, evaluate } from "@nostakes/engine";
-import type { Card } from "@nostakes/engine";
+import { CardSchema, DECK_SIZE, handRanker, variantOf } from "@nostakes/engine";
+import type { Card, Game } from "@nostakes/engine";
 
 export const EQUITY_BUDGET = 100_000;
 
@@ -14,8 +14,6 @@ const BOARD_SIZE = 5;
 const MODULUS = 2_147_483_647;
 
 const MULTIPLIER = 48_271;
-
-const FILLER = CardSchema.make(0);
 
 const DECK: readonly Card[] = Array.from({ length: DECK_SIZE }, (_, index) =>
   CardSchema.make(index)
@@ -63,17 +61,13 @@ interface Scorer {
 }
 
 const scorer = (
+  game: Game,
   hands: readonly (readonly Card[])[],
   board: readonly Card[],
   missing: number
 ): Scorer => {
-  const buffers = hands.map((hand) => [
-    ...hand,
-    ...board,
-    ...Array.from({ length: missing }, () => FILLER),
-  ]);
-
-  const offsets = hands.map((hand) => hand.length + board.length);
+  const rankers = hands.map((hand) => handRanker(game, hand));
+  const buffer: Card[] = [...board];
   const ranks = hands.map(() => 0);
   const shares = hands.map(() => 0);
 
@@ -81,19 +75,18 @@ const scorer = (
     let best = -1;
     let winners = 0;
 
-    for (let index = 0; index < buffers.length; index += 1) {
-      const buffer = buffers[index] ?? [];
-      const offset = offsets[index] ?? 0;
+    buffer.length = board.length;
 
-      for (let place = 0; place < missing; place += 1) {
-        const card = extra[place];
+    for (let place = 0; place < missing; place += 1) {
+      const card = extra[place];
 
-        if (card !== undefined) {
-          buffer[offset + place] = card;
-        }
+      if (card !== undefined) {
+        buffer.push(card);
       }
+    }
 
-      const rank = evaluate(buffer);
+    for (let index = 0; index < rankers.length; index += 1) {
+      const rank = rankers[index]?.(buffer) ?? 0;
 
       ranks[index] = rank;
 
@@ -174,16 +167,18 @@ const sample = (
 };
 
 export const equities = (
+  game: Game,
   hands: readonly (readonly Card[])[],
   board: readonly Card[],
-  budget: number = EQUITY_BUDGET
+  evaluations: number = EQUITY_BUDGET
 ): Equity => {
+  const budget = Math.floor(evaluations / variantOf(game).evaluationCost);
   const known = new Set([...hands.flat(), ...board]);
   const pool = DECK.filter((card) => !known.has(card));
 
   const missing = Math.max(0, BOARD_SIZE - board.length);
   const every = boardsOf(pool.length, missing);
-  const { score, shares } = scorer(hands, board, missing);
+  const { score, shares } = scorer(game, hands, board, missing);
   const exact = every * Math.max(1, hands.length) <= budget;
 
   const boards = exact

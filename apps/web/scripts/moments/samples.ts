@@ -1,12 +1,12 @@
 import { codeFor, randomAvatar } from "@nostakes/avatar";
 import type { Expression } from "@nostakes/avatar";
-import { CardFromText, evaluate } from "@nostakes/engine";
+import { CardFromText, bestHand, evaluate } from "@nostakes/engine";
 import type { MomentKind, Tier } from "@nostakes/room";
 import { Schema } from "effect";
 
 import { CAPTIONS } from "../../src/features/moments/captions.js";
 import type { CaptionFacts } from "../../src/features/moments/captions.js";
-import { bestFive, handName } from "../../src/features/moments/hand-names.js";
+import { handName } from "../../src/features/moments/hand-names.js";
 import type { MomentPicture } from "../../src/features/moments/picture.js";
 
 const card = Schema.decodeSync(CardFromText);
@@ -33,7 +33,8 @@ const nameOf = (hole: string, board: string) =>
   );
 
 const liftedOf = (hole: string, board: string) => {
-  const found = bestFive(
+  const found = bestHand(
+    "Holdem",
     cards(hole).map((text) => card(text)),
     cards(board).map((text) => card(text))
   );

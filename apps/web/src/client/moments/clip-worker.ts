@@ -463,6 +463,7 @@ const answered = (request: WorkerRequest) =>
           {
             percents: tableChances({
               board: request.board,
+              game: request.game,
               holes: request.holes,
             }),
             tag: "Chances",

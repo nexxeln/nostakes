@@ -1,5 +1,12 @@
 import type { Expression } from "@nostakes/avatar";
-import { Events, cardText, evaluate, handCategory } from "@nostakes/engine";
+import {
+  Events,
+  HOLDEM,
+  bestHand,
+  cardText,
+  handCategory,
+  rankHand,
+} from "@nostakes/engine";
 import type { Card, HandRank, SeatIndex } from "@nostakes/engine";
 import { Moments, headline, isPainful, momentsOf } from "@nostakes/room";
 import type { Headline, Moment } from "@nostakes/room";
@@ -9,7 +16,7 @@ import { isolated } from "../names.js";
 import { CAPTIONS } from "./captions.js";
 import type { Caption, CaptionFacts } from "./captions.js";
 import type { MomentHand, Person } from "./element.js";
-import { bestFive, handName, startingHandName } from "./hand-names.js";
+import { handName, startingHandName } from "./hand-names.js";
 import type { MomentPicture, PictureFace } from "./picture.js";
 import { handEnded } from "./watch.js";
 
@@ -75,7 +82,7 @@ const liftedOf = (moment: Moment, lastHand: LastHand) => {
       const hole = shownAt(lastHand, seat);
 
       return hole.length === 2 && board.length >= 3
-        ? bestFive(hole, board)
+        ? bestHand(HOLDEM, hole, board)
         : [];
     },
   });
@@ -86,7 +93,7 @@ const rankOn = (lastHand: LastHand, seat: SeatIndex | undefined) => {
   const hole = seat === undefined ? [] : shownAt(lastHand, seat);
 
   return hole.length === 2 && board.length >= 3
-    ? Option.some(evaluate([...hole, ...board]))
+    ? Option.some(rankHand(HOLDEM, hole, board))
     : Option.none<HandRank>();
 };
 

@@ -911,11 +911,49 @@ const noBrowserGlobalsOnServer = defineRule({
   },
 });
 
+const isProductSource = (filename: string) =>
+  /^(?:apps|packages)\/[^/]+\/src\/.+/u.test(filename) &&
+  !isWithin(filename, "packages/engine");
+
+const noHandEvaluationOutsideEngine = defineRule({
+  create(context) {
+    if (!isProductSource(workspacePath(context.filename))) {
+      return {};
+    }
+
+    return {
+      ImportDeclaration(node: ESTree.ImportDeclaration) {
+        if (node.source.value !== "@nostakes/engine") {
+          return;
+        }
+
+        for (const specifier of node.specifiers) {
+          if (importedName(specifier) === "evaluate") {
+            context.report({ messageId: "rawEvaluation", node: specifier });
+          }
+        }
+      },
+    };
+  },
+  meta: {
+    docs: {
+      description:
+        "Rank a hand through the variant's rule, never as any five cards.",
+    },
+    messages: {
+      rawEvaluation:
+        "`evaluate` ranks the best five of any cards it is given. That is hold'em's rule and wrong for Omaha, where a hand plays exactly two hole cards. Fix: rank with `rankHand(game, hole, board)` or `handRanker(game, hole)`, light the cards with `bestHand(game, hole, board)`, and rank a board alone with `rankBoard(board)`, all from `@nostakes/engine`.",
+    },
+    type: "problem",
+  },
+});
+
 export default definePlugin({
   meta: { name: "nostakes-boundaries" },
   rules: {
     "no-browser-globals-on-server": noBrowserGlobalsOnServer,
     "no-cross-layer-imports": noCrossLayerImports,
+    "no-hand-evaluation-outside-engine": noHandEvaluationOutsideEngine,
     "no-media-library-outside-bindings": noMediaLibraryOutsideBindings,
   },
 });

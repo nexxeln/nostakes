@@ -322,6 +322,42 @@ export const evaluate = (cards: readonly Card[]) => {
     : lookupWithoutFlush(rankKey);
 };
 
+export const evaluateJoined = (
+  first: readonly Card[],
+  second: readonly Card[]
+) => {
+  let rankKey = 0;
+  let suitKey = 0;
+
+  for (const card of first) {
+    rankKey += QUINARY[CARD_RANKS[card] ?? 0] ?? 0;
+    suitKey += OCTAL[CARD_SUITS[card] ?? 0] ?? 0;
+  }
+
+  for (const card of second) {
+    rankKey += QUINARY[CARD_RANKS[card] ?? 0] ?? 0;
+    suitKey += OCTAL[CARD_SUITS[card] ?? 0] ?? 0;
+  }
+
+  const flushSuit = FLUSH_SUIT[suitKey] ?? -1;
+
+  if (flushSuit < 0) {
+    return lookupWithoutFlush(rankKey);
+  }
+
+  let mask = 0;
+
+  for (const cards of [first, second]) {
+    for (const card of cards) {
+      if (CARD_SUITS[card] === flushSuit) {
+        mask += BINARY[CARD_RANKS[card] ?? 0] ?? 0;
+      }
+    }
+  }
+
+  return FLUSH_TABLE[mask] ?? LOWEST_HAND;
+};
+
 export const handCategory = (rank: HandRank): HandCategory => {
   const category = Math.floor(rank / CATEGORY_SCALE);
   const top = Math.floor(rank / RANKS ** (KICKER_DIGITS - 1)) % RANKS;

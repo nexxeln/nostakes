@@ -512,7 +512,7 @@ const RIVER_CARDS = 5;
 const hasNothing = (hole: readonly string[], board: readonly string[]) =>
   hole.length === 2 &&
   board.length >= FLOP_CARDS &&
-  nothingOfItsOwn(decodedCards(hole), decodedCards(board));
+  nothingOfItsOwn("Holdem", decodedCards(hole), decodedCards(board));
 
 const boardOf = (page: Page, cards: number) =>
   attempt(`see ${cards} cards on the board`, () =>

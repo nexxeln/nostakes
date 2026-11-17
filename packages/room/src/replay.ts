@@ -3,9 +3,16 @@ import {
   DECK_SIZE,
   Events,
   ShowdownEntries,
-  evaluate,
+  handRanker,
+  variantOf,
 } from "@nostakes/engine";
-import type { Card, SeatIndex, ShowdownEntry, Street } from "@nostakes/engine";
+import type {
+  Card,
+  Game,
+  SeatIndex,
+  ShowdownEntry,
+  Street,
+} from "@nostakes/engine";
 import { Data, Match, Option } from "effect";
 
 import { equities, percentOf } from "./equity.js";
@@ -102,13 +109,12 @@ export interface Replay {
   readonly bigBlindSeat: SeatIndex;
   readonly button: SeatIndex;
   readonly dealtIn: readonly SeatIndex[];
+  readonly game: Game;
   readonly handNumber: number;
   readonly smallBlindSeat: SeatIndex;
   readonly steps: readonly ReplayStep[];
   readonly tabled: readonly Tabled[];
 }
-
-const HOLE_CARDS = 2;
 
 const FLOP_CARDS = 3;
 
@@ -120,6 +126,7 @@ const DECK: readonly Card[] = Array.from({ length: DECK_SIZE }, (_, index) =>
 
 interface Telling {
   readonly bets: Map<SeatIndex, number>;
+  readonly game: Game;
   readonly dealt: { done: boolean };
   readonly pot: { collected: number };
   readonly shown: Map<SeatIndex, readonly Card[]>;
@@ -170,7 +177,7 @@ const shownBy = (
 
   const now = [...held, ...cards.filter((card) => !held.includes(card))].slice(
     0,
-    HOLE_CARDS
+    variantOf(telling.game).holeCards
   );
 
   if (now.length === held.length) {
@@ -391,13 +398,14 @@ const tell = (telling: Telling, event: SeenTableEvent, at: number): Told =>
 
 export interface OddsAsked {
   readonly board: readonly Card[];
+  readonly game: Game;
   readonly holes: readonly (readonly Card[])[];
 }
 
 export type Chances = (asked: OddsAsked) => readonly number[];
 
-export const tableChances: Chances = ({ board, holes }) => {
-  const equity = equities(holes, board);
+export const tableChances: Chances = ({ board, game, holes }) => {
+  const equity = equities(game, holes, board);
 
   return holes.map((_, index) => percentOf(equity, index));
 };
@@ -405,6 +413,7 @@ export const tableChances: Chances = ({ board, holes }) => {
 interface OddsPoint {
   readonly at: number;
   readonly board: readonly Card[];
+  readonly game: Game;
   readonly holes: readonly (readonly Card[])[];
   readonly run: number;
   readonly seats: readonly SeatIndex[];
@@ -433,10 +442,14 @@ const pointsOf = (
   const note = (at: number, run: number) => {
     const holes = live.map((seat) => story.shown[seat] ?? []);
 
-    if (live.length >= 2 && holes.every((hole) => hole.length === HOLE_CARDS)) {
+    if (
+      live.length >= 2 &&
+      holes.every((hole) => hole.length === variantOf(story.game).holeCards)
+    ) {
       points.push({
         at,
         board: boards.get(run) ?? [],
+        game: story.game,
         holes,
         run,
         seats: live,
@@ -471,14 +484,15 @@ const pointsOf = (
 const aloneAhead = (ranks: readonly number[], index: number) =>
   ranks.every((rank, other) => other === index || rank < (ranks[index] ?? 0));
 
-const outsOf = ({ board, holes, seats }: OddsPoint): readonly Outs[] => {
+const outsOf = ({ board, game, holes, seats }: OddsPoint): readonly Outs[] => {
   if (board.length < FLOP_CARDS || board.length >= FULL_BOARD) {
     return [];
   }
 
   const seen = new Set([...holes.flat(), ...board]);
   const unseen = DECK.filter((card) => !seen.has(card));
-  const now = holes.map((hole) => evaluate([...hole, ...board]));
+  const rankers = holes.map((hole) => handRanker(game, hole));
+  const now = rankers.map((rank) => rank(board));
 
   return seats.flatMap((seat, index) =>
     aloneAhead(now, index)
@@ -487,7 +501,7 @@ const outsOf = ({ board, holes, seats }: OddsPoint): readonly Outs[] => {
           {
             cards: unseen.filter((card) =>
               aloneAhead(
-                holes.map((hole) => evaluate([...hole, ...board, card])),
+                rankers.map((rank) => rank([...board, card])),
                 index
               )
             ),
@@ -498,7 +512,11 @@ const outsOf = ({ board, holes, seats }: OddsPoint): readonly Outs[] => {
 };
 
 const oddsOf = (point: OddsPoint, chances: Chances): ReplayStep => {
-  const percents = chances({ board: point.board, holes: point.holes });
+  const percents = chances({
+    board: point.board,
+    game: point.game,
+    holes: point.holes,
+  });
 
   return ReplaySteps.Odds({
     at: point.at,
@@ -523,10 +541,9 @@ export const oddsAskedBy = (
     : Option.match(storyOf(record), {
         onNone: () => [],
         onSome: (story) =>
-          pointsOf(record, story, first.dealtIn).map(({ board, holes }) => ({
-            board,
-            holes,
-          })),
+          pointsOf(record, story, first.dealtIn).map(
+            ({ board, game, holes }) => ({ board, game, holes })
+          ),
       });
 };
 
@@ -571,6 +588,7 @@ export const replayOf = (
       const telling: Telling = {
         bets: new Map(),
         dealt: { done: false },
+        game: story.game,
         pot: { collected: 0 },
         shown: new Map(),
       };
@@ -589,6 +607,7 @@ export const replayOf = (
         bombAnte: first.bombPot?.ante ?? null,
         button: first.button,
         dealtIn: first.dealtIn,
+        game: story.game,
         handNumber: first.handNumber,
         smallBlindSeat: first.smallBlindSeat,
         steps: withOdds(

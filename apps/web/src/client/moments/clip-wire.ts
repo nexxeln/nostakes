@@ -1,4 +1,4 @@
-import { CardSchema } from "@nostakes/engine";
+import { CardSchema, GameSchema } from "@nostakes/engine";
 import { Schema } from "effect";
 
 const PointSchema = Schema.Struct({ x: Schema.Finite, y: Schema.Finite });
@@ -39,6 +39,7 @@ const DrawnShotSchema = Schema.Struct({
 
 export const ChancesRequestSchema = Schema.Struct({
   board: Schema.Array(CardSchema),
+  game: GameSchema,
   holes: Schema.Array(Schema.Array(CardSchema)),
   kind: Schema.Literal("Chances"),
 });

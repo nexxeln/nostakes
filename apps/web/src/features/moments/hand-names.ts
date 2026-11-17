@@ -1,4 +1,4 @@
-import { describe, evaluate, rankOf } from "@nostakes/engine";
+import { describe, rankOf } from "@nostakes/engine";
 import type { Card, HandRank } from "@nostakes/engine";
 
 const ONE: readonly string[] = [
@@ -70,24 +70,4 @@ export const startingHandName = (cards: readonly Card[]): string => {
     .toSorted((left, right) => right - left);
 
   return high === low ? `pocket ${many(high)}` : `${one(high)}-${one(low)}`;
-};
-
-const fives = (cards: readonly Card[]): readonly (readonly Card[])[] => {
-  if (cards.length <= 5) {
-    return [cards];
-  }
-
-  return cards.flatMap((_, skipped) =>
-    fives(cards.filter((__, index) => index !== skipped))
-  );
-};
-
-export const bestFive = (
-  hole: readonly Card[],
-  board: readonly Card[]
-): readonly Card[] => {
-  const all = [...hole, ...board];
-  const target = evaluate(all);
-
-  return fives(all).find((five) => evaluate(five) === target) ?? all;
 };

@@ -1,4 +1,4 @@
-import { cardText, describe, evaluate, rankOf } from "@nostakes/engine";
+import { HOLDEM, cardText, describe, rankHand, rankOf } from "@nostakes/engine";
 import type { Card, HandCategory, SeatIndex } from "@nostakes/engine";
 import { ReplaySteps } from "@nostakes/room";
 import type { MomentKind, Replay, ReplayStep } from "@nostakes/room";
@@ -161,7 +161,7 @@ export const startingWord = (hole: readonly Card[]) => {
 
 export const madeWord = (hole: readonly Card[], board: readonly Card[]) => {
   if (board.length >= FLOP_CARDS) {
-    return MADE[describe(evaluate([...hole, ...board])).category];
+    return MADE[describe(rankHand(HOLDEM, hole, board)).category];
   }
 
   const most = Math.max(

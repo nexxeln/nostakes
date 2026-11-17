@@ -186,10 +186,13 @@ export { decide, evolve, evolveAll, replay } from "./table.js";
 export {
   GameSchema,
   HAND_SIZE,
+  HOLDEM,
   MOST_HOLE_CARDS,
   VARIANTS,
   bestHand,
+  handRanker,
   handsMadeFrom,
+  rankBoard,
   rankHand,
   variantOf,
   type Game,

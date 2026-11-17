@@ -12,6 +12,7 @@ const lintBoundaries = linter({
   rules: {
     "nostakes-boundaries/no-browser-globals-on-server": "error",
     "nostakes-boundaries/no-cross-layer-imports": "error",
+    "nostakes-boundaries/no-hand-evaluation-outside-engine": "error",
     "nostakes-boundaries/no-media-library-outside-bindings": "error",
   },
 });
@@ -36,6 +37,7 @@ describe("architecture boundary rules", () => {
     for (const rule of [
       "nostakes-boundaries/no-browser-globals-on-server",
       "nostakes-boundaries/no-cross-layer-imports",
+      "nostakes-boundaries/no-hand-evaluation-outside-engine",
       "nostakes-boundaries/no-media-library-outside-bindings",
     ]) {
       expect(configSource).toContain(`"${rule}": "error"`);
@@ -63,6 +65,44 @@ describe("architecture boundary rules", () => {
     }
 
     expect(inside.output).not.toContain(message);
+  });
+
+  it("ranks hands through the variant outside the engine", () => {
+    const message = "`evaluate` ranks the best five of any cards";
+
+    const outside = [
+      [
+        "packages/room/src",
+        'import { evaluate } from "@nostakes/engine";\nexport const rank = evaluate;\n',
+      ],
+      [
+        "apps/web/src/features/moments",
+        'import { evaluate as rank } from "@nostakes/engine";\nexport { rank };\n',
+      ],
+    ].map(([area = "", source = ""]) => lintFixture(area, source));
+
+    const allowed = [
+      [
+        "packages/engine/src",
+        'import { evaluate } from "./evaluation.js";\nexport const rank = evaluate;\n',
+      ],
+      [
+        "packages/room/test",
+        'import { evaluate } from "@nostakes/engine";\nexport const rank = evaluate;\n',
+      ],
+      [
+        "packages/room/src",
+        'import { rankHand } from "@nostakes/engine";\nexport const rank = rankHand;\n',
+      ],
+    ].map(([area = "", source = ""]) => lintFixture(area, source));
+
+    for (const result of outside) {
+      expectRuleSoft(result, message);
+    }
+
+    for (const result of allowed) {
+      expect.soft(result.output).not.toContain(message);
+    }
   });
 
   it("blocks package imports from application code", () => {

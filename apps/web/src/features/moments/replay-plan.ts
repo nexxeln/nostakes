@@ -1,5 +1,5 @@
 import type { Expression } from "@nostakes/avatar";
-import { cardText, evaluate, rankOf } from "@nostakes/engine";
+import { HOLDEM, cardText, rankHand, rankOf } from "@nostakes/engine";
 import type { Card, PlayerId, SeatIndex } from "@nostakes/engine";
 import { ReplaySteps } from "@nostakes/room";
 import type { MomentKind, Replay, ReplayStep, Tier } from "@nostakes/room";
@@ -507,7 +507,7 @@ const fullHole = (told: Told, seat: SeatIndex | null) => {
 
 const heldBy = (hole: readonly Card[], board: readonly Card[]) =>
   board.length >= FLOP_CARDS
-    ? handName(evaluate([...hole, ...board]))
+    ? handName(rankHand(HOLDEM, hole, board))
     : startingHandName(hole);
 
 const madeBy = (hole: readonly Card[], board: readonly Card[]) => {
@@ -518,7 +518,7 @@ const madeBy = (hole: readonly Card[], board: readonly Card[]) => {
   }
 
   if (board.length >= FLOP_CARDS) {
-    return handName(evaluate([...hole, ...board]));
+    return handName(rankHand(HOLDEM, hole, board));
   }
 
   const alike = [...hole, ...board].filter(
@@ -622,7 +622,7 @@ const actLine = (
 
   const holding =
     hole !== null && seen.board.length === FULL_BOARD
-      ? handName(evaluate([...hole, ...seen.board]))
+      ? handName(rankHand(HOLDEM, hole, seen.board))
       : "";
 
   const mine = (() => {

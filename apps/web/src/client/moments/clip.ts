@@ -285,7 +285,15 @@ const chancesOf = (worker: ClipWorker, record: readonly SeenTableEvent[]) =>
   Effect.all(
     oddsAskedBy(record).map((asked) =>
       worker
-        .ask({ board: asked.board, holes: asked.holes, kind: "Chances" }, [])
+        .ask(
+          {
+            board: asked.board,
+            game: asked.game,
+            holes: asked.holes,
+            kind: "Chances",
+          },
+          []
+        )
         .pipe(
           Effect.map(
             (reply) =>

@@ -1,5 +1,11 @@
-import { Events, SEAT_COUNT, ShowdownEntries } from "@nostakes/engine";
-import type { Card, SeatIndex } from "@nostakes/engine";
+import {
+  Events,
+  HOLDEM,
+  SEAT_COUNT,
+  ShowdownEntries,
+  variantOf,
+} from "@nostakes/engine";
+import type { Card, Game, SeatIndex } from "@nostakes/engine";
 import { Match, Option } from "effect";
 
 import type { SeenTableEvent } from "./redaction.js";
@@ -37,6 +43,7 @@ export interface HandStory {
   readonly deadMoney: number;
   readonly ended: boolean;
   readonly folded: readonly SeatIndex[];
+  readonly game: Game;
   readonly handNumber: number;
   readonly reaches: readonly Reach[];
   readonly results: readonly PotResult[];
@@ -45,9 +52,11 @@ export interface HandStory {
   readonly wagers: readonly Wager[];
 }
 
-const HOLE_CARDS = 2;
-
-const opening = (handNumber: number, bigBlind: number): HandStory => ({
+const opening = (
+  game: Game,
+  handNumber: number,
+  bigBlind: number
+): HandStory => ({
   allIn: [],
   bigBlind,
   boards: [[]],
@@ -57,6 +66,7 @@ const opening = (handNumber: number, bigBlind: number): HandStory => ({
   deadMoney: 0,
   ended: false,
   folded: [],
+  game,
   handNumber,
   reaches: [],
   results: [],
@@ -140,7 +150,7 @@ const showing = (
     index === seat
       ? [...held, ...cards.filter((card) => !held.includes(card))].slice(
           0,
-          HOLE_CARDS
+          variantOf(story.game).holeCards
         )
       : held
   ),
@@ -266,7 +276,7 @@ export const storyOf = (
     return Option.none();
   }
 
-  let story = opening(first.handNumber, first.bombPot?.bigBlind ?? 0);
+  let story = opening(HOLDEM, first.handNumber, first.bombPot?.bigBlind ?? 0);
 
   for (const event of rest) {
     story = told(story, event);
@@ -299,7 +309,9 @@ export const shownHand = (
 ): Option.Option<readonly Card[]> => {
   const cards = story.shown[seat] ?? [];
 
-  return cards.length === HOLE_CARDS ? Option.some(cards) : Option.none();
+  return cards.length === variantOf(story.game).holeCards
+    ? Option.some(cards)
+    : Option.none();
 };
 
 export const moneyInBoard = (

@@ -15,6 +15,7 @@ import {
   SevenDeuces,
   ShownCardsSchema,
   TableConfigSchema,
+  bestHand,
   cardText,
   decide,
   evaluate,
@@ -45,7 +46,7 @@ import {
   tableAt,
 } from "../src/features/learn/walk.js";
 import type { Walk } from "../src/features/learn/walk.js";
-import { bestFive, handName } from "../src/features/moments/hand-names.js";
+import { handName } from "../src/features/moments/hand-names.js";
 
 const seatAt = (index: number) => SeatIndexSchema.make(index);
 
@@ -350,7 +351,7 @@ describe("the hands of the lesson, replayed by the engine", () => {
 
         expect({
           beat,
-          five: sorted(bestFive(hole, board).map(cardText)),
+          five: sorted(bestHand("Holdem", hole, board).map(cardText)),
           name: handName(evaluate([...hole, ...board])),
         }).toStrictEqual({
           beat,

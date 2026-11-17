@@ -3,16 +3,20 @@ import {
   HandRankSchema,
   SeatIndexSchema,
   StreetSchema,
+  bestHand,
   describe,
-  evaluate,
   handCategory,
   isSevenDeuce,
+  rankBoard,
+  rankHand,
   rankOf,
   suitOf,
+  variantOf,
 } from "@nostakes/engine";
 import type {
   Card,
   Chips,
+  Game,
   HandCategory,
   HandRank,
   SeatIndex,
@@ -224,40 +228,46 @@ const groupedCategory = (board: readonly Card[]): HandCategory => {
 
 export const boardCategory = (board: readonly Card[]): HandCategory =>
   board.length >= FULL_BOARD
-    ? handCategory(evaluate(board))
+    ? handCategory(rankBoard(board))
     : groupedCategory(board);
 
-const rankWith = (hole: readonly Card[], board: readonly Card[]) =>
-  evaluate([...hole, ...board]);
+const rankWith = (game: Game, hole: readonly Card[], board: readonly Card[]) =>
+  rankHand(game, hole, board);
 
-const ownsMore = (hole: readonly Card[], board: readonly Card[]) =>
-  strength(handCategory(rankWith(hole, board))) >
+const ownsMore = (game: Game, hole: readonly Card[], board: readonly Card[]) =>
+  strength(handCategory(rankWith(game, hole, board))) >
   strength(boardCategory(board));
 
 export const nothingOfItsOwn = (
+  game: Game,
   hole: readonly Card[],
   board: readonly Card[]
 ) => {
-  const rank = rankWith(hole, board);
+  const rank = rankWith(game, hole, board);
   const category = handCategory(rank);
+  const onBoard = strength(boardCategory(board));
 
-  if (strength(category) !== strength(boardCategory(board))) {
-    return false;
+  if (strength(category) !== onBoard) {
+    return strength(category) < onBoard;
   }
 
   return (
     strength(category) <= strength("ThreeOfAKind") ||
     board.length < FULL_BOARD ||
-    rank === evaluate(board)
+    rank === rankBoard(board)
   );
 };
 
-const weakHold = (hole: readonly Card[], board: readonly Card[]) => {
-  if (nothingOfItsOwn(hole, board)) {
+const weakHold = (
+  game: Game,
+  hole: readonly Card[],
+  board: readonly Card[]
+) => {
+  if (nothingOfItsOwn(game, hole, board)) {
     return true;
   }
 
-  const rank = rankWith(hole, board);
+  const rank = rankWith(game, hole, board);
   const [pair = ACE] = describe(rank).ranks;
 
   return (
@@ -269,10 +279,11 @@ const weakHold = (hole: readonly Card[], board: readonly Card[]) => {
 const premiumPair = (hole: readonly Card[]) => {
   const [first, second] = hole.map((card) => rankOf(card));
 
-  return first === second && (first ?? 0) >= QUEEN;
+  return hole.length === 2 && first === second && (first ?? 0) >= QUEEN;
 };
 
 export const collide = (
+  game: Game,
   loser: readonly Card[],
   winner: readonly Card[],
   board: readonly Card[]
@@ -281,8 +292,8 @@ export const collide = (
     return premiumPair(loser) && premiumPair(winner);
   }
 
-  const lostRank = rankWith(loser, board);
-  const wonRank = rankWith(winner, board);
+  const lostRank = rankWith(game, loser, board);
+  const wonRank = rankWith(game, winner, board);
   const lost = handCategory(lostRank);
   const won = handCategory(wonRank);
   const [lostTop] = describe(lostRank).ranks;
@@ -290,8 +301,8 @@ export const collide = (
   const kickerBattle = SET_RANKED.has(lost) && lostTop === wonTop;
 
   return (
-    ownsMore(loser, board) &&
-    ownsMore(winner, board) &&
+    ownsMore(game, loser, board) &&
+    ownsMore(game, winner, board) &&
     strength(lost) >= strength("ThreeOfAKind") &&
     !kickerBattle &&
     (lost === won || strength(lost) >= strength("FullHouse"))
@@ -304,8 +315,12 @@ const flushSuit = (cards: readonly Card[]) =>
       cards.filter((card) => suitOf(card) === suit).length >= FLUSH_LENGTH
   ) ?? -1;
 
-export const isNutFlush = (hole: readonly Card[], board: readonly Card[]) => {
-  const suit = flushSuit([...hole, ...board]);
+export const isNutFlush = (
+  game: Game,
+  hole: readonly Card[],
+  board: readonly Card[]
+) => {
+  const suit = flushSuit(bestHand(game, hole, board));
 
   const onBoard = new Set(
     board.flatMap((card) => (suitOf(card) === suit ? [rankOf(card)] : []))
@@ -321,16 +336,17 @@ export const isNutFlush = (hole: readonly Card[], board: readonly Card[]) => {
 };
 
 export const bigHandTier = (
+  game: Game,
   hole: readonly Card[],
   board: readonly Card[]
 ): Option.Option<Tier> => {
-  if (board.length < FLOP || !ownsMore(hole, board)) {
+  if (board.length < FLOP || !ownsMore(game, hole, board)) {
     return Option.none();
   }
 
-  const category = handCategory(rankWith(hole, board));
+  const category = handCategory(rankWith(game, hole, board));
 
-  if (category === "Flush" && !isNutFlush(hole, board)) {
+  if (category === "Flush" && !isNutFlush(game, hole, board)) {
     return Option.none();
   }
 
@@ -404,7 +420,7 @@ const bluffs = (story: HandStory, pot: Chips): readonly Moment[] => {
             winners.length === 1 &&
             winners[0] === wager.seat &&
             realBet(wager, story.bigBlind) &&
-            nothingOfItsOwn(hole, board)
+            nothingOfItsOwn(story.game, hole, board)
         )
       );
 
@@ -447,14 +463,16 @@ const heroCalls = (story: HandStory, pot: Chips): readonly Moment[] => {
         wager.board < FLOP ||
         winners.includes(wager.seat) ||
         !realBet(wager, story.bigBlind) ||
-        !Option.exists(bettor, (hole) => nothingOfItsOwn(hole, board))
+        !Option.exists(bettor, (hole) =>
+          nothingOfItsOwn(story.game, hole, board)
+        )
       ) {
         return [];
       }
 
       const bettorRank = Option.match(bettor, {
         onNone: () => 0,
-        onSome: (hole) => rankWith(hole, board),
+        onSome: (hole) => rankWith(story.game, hole, board),
       });
 
       return story.wagers.slice(index + 1).flatMap((call) =>
@@ -463,13 +481,17 @@ const heroCalls = (story: HandStory, pot: Chips): readonly Moment[] => {
           onSome: (hole) =>
             !call.raise &&
             winners.includes(call.seat) &&
-            weakHold(hole, board) &&
-            rankWith(hole, board) >= bettorRank
+            weakHold(story.game, hole, board) &&
+            rankWith(story.game, hole, board) >= bettorRank
               ? [
                   Moments.HeroCall({
                     call: chipsOf(call.added),
                     pot,
-                    rank: rankWith(hole, story.boards[0] ?? story.common),
+                    rank: rankWith(
+                      story.game,
+                      hole,
+                      story.boards[0] ?? story.common
+                    ),
                     seats: [call.seat, wager.seat],
                     street: streetOf(wager.board),
                     tier: call.allIn || bigBet(wager) ? 2 : 1,
@@ -489,8 +511,11 @@ const bigHands = (story: HandStory, pot: Chips): readonly Moment[] => {
     for (const seat of winnersOf(story, run + 1)) {
       const found = shownHand(story, seat).pipe(
         Option.flatMap((hole) =>
-          bigHandTier(hole, board).pipe(
-            Option.map((tier) => ({ rank: rankWith(hole, board), tier }))
+          bigHandTier(story.game, hole, board).pipe(
+            Option.map((tier) => ({
+              rank: rankWith(story.game, hole, board),
+              tier,
+            }))
           )
         )
       );
@@ -588,6 +613,11 @@ const splitRuns = (
     : [];
 };
 
+const playing = (game: Game, hole: readonly Card[], board: readonly Card[]) =>
+  variantOf(game).playsFromHole.least > 0
+    ? bestHand(game, hole, board).filter((card) => hole.includes(card))
+    : hole;
+
 const sameHands = (
   story: HandStory,
   showdown: Showdown,
@@ -601,8 +631,8 @@ const sameHands = (
       onNone: () => [],
       onSome: (hole) => [
         {
-          rank: rankWith(hole, board),
-          ranks: hole
+          rank: rankWith(story.game, hole, board),
+          ranks: playing(story.game, hole, board)
             .map((card) => rankOf(card))
             .toSorted(byNumber)
             .join(" "),
@@ -625,11 +655,11 @@ const sameHands = (
 
 const finalRank = (story: HandStory, hole: readonly Card[]) =>
   HandRankSchema.make(
-    Math.max(...story.boards.map((board) => rankWith(hole, board)))
+    Math.max(...story.boards.map((board) => rankWith(story.game, hole, board)))
   );
 
 const ownsAtTheEnd = (story: HandStory, hole: readonly Card[]) =>
-  story.boards.some((board) => ownsMore(hole, board));
+  story.boards.some((board) => ownsMore(story.game, hole, board));
 
 export const QUICK_SWING_BOARDS = 2000;
 
@@ -670,7 +700,7 @@ const mightSwing = (
           LOSING_HAND_TIERS[handCategory(finalRank(story, hole))] !==
             undefined) ||
         (coolerStake(story, seat) &&
-          collide(hole, winning.hole, board) &&
+          collide(story.game, hole, winning.hole, board) &&
           won + QUICK_SWING_MARGIN >= lost)
       );
     })
@@ -706,6 +736,7 @@ const swings = (
   );
 
   const quick = equities(
+    story.game,
     showdown.holes,
     board,
     QUICK_SWING_BOARDS * Math.max(1, showdown.holes.length)
@@ -719,7 +750,10 @@ const swings = (
     return [];
   }
 
-  const equity = quick.exact ? quick : equities(showdown.holes, board);
+  const equity = quick.exact
+    ? quick
+    : equities(story.game, showdown.holes, board);
+
   const street = streetOf(moneyIn);
   const winningRank = finalRank(story, winnerHole);
 
@@ -795,7 +829,7 @@ const swings = (
     const rank = finalRank(story, hole);
 
     return coolerStake(story, seat) &&
-      collide(hole, winnerHole, board) &&
+      collide(story.game, hole, winnerHole, board) &&
       (equity.shares[won] ?? 0) > (equity.shares[index] ?? 0)
       ? [
           Moments.Cooler({
