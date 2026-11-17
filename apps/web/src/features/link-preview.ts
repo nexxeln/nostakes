@@ -34,13 +34,13 @@ export const HOME_TITLE =
 export const HOME_PREVIEW: LinkPreview = {
   canonical: "/",
   description:
-    "Open a room, drop the link in the group chat, and play hold'em with your friends. Free, no sign-up, and no money on the table, just the count.",
+    "Open a room, drop the link in the group chat, and play poker with your friends. Free, no sign-up. The app keeps the count and never touches money.",
   title: HOME_TITLE,
 };
 
 export const INVITE_PREVIEW: LinkPreview = {
   description:
-    "You're invited to a hold'em game with friends on nostakes. Tap the link, pick a face, and take a seat.",
+    "You're invited to a poker game with friends on nostakes. Tap the link, pick a face, and take a seat.",
   title: BRAND_LINE,
 };
 
