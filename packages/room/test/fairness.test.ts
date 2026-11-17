@@ -424,12 +424,15 @@ describe("what a device sees of a checked hand", () => {
 
       const judged = judgedLive(ROOM, steps, POOL);
 
+      const dealtFromASeal = played.steps.some((step) =>
+        step.events.some(RoomEvents.$is("DealtFromBeacon"))
+      );
+
       expect(judged.problems).toStrictEqual([]);
       expect(judgedAwayAndBack(played)).toStrictEqual([]);
       expect(
-        judged.outcomes.filter((outcome) => outcome.endsWith("Checked InTime"))
-          .length
-      ).toBeGreaterThan(0);
+        judged.outcomes.some((outcome) => outcome.endsWith("Checked InTime"))
+      ).toBe(dealtFromASeal);
     },
     nights(2, 6)
   );
