@@ -42,9 +42,11 @@
     "@nostakes/protocol": "workspace:*",
     "@nostakes/room": "workspace:*",
     "@nostakes/shuffle": "workspace:*",
+    "@xstate/effect": "1.0.0-beta.2",
     "effect": "4.1.4",
     "foldkit": "0.170.0",
-    "mediabunny": "1.66.0"
+    "mediabunny": "1.66.0",
+    "xstate": "6.0.0-beta.3"
   },
   "devDependencies": {
     "@effect/platform-node": "4.1.4",

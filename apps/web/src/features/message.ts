@@ -23,6 +23,7 @@ import {
 } from "./model.js";
 import { PresetSchema, RuleGroupSchema } from "./rules-copy.js";
 import { TableIntentSchema } from "./table/snapshot.js";
+import { VoiceStatusSchema } from "./voice-model.js";
 
 export const ReplyOutcomes = defineTaggedUnion({
   Accepted: { seq: Schema.Int },
@@ -38,6 +39,16 @@ export type DraftField = typeof DraftFieldSchema.Type;
 
 export const Messages = defineMessageUnion({
   AcquiredConnection: {},
+  AcquiredVoice: {},
+  ChangedVoice: { status: VoiceStatusSchema },
+  ClickedMic: {},
+  ClickedMuteForEveryone: { muted: Schema.Boolean, player: PlayerIdSchema },
+  ClickedVoice: {},
+  FailedVoice: { problem: Schema.String },
+  HeldTalkKey: { held: Schema.Boolean },
+  MutedForEveryone: { done: Schema.Boolean },
+  ReleasedVoice: {},
+  SyncedVoice: {},
   CaughtError: { message: Schema.String, name: Schema.String },
   ChangedComeBackName: { value: Schema.String },
   ChangedDraft: { field: DraftFieldSchema, value: Schema.String },

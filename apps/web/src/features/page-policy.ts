@@ -57,7 +57,7 @@ export const PERMISSIONS = [
   ["web-share", "(self)"],
   ["clipboard-write", "(self)"],
   ["camera", "()"],
-  ["microphone", "()"],
+  ["microphone", "(self)"],
   ["geolocation", "()"],
   ["payment", "()"],
   ["usb", "()"],

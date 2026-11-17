@@ -79,6 +79,7 @@ const inRoom = (worn: Avatar, table: OpenView): Model =>
           receivedAt: 0,
           refusal: Option.none(),
           retryDelayMs: Option.none(),
+          voice: [],
         },
       })
     ).model,

@@ -19,6 +19,7 @@ import {
 } from "./fairness-text.js";
 import { feedbackLink } from "./feedback.js";
 import { HALTED_LINE, haltedRows, netText } from "./halted.js";
+import { iconMarkup } from "./markup.js";
 import {
   chipsSheet,
   confirmSheet,
@@ -65,6 +66,8 @@ import { sheet } from "./sheet.js";
 import { stuckLine } from "./stuck-line.js";
 import { heroSeatOf, tableSnapshot } from "./table/from-room.js";
 import { tableElement } from "./table/snapshot.js";
+import { micLive, mutedForEveryone, voiceAccessIn } from "./voice.js";
+import type { VoiceAccess } from "./voice.js";
 
 type H = HtmlBuilder<Message>;
 
@@ -152,6 +155,75 @@ const fairButton = (room: InRoom, h: H): Html => {
       );
 };
 
+const voiceLabel = (room: InRoom, access: VoiceAccess, you: PlayerId) => {
+  const { voice } = room;
+
+  if (!voice.on) {
+    return { icon: "MicOff" as const, label: "Join voice", pressed: false };
+  }
+
+  if (voice.status.phase === "Joining" || voice.status.phase === "Off") {
+    return { icon: "MicOff" as const, label: "Joining voice", pressed: false };
+  }
+
+  if (voice.status.phase !== "Live") {
+    return { icon: "MicOff" as const, label: "Voice is out", pressed: false };
+  }
+
+  if (access === "Listen" || voice.status.micBlocked) {
+    return { icon: "MicOff" as const, label: "Listening", pressed: false };
+  }
+
+  if (mutedForEveryone(voice.roster, you)) {
+    return { icon: "MicOff" as const, label: "Muted by host", pressed: false };
+  }
+
+  return micLive(voice, you)
+    ? { icon: "Mic" as const, label: "Mute", pressed: true }
+    : { icon: "MicOff" as const, label: "Unmute", pressed: false };
+};
+
+const voiceButton = (room: InRoom, view: Option.Option<OpenView>, h: H): Html =>
+  Option.match(view, {
+    onNone: () => h.empty,
+    onSome: (open) => {
+      const access = voiceAccessIn(open);
+
+      if (access === "None") {
+        return h.empty;
+      }
+
+      const shown = voiceLabel(room, access, room.player);
+
+      const talks =
+        room.voice.on &&
+        room.voice.status.phase === "Live" &&
+        access === "Talk";
+
+      return h.button(
+        [
+          h.Type("button"),
+          h.Class(
+            shown.pressed
+              ? "bar-button voice-button is-live"
+              : "bar-button voice-button"
+          ),
+          h.AriaPressed(String(shown.pressed)),
+          h.AriaLabel(shown.label),
+          h.Title(talks ? `${shown.label} (hold T to talk)` : shown.label),
+          h.OnClick(talks ? Messages.ClickedMic() : Messages.ClickedVoice()),
+        ],
+        [
+          h.span(
+            [h.Class("icon"), h.AriaHidden(true), iconMarkup(h, shown.icon)],
+            []
+          ),
+          h.span([h.Class("voice-label")], [shown.label]),
+        ]
+      );
+    },
+  });
+
 const header = (
   model: Model,
   room: InRoom,
@@ -171,6 +243,7 @@ const header = (
         [room.copied === "Link" ? "Link copied" : "Invite"]
       ),
       fairButton(room, h),
+      voiceButton(room, view, h),
       h.span(
         [h.Class("bar-end")],
         [

@@ -74,6 +74,7 @@ const live = Messages.ReceivedLink({
     receivedAt: 0,
     refusal: Option.none(),
     retryDelayMs: Option.none(),
+    voice: [],
   },
 });
 

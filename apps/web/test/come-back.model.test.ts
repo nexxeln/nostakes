@@ -83,6 +83,7 @@ const linked = (refusal: Option.Option<CloseReason>) =>
       receivedAt: 0,
       refusal,
       retryDelayMs: Option.none(),
+      voice: [],
     },
   });
 

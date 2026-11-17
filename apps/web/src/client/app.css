@@ -671,6 +671,31 @@ html:has(.room) {
   justify-content: center;
 }
 
+.voice-button {
+  gap: var(--space-1);
+  min-width: var(--size-touch);
+  justify-content: center;
+}
+
+.voice-button .icon {
+  display: inline-flex;
+}
+
+.voice-button.is-live {
+  color: var(--color-here);
+}
+
+@media (max-width: 30rem) {
+  .voice-label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+}
+
 .fair-mark.is-alarm,
 .fair-text.is-alarm {
   color: var(--color-alert);

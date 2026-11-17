@@ -514,7 +514,12 @@ const confirmLink = (label: string, confirm: Confirm, h: H): Html =>
     [label]
   );
 
-const menuFoot = (model: Model, view: OpenView, h: H): Html => {
+const menuFoot = (
+  model: Model,
+  view: OpenView,
+  voiceOn: boolean,
+  h: H
+): Html => {
   const hosting = isYou(view, view.host) && Option.isNone(view.stalled);
 
   return h.div(
@@ -524,6 +529,16 @@ const menuFoot = (model: Model, view: OpenView, h: H): Html => {
       h.span(
         [h.Class("menu-foot-end")],
         [
+          voiceOn
+            ? h.button(
+                [
+                  h.Type("button"),
+                  h.Class("text-button"),
+                  h.OnClick(Messages.ClickedVoice()),
+                ],
+                ["Leave voice"]
+              )
+            : h.empty,
           learnInNewTab(h),
           feedbackLink(h, "text-button"),
           hosting && view.queued.close
@@ -626,7 +641,7 @@ export const menuSheet = (
             peopleList(view, presence, pageTheme(model), h),
             clearButton(view, h),
             doorSwitch(room, view, h),
-            menuFoot(model, view, h),
+            menuFoot(model, view, room.voice.on, h),
           ]
         ),
       ]

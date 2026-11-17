@@ -38,6 +38,7 @@ const refused = (reason: CloseReason) =>
       receivedAt: 0,
       refusal: Option.some(reason),
       retryDelayMs: Option.none(),
+      voice: [],
     },
   });
 

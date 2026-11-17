@@ -14,8 +14,9 @@ import {
   waitsToClaimHost,
 } from "../features/room.js";
 import { signalsShowing } from "../features/signals.js";
+import { talkKeyWanted, TALK_KEY } from "../features/voice.js";
 import type { PokerClientTypes } from "../features/wire.js";
-import { RoomConnection } from "./connection.js";
+import { RoomConnection, VoiceLineResource } from "./connection.js";
 import { DARK_SCHEME, systemTheme } from "./storage.js";
 
 const TICK = "250 millis";
@@ -30,6 +31,7 @@ const linkOf = (
   receivedAt,
   refusal: state.refusal,
   retryDelayMs: state.retryDelayMs,
+  voice: state.voice,
 });
 
 const roomLinks = RoomConnection.get.pipe(
@@ -100,6 +102,42 @@ const roomFairness = (code: string) =>
     Effect.catchTag("ResourceNotAvailable", () => Effect.succeed(Stream.empty)),
     Stream.unwrap
   );
+
+const voiceStatuses = VoiceLineResource.get.pipe(
+  Effect.map((line) =>
+    line.statuses.pipe(
+      Stream.map((status) => Messages.ChangedVoice({ status }))
+    )
+  ),
+  Effect.catchTag("ResourceNotAvailable", () => Effect.succeed(Stream.empty)),
+  Stream.unwrap
+);
+
+const typing = (target: EventTarget | null) =>
+  target instanceof HTMLInputElement ||
+  target instanceof HTMLTextAreaElement ||
+  target instanceof HTMLSelectElement;
+
+const talkKeys = Stream.merge(
+  Stream.fromEventListener<KeyboardEvent>(globalThis.window, "keydown").pipe(
+    Stream.filter(
+      (event) =>
+        event.key.toLowerCase() === TALK_KEY &&
+        !event.repeat &&
+        !typing(event.target)
+    ),
+    Stream.map(() => Messages.HeldTalkKey({ held: true }))
+  ),
+  Stream.merge(
+    Stream.fromEventListener<KeyboardEvent>(globalThis.window, "keyup").pipe(
+      Stream.filter((event) => event.key.toLowerCase() === TALK_KEY),
+      Stream.map(() => Messages.HeldTalkKey({ held: false }))
+    ),
+    Stream.fromEventListener(globalThis.window, "blur").pipe(
+      Stream.map(() => Messages.HeldTalkKey({ held: false }))
+    )
+  )
+);
 
 const ticks = Stream.tick(TICK).pipe(
   Stream.mapEffect(() => Clock.currentTimeMillis),
@@ -190,7 +228,8 @@ const screenAwake = Effect.gen(function* holdTheScreen() {
 export const subscriptions = Subscription.make<
   Model,
   Message,
-  ManagedResource.ServiceOf<typeof RoomConnection>
+  | ManagedResource.ServiceOf<typeof RoomConnection>
+  | ManagedResource.ServiceOf<typeof VoiceLineResource>
 >()((entry) => ({
   clock: entry(
     { ticking: Schema.Boolean },
@@ -294,6 +333,24 @@ export const subscriptions = Subscription.make<
           Option.filter(({ connected }) => connected),
           Option.map(({ code }) => code)
         ),
+      }),
+    }
+  ),
+  talkKey: entry(
+    { wanted: Schema.Boolean },
+    {
+      dependenciesToStream: ({ wanted }) => (wanted ? talkKeys : Stream.empty),
+      modelToDependencies: (model) => ({
+        wanted: Option.exists(roomOf(model), talkKeyWanted),
+      }),
+    }
+  ),
+  voice: entry(
+    { on: Schema.Boolean },
+    {
+      dependenciesToStream: ({ on }) => (on ? voiceStatuses : Stream.empty),
+      modelToDependencies: (model) => ({
+        on: Option.exists(roomOf(model), (room) => room.voice.line),
       }),
     }
   ),

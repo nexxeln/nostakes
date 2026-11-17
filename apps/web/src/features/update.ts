@@ -61,7 +61,15 @@ import {
   UseRoomHere,
   WakeRoom,
 } from "../client/commands.js";
-import type { RoomConnection } from "../client/connection.js";
+import type {
+  RoomConnection,
+  VoiceLineResource,
+} from "../client/connection.js";
+import {
+  MuteForEveryone,
+  SyncVoice,
+  WakeVoice,
+} from "../client/voice-commands.js";
 import { reportedClear } from "./clearing.js";
 import {
   NAME_TAKEN_PROBLEM,
@@ -155,11 +163,14 @@ import {
   happeningsFrom,
 } from "./table/from-room.js";
 import type { Hint, TableIntent } from "./table/snapshot.js";
+import { NO_VOICE, VOICE_OFF } from "./voice-model.js";
+import type { Voice } from "./voice-model.js";
 import { roomPath } from "./wire.js";
 
 type Services =
   | HttpClient.HttpClient
-  | ManagedResource.ServiceOf<typeof RoomConnection>;
+  | ManagedResource.ServiceOf<typeof RoomConnection>
+  | ManagedResource.ServiceOf<typeof VoiceLineResource>;
 
 type Return = Update.Return<Model, Message, Services>;
 
@@ -198,6 +209,7 @@ const freshRoom = (code: InRoom["code"], player: InRoom["player"]): InRoom => ({
   setup: Option.none(),
   shown: Option.none(),
   update: Option.none(),
+  voice: NO_VOICE,
 });
 
 const atTheDoor = (
@@ -1498,10 +1510,63 @@ const saveFace = (model: Model): Return =>
     onSome: () => sendFace(model),
   });
 
+const editVoice = (model: Model, edit: (voice: Voice) => Voice): Return =>
+  editRoom(model, (room) => ({ ...room, voice: edit(room.voice) }));
+
+const syncVoice = (room: InRoom) =>
+  room.voice.line
+    ? [
+        SyncVoice({
+          micOpen: room.voice.micOpen || room.voice.held,
+          roster: room.voice.roster,
+        }),
+      ]
+    : [];
+
+const withVoice = (model: Model, edit: (voice: Voice) => Voice): Return =>
+  inRoom(model, (room) => {
+    const next = { ...room, voice: edit(room.voice) };
+
+    return { commands: syncVoice(next), model: withRoom(model, next) };
+  });
+
 export const update = (model: Model, message: Message): Return =>
   Messages.match(message, {
     AcquiredConnection: () =>
       editRoom(model, (room) => ({ ...room, connected: true })),
+    AcquiredVoice: () =>
+      withVoice(model, (voice) => ({ ...voice, line: true })),
+    ChangedVoice: ({ status }) =>
+      editVoice(model, (voice) => ({ ...voice, status })),
+    ClickedMic: () =>
+      withVoice(model, (voice) => ({ ...voice, micOpen: !voice.micOpen })),
+    ClickedMuteForEveryone: ({ muted, player }) =>
+      inRoom(model, (room) => ({
+        commands: [MuteForEveryone({ code: room.code, muted, player })],
+        model,
+      })),
+    ClickedVoice: () =>
+      editVoice(model, (voice) =>
+        voice.on
+          ? { ...NO_VOICE, roster: voice.roster }
+          : { ...voice, held: false, micOpen: false, on: true }
+      ),
+    FailedVoice: () =>
+      editVoice(model, (voice) => ({
+        ...voice,
+        line: false,
+        status: { ...VOICE_OFF, phase: "Unavailable" },
+      })),
+    HeldTalkKey: ({ held }) =>
+      withVoice(model, (voice) => ({ ...voice, held })),
+    MutedForEveryone: () => ({ model }),
+    ReleasedVoice: () =>
+      editVoice(model, (voice) => ({
+        ...voice,
+        line: false,
+        status: VOICE_OFF,
+      })),
+    SyncedVoice: () => ({ model }),
     CaughtError: ({ message: text, name }) =>
       model.counting && model.reporting.errors < MAX_ERROR_REPORTS
         ? {
@@ -1951,6 +2016,7 @@ export const update = (model: Model, message: Message): Return =>
           (room) => ({
             ...room,
             link: Option.some(link),
+            voice: { ...room.voice, roster: link.voice },
           })
         )
       ),
@@ -2226,6 +2292,9 @@ export const update = (model: Model, message: Message): Return =>
       }),
     WokePage: ({ visible }) =>
       visible
-        ? inRoom(model, () => ({ commands: [WakeRoom()], model }))
+        ? inRoom(model, (room) => ({
+            commands: [WakeRoom(), ...(room.voice.line ? [WakeVoice()] : [])],
+            model,
+          }))
         : sendReconnects(model),
   });

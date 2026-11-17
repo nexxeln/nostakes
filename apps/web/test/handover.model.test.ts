@@ -72,6 +72,7 @@ const live = (presence: readonly PlayerId[]) =>
       receivedAt: 0,
       refusal: Option.none(),
       retryDelayMs: Option.none(),
+      voice: [],
     },
   });
 

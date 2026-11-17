@@ -150,6 +150,7 @@ const shownWith = (view: OpenView, live: boolean) => {
         receivedAt: 0,
         refusal: Option.none(),
         retryDelayMs: Option.none(),
+        voice: [],
       },
     }),
   ] satisfies readonly Message[]) {

@@ -90,6 +90,7 @@ const messagesFor = (
           receivedAt: 0,
           refusal: Option.none(),
           retryDelayMs: Option.none(),
+          voice: [],
         },
       }),
       Messages.ReceivedUpdate({
@@ -203,6 +204,7 @@ describe("the table's view and events", () => {
                 receivedAt: arrival.receivedAt,
                 refusal: Option.none(),
                 retryDelayMs: Option.none(),
+                voice: [],
               },
             })
           ));

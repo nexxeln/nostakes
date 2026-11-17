@@ -59,6 +59,7 @@ const link = (phase: ConnectionPhase, newBuild: Option.Option<BuildId>) =>
       receivedAt: 0,
       refusal: Option.none(),
       retryDelayMs: Option.none(),
+      voice: [],
     },
   });
 

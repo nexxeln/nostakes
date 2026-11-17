@@ -5,6 +5,7 @@ import {
   PlayerIdSchema,
   ProtocolVersionSchema,
   RoomCodeSchema,
+  VoiceRosterSchema,
 } from "@nostakes/protocol";
 import {
   KnockViewSchema,
@@ -21,6 +22,7 @@ import { FeedbackSheetSchema } from "./feedback-sheet.js";
 import { MomentWatchSchema } from "./moments/watch.js";
 import { RuleGroupSchema } from "./rules-copy.js";
 import { HintSchema, TableEventSchema } from "./table/snapshot.js";
+import { VoiceSchema } from "./voice-model.js";
 
 export const ThemeSchema = Schema.Literals(["Light", "Dark"]);
 
@@ -57,6 +59,7 @@ export const LinkSchema = Schema.Struct({
   receivedAt: Schema.Int,
   refusal: Schema.Option(CloseReasonSchema),
   retryDelayMs: Schema.Option(Schema.Int),
+  voice: VoiceRosterSchema,
 });
 
 export type Link = typeof LinkSchema.Type;
@@ -239,6 +242,7 @@ export const InRoomSchema = Schema.Struct({
   setup: Schema.Option(SetupSheetSchema),
   shown: Schema.Option(ShownViewSchema),
   update: Schema.Option(PageUpdateSchema),
+  voice: VoiceSchema,
 });
 
 export type InRoom = typeof InRoomSchema.Type;
