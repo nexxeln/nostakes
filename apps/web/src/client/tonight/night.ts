@@ -17,6 +17,7 @@ import { clipSupport, momentClip, slotFor } from "../moments/clip.js";
 import type { ClipPace, ClipSupport, ClipTooSlow } from "../moments/clip.js";
 import type { FilmWatch } from "../moments/film-file.js";
 import { drawn } from "../pictures/keeper.js";
+import { reelFile } from "./reel.js";
 import { KEPT_FOR_MS, liveMomentStore, MomentStore } from "./store.js";
 import type { FileKind, KeptFile, KeptMoment } from "./store.js";
 
@@ -29,6 +30,8 @@ export type ClipStatus =
   | { readonly tag: "Unavailable" };
 
 export type PictureKind = "Chat" | "Slip" | "Story";
+
+export const REEL_HAND = 0;
 
 export interface NightMoment {
   readonly asked: boolean;
@@ -99,6 +102,8 @@ export class Night {
   #waiting: (() => void)[] = [];
   readonly #holdHeard = new Set<(held: boolean) => void>();
   #pending: MomentHand[] = [];
+  #reel: ClipStatus = { tag: "Idle" };
+  #reelEnd = "";
   readonly #drawing = new Set<string>();
 
   constructor(room: string) {
@@ -108,6 +113,26 @@ export class Night {
 
   get moments(): readonly NightMoment[] {
     return this.#moments;
+  }
+
+  get reel(): ClipStatus {
+    return this.#reel;
+  }
+
+  makeReel(endSvg: string) {
+    this.#reelEnd = endSvg;
+
+    if (this.#reel.tag !== "Idle" && this.#reel.tag !== "Failed") {
+      return;
+    }
+
+    if (this.#loaded && this.#moments.length === 0) {
+      return;
+    }
+
+    this.#reel = { tag: "Queued" };
+    this.#tell();
+    this.#next();
   }
 
   get ready(): number {
@@ -380,6 +405,16 @@ export class Night {
     this.#moments = restored.toReversed();
     this.#loaded = true;
 
+    const reel = files.find(
+      (file) => file.kind === "Reel" && file.hand === REEL_HAND
+    );
+
+    if (reel !== undefined) {
+      this.#reel = { file: asFile(reel), tag: "Ready" };
+    } else if (this.#reel.tag === "Queued" && this.#moments.length === 0) {
+      this.#reel = { tag: "Idle" };
+    }
+
     const pending = this.#pending;
 
     this.#pending = [];
@@ -506,6 +541,12 @@ export class Night {
 
     if (chosen !== undefined) {
       this.#make(chosen, this.#support.value);
+
+      return;
+    }
+
+    if (this.#reel.tag === "Queued" && this.#reelEnd.length > 0) {
+      this.#makeReel(this.#support.value);
     }
   }
 
@@ -516,6 +557,11 @@ export class Night {
           ? { ...moment, clip: { tag: "Unavailable" } }
           : moment
       );
+
+      if (this.#reel.tag === "Queued") {
+        this.#reel = { tag: "Unavailable" };
+      }
+
       this.#tell();
 
       return;
@@ -622,6 +668,90 @@ export class Night {
       ...moment,
       clip: file === null ? { tag: "Failed" } : { file, tag: "Ready" },
     }));
+    this.#next();
+  }
+
+  #makeReel(support: ClipSupport) {
+    const stop = new AbortController();
+
+    this.#making = { hand: REEL_HAND, stop };
+    this.#reel = { made: 0, tag: "Making" };
+    this.#tell();
+
+    const [scale = 1] = clipScales(deviceMemory());
+
+    Effect.runFork(
+      reelFile(
+        this.#moments.map((moment) => ({
+          hand: moment.source,
+          scene: moment.scene,
+        })),
+        this.#reelEnd,
+        this.#look,
+        {
+          scale,
+          slot: this.#unheld.pipe(
+            Effect.andThen(Effect.suspend(() => slotFor("Quiet")))
+          ),
+          support,
+          watch: {
+            heldBy: (heard) => {
+              this.#holdHeard.add(heard);
+              heard(this.#held);
+
+              return () => {
+                this.#holdHeard.delete(heard);
+              };
+            },
+            made: (share) => {
+              const made = Math.min(1, Math.max(0, share));
+
+              if (
+                this.#reel.tag !== "Making" ||
+                Math.floor(made * 100) !== Math.floor(this.#reel.made * 100)
+              ) {
+                this.#reel = { made, tag: "Making" };
+                this.#tell();
+              }
+            },
+          },
+        }
+      ).pipe(
+        Effect.flatMap((file) =>
+          kept(
+            stamped((store, at) =>
+              store.keepFile({
+                at,
+                blob: file,
+                hand: REEL_HAND,
+                kind: "Reel",
+                name: file.name,
+                room: this.room,
+              })
+            )
+          ).pipe(Effect.ignore, Effect.as(file))
+        ),
+        Effect.matchCause({
+          onFailure: () => {
+            this.#reelMade(stop, null);
+          },
+          onSuccess: (file) => {
+            this.#reelMade(stop, file);
+          },
+        })
+      ),
+      { signal: stop.signal }
+    );
+  }
+
+  #reelMade(stop: AbortController, file: File | null) {
+    if (this.#making?.stop !== stop) {
+      return;
+    }
+
+    this.#making = null;
+    this.#reel = file === null ? { tag: "Failed" } : { file, tag: "Ready" };
+    this.#tell();
     this.#next();
   }
 

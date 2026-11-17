@@ -740,6 +740,7 @@ const tonightOf = (
       tonight.Mode(mode),
       tonight.Theme(pageTheme(model)),
       tonight.Deck(model.deck),
+      tonight.Settled(null),
       tonight.OnClose(() => Messages.ClosedSheet()),
     ],
     []
@@ -751,8 +752,27 @@ const tonightSheet = (model: Model, room: InRoom, h: H): Html =>
     tonightOf(model, room, "Drawer", h),
   ]);
 
-const tonightInline = (model: Model, room: InRoom, h: H): Html =>
-  tonightOf(model, room, "Settled", h);
+const tonightInline = (
+  model: Model,
+  room: InRoom,
+  view: ClosedView,
+  h: H
+): Html => {
+  const tonight = tonightElement.withMessage(h);
+
+  return tonight(
+    [
+      h.Class("tonight-inline"),
+      tonight.Room(room.code),
+      tonight.Mode("Settled"),
+      tonight.Theme(pageTheme(model)),
+      tonight.Deck(model.deck),
+      tonight.Settled(settleUpCardOf(view)),
+      tonight.OnClose(() => Messages.ClosedSheet()),
+    ],
+    []
+  );
+};
 
 const openRoomView = (
   model: Model,
@@ -851,7 +871,7 @@ const closedRoomView = (
     [
       h.h2([h.Class("sheet-title")], ["The night is over"]),
       recapSection(model, view, h),
-      tonightInline(model, room, h),
+      tonightInline(model, room, view, h),
       h.ul(
         [h.Class("member-list")],
         view.settlement.balances

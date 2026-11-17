@@ -2,6 +2,7 @@ import { Schema } from "effect";
 import { CustomElement } from "foldkit";
 
 import { DeckSchema, ThemeSchema } from "../model.js";
+import { SettleUpCardSchema } from "../pictures/settle-up.js";
 
 export const TONIGHT_TAG = "nostakes-tonight";
 
@@ -17,6 +18,7 @@ export const tonightElement = CustomElement.define({
     deck: DeckSchema,
     mode: TonightModeSchema,
     room: Schema.String,
+    settled: Schema.NullOr(SettleUpCardSchema),
     theme: ThemeSchema,
   },
   tag: TONIGHT_TAG,

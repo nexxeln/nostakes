@@ -35,6 +35,7 @@ import {
   millis,
   momentsOf,
   redact,
+  replayOf,
 } from "@nostakes/room";
 import type {
   Audience,
@@ -48,13 +49,12 @@ import * as Arbitrary from "effect/Arbitrary";
 
 import { buildPlan } from "../src/features/moments/build.js";
 import type { BuildPlan } from "../src/features/moments/build.js";
+import type { DriftPlan } from "../src/features/moments/drift/plan.js";
 import type { Person } from "../src/features/moments/element.js";
+import { reelPartOf, reelPlan } from "../src/features/moments/reel.js";
+import type { ReelPlan } from "../src/features/moments/reel.js";
 import type { LastHand } from "../src/features/moments/scene.js";
-import {
-  pictureOf,
-  replayFor,
-  storyOf,
-} from "../src/features/moments/scene.js";
+import { replayFor, sceneFor } from "../src/features/moments/scene.js";
 import type { MomentPicture } from "../src/features/moments/schema.js";
 import { slipOf } from "../src/features/moments/slip.js";
 import type { SeatStack } from "../src/features/moments/watch.js";
@@ -395,17 +395,15 @@ const toldFrom = (
     }))
   );
 
-const sceneFor = (told: Told, record: readonly SeenTableEvent[]) => ({
-  picture: pictureOf(told.people, told.lastHand, told.found, record),
-  story: storyOf(told.people, told.lastHand, told.found, record),
-});
+const sceneOfTold = (told: Told, record: readonly SeenTableEvent[]) =>
+  sceneFor(told.people, told.lastHand, told.found, record);
 
 const planFor = (
   told: Told,
   record: readonly SeenTableEvent[],
   seed: number
 ): BuildPlan => {
-  const { picture, story } = sceneFor(told, record);
+  const { picture, story } = sceneOfTold(told, record);
 
   return buildPlan(picture, story, {
     calm: seed % 5 === 0,
@@ -498,7 +496,7 @@ describe("a moment's picture and clip", () => {
       expect(
         eachDevice(seed, (told, feed, spectator) => {
           const shown = shownBy(spectator);
-          const { picture } = sceneFor(told, feed);
+          const { picture } = sceneOfTold(told, feed);
 
           const slipped = Option.match(
             slipOf(
@@ -550,7 +548,7 @@ describe("a moment's picture and clip", () => {
     { seed: handSeed },
     ({ seed }) => {
       const drawn = eachDevice(seed, (told, feed) =>
-        JSON.stringify([sceneFor(told, feed), planFor(told, feed, seed)])
+        JSON.stringify([sceneOfTold(told, feed), planFor(told, feed, seed)])
       );
 
       expect(new Set(drawn).size).toBeLessThanOrEqual(1);
@@ -570,7 +568,7 @@ describe("a moment's picture and clip", () => {
             return [];
           }
 
-          const { picture } = sceneFor(told, feed);
+          const { picture } = sceneOfTold(told, feed);
 
           const drawnCards = new Set(
             picture.seats.flatMap((seat) => seat.cards)
@@ -584,5 +582,148 @@ describe("a moment's picture and clip", () => {
       ).toStrictEqual([]);
     },
     HANDS
+  );
+});
+
+const evenChances = ({
+  holes,
+}: {
+  readonly holes: readonly unknown[];
+}): readonly number[] =>
+  holes.map((_, index) => (index === 0 ? 100 - (holes.length - 1) * 11 : 11));
+
+const REEL_HANDS = { arbitrary: { runs: 30 }, timeout: 120_000 };
+
+const reelPart = (told: Told, feed: readonly SeenTableEvent[], seed: number) =>
+  replayOf(feed, evenChances).pipe(
+    Option.map((replay) =>
+      reelPartOf(
+        {
+          hand: {
+            callouts: "All",
+            deck: "TwoColour",
+            lastHand: told.lastHand,
+            people: told.people,
+            record: feed,
+            theme: "Light",
+          },
+          scene: sceneOfTold(told, feed),
+        },
+        replay,
+        { calm: seed % 3 === 0, deck: "TwoColour", theme: "Light" }
+      )
+    )
+  );
+
+interface NightOfTwo {
+  readonly devices: readonly {
+    readonly first: DriftPlan;
+    readonly reel: ReelPlan;
+  }[];
+  readonly firstFeed: readonly SeenTableEvent[];
+}
+
+const nightOfTwo = (seed: number): Option.Option<NightOfTwo> => {
+  const second = generatedHand(seed + 1);
+  const secondFeed = feedFor(second, Audiences.Spectator());
+
+  return toldFrom(secondFeed, seed + 1).pipe(
+    Option.flatMap((secondTold) => reelPart(secondTold, secondFeed, seed)),
+    Option.map((secondPart) => {
+      const first = generatedHand(seed);
+      const firstFeed = feedFor(first, Audiences.Spectator());
+
+      return {
+        devices: Option.match(toldFrom(firstFeed, seed), {
+          onNone: () => [],
+          onSome: (firstTold) =>
+            everyDevice(first).flatMap((audience) =>
+              Option.toArray(
+                reelPart(firstTold, feedFor(first, audience), seed).pipe(
+                  Option.map((firstPart) => ({
+                    first: firstPart,
+                    reel: reelPlan([firstPart, secondPart], { svg: "" }),
+                  }))
+                )
+              )
+            ),
+        }),
+        firstFeed,
+      };
+    })
+  );
+};
+
+const partFaceUp = (plan: DriftPlan) =>
+  plan.shots.flatMap((shot) =>
+    shot.shows.map((card) => ({ card, shownAt: shot.keys[0]?.at ?? 0 }))
+  );
+
+const partTooSoon = (plan: DriftPlan, spectator: readonly SeenTableEvent[]) => {
+  const order = spectator.flatMap((event) =>
+    Events.$is("StreetDealt")(event) ? event.cards.map(cardText) : []
+  );
+
+  const dealtAt = new Map(plan.dealt.map((each) => [each.card, each.at]));
+
+  const outOfOrder = order.flatMap((card, index) => {
+    const before = order[index - 1];
+
+    return before === undefined ||
+      (dealtAt.get(before) ?? -1) <= (dealtAt.get(card) ?? -1)
+      ? []
+      : [{ before, card }];
+  });
+
+  const early = partFaceUp(plan).flatMap(({ card, shownAt }) =>
+    order.includes(card) && shownAt < (dealtAt.get(card) ?? Infinity)
+      ? [{ card, shownAt }]
+      : []
+  );
+
+  return [...outOfOrder, ...early];
+};
+
+describe("the night reel", () => {
+  it.prop(
+    "shows no card the table was not shown, and no board card before it is dealt, on any device",
+    { seed: handSeed },
+    ({ seed }) => {
+      expect(
+        Option.match(nightOfTwo(seed), {
+          onNone: () => [],
+          onSome: ({ devices, firstFeed }) => {
+            const shown = shownBy(firstFeed);
+
+            return devices.flatMap(({ first }) => [
+              ...partFaceUp(first).filter(({ card }) => !shown.has(card)),
+              ...partTooSoon(first, firstFeed),
+            ]);
+          },
+        })
+      ).toStrictEqual([]);
+    },
+    REEL_HANDS
+  );
+
+  it.prop(
+    "is the same on every device",
+    { seed: handSeed },
+    ({ seed }) => {
+      const drawn = Option.match(nightOfTwo(seed), {
+        onNone: () => [],
+        onSome: ({ devices }) =>
+          devices.map(({ reel }) =>
+            JSON.stringify([
+              reel.dealt,
+              reel.parts,
+              reel.shots.map((shot) => [shot.box, shot.keys, shot.shows]),
+            ])
+          ),
+      });
+
+      expect(new Set(drawn).size).toBeLessThanOrEqual(1);
+    },
+    REEL_HANDS
   );
 });

@@ -36,7 +36,7 @@ export const drawn = (source: PictureSource, frame: KeptFrame) =>
     )
   );
 
-const download = (file: File) =>
+export const download = (file: File) =>
   Effect.sync((): Kept => {
     const url = URL.createObjectURL(file);
     const link = document.createElement("a");

@@ -5,11 +5,13 @@ import { chipsText } from "../../features/moments/captions.js";
 import { pictureSvg } from "../../features/moments/picture.js";
 import type { MomentPicture } from "../../features/moments/picture.js";
 import { slipAloneSvg, slipOf, slipSvg } from "../../features/moments/slip.js";
+import { settleUpSvg } from "../../features/pictures/settle-up.js";
+import type { SettleUpCard } from "../../features/pictures/settle-up.js";
 import { TONIGHT_TAG, tonightElement } from "../../features/tonight/element.js";
 import type { TonightMode } from "../../features/tonight/element.js";
-import { tonightSummary } from "../../features/tonight/words.js";
+import { reelLine, tonightSummary } from "../../features/tonight/words.js";
 import { adoptEarlyProperties } from "../early-properties.js";
-import { offer } from "../pictures/keeper.js";
+import { download, offer } from "../pictures/keeper.js";
 import { paintLabel, paintSvg, paintThumb } from "./markup.js";
 import { nightOf } from "./night.js";
 import type { Night, NightMoment, PictureKind } from "./night.js";
@@ -43,6 +45,8 @@ button.act.primary { background: var(--color-accent, #ef5326); color: var(--colo
 button.act:active { transform: translate(var(--press-1, 1px 1.8px)); }
 button.act[aria-disabled="true"] { opacity: 0.55; }
 .empty { color: var(--color-ink-muted, #716a79); }
+.reel:not(:empty) { padding: var(--space-4, 16px); margin-bottom: var(--space-4, 16px); border-radius: var(--radius-4, 16px); background: var(--color-raised, #fffdf8); box-shadow: var(--shadow-sheet-2); }
+.reel .title { margin-top: 0; }
 .open { all: unset; cursor: pointer; display: block; }
 .open:focus-visible { outline: 2px solid var(--color-accent, #ef5326); outline-offset: 2px; }
 .thumb { cursor: pointer; }
@@ -82,6 +86,8 @@ class NostakesTonight extends HTMLElement {
   #deck: Deck = "TwoColour";
   #night: Night | null = null;
   #opened: number | null = null;
+  #settled: SettleUpCard | null = null;
+  readonly #reel: HTMLDivElement;
   #unlisten: (() => void) | null = null;
   readonly #rows = new Map<
     number,
@@ -119,12 +125,21 @@ class NostakesTonight extends HTMLElement {
     this.#summary.className = "summary";
     this.#summary.setAttribute("aria-live", "polite");
     this.#list = document.createElement("ul");
+    this.#reel = document.createElement("div");
+    this.#reel.className = "reel";
 
     const keptLine = document.createElement("p");
 
     keptLine.className = "kept";
     keptLine.textContent = "Kept on this phone for 30 days. Never uploaded.";
-    this.#root.append(style, head, this.#summary, this.#list, keptLine);
+    this.#root.append(
+      style,
+      head,
+      this.#summary,
+      this.#reel,
+      this.#list,
+      keptLine
+    );
     adoptEarlyProperties(this, tonightElement.properties);
   }
 
@@ -149,6 +164,30 @@ class NostakesTonight extends HTMLElement {
       this.#rows.clear();
       this.#list.replaceChildren();
       this.#attach();
+    }
+  }
+
+  get settled(): SettleUpCard | null {
+    return this.#settled;
+  }
+
+  set settled(next: SettleUpCard | null) {
+    this.#settled = next;
+    this.#askReel();
+  }
+
+  #askReel() {
+    const card = this.#settled;
+
+    if (card !== null && this.#night !== null) {
+      this.#night.makeReel(
+        settleUpSvg(card, {
+          deck: this.#deck,
+          fonts: "",
+          frame: "Story",
+          theme: this.#theme,
+        })
+      );
     }
   }
 
@@ -200,6 +239,7 @@ class NostakesTonight extends HTMLElement {
     this.#unlisten = night.listen(() => {
       this.#render();
     });
+    this.#askReel();
   }
 
   #look(frame: "Chat" | "Story") {
@@ -227,6 +267,8 @@ class NostakesTonight extends HTMLElement {
       );
     }
 
+    this.#renderReel(night);
+
     const opened = moments.find((moment) => moment.hand === this.#opened);
 
     if (opened !== undefined) {
@@ -247,6 +289,50 @@ class NostakesTonight extends HTMLElement {
         "No moments yet tonight. When a hand is worth talking about, it lands here.";
       this.#list.replaceChildren(empty);
     }
+  }
+
+  #renderReel(night: Night) {
+    const { reel } = night;
+
+    this.#reel.dataset.reel = reel.tag;
+
+    if (reel.tag === "Idle") {
+      this.#reel.replaceChildren();
+
+      return;
+    }
+
+    const title = document.createElement("p");
+    const line = document.createElement("p");
+    const buttons = document.createElement("div");
+
+    title.className = "title";
+    title.textContent = "The night reel";
+    line.className = "who";
+    line.textContent = reelLine(
+      reel.tag,
+      reel.tag === "Making" ? reel.made : 0
+    );
+    buttons.className = "buttons";
+
+    if (reel.tag === "Ready") {
+      buttons.append(
+        actOf("Share", "Share reel", true, () => {
+          Effect.runFork(offer(reel.file));
+        }),
+        actOf(null, "Save", false, () => {
+          Effect.runFork(download(reel.file));
+        })
+      );
+    } else if (reel.tag === "Failed") {
+      buttons.append(
+        actOf("Play", "Try the reel again", false, () => {
+          this.#askReel();
+        })
+      );
+    }
+
+    this.#reel.replaceChildren(title, line, buttons);
   }
 
   #pictureOf(moment: NightMoment, kind: PictureKind, fonts: string) {

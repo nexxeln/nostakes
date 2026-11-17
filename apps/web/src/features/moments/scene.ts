@@ -986,13 +986,27 @@ export const storyOf = (
 
 export interface MomentScene {
   readonly picture: MomentPicture;
+  readonly seats: readonly SeatIndex[];
   readonly story: MomentStory;
 }
 
+export const sceneFor = (
+  people: People,
+  lastHand: LastHand,
+  found: Headline,
+  record: readonly SeenTableEvent[]
+): MomentScene => ({
+  picture: pictureOf(people, lastHand, found, record),
+  seats: Option.match(principalsOf(found.lead, lastHand, replayFor(record)), {
+    onNone: () => found.lead.seats,
+    onSome: ({ lead, other }) => [lead, ...Option.toArray(other)],
+  }),
+  story: storyOf(people, lastHand, found, record),
+});
+
 export const sceneOf = (hand: MomentHand): Option.Option<MomentScene> =>
   headlineOf(hand).pipe(
-    Option.map((found) => ({
-      picture: pictureOf(hand.people, hand.lastHand, found, hand.record),
-      story: storyOf(hand.people, hand.lastHand, found, hand.record),
-    }))
+    Option.map((found) =>
+      sceneFor(hand.people, hand.lastHand, found, hand.record)
+    )
   );

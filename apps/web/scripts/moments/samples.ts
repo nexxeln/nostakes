@@ -4,7 +4,7 @@ import { Option } from "effect";
 
 import type { MomentHand } from "../../src/features/moments/element.js";
 import type { MomentPicture } from "../../src/features/moments/picture.js";
-import { pictureOf, storyOf } from "../../src/features/moments/scene.js";
+import { sceneFor } from "../../src/features/moments/scene.js";
 import type { MomentScene } from "../../src/features/moments/scene.js";
 import { REPLAY_HAND_NAMES, replayHand } from "./replay-hands.js";
 
@@ -32,10 +32,7 @@ export const sampleScene = (sample: string, look: Look = LOOK): MomentScene => {
 
   const found = { also: Option.none<Moment>(), lead };
 
-  return {
-    picture: pictureOf(hand.people, hand.lastHand, found, hand.record),
-    story: storyOf(hand.people, hand.lastHand, found, hand.record),
-  };
+  return sceneFor(hand.people, hand.lastHand, found, hand.record);
 };
 
 export const samplePicture = (

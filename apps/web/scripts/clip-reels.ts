@@ -92,7 +92,14 @@ const program = Effect.gen(function* reels() {
     )
   );
 
-  const told = hands.map((name) => ({ name, query: `hand=${name}` }));
+  const nights = yield* listOf("REEL_NIGHT", "");
+
+  const told = [
+    ...hands.map((name) => ({ name, query: `hand=${name}` })),
+    ...(nights.length > 0
+      ? [{ name: "night-reel", query: `night=${nights.join(",")}` }]
+      : []),
+  ];
 
   for (const { name: hand, query } of told) {
     for (const theme of themes) {

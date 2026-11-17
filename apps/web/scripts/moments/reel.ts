@@ -6,10 +6,17 @@ import {
   clipSupport,
   momentFilm,
 } from "../../src/client/moments/clip.js";
-import type { ClipLook } from "../../src/client/moments/clip.js";
+import type {
+  ClipLook,
+  ClipTooSlow,
+  ClipUnavailable,
+} from "../../src/client/moments/clip.js";
 import { clipWorker, filmOn } from "../../src/client/moments/film-file.js";
+import { REEL_NAME, reelFilm } from "../../src/client/tonight/reel.js";
 import { BEATS, buildPlan } from "../../src/features/moments/build.js";
 import { sceneOf } from "../../src/features/moments/scene.js";
+import { settleUpSvg } from "../../src/features/pictures/settle-up.js";
+import { sampleSettleUp } from "../night/samples.js";
 import { filmSheet } from "./film-sheet.js";
 import { replayHand } from "./replay-hands.js";
 
@@ -56,6 +63,77 @@ const STORYBOARD = [
   BEATS.tag + 500,
   BEATS.end - 34,
 ];
+
+const night = (params.get("night") ?? "")
+  .split(",")
+  .filter((name) => name.length > 0);
+
+const nightReel = Effect.gen(function* reelOfTheNight() {
+  yield* Effect.promise(() => document.fonts.ready);
+
+  const look: ClipLook = { calm, deck, theme };
+
+  const moments = night.flatMap((name) => {
+    const told = replayHand(name, { deck, theme });
+    const scene = sceneOf(told);
+
+    return Option.isSome(scene) ? [{ hand: told, scene: scene.value }] : [];
+  });
+
+  const support = filmed
+    ? Option.getOrElse(yield* clipSupport("Story"), () => SILENT)
+    : SILENT;
+
+  const worker = yield* clipWorker;
+  const started = performance.now();
+
+  const film = yield* reelFilm(
+    worker,
+    moments,
+    settleUpSvg(sampleSettleUp("six"), {
+      deck,
+      fonts: "",
+      frame: "Story",
+      theme,
+    }),
+    look,
+    Effect.void
+  );
+
+  const told = performance.now();
+
+  const times = Array.from({ length: 12 }, (_, index) =>
+    Math.round(((index + 0.5) * film.length) / 12)
+  );
+
+  const sheet = yield* filmSheet(film, { scale: SCALE, tile: TILE, times });
+
+  const made =
+    filmed && support.codec.length > 0
+      ? yield* filmOn(worker, film, {
+          budgetMs: null,
+          name: REEL_NAME,
+          slot: Effect.void,
+          support,
+        })
+      : null;
+
+  const bytes =
+    made === null
+      ? null
+      : new Uint8Array(yield* Effect.promise(() => made.file.arrayBuffer()));
+
+  return {
+    file: bytes === null ? "" : base64Of(bytes),
+    length: film.length,
+    madeMs: Math.round(performance.now() - told),
+    score: null,
+    sheet: sheet.png,
+    shots: film.shots.length,
+    title: "The night reel",
+    toldMs: Math.round(told - started),
+  };
+}).pipe(Effect.scoped);
 
 const program = Effect.gen(function* reel() {
   const scene = sceneOf(hand);
@@ -124,13 +202,19 @@ const program = Effect.gen(function* reel() {
   };
 }).pipe(Effect.scoped);
 
-await Effect.runPromise(
-  program.pipe(
+const written = <A>(
+  reel: Effect.Effect<A, ClipUnavailable | ClipTooSlow>
+): Effect.Effect<string> =>
+  reel.pipe(
     Effect.match({
       onFailure: (failure) =>
         JSON.stringify({ failure: `${failure._tag}: ${failure.message}` }),
       onSuccess: (result) => JSON.stringify(result),
-    }),
+    })
+  );
+
+await Effect.runPromise(
+  (night.length > 0 ? written(nightReel) : written(program)).pipe(
     Effect.flatMap((result) =>
       Effect.sync(() => {
         if (stage instanceof HTMLElement) {

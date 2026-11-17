@@ -18,51 +18,77 @@ import {
   flashesIn,
 } from "../src/features/moments/drift/flashes.js";
 import type { PaintedFilm } from "../src/features/moments/drift/flashes.js";
-import { driftPlan } from "../src/features/moments/drift/plan.js";
-import {
-  driftTold,
-  replaySeatsOf,
-} from "../src/features/moments/drift/told.js";
-import { shownMomentOf } from "../src/features/moments/scene.js";
+import { reelPartOf, reelPlan } from "../src/features/moments/reel.js";
+import { sceneOf } from "../src/features/moments/scene.js";
 import { REST } from "../src/features/moments/timeline.js";
 import { RED } from "../src/features/pictures/paper.js";
 
-const filmed = (name: string, theme: "Dark" | "Light", calm: boolean) => {
+const partOf = (name: string, theme: "Dark" | "Light", calm: boolean) => {
   const hand = replayHand(name, { deck: "TwoColour", theme });
-  const found = shownMomentOf(hand);
+  const scene = sceneOf(hand);
   const replay = replayOf(hand.record);
 
-  if (Option.isNone(found) || Option.isNone(replay)) {
-    return [];
-  }
-
-  const plan = driftPlan(
-    driftTold(replay.value, {
-      kind: found.value.picture.kind,
-      principals: found.value.seats,
-      seats: replaySeatsOf(hand),
-      title: found.value.picture.title,
-    }),
-    { calm, deck: "TwoColour", kept: { shows: [], svg: "" }, seed: 7, theme }
-  );
-
-  const film: PaintedFilm = {
-    camera: plan.camera,
-    fps: CLIP_FPS,
-    height: FRAME.height,
-    length: plan.length,
-    shots: plan.shots,
-    width: FRAME.width,
-  };
-
-  return [{ calm, film, name, theme }];
+  return Option.isNone(scene) || Option.isNone(replay)
+    ? []
+    : [
+        reelPartOf({ hand, scene: scene.value }, replay.value, {
+          calm,
+          deck: "TwoColour",
+          theme,
+        }),
+      ];
 };
 
-const films = REPLAY_HAND_NAMES.flatMap((name) => [
-  ...filmed(name, "Light", false),
-  ...filmed(name, "Dark", false),
-  ...filmed(name, "Light", true),
-]);
+const painted = (plan: {
+  readonly camera: PaintedFilm["camera"];
+  readonly length: number;
+  readonly shots: PaintedFilm["shots"];
+}): PaintedFilm => ({
+  camera: plan.camera,
+  fps: CLIP_FPS,
+  height: FRAME.height,
+  length: plan.length,
+  shots: plan.shots,
+  width: FRAME.width,
+});
+
+const filmed = (name: string, theme: "Dark" | "Light", calm: boolean) =>
+  partOf(name, theme, calm).map((plan) => ({
+    calm,
+    film: painted(plan),
+    name,
+    theme,
+  }));
+
+const REEL_PAIRS = [
+  ["AcesCracked", "HeroCall"],
+  ["AllInBluff", "QuadsIntoBoat"],
+] as const;
+
+const reels = REEL_PAIRS.flatMap(([first, second]) =>
+  (["Light", "Dark"] as const).flatMap((theme) =>
+    [false, true].map((calm) => ({
+      calm,
+      film: painted(
+        reelPlan(
+          [...partOf(first, theme, calm), ...partOf(second, theme, calm)],
+          { svg: "" }
+        )
+      ),
+      name: `${first} then ${second}`,
+      theme,
+    }))
+  )
+);
+
+const films = [
+  ...REPLAY_HAND_NAMES.flatMap((name) => [
+    ...filmed(name, "Light", false),
+    ...filmed(name, "Dark", false),
+    ...filmed(name, "Light", true),
+  ]),
+  ...reels,
+];
 
 const STROBE_FRAMES = 30;
 
@@ -85,9 +111,11 @@ const strobed = (film: PaintedFilm): PaintedFilm => ({
   ],
 });
 
-describe("a Drift clip's flashing", () => {
-  it("stays within three flashes a second, over the whole frame and over any ninth of it, in every sample hand, both themes, and the calm cut", () => {
-    expect(films).toHaveLength(REPLAY_HAND_NAMES.length * 3);
+describe("the night reel's flashing", () => {
+  it("stays within three flashes a second, over the whole frame and over any ninth of it, in every sample hand's part, whole reels with their end card, both themes, and the calm cut", () => {
+    expect(films).toHaveLength(
+      REPLAY_HAND_NAMES.length * 3 + REEL_PAIRS.length * 4
+    );
     expect(
       films.flatMap(({ calm, film, name, theme }) => {
         const flashes = flashesIn(film);
