@@ -4,13 +4,13 @@ import { Schema } from "effect";
 
 const PLAIN_TEXT = {
   BadOrigin:
-    "The room server doesn't accept this page's address. Open nostakes.club and try again.",
+    "This page can't reach the room server. Open nostakes.club instead.",
   BadRequest: "The server couldn't read that. Check your name and try again.",
   BodyTooLarge: "That's too long to send. Try a shorter name.",
   NoFreeCode: "Couldn't find a free room code. Try again.",
   NotAuthorized:
     "This room doesn't know this device. Open the room link to join.",
-  NotFound: "No room has that code. Check it and try again.",
+  NotFound: "No room has that code.",
   RoomFull: "That room is full.",
   RoomHalted: "That room stopped because of a fault.",
   RoomOpen: "That room is still open.",
@@ -36,5 +36,5 @@ const isTooManyRequests = Schema.is(TooManyRequestsSchema);
 
 export const refusalText = (refusal: HttpRefusal) =>
   isTooManyRequests(refusal)
-    ? `Too many tries from this network. Wait ${waitText(refusal.retryAfterSeconds)} and try again.`
+    ? `Too many tries from this network. Try again in ${waitText(refusal.retryAfterSeconds)}.`
     : PLAIN_TEXT[refusal.refusal];

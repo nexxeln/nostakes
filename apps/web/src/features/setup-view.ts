@@ -193,9 +193,7 @@ const gamePart = (room: InRoom, draft: SettingsDraft, h: H): Html => {
           extraView(extra, draft, h)
         )
       ),
-      fits
-        ? h.empty
-        : h.p([h.Class("problem")], ["Some numbers don't fit. Check them."]),
+      fits ? h.empty : h.p([h.Class("problem")], ["Check the numbers."]),
       Option.match(room.notice, {
         onNone: () => h.empty,
         onSome: (text) => h.p([h.Class("problem")], [text]),
@@ -204,7 +202,7 @@ const gamePart = (room: InRoom, draft: SettingsDraft, h: H): Html => {
         ? h.empty
         : h.p(
             [h.Class("muted")],
-            ["Reconnecting. Your changes go through once the room answers."]
+            ["Reconnecting. Changes go through once the room answers."]
           ),
     ]
   );

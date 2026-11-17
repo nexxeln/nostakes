@@ -132,8 +132,7 @@ const entryFrom = (url: string, body: Schema.Json, request: JoinRequest) =>
     Effect.mapError(
       () =>
         new EntryRefused({
-          reason:
-            "Can't reach the room server. Check your connection and try again.",
+          reason: "Can't reach the room server. Check your connection.",
         })
     ),
     Effect.flatMap((response) =>

@@ -502,7 +502,7 @@ export const clearingText = (
 
   return {
     action: `Remove ${going.length}`,
-    body: `${who} will be removed. Seated players stay. ${door}`,
+    body: `${who} go. Seated players stay. ${door}`,
   };
 };
 
@@ -775,20 +775,20 @@ const removalText = (view: OpenView, player: PlayerId) => {
 
   const door = view.settings.locked
     ? ""
-    : " Lock the room so they can't rejoin from the link as someone new.";
+    : " Lock the room, or the link lets them back in.";
 
   if (inHand) {
-    return `${name} is out of the room. Their seat finishes this hand. Then their chips count toward the settle-up.${door}`;
+    return `${name} is out of the room. Their seat finishes this hand, then their chips go to the settle-up.${door}`;
   }
 
   return Option.isSome(occupantOf(view, player))
-    ? `${name} is out of the room. Their chips count toward the settle-up.${door}`
+    ? `${name} is out of the room. Their chips stay in the settle-up.${door}`
     : `${name} is out of the room.${door}`;
 };
 
 const ENDINGS: Readonly<Record<OpenView["closing"], string>> = {
   AfterHand:
-    "This hand finishes first. Then the table closes and everyone sees who pays whom.",
+    "This hand plays out. Then the table closes and everyone sees who pays whom.",
   CancelsHand:
     "This hand is called off and every chip in it goes back. Then everyone sees who pays whom.",
   Now: "The table closes and everyone sees who pays whom.",
@@ -810,7 +810,7 @@ const confirmText = (view: OpenView, confirm: Confirm) =>
       }),
       LeaveRoom: () => ({
         action: "Leave the room",
-        body: "Your chips count toward the settle-up. You can come back later from this device.",
+        body: "Your chips count in the settle-up. Come back any time from this device.",
         pending: "Leaving",
         title: "Leave the room?",
       }),
@@ -948,7 +948,7 @@ export const chipsSheet = (room: InRoom, view: OpenView, h: H): Html =>
           [
             h.span(
               [h.Class("field-label")],
-              [`You can have up to ${view.settings.buyIn.max} on the table`]
+              [`Up to ${view.settings.buyIn.max} on the table`]
             ),
             h.input([
               h.Type("number"),

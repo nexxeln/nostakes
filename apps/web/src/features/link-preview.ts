@@ -34,7 +34,7 @@ export const HOME_TITLE =
 export const HOME_PREVIEW: LinkPreview = {
   canonical: "/",
   description:
-    "Open a room, drop the link in the group chat, and play poker with your friends. Free, no sign-up. The app keeps the count and never touches money.",
+    "Open a room, drop the link in the group chat, and play poker with your friends. Free, no sign-up, and no money on the table, just the count.",
   title: HOME_TITLE,
 };
 
