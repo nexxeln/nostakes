@@ -118,6 +118,13 @@ export const CAPTIONS: Readonly<
       title: "Same hand",
     }),
   },
+  Scoop: {
+    1: (facts) => ({ line: `${facts.who} won both boards.`, title: "Scoop" }),
+    2: (facts) => ({
+      line: `Two boards, one winner: ${facts.who}.`,
+      title: "Scooped",
+    }),
+  },
   SevenDeuce: {
     1: (facts) => ({
       line:

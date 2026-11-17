@@ -38,7 +38,11 @@ const ANTE = 20;
 
 const bombs = (everyHands: number, config: TableConfig = baseConfig) => ({
   ...config,
-  bombPot: BombPots.BombPots({ ante: chipCount(ANTE), everyHands }),
+  bombPot: BombPots.BombPots({
+    ante: chipCount(ANTE),
+    boardCount: 1,
+    everyHands,
+  }),
 });
 
 const called = bombs(0);
@@ -346,30 +350,92 @@ const DEALS = new Set([
 
 const flopProblems = (hand: readonly Event[]) => {
   const [opened] = hand;
-  const [first, ...later] = hand.filter((event) => DEALS.has(event._tag));
+  const deals = hand.filter((event) => DEALS.has(event._tag));
 
   if (
     opened === undefined ||
     !Events.$is("HandStarted")(opened) ||
     opened.bombPot === undefined ||
-    first === undefined
+    deals.length === 0
   ) {
     return [];
   }
 
-  const oneFlopFirst =
-    Events.$is("StreetDealt")(first) &&
-    first.street === "Flop" &&
-    first.cards.length === 3 &&
-    !later.some(
-      (event) => Events.$is("StreetDealt")(event) && event.street === "Flop"
-    );
+  const boards = opened.bombPot.boardCount ?? 1;
+  const flops = deals.slice(0, boards);
 
-  return oneFlopFirst
+  const flopsFirst =
+    flops.length === boards &&
+    flops.every(
+      (event, index) =>
+        Events.$is("StreetDealt")(event) &&
+        event.street === "Flop" &&
+        event.run === index + 1 &&
+        event.cards.length === 3
+    ) &&
+    !deals
+      .slice(boards)
+      .some(
+        (event) => Events.$is("StreetDealt")(event) && event.street === "Flop"
+      );
+
+  return flopsFirst
     ? []
     : [
-        `hand ${opened.handNumber} did not deal its one flop before everything else`,
+        `hand ${opened.handNumber} did not deal one flop per board before everything else`,
       ];
+};
+
+const boardOf = (hand: readonly Event[], board: number) =>
+  hand.flatMap((event) =>
+    Events.$is("StreetDealt")(event) && event.run === board ? event.cards : []
+  );
+
+const doubleBoardProblems = (hand: readonly Event[]) => {
+  const [opened] = hand;
+
+  if (
+    opened === undefined ||
+    !Events.$is("HandStarted")(opened) ||
+    opened.bombPot?.boardCount !== 2
+  ) {
+    return [];
+  }
+
+  const streets = hand.filter(Events.$is("StreetDealt"));
+  const first = boardOf(hand, 1);
+  const second = boardOf(hand, 2);
+
+  const holes = hand.flatMap((event) =>
+    Events.$is("HoleCardsDealt")(event) ? event.cards : []
+  );
+
+  const boardCards = streets.flatMap((street) => street.cards);
+  const showdowns = hand.filter(Events.$is("ShowdownReached"));
+
+  return [
+    ...(hand.some(
+      (event) =>
+        Events.$is("RunsChosen")(event) ||
+        (Events.$is("RunsAgreed")(event) && event.runs !== 1)
+    )
+      ? [`hand ${opened.handNumber} ran a double board more than once`]
+      : []),
+    ...(streets.every((street, index) => street.run === (index % 2) + 1) &&
+    first.length === second.length
+      ? []
+      : [`hand ${opened.handNumber} dealt its boards out of step`]),
+    ...(boardCards.join(",") ===
+    opened.deck.slice(holes.length, holes.length + boardCards.length).join(",")
+      ? []
+      : [`hand ${opened.handNumber} did not deal the boards off the deck`]),
+    ...(showdowns.length === 0 ||
+    (showdowns.map((showdown) => showdown.run).join(",") === "1,2" &&
+      first.length === 5 &&
+      second.length === 5)
+      ? []
+      : [`hand ${opened.handNumber} showed down without both whole boards`]),
+  ];
 };
 
 const rotationProblems = (source: Session) => {
@@ -451,6 +517,7 @@ const bombProblems = (source: Session) => {
 
   problems.push(
     ...handsIn(played.events).flatMap(flopProblems),
+    ...handsIn(played.events).flatMap(doubleBoardProblems),
     ...rotationProblems(source)
   );
 
@@ -465,6 +532,7 @@ const seededSession = (seed: number): Session => {
     anteKind: random.below(3),
     bigBlindExtra: random.below(13),
     bombAnte: 12 + random.below(29),
+    bombBoards: random.chance(1, 2) ? 2 : 1,
     bombEvery: random.below(5),
     bounty: random.below(61),
     button: random.chance(1, 2),

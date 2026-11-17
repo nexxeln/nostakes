@@ -160,9 +160,15 @@ export const isRelevant = (line: RuleLine, draft: SettingsDraft) =>
   });
 
 const starts: SettingsDraft = Object.fromEntries(
-  RULES.flatMap(({ control, path }) =>
-    control.kind === "Stepper" ? [[path, String(control.start)]] : []
-  )
+  RULES.flatMap(({ control, path }) => {
+    if (control.kind === "Stepper") {
+      return [[path, String(control.start)]];
+    }
+
+    return control.kind === "Segments" && control.start !== undefined
+      ? [[path, control.start]]
+      : [];
+  })
 );
 
 export const openDraft = (settings: RoomSettings): SettingsDraft => ({

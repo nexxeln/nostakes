@@ -126,6 +126,7 @@ export interface Hand {
   readonly deadMoney: Chips;
   readonly deck: readonly Card[];
   readonly game: Game;
+  readonly otherBoards: readonly (readonly Card[])[];
   readonly paused: Option.Option<Rotation>;
   readonly phase: Phase;
   readonly players: readonly HandPlayer[];
@@ -254,6 +255,13 @@ export const withStackChange = (
   );
 
 export const isBombPot = (hand: Hand) => Option.isSome(hand.paused);
+
+export const boardsOf = (hand: Hand): readonly (readonly Card[])[] => [
+  hand.board,
+  ...hand.otherBoards,
+];
+
+export const isDoubleBoard = (hand: Hand) => hand.otherBoards.length > 0;
 
 export const owesItsFlop = (hand: Hand) =>
   isBombPot(hand) && hand.board.length === 0;

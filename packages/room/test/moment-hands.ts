@@ -1,6 +1,7 @@
 import {
   Actions,
   Antes,
+  BombPots,
   CardFromText,
   ChipsSchema,
   Commands,
@@ -202,6 +203,13 @@ const generatedConfig = (random: SeededRandom): TableConfig =>
       ? Antes.EveryPlayer({ amount: chipCount(1 + random.below(5)) })
       : Antes.NoAnte(),
     bigBlind: chipCount(10),
+    bombPot: random.chance(1, 4)
+      ? BombPots.BombPots({
+          ante: chipCount(10 + random.below(30)),
+          boardCount: random.chance(2, 3) ? 2 : 1,
+          everyHands: 1,
+        })
+      : BombPots.NoBombPots(),
     maxRuns: RunCountSchema.make(1 + random.below(3)),
     rabbitHunt: false,
     showdown: random.chance(1, 3) ? "Interactive" : "Automatic",

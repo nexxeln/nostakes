@@ -19,6 +19,8 @@ import {
 import {
   Phases,
   activePlayers,
+  boardsOf,
+  isDoubleBoard,
   isInHand,
   notFolded,
   updatePlayer,
@@ -68,6 +70,7 @@ export const runCap = (config: TableConfig, hand: Hand): RunCount => {
 
 export const choosesRuns = (hand: Hand, maxRuns: number) =>
   maxRuns > 1 &&
+  !isDoubleBoard(hand) &&
   hand.board.length < BOARD_SIZE &&
   notFolded(hand).length > 1 &&
   activePlayers(hand).length < 2 &&
@@ -122,7 +125,7 @@ export const recordRunChoice = (
       : inHand
   );
 
-const dealRuns = (hand: Hand, runs: RunCount) => {
+const dealRunByRun = (hand: Hand, runs: RunCount) => {
   const streets = MISSING_STREETS[hand.board.length] ?? [];
   const events: Event[] = [];
   const boards: Card[][] = [];
@@ -145,6 +148,28 @@ const dealRuns = (hand: Hand, runs: RunCount) => {
   return { boards, events };
 };
 
+const dealStreetByStreet = (hand: Hand) => {
+  const streets = MISSING_STREETS[hand.board.length] ?? [];
+  const events: Event[] = [];
+  const boards = boardsOf(hand).map((board) => [...board]);
+  let { deck } = hand;
+
+  for (const { cards, street } of streets) {
+    for (const [index, board] of boards.entries()) {
+      const dealt = deck.slice(0, cards);
+
+      deck = deck.slice(cards);
+      board.push(...dealt);
+      events.push(Events.StreetDealt({ cards: dealt, run: index + 1, street }));
+    }
+  }
+
+  return { boards, events };
+};
+
+const dealRuns = (hand: Hand, runs: RunCount) =>
+  isDoubleBoard(hand) ? dealStreetByStreet(hand) : dealRunByRun(hand, runs);
+
 const tabledFirst = (state: InHand, contenders: readonly HandPlayer[]) =>
   state.config.allInHands === "FaceUp"
     ? [
@@ -157,28 +182,20 @@ const tabledFirst = (state: InHand, contenders: readonly HandPlayer[]) =>
       ]
     : [];
 
-export const runOut = (state: InHand, runs: RunCount): readonly Event[] => {
-  const contenders = startingWith(state, Option.none());
+export const showdownOnBoards = (
+  state: InHand,
+  contenders: readonly HandPlayer[],
+  boards: readonly (readonly Card[])[],
+  faceUp: boolean
+): readonly Event[] => {
   const pots = buildPots(state.hand);
-  const parts = pots.map((pot) => splitEvenly(pot.amount, runs));
-  const dealt = dealRuns(state.hand, runs);
-  const hidden = state.config.allInHands === "Hidden";
+  const parts = pots.map((pot) => splitEvenly(pot.amount, boards.length));
 
-  if (hidden && runs === ONE_RUN && state.config.showdown === "Interactive") {
-    return [
-      Events.RunsAgreed({ runs }),
-      ...dealt.events,
-      Events.ShowdownStarted({
-        order: contenders.map((player) => player.seat),
-      }),
-    ];
-  }
+  const shown = faceUp
+    ? new Set(contenders.map((player) => player.seat))
+    : shownAcrossRuns(state.hand.game, contenders, boards, pots);
 
-  const shown = hidden
-    ? shownAcrossRuns(state.hand.game, contenders, dealt.boards, pots)
-    : new Set(contenders.map((player) => player.seat));
-
-  const showdowns = dealt.boards.flatMap((board, index) => {
+  return boards.flatMap((board, index) => {
     const run = index + 1;
     const ranked = rankOnBoard(state.hand.game, contenders, board);
 
@@ -208,12 +225,33 @@ export const runOut = (state: InHand, runs: RunCount): readonly Event[] => {
       }),
     ];
   });
+};
+
+export const runOut = (state: InHand, runs: RunCount): readonly Event[] => {
+  const contenders = startingWith(state, Option.none());
+  const dealt = dealRuns(state.hand, runs);
+  const hidden = state.config.allInHands === "Hidden";
+
+  if (
+    hidden &&
+    runs === ONE_RUN &&
+    !isDoubleBoard(state.hand) &&
+    state.config.showdown === "Interactive"
+  ) {
+    return [
+      Events.RunsAgreed({ runs }),
+      ...dealt.events,
+      Events.ShowdownStarted({
+        order: contenders.map((player) => player.seat),
+      }),
+    ];
+  }
 
   return [
     Events.RunsAgreed({ runs }),
     ...tabledFirst(state, contenders),
     ...dealt.events,
-    ...showdowns,
+    ...showdownOnBoards(state, contenders, dealt.boards, !hidden),
     handEnded(state),
   ];
 };
@@ -251,7 +289,14 @@ export const startRunning = (state: TableState, event: EventOf<"RunsAgreed">) =>
     withHand(inHand, {
       ...inHand.hand,
       phase: Phases.RunningOut({
-        runs: Array.from({ length: event.runs }, () => []),
+        runs: Array.from(
+          {
+            length: isDoubleBoard(inHand.hand)
+              ? boardsOf(inHand.hand).length
+              : event.runs,
+          },
+          () => []
+        ),
       }),
     })
   );

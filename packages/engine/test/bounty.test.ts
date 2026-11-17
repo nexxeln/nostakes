@@ -295,6 +295,7 @@ const seededSession = (seed: number): Session => {
     anteKind: random.below(3),
     bigBlindExtra: random.below(13),
     bombAnte: 0,
+    bombBoards: 1,
     bombEvery: 0,
     bounty: 20 + random.below(41),
     button: random.chance(1, 2),

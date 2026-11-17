@@ -31,6 +31,7 @@ export const FAMILIES: Readonly<Record<MomentKind, Family>> = {
   Cooler: "Groan",
   HeroCall: "Reveal",
   SameHand: "Relief",
+  Scoop: "Celebration",
   SevenDeuce: "Celebration",
   SplitRuns: "Relief",
   Suckout: "Celebration",
@@ -164,6 +165,7 @@ const SIGNATURES: Readonly<Record<MomentKind, readonly SoundStep[]>> = {
     burst(0.3, 600, 0.03, 0.18, 1),
   ],
   SameHand: [tone(0.3, 784, 0.35, 0.05), tone(0.5, 784, 0.6, 0.05)],
+  Scoop: [tone(0.3, 523, 0.3, 0.05), tone(0.45, 784, 0.5, 0.05)],
   SevenDeuce: [
     tone(0, 392, 0.12, 0.06, "triangle", 392),
     tone(0.12, 294, 0.16, 0.06, "triangle", 290),

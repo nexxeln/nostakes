@@ -12,7 +12,7 @@ import {
   check,
   dealStreet,
   fold,
-  nextStreet,
+  nextStreets,
   raise,
   returnUncalled,
   streetIsOpen,
@@ -31,7 +31,13 @@ import {
   postStraddle,
   startHand,
 } from "./forced-bets.js";
-import { awardPot, endHand, foldOut, uncalledExcess } from "./pots.js";
+import {
+  awardPot,
+  endHand,
+  foldOut,
+  handEnded,
+  uncalledExcess,
+} from "./pots.js";
 import type { SeatIndex } from "./primitives.js";
 import type { Rejection } from "./rejection.js";
 import { ONE_RUN } from "./rules.js";
@@ -41,6 +47,7 @@ import {
   chooseRuns,
   recordRunChoice,
   runOut,
+  showdownOnBoards,
   startRunning,
   tableHands,
 } from "./run-outs.js";
@@ -66,7 +73,9 @@ import {
 } from "./showing-down.js";
 import {
   Phases,
+  boardsOf,
   initialTable,
+  isDoubleBoard,
   isInHand,
   notFolded,
   owesItsFlop,
@@ -262,6 +271,18 @@ const afterStreet = (
     return foldOut(state);
   }
 
+  if (state.hand.board.length === 5 && isDoubleBoard(state.hand)) {
+    return [
+      ...showdownOnBoards(
+        state,
+        startingWith(state, lastAggressor),
+        boardsOf(state.hand),
+        false
+      ),
+      handEnded(state),
+    ];
+  }
+
   if (state.hand.board.length === 5) {
     return state.config.showdown === "Interactive"
       ? [
@@ -275,7 +296,7 @@ const afterStreet = (
   }
 
   return streetIsOpen(state.hand) || owesItsFlop(state.hand)
-    ? [nextStreet(state.hand)]
+    ? nextStreets(state.hand)
     : runOut(state, ONE_RUN);
 };
 

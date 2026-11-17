@@ -8,6 +8,7 @@ import type { Chips, SeatIndex } from "./primitives.js";
 import {
   Phases,
   TableStates,
+  isDoubleBoard,
   notFolded,
   rotationAfter,
   updatePlayer,
@@ -184,7 +185,7 @@ export const awardPot = (state: TableState, event: EventOf<"PotAwarded">) =>
   });
 
 const undealtBoard = (hand: Hand) =>
-  Phases.$is("RunningOut")(hand.phase)
+  Phases.$is("RunningOut")(hand.phase) || isDoubleBoard(hand)
     ? []
     : hand.deck.slice(0, Math.max(0, 5 - hand.board.length));
 

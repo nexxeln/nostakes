@@ -11,7 +11,9 @@ import {
   TableConfigSchema,
   TableStates,
   buildPots,
+  boardsOf,
   isBombPot,
+  isDoubleBoard,
   pendingDecisions,
 } from "@nostakes/engine";
 import type { Card, Hand, PlayerId, SeatIndex } from "@nostakes/engine";
@@ -137,6 +139,7 @@ export const HandViewSchema = Schema.Struct({
   boards: Schema.Array(cards),
   bombPot: absentAs(Schema.Boolean, false),
   button: SeatIndexSchema,
+  doubleBoard: absentAs(Schema.Boolean, false),
   choosingRuns: Schema.Option(
     Schema.Struct({
       maxRuns: Schema.Int,
@@ -186,6 +189,7 @@ export const LastHandViewSchema = Schema.Struct({
     ),
     []
   ),
+  doubleBoard: absentAs(Schema.Boolean, false),
   handNumber: Schema.Int,
   mucked: Schema.Array(SeatIndexSchema),
   rabbit: cards,
@@ -458,11 +462,12 @@ const handView = (state: Open): Option.Option<HandView> => {
   return Option.some({
     bigBlindSeat: hand.bigBlindSeat,
     boards: Option.match(state.record, {
-      onNone: () => [hand.board],
+      onNone: () => boardsOf(hand),
       onSome: (record) => record.boards,
     }),
     bombPot: isBombPot(hand),
     button: table.button,
+    doubleBoard: isDoubleBoard(hand),
     choosingRuns: PendingDecisions.$is("ChooseRuns")(pending)
       ? Option.some({ maxRuns: pending.maxRuns, seats: pending.seats })
       : Option.none(),
@@ -522,6 +527,7 @@ const lastHandView = (
           awards: record.awards,
           boards: record.boards,
           bounty: record.bounty,
+          doubleBoard: record.doubleBoard,
           dealtIn: lastHand.players.map(({ folded, player, seat }) => ({
             folded,
             player,

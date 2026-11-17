@@ -365,10 +365,26 @@ const yourSeat = (view: OpenView) =>
     )
   );
 
+const STREET_CARDS: readonly (readonly [number, number])[] = [
+  [0, 3],
+  [3, 4],
+  [4, 5],
+];
+
+const streetByStreet = (boards: readonly (readonly Card[])[]) =>
+  STREET_CARDS.flatMap(([from, to]) =>
+    boards.flatMap((board) => board.slice(from, to))
+  );
+
 const drawOrder = (
   boards: readonly (readonly Card[])[],
-  rabbit: readonly Card[]
+  rabbit: readonly Card[],
+  doubleBoard: boolean
 ): readonly Card[] => {
+  if (doubleBoard) {
+    return streetByStreet(boards);
+  }
+
   const [first = [], ...rest] = boards;
 
   const shared = first.filter((card, index) =>
@@ -394,7 +410,7 @@ const tableSeen = (view: OpenView, hand: number): Option.Option<TableSeen> =>
       view.lastHand.pipe(
         Option.filter((last) => last.handNumber === hand),
         Option.map((last): TableSeen => ({
-          community: drawOrder(last.boards, last.rabbit),
+          community: drawOrder(last.boards, last.rabbit, last.doubleBoard),
           dealt: Option.none(),
           own: Option.some(last.yourCards),
           shown: last.shown,
@@ -403,7 +419,7 @@ const tableSeen = (view: OpenView, hand: number): Option.Option<TableSeen> =>
     onSome: (current) =>
       current.handNumber === hand
         ? Option.some<TableSeen>({
-            community: drawOrder(current.boards, []),
+            community: drawOrder(current.boards, [], current.doubleBoard),
             dealt: Option.some(
               afterButton(
                 current.players.map((player) => player.seat),

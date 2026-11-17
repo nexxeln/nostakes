@@ -106,6 +106,7 @@ export const ReplaySteps = Data.taggedEnum<ReplayStep>();
 export interface Replay {
   readonly bigBlind: number;
   readonly bombAnte: number | null;
+  readonly boards: number;
   readonly bigBlindSeat: SeatIndex;
   readonly button: SeatIndex;
   readonly dealtIn: readonly SeatIndex[];
@@ -435,6 +436,11 @@ const pointsOf = (
   dealtIn: readonly SeatIndex[]
 ): readonly OddsPoint[] => {
   const points: OddsPoint[] = [];
+
+  if (story.doubleBoard) {
+    return points;
+  }
+
   const boards = new Map<number, readonly Card[]>([[1, []]]);
   let live = dealtIn;
   let dealt = false;
@@ -605,6 +611,7 @@ export const replayOf = (
         bigBlind: story.bigBlind,
         bigBlindSeat: first.bigBlindSeat,
         bombAnte: first.bombPot?.ante ?? null,
+        boards: story.doubleBoard ? 2 : 1,
         button: first.button,
         dealtIn: first.dealtIn,
         game: story.game,

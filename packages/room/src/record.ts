@@ -12,10 +12,14 @@ const updated = (record: HandRecord, event: Event): HandRecord =>
         index === run - 1 ? [...board, ...cards] : board
       ),
     })),
-    Match.tag("RunsAgreed", ({ runs }) => ({
-      ...record,
-      boards: Array.from({ length: runs }, () => record.boards[0] ?? []),
-    })),
+    Match.tag("RunsAgreed", ({ runs }) =>
+      runs === 1
+        ? record
+        : {
+            ...record,
+            boards: Array.from({ length: runs }, () => record.boards[0] ?? []),
+          }
+    ),
     Match.tag("PotAwarded", ({ amount, eligible, pot, run, winners }) => ({
       ...record,
       awards: [...record.awards, { amount, eligible, pot, run, winners }],
@@ -47,11 +51,12 @@ export const recorded = (
   event: Event
 ): Option.Option<HandRecord> =>
   Match.value(event).pipe(
-    Match.tag("HandStarted", ({ handNumber }) =>
+    Match.tag("HandStarted", ({ bombPot, handNumber }) =>
       Option.some({
         awards: [],
-        boards: [[]],
+        boards: Array.from({ length: bombPot?.boardCount ?? 1 }, () => []),
         bounty: Option.none(),
+        doubleBoard: bombPot?.boardCount === 2,
         handNumber,
         mucked: [],
         rabbit: [],

@@ -99,6 +99,7 @@ const randomConfig = (random: Random): TableConfig => {
     bombPot: random.chance(40)
       ? BombPots.BombPots({
           ante: chipCount(1 + random.below(bigBlind * 6)),
+          boardCount: random.chance(50) ? 2 : 1,
           everyHands: random.pick([0, 0, 1, 3, 7]) ?? 0,
         })
       : BombPots.NoBombPots(),

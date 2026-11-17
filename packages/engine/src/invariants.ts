@@ -219,6 +219,7 @@ const cardViolations = (hand: Hand) => {
   const cards = distinctCards([
     ...hand.players.map((player) => player.holeCards),
     hand.board,
+    ...hand.otherBoards,
     ...runs,
     hand.deck,
   ]);
@@ -232,7 +233,8 @@ const cardViolations = (hand: Hand) => {
             `${cards.count} cards, ${cards.distinct} distinct`
           ),
         ]),
-    ...(BOARD_BY_STREET[hand.street] === hand.board.length
+    ...(BOARD_BY_STREET[hand.street] === hand.board.length &&
+    hand.otherBoards.every((board) => board.length <= hand.board.length)
       ? []
       : [
           violation(

@@ -195,8 +195,18 @@ const withTable = (
 const paysBounty = (table: EncodedSettings["table"]) =>
   table.sevenDeuce !== undefined && SevenDeuces.$is("Bounty")(table.sevenDeuce);
 
-const dealsBombPots = (table: EncodedSettings["table"]) =>
-  table.bombPot !== undefined && BombPots.$is("BombPots")(table.bombPot);
+const nextBombPots = (table: EncodedSettings["table"]) => {
+  const ante = ChipsSchema.make(table.bigBlind * 2);
+  const rule = table.bombPot;
+
+  if (rule === undefined || !BombPots.$is("BombPots")(rule)) {
+    return BombPots.BombPots({ ante, boardCount: 1, everyHands: 3 });
+  }
+
+  return rule.boardCount === 2
+    ? BombPots.NoBombPots()
+    : BombPots.BombPots({ ante, boardCount: 2, everyHands: 3 });
+};
 
 export const RULES: readonly RuleChange[] = [
   {
@@ -286,14 +296,10 @@ export const RULES: readonly RuleChange[] = [
     atHand: 0,
     change: (settings) =>
       withTable(settings, {
-        bombPot: dealsBombPots(settings.table)
-          ? BombPots.NoBombPots()
-          : BombPots.BombPots({
-              ante: ChipsSchema.make(settings.table.bigBlind * 2),
-              everyHands: 3,
-            }),
+        bombPot: nextBombPots(settings.table),
       }),
-    label: "bomb pots flip between off and every third hand",
+    label:
+      "bomb pots cycle from off to one board and then two boards every third hand",
   },
 ];
 
@@ -347,6 +353,7 @@ const tableFrom = (
   bombPot: random.chance(40)
     ? BombPots.BombPots({
         ante: ChipsSchema.make(small * 4),
+        boardCount: random.chance(50) ? 2 : 1,
         everyHands: [0, 3, 4][random.below(3)] ?? 0,
       })
     : BombPots.NoBombPots(),

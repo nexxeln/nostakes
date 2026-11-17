@@ -124,6 +124,7 @@ export interface HandRecord {
   readonly awards: readonly Award[];
   readonly boards: readonly (readonly Card[])[];
   readonly bounty: Option.Option<Bounty>;
+  readonly doubleBoard: boolean;
   readonly handNumber: number;
   readonly mucked: readonly SeatIndex[];
   readonly rabbit: readonly Card[];

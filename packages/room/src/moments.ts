@@ -77,6 +77,7 @@ export const MomentSchema = Schema.TaggedUnion({
     street: StreetSchema,
   },
   SameHand: { ...shared, rank: HandRankSchema },
+  Scoop: { ...shared },
   SevenDeuce: { ...shared, bounty: ChipsSchema, showdown: Schema.Boolean },
   SplitRuns: { ...shared, runs: Schema.Int },
   Suckout: { ...shared, odds: OddsSchema, street: StreetSchema },
@@ -94,6 +95,7 @@ export const MomentKindSchema = Schema.Literals([
   "SevenDeuce",
   "SameHand",
   "SplitRuns",
+  "Scoop",
 ]);
 
 export type MomentKind = typeof MomentKindSchema.Type;
@@ -109,6 +111,7 @@ export const TIERS: Readonly<Record<MomentKind, readonly Tier[]>> = {
   Cooler: [1, 2, 3],
   HeroCall: [1, 2],
   SameHand: [1],
+  Scoop: [1, 2],
   SevenDeuce: [1],
   SplitRuns: [1],
   Suckout: [1, 2, 3],
@@ -410,7 +413,9 @@ const bluffs = (story: HandStory, pot: Chips): readonly Moment[] => {
   return Option.match(lastRaise(story), {
     onNone: () => [],
     onSome: ({ wager }) => {
-      const board = story.common.slice(0, wager.board);
+      const boards = story.doubleBoard
+        ? story.boards.map((board) => board.slice(0, wager.board))
+        : [story.common.slice(0, wager.board)];
 
       const shown = shownHand(story, wager.seat).pipe(
         Option.filter(
@@ -420,7 +425,7 @@ const bluffs = (story: HandStory, pot: Chips): readonly Moment[] => {
             winners.length === 1 &&
             winners[0] === wager.seat &&
             realBet(wager, story.bigBlind) &&
-            nothingOfItsOwn(story.game, hole, board)
+            boards.every((board) => nothingOfItsOwn(story.game, hole, board))
         )
       );
 
@@ -608,6 +613,30 @@ const splitRuns = (
           runs: showdown.runs.length,
           seats: [...new Set(showdown.runs.flat())],
           tier: 1,
+        }),
+      ]
+    : [];
+};
+
+const scoops = (story: HandStory, pot: Chips): readonly Moment[] => {
+  const [first, ...others] = story.boards.map((_, run) =>
+    mainWinners(story, run + 1)
+  );
+
+  const [winner] = first ?? [];
+  const contenders = mainResults(story)[0]?.eligible ?? [];
+
+  return story.doubleBoard &&
+    story.showdown &&
+    contenders.length >= 2 &&
+    winner !== undefined &&
+    first?.length === 1 &&
+    others.every((winners) => winners.length === 1 && winners[0] === winner)
+    ? [
+        Moments.Scoop({
+          pot,
+          seats: [winner],
+          tier: pot >= BIG_POT_BLINDS * story.bigBlind ? 2 : 1,
         }),
       ]
     : [];
@@ -853,17 +882,21 @@ const recognised = (
 ): readonly Moment[] => {
   const pot = chipsOf(potTotal(story));
 
-  const fromShowdown = Option.match(mainShowdown(story), {
-    onNone: () => [],
-    onSome: (showdown) => [
-      ...swings(story, showdown, pot, everyBoard),
-      ...sameHands(story, showdown, pot),
-      ...splitRuns(story, showdown, pot),
-    ],
-  });
+  const fromShowdown = Option.match(
+    mainShowdown(story).pipe(Option.filter(() => !story.doubleBoard)),
+    {
+      onNone: () => [],
+      onSome: (showdown) => [
+        ...swings(story, showdown, pot, everyBoard),
+        ...sameHands(story, showdown, pot),
+        ...splitRuns(story, showdown, pot),
+      ],
+    }
+  );
 
   return [
     ...bigHands(story, pot),
+    ...scoops(story, pot),
     ...fromShowdown,
     ...bluffs(story, pot),
     ...heroCalls(story, pot),

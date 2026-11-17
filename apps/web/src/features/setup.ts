@@ -100,6 +100,7 @@ export const EXTRAS: readonly Extra[] = [
   ...tagged("Bounty", "table.sevenDeuce._tag", ["table.sevenDeuce.amount"]),
   ...tagged("BombPot", "table.bombPot._tag", [
     "table.bombPot.ante",
+    "table.bombPot.boardCount",
     "table.bombPot.everyHands",
   ]),
   ...counted("Runs", "table.maxRuns", 2, 1),

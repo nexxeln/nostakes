@@ -3,7 +3,11 @@ import { Data, Schema } from "effect";
 import { CardSchema, DeckSchema } from "./cards.js";
 import { HandRankSchema } from "./evaluation.js";
 import { ChipsSchema, PlayerIdSchema, SeatIndexSchema } from "./primitives.js";
-import { RunCountSchema, TableConfigSchema } from "./rules.js";
+import {
+  BoardCountSchema,
+  RunCountSchema,
+  TableConfigSchema,
+} from "./rules.js";
 import { StreetSchema } from "./state.js";
 
 export const BlindSchema = Schema.Literals(["Small", "Big"]);
@@ -29,6 +33,7 @@ export const ShowdownEntrySchema = Schema.TaggedUnion({
 export const BombPotStartSchema = Schema.Struct({
   ante: ChipsSchema,
   bigBlind: ChipsSchema,
+  boardCount: Schema.optionalKey(BoardCountSchema),
 });
 
 export type BombPotStart = typeof BombPotStartSchema.Type;

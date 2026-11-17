@@ -122,6 +122,7 @@ const randomConfig = (random: Random): TableConfig => {
     bombPot: random.chance(40)
       ? BombPots.BombPots({
           ante: chipCount(1 + random.below(bigBlind * 6)),
+          boardCount: random.chance(50) ? 2 : 1,
           everyHands: random.pick([0, 0, 1, 3, 7]) ?? 0,
         })
       : BombPots.NoBombPots(),
@@ -576,6 +577,9 @@ const newCounts = () => ({
   bombPotsInARow: 0,
   bombPotsRefusedWhileOff: 0,
   bombPotsWithShortAntes: 0,
+  doubleBoardOddChips: 0,
+  doubleBoardScoops: 0,
+  doubleBoardSplits: 0,
   bounties: 0,
   bountiesFromShortStacks: 0,
   bountiesShownForTheTable: 0,
@@ -778,6 +782,37 @@ const countRunOuts = (counts: Counts, hand: readonly Event[]) => {
   counts.boardsRunFour += runs === 4 ? 1 : 0;
 };
 
+const takers = (award: Types.ExtractTag<Event, "PotAwarded">) =>
+  award.winners
+    .map((winner) => winner.seat)
+    .toSorted((left, right) => left - right)
+    .join(",");
+
+const countDoubleBoard = (
+  counts: Counts,
+  started: Types.ExtractTag<Event, "HandStarted"> | undefined,
+  awards: readonly Types.ExtractTag<Event, "PotAwarded">[]
+) => {
+  const onBoard = (run: number) =>
+    awards.filter((award) => award.run === run && award.pot === 1);
+
+  const [first] = onBoard(1);
+  const [second] = onBoard(2);
+
+  if (
+    started?.bombPot?.boardCount !== 2 ||
+    first === undefined ||
+    second === undefined
+  ) {
+    return;
+  }
+
+  counts.doubleBoardOddChips += first.amount > second.amount ? 1 : 0;
+  counts.doubleBoardScoops +=
+    first.winners.length === 1 && takers(first) === takers(second) ? 1 : 0;
+  counts.doubleBoardSplits += takers(first) === takers(second) ? 0 : 1;
+};
+
 const countHand = (counts: Counts, hand: readonly Event[], seen: Seen) => {
   const started = hand.find(Events.$is("HandStarted"));
   const straddles = hand.filter(Events.$is("StraddlePosted"));
@@ -801,6 +836,7 @@ const countHand = (counts: Counts, hand: readonly Event[], seen: Seen) => {
   )
     ? 1
     : 0;
+  countDoubleBoard(counts, started, awards);
   counts.sidePots += awards.some((award) => award.pot > 1) ? 1 : 0;
   counts.splitPots += awards.some((award) => award.winners.length > 1) ? 1 : 0;
   counts.oddChips += awards.some(

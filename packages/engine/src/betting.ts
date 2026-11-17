@@ -16,6 +16,7 @@ import type { ShowdownChoices } from "./showing-down.js";
 import {
   Phases,
   activePlayers,
+  boardsOf,
   commit,
   isInHand,
   notFolded,
@@ -367,14 +368,16 @@ const NEXT_STREET: Readonly<
   Turn: { cards: 1, street: "River" },
 };
 
-export const nextStreet = (hand: Hand) => {
+export const nextStreets = (hand: Hand): readonly Event[] => {
   const next = NEXT_STREET[hand.street];
 
-  return Events.StreetDealt({
-    cards: hand.deck.slice(0, next.cards),
-    run: 1,
-    street: next.street,
-  });
+  return boardsOf(hand).map((_, index) =>
+    Events.StreetDealt({
+      cards: hand.deck.slice(index * next.cards, (index + 1) * next.cards),
+      run: index + 1,
+      street: next.street,
+    })
+  );
 };
 
 const dealToRun = (
@@ -415,12 +418,25 @@ const dealToBoard = (state: InHand, cards: readonly Card[], street: Street) => {
   });
 };
 
+const dealToOtherBoard = (state: InHand, event: EventOf<"StreetDealt">) =>
+  withHand(state, {
+    ...state.hand,
+    deck: state.hand.deck.slice(event.cards.length),
+    otherBoards: state.hand.otherBoards.map((cards, index) =>
+      index === event.run - 2 ? [...cards, ...event.cards] : cards
+    ),
+  });
+
 export const dealStreet = (state: TableState, event: EventOf<"StreetDealt">) =>
-  whenInHand(state, (inHand) =>
-    Phases.$is("RunningOut")(inHand.hand.phase)
-      ? dealToRun(inHand, event, inHand.hand.phase.runs)
-      : dealToBoard(inHand, event.cards, event.street)
-  );
+  whenInHand(state, (inHand) => {
+    if (Phases.$is("RunningOut")(inHand.hand.phase)) {
+      return dealToRun(inHand, event, inHand.hand.phase.runs);
+    }
+
+    return event.run === 1
+      ? dealToBoard(inHand, event.cards, event.street)
+      : dealToOtherBoard(inHand, event);
+  });
 
 export const streetIsOpen = (hand: Hand) =>
   notFolded(hand).length > 1 &&

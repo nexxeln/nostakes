@@ -26,6 +26,9 @@ export const RecapPlayerSchema = Schema.Struct({
 
 export const RecapMomentSchema = Schema.Struct({
   boards: Schema.Array(Schema.Array(CardSchema)),
+  doubleBoard: Schema.Boolean.pipe(
+    Schema.withDecodingDefaultTypeKey(Effect.succeed(false))
+  ),
   hand: HandNumberSchema,
   moment: MomentSchema,
   players: Schema.Array(RecapPlayerSchema),
@@ -114,6 +117,7 @@ const recapMomentOf = (
   moment: Moment
 ): RecapMoment => ({
   boards: story.boards,
+  doubleBoard: story.doubleBoard,
   hand: HandNumberSchema.make(hand.hand),
   moment,
   players: moment.seats.flatMap((seat) =>

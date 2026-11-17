@@ -50,6 +50,15 @@ CONFIGURATIONS = {
         "that deals the hole cards and the flop before its betting round, opened by position. "
         "The replay builds that state and compares the hand in full."
     ),
+    "double-board-streets": (
+        "A double-board bomb pot is PokerKit's own multi-board game: the replay starts the "
+        "state with two boards, deals each street to the first board and then the second, "
+        "and PokerKit splits every pot between the boards, the odd chip to the first."
+    ),
+    "double-board-runs-once": (
+        "The engine runs each board of a double board once and asks nobody for runs. The "
+        "replay answers PokerKit's run question with no preference."
+    ),
     "no-burn-cards": (
         "Brief rule 9 deals without burn cards. The replay builds PokerKit streets "
         "with no burns and deals every card explicitly from the exported deck."
@@ -192,7 +201,7 @@ REPLAY_ONLY = {
     "straddle-list": "Brief rule 8, recomputed for accepted and rejected straddle lists. PokerKit takes any blind list.",
     "run-cap": "Brief rule 19's cap of maxRuns and the remaining deck. PokerKit has no cap.",
     "rabbit-hunt": (
-        "Brief rule 27, the next undealt cards from the exported deck, and with rabbitHunters "
+        "Brief rule 27, the next undealt cards from the exported deck (none after a double board), and with rabbitHunters "
         "StillIn that only a seat that never folded may hunt. PokerKit has no rabbit hunt."
     ),
     "voluntary-show": (
@@ -229,7 +238,7 @@ ANTE_FIELDS = {"BigBlindPays": {"_tag", "amount"}, "EveryPlayer": {"_tag", "amou
 
 BOUNTY_FIELDS = {"Bounty": {"_tag", "amount"}, "NoBounty": {"_tag"}}
 
-BOMB_FIELDS = {"BombPots": {"_tag", "ante", "everyHands"}, "NoBombPots": {"_tag"}}
+BOMB_FIELDS = {"BombPots": {"_tag", "ante", "boardCount", "everyHands"}, "NoBombPots": {"_tag"}}
 
 
 def bomb_due(config, called, hand_number):
@@ -252,7 +261,11 @@ def known_setting(key, value):
         case "sevenDeuce":
             return isinstance(value, dict) and BOUNTY_FIELDS.get(value.get("_tag")) == set(value)
         case "bombPot":
-            return isinstance(value, dict) and BOMB_FIELDS.get(value.get("_tag")) == set(value)
+            return (
+                isinstance(value, dict)
+                and BOMB_FIELDS.get(value.get("_tag")) == set(value)
+                and value.get("boardCount", 1) in (1, 2)
+            )
         case _:
             return value in SETTING_CHOICES.get(key, ())
 
@@ -308,6 +321,7 @@ class Hand:
         self.engine_all_in = set()
         self.winner_cache = {}
         self.bomb = record["start"][0].get("bombPot")
+        self.boards = (self.bomb or {}).get("boardCount", 1)
         self.short_big_blind = self.bomb is None and not record["straddles"] and not any(
             e["_tag"] == "BlindPosted" and e["blind"] == "Big" and e["amount"] == self.big_blind for e in record["start"]
         )
@@ -446,8 +460,12 @@ class Hand:
             self.differ("bomb-pot-table", f"replay deals {dealt} with the button on {button}, engine {started['dealtIn']} and {started['button']}")
         if self.straddles:
             self.differ("bomb-pot-table", f"engine accepted straddles {self.straddles} in a bomb pot")
-        if self.bomb != {"ante": self.config["bombPot"]["ante"], "bigBlind": self.big_blind}:
-            self.differ("bomb-pot-table", f"engine started {self.bomb}, the rules say ante {self.config['bombPot']['ante']} at big blind {self.big_blind}")
+        rule = self.config["bombPot"]
+        expected = {"ante": rule["ante"], "bigBlind": self.big_blind}
+        if rule["boardCount"] == 2:
+            expected["boardCount"] = 2
+        if self.bomb != expected:
+            self.differ("bomb-pot-table", f"engine started {self.bomb}, the rules say {expected}")
 
     def check_rejected_bomb(self, rejected):
         tag = rejected["rejection"]["tag"]
@@ -500,6 +518,8 @@ class Hand:
         self.features.add(f"seats-{self.count}")
         if self.bomb is not None:
             self.features.add("bomb-pot")
+        if self.boards > 1:
+            self.features.add("double-board")
         ante = self.config["ante"]["_tag"]
         self.features.add({"NoAnte": "ante-none", "EveryPlayer": "ante-every-player", "BigBlindPays": "ante-big-blind"}[ante])
         if not self.straddles:
@@ -612,7 +632,10 @@ class Hand:
             tuple(stacks),
             self.count,
             mode=Mode.CASH_GAME,
+            starting_board_count=self.boards,
         )
+        if self.boards > 1:
+            self.configured.add("double-board-streets")
 
     def check_postings(self):
         engine_antes = Counter()
@@ -697,6 +720,10 @@ class Hand:
                 selectors = [self.order[i] for i in state.runout_count_selector_indices]
                 if self.selectors is None:
                     self.selectors = set(selectors)
+                if self.boards > 1:
+                    state.select_runout_count(None)
+                    self.configured.add("double-board-runs-once")
+                    continue
                 if self.max_runs == 1:
                     state.select_runout_count(None)
                     self.configured.add("one-run-no-choice")
@@ -1150,7 +1177,7 @@ class Hand:
             return
         boards = self.state.board_count
         runs = [e["runs"] for e in events if e["_tag"] == "RunsAgreed"]
-        if boards != (runs[0] if runs else 1):
+        if boards != self.boards * (runs[0] if runs else 1):
             self.differ("runs", f"pokerkit ran {boards} boards, engine {runs}")
             return
         expected_gain = Counter()
@@ -1278,7 +1305,7 @@ class Hand:
                 public[event["seat"]].update(event["cards"])
         board = sum(len(e["cards"]) for e in events if e["_tag"] == "StreetDealt" and e["run"] == 1)
         ran_out = any(e["_tag"] == "RunsAgreed" for e in events) or any(e["_tag"] == "HandsTabled" for e in events)
-        undealt = [] if ran_out else self.deck[2 * self.count + board : 2 * self.count + 5]
+        undealt = [] if ran_out or self.boards > 1 else self.deck[2 * self.count + board : 2 * self.count + 5]
         hunted = False
         folded = {e["seat"] for e in events if e["_tag"] == "Folded"}
         for step in self.record["after"]:

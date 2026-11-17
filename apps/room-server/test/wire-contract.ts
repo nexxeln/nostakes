@@ -408,4 +408,22 @@ export const WIRE_CONTRACTS: readonly WireContract[] = [
     },
     protocol: 24,
   },
+  {
+    parts: {
+      clientFrame: "63389dce2ca9b3bb",
+      command: "5834c2c6d254739d",
+      event: "fe93df37eb52a4a5",
+      httpRefusal: "215d5d5e4baef1ba",
+      joinKnocking: "50d07270dfa9c8c4",
+      joinRefusal: "614c650c63d38830",
+      joinRequest: "06c8d1a0370bf3b3",
+      openRequest: "eef4620fc64d985e",
+      rejection: "1d064ed6f9543993",
+      roomPass: "c10081ecd072b4b7",
+      serverFrame: "2edd2d1faf066085",
+      standings: "6122028c0437a5fc",
+      view: "976bb1ac35dc2672",
+    },
+    protocol: 25,
+  },
 ];

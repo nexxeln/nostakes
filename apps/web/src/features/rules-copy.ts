@@ -37,6 +37,7 @@ export type RuleControl =
   | {
       readonly kind: "Segments";
       readonly labels: Readonly<Record<string, string>>;
+      readonly start?: string;
     }
   | {
       readonly kind: "Stepper";
@@ -73,10 +74,13 @@ const toggle = (on = "true", off = "false"): RuleControl => ({
   on,
 });
 
-const segments = (labels: Readonly<Record<string, string>>): RuleControl => ({
-  kind: "Segments",
-  labels,
-});
+const segments = (
+  labels: Readonly<Record<string, string>>,
+  start?: string
+): RuleControl =>
+  start === undefined
+    ? { kind: "Segments", labels }
+    : { kind: "Segments", labels, start };
 
 const stepper = (
   unit: string,
@@ -249,11 +253,16 @@ export const RULES: readonly RuleCopy[] = [
     toggle("BombPots", "NoBombPots"),
     {
       brief: (draft) =>
-        when(draft["table.bombPot._tag"] === "BombPots", () =>
-          numberAt(draft, "table.bombPot.everyHands") > 0
-            ? `bomb pot ${draft["table.bombPot.ante"]} every ${draft["table.bombPot.everyHands"]}`
-            : `bomb pot ${draft["table.bombPot.ante"]}`
-        ),
+        when(draft["table.bombPot._tag"] === "BombPots", () => {
+          const kind =
+            numberAt(draft, "table.bombPot.boardCount") === 2
+              ? "double-board bomb pot"
+              : "bomb pot";
+
+          return numberAt(draft, "table.bombPot.everyHands") > 0
+            ? `${kind} ${draft["table.bombPot.ante"]} every ${draft["table.bombPot.everyHands"]}`
+            : `${kind} ${draft["table.bombPot.ante"]}`;
+        }),
       help: "Everyone antes, the flop is dealt, and the betting starts there.",
     }
   ),
@@ -262,6 +271,15 @@ export const RULES: readonly RuleCopy[] = [
     "Blinds",
     "Bomb pot ante",
     stepper("", 1, bigBlindOf, 4)
+  ),
+  rule(
+    "table.bombPot.boardCount",
+    "Blinds",
+    "Bomb pot boards",
+    segments({ 1: "One", 2: "Two" }, "1"),
+    {
+      help: "Two: each pot is split between the boards, and winning both scoops it.",
+    }
   ),
   rule(
     "table.bombPot.everyHands",

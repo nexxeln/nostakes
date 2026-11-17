@@ -1,6 +1,8 @@
 import { describe, expect, it } from "@effect/vitest";
 import {
   Actions,
+  BombPots,
+  ChipsSchema,
   Events,
   PendingDecisions,
   Seats,
@@ -284,6 +286,86 @@ const nightWithALateArrival = (): readonly Watched[] => {
   return steps;
 };
 
+const judgedAwayAndBack = (played: ReturnType<typeof playSession>) => {
+  const witnesses = new Map<string, Witness>();
+  const spectator = SPECTATOR;
+  const AWAY_EVERY = 30;
+  const AWAY_FOR = 12;
+
+  const awayAt = (watcher: number, step: number) =>
+    (step + watcher * 7) % AWAY_EVERY < AWAY_FOR;
+
+  const away = new Set<string>();
+
+  for (const [index, step] of played.steps.entries()) {
+    if (Result.isFailure(step.decision)) {
+      continue;
+    }
+
+    const roomTime = reachedDevicesAt(step.before, step.command);
+    const at = EpochMillisSchema.make(roomTime);
+    const arrival = SealArrivals.Live({ at });
+
+    const watchers: readonly (readonly [string, Audience])[] = [
+      [spectator, Audiences.Spectator()],
+      ...[...new Set([...POOL, ...membersOf(step.after)])].map(
+        (player) => [player, audienceOf(step.after, player)] as const
+      ),
+    ];
+
+    for (const [watcher, [name, audience]] of watchers.entries()) {
+      if (awayAt(watcher, index)) {
+        away.add(name);
+        continue;
+      }
+
+      let witness = witnesses.get(name) ?? emptyWitness;
+
+      if (!away.delete(name)) {
+        for (const event of step.events) {
+          witness = witnessEvent(witness, redact(event, audience), arrival);
+        }
+      }
+
+      witnesses.set(
+        name,
+        witnessView(witness, viewFor(step.after, audience, roomTime), at)
+      );
+    }
+  }
+
+  const problems: string[] = [];
+  const judge = judgeOnce();
+
+  for (const [name, witness] of witnesses) {
+    for (const hand of handsWitnessed(witness)) {
+      Result.match(evidenceFor(witness, hand, ROOM, drand.chain), {
+        onFailure: (missing) => {
+          if (
+            MissingEvidences.$is("Unopened")(missing) ||
+            MissingEvidences.$is("NoSeal")(missing)
+          ) {
+            problems.push(`${name} hand ${hand}: ${missing._tag}`);
+          }
+        },
+        onSuccess: (evidence) => {
+          const kind = verdictKind(judge(evidence));
+
+          if (
+            kind !== "Checked InTime" &&
+            kind !== "Checked NotWatched" &&
+            kind !== "NotChecked"
+          ) {
+            problems.push(`${name} hand ${hand}: ${kind}`);
+          }
+        },
+      });
+    }
+  }
+
+  return problems;
+};
+
 describe("what a device sees of a checked hand", () => {
   it.prop(
     "lets every member and a spectator check every sealed hand they saw, from redacted events and views alone, in time unless their device started watching after that hand was sealed, and leaves unjudged only a hand that was over before the device started watching",
@@ -311,6 +393,47 @@ describe("what a device sees of a checked hand", () => {
     nights(2, 6)
   );
 
+  it.prop(
+    "lets every device check a double-board bomb pot, whose boards are dealt street by street from the sealed deck",
+    { source: session },
+    ({ source }) => {
+      const played = playSession(source, undefined, (drawn) => ({
+        ...drawn,
+        shuffle: "Checked",
+        table: {
+          ...drawn.table,
+          bombPot: BombPots.BombPots({
+            ante: ChipsSchema.make(drawn.table.bigBlind),
+            boardCount: 2,
+            everyHands: 1,
+          }),
+        },
+      }));
+
+      const steps = played.steps.flatMap((step) =>
+        Result.isSuccess(step.decision)
+          ? [
+              {
+                after: step.after,
+                at: reachedDevicesAt(step.before, step.command),
+                events: step.events,
+              },
+            ]
+          : []
+      );
+
+      const judged = judgedLive(ROOM, steps, POOL);
+
+      expect(judged.problems).toStrictEqual([]);
+      expect(judgedAwayAndBack(played)).toStrictEqual([]);
+      expect(
+        judged.outcomes.filter((outcome) => outcome.endsWith("Checked InTime"))
+          .length
+      ).toBeGreaterThan(0);
+    },
+    nights(2, 6)
+  );
+
   it("gives someone who joined after a sealed hand was over no verdict on it, because the view no longer says who was dealt in, and never an alarm", () => {
     expect(judgedLive(roomCode, nightWithALateArrival(), [])).toStrictEqual({
       outcomes: [
@@ -328,88 +451,12 @@ describe("what a device sees of a checked hand", () => {
     "lets a device that was away and came back with only the view check every hand it saw whole, and never files a later hand's cards under the hand it saw last",
     { source: session },
     ({ source }) => {
-      const witnesses = new Map<string, Witness>();
-      const spectator = SPECTATOR;
-      const AWAY_EVERY = 30;
-      const AWAY_FOR = 12;
-
       const played = playSession(source, undefined, (drawn) => ({
         ...drawn,
         shuffle: "Checked",
       }));
 
-      const awayAt = (watcher: number, step: number) =>
-        (step + watcher * 7) % AWAY_EVERY < AWAY_FOR;
-
-      const away = new Set<string>();
-
-      for (const [index, step] of played.steps.entries()) {
-        if (Result.isFailure(step.decision)) {
-          continue;
-        }
-
-        const roomTime = reachedDevicesAt(step.before, step.command);
-        const at = EpochMillisSchema.make(roomTime);
-        const arrival = SealArrivals.Live({ at });
-
-        const watchers: readonly (readonly [string, Audience])[] = [
-          [spectator, Audiences.Spectator()],
-          ...[...new Set([...POOL, ...membersOf(step.after)])].map(
-            (player) => [player, audienceOf(step.after, player)] as const
-          ),
-        ];
-
-        for (const [watcher, [name, audience]] of watchers.entries()) {
-          if (awayAt(watcher, index)) {
-            away.add(name);
-            continue;
-          }
-
-          let witness = witnesses.get(name) ?? emptyWitness;
-
-          if (!away.delete(name)) {
-            for (const event of step.events) {
-              witness = witnessEvent(witness, redact(event, audience), arrival);
-            }
-          }
-
-          witnesses.set(
-            name,
-            witnessView(witness, viewFor(step.after, audience, roomTime), at)
-          );
-        }
-      }
-
-      const problems: string[] = [];
-      const judge = judgeOnce();
-
-      for (const [name, witness] of witnesses) {
-        for (const hand of handsWitnessed(witness)) {
-          Result.match(evidenceFor(witness, hand, ROOM, drand.chain), {
-            onFailure: (missing) => {
-              if (
-                MissingEvidences.$is("Unopened")(missing) ||
-                MissingEvidences.$is("NoSeal")(missing)
-              ) {
-                problems.push(`${name} hand ${hand}: ${missing._tag}`);
-              }
-            },
-            onSuccess: (evidence) => {
-              const kind = verdictKind(judge(evidence));
-
-              if (
-                kind !== "Checked InTime" &&
-                kind !== "Checked NotWatched" &&
-                kind !== "NotChecked"
-              ) {
-                problems.push(`${name} hand ${hand}: ${kind}`);
-              }
-            },
-          });
-        }
-      }
-
-      expect(problems).toStrictEqual([]);
+      expect(judgedAwayAndBack(played)).toStrictEqual([]);
     },
     nights(2, 6)
   );

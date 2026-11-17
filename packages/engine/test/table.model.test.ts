@@ -184,7 +184,11 @@ const dealtIn = (hand: readonly Event[]): Dealt => {
   const holes = new Map<number, readonly Card[]>();
   const shared: Card[] = [];
   const runs = new Map<number, Card[]>();
-  let agreed = false;
+
+  const double =
+    hand.find(Events.$is("HandStarted"))?.bombPot?.boardCount === 2;
+
+  let agreed = double;
 
   for (const event of hand) {
     if (Events.$is("HoleCardsDealt")(event)) {

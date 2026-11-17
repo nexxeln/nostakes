@@ -153,6 +153,7 @@ const handViewOf = (inHand: InHand): HandView => {
     boards: [hand.board],
     bombPot: false,
     button: inHand.button,
+    doubleBoard: false,
     choosingRuns: Option.none(),
     handNumber: inHand.handNumber,
     players: hand.players.map((player) => ({

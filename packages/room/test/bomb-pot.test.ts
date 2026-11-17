@@ -5,10 +5,12 @@ import {
   BombPotsOff,
   Events,
   TableConfigSchema,
+  bombPotBoards,
   bombPotDue,
 } from "@nostakes/engine";
-import type { Action } from "@nostakes/engine";
+import type { Action, Event } from "@nostakes/engine";
 import { Effect, Option } from "effect";
+import type { Types } from "effect";
 import * as Arbitrary from "effect/Arbitrary";
 
 import {
@@ -46,11 +48,19 @@ import { playSession, session } from "./sessions.js";
 
 const ANTE = 20;
 
-const withBombPots = (everyHands: number, base = settings): RoomSettings => ({
+const withBombPots = (
+  everyHands: number,
+  base = settings,
+  boards: 1 | 2 = 1
+): RoomSettings => ({
   ...base,
   table: TableConfigSchema.make({
     ...base.table,
-    bombPot: BombPots.BombPots({ ante: chipCount(ANTE), everyHands }),
+    bombPot: BombPots.BombPots({
+      ante: chipCount(ANTE),
+      boardCount: boards,
+      everyHands,
+    }),
   }),
 });
 
@@ -258,6 +268,25 @@ const dueAt = (state: RoomState, calledAtSeal: Option.Option<boolean>) =>
       ),
   });
 
+const boardsAt = (state: RoomState, bomb: boolean) =>
+  RoomStates.$match(state, {
+    Closed: () => 1,
+    Open: (open) => (bomb ? bombPotBoards(open.table.config) : 1),
+  });
+
+const boardProblems = (
+  started: Types.ExtractTag<Event, "HandStarted">,
+  boards: number
+) => {
+  const dealt = started.bombPot?.boardCount ?? 1;
+
+  return dealt === boards
+    ? []
+    : [
+        `hand ${started.handNumber} dealt ${dealt} boards, the rules said ${boards}`,
+      ];
+};
+
 const anyRoom = (chosen: RoomSettings) => chosen;
 
 const checkedRoom = (chosen: RoomSettings): RoomSettings => ({
@@ -268,20 +297,26 @@ const checkedRoom = (chosen: RoomSettings): RoomSettings => ({
 const kindProblems = (source: Source, room = anyRoom) => {
   const problems: string[] = [];
   const sealedAs = new Map<number, boolean>();
+  const sealedBoards = new Map<number, number>();
   let previous: RoomState | undefined;
   let bombPots = 0;
   let sealedBombPots = 0;
+  let doubleBoards = 0;
   playSession(
     source,
     (state, event) => {
       const before = previous ?? state;
 
       if (RoomEvents.$is("HandSealed")(event)) {
-        sealedAs.set(event.hand, dueAt(before, Option.none()));
+        const due = dueAt(before, Option.none());
+
+        sealedAs.set(event.hand, due);
+        sealedBoards.set(event.hand, boardsAt(before, due));
       }
 
       if (RoomEvents.$is("SealWithdrawn")(event)) {
         sealedAs.delete(event.hand);
+        sealedBoards.delete(event.hand);
       }
 
       if (
@@ -293,6 +328,11 @@ const kindProblems = (source: Source, room = anyRoom) => {
         const expected = sealed ?? dueAt(before, Option.none());
         const bomb = started.bombPot !== undefined;
 
+        const boards =
+          sealedBoards.get(started.handNumber) ?? boardsAt(before, bomb);
+
+        problems.push(...boardProblems(started, boards));
+        doubleBoards += boards === 2 ? 1 : 0;
         bombPots += bomb ? 1 : 0;
         sealedBombPots += bomb && sealed !== undefined ? 1 : 0;
 
@@ -312,7 +352,7 @@ const kindProblems = (source: Source, room = anyRoom) => {
     room
   );
 
-  return { bombPots, problems, sealedBombPots };
+  return { bombPots, doubleBoards, problems, sealedBombPots };
 };
 
 describe("generated rooms with bomb pots", () => {
@@ -338,7 +378,7 @@ describe("generated rooms with bomb pots", () => {
     Effect.gen(function* reachBombPots() {
       const sources = yield* Arbitrary.sampleEffect(session, {
         count: sized(40, 150),
-        seed: 20_261_111,
+        seed: 20_261_117,
       });
 
       const outcomes = sources.map((source, index) =>
@@ -349,14 +389,17 @@ describe("generated rooms with bomb pots", () => {
 
       let bombPots = 0;
       let sealedBombPots = 0;
+      let doubleBoards = 0;
 
       for (const outcome of outcomes) {
         bombPots += outcome.bombPots;
+        doubleBoards += outcome.doubleBoards;
         sealedBombPots += outcome.sealedBombPots;
       }
 
       expect(bombPots).toBeGreaterThan(sized(15, 60));
       expect(sealedBombPots).toBeGreaterThan(sized(1, 5));
+      expect(doubleBoards).toBeGreaterThan(sized(5, 20));
     })
   );
 });

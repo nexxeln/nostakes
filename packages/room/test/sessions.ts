@@ -116,6 +116,7 @@ export const tableConfigFrom = (random: SeededRandom): TableConfig => {
     bombPot: random.chance(1, 2)
       ? BombPots.BombPots({
           ante: chips(1 + random.below(small * 8)),
+          boardCount: random.chance(1, 2) ? 2 : 1,
           everyHands: [0, 0, 1, 2, 5][random.below(5)] ?? 0,
         })
       : BombPots.NoBombPots(),

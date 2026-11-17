@@ -143,6 +143,7 @@ const bombPotsFor = (index: number): TableRules => {
     return {
       bombPot: BombPots.BombPots({
         ante: ChipsSchema.make(BOMB_POT_ANTE),
+        boardCount: 2,
         everyHands: BOMB_POT_EVERY,
       }),
     };
@@ -152,6 +153,7 @@ const bombPotsFor = (index: number): TableRules => {
     ? {
         bombPot: BombPots.BombPots({
           ante: ChipsSchema.make(BOMB_POT_ANTE),
+          boardCount: 1,
           everyHands: 0,
         }),
       }

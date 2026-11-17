@@ -1,6 +1,7 @@
 import { describe, expect, it } from "@effect/vitest";
 import {
   Actions,
+  BombPots,
   ChipsSchema,
   Events,
   PendingDecisions,
@@ -11,7 +12,7 @@ import {
   TableStates,
   pendingDecisions,
 } from "@nostakes/engine";
-import type { Event, LegalActions, PlayerId } from "@nostakes/engine";
+import type { BombPot, Event, LegalActions, PlayerId } from "@nostakes/engine";
 import { Option, Result, Schema } from "effect";
 import * as Arbitrary from "effect/Arbitrary";
 
@@ -260,6 +261,11 @@ const silentNight = (
   return { ended, refused, started, state, steps };
 };
 
+const oneBoard = (rule: BombPot): BombPot =>
+  BombPots.$is("BombPots")(rule)
+    ? BombPots.BombPots({ ...rule, boardCount: 1 })
+    : rule;
+
 const silenced = (base: RoomSettings, below: (bound: number) => number) => ({
   ...base,
   approval: { chips: false, joins: false, seats: false },
@@ -335,6 +341,7 @@ describe("liveness", () => {
         dealing: "Automatic",
         table: {
           ...base.table,
+          bombPot: oneBoard(base.table.bombPot),
           maxRuns: RunCountSchema.make(2 + random.below(2)),
           runCount: "Vote",
         },
@@ -439,7 +446,11 @@ describe("liveness at an interactive showdown", () => {
         ...base,
         approval: { chips: false, joins: false, seats: false },
         dealing: "Automatic",
-        table: { ...base.table, showdown: "Interactive" },
+        table: {
+          ...base.table,
+          bombPot: oneBoard(base.table.bombPot),
+          showdown: "Interactive",
+        },
         turnSeconds: 0,
       };
 

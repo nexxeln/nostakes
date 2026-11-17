@@ -15,7 +15,7 @@ import {
 } from "./rejection.js";
 import type { StraddleProblem } from "./rejection.js";
 import { Antes, BombPots, straddleAmount } from "./rules.js";
-import type { TableConfig } from "./rules.js";
+import type { BoardCount, TableConfig } from "./rules.js";
 import {
   NO_DEBT,
   Phases,
@@ -471,6 +471,12 @@ export const bombPotDue = (state: TableState, called: boolean) =>
     NoBombPots: () => false,
   });
 
+export const bombPotBoards = (config: TableConfig): BoardCount =>
+  BombPots.$match(config.bombPot, {
+    BombPots: ({ boardCount }) => boardCount,
+    NoBombPots: (): BoardCount => 1,
+  });
+
 const bombAnteFor = (
   state: BetweenHands,
   command: CommandOf<"StartHand">
@@ -521,11 +527,15 @@ const startBombPot = (
 
   const blinds = blindSeats(dealtIn, button);
   const dealOrder = clockwiseFrom(dealtIn, button);
+  const boardCount = bombPotBoards(state.config);
 
   return Result.succeed([
     Events.HandStarted({
       bigBlindSeat: blinds.big,
-      bombPot: { ante, bigBlind: state.config.bigBlind },
+      bombPot:
+        boardCount === 2
+          ? { ante, bigBlind: state.config.bigBlind, boardCount }
+          : { ante, bigBlind: state.config.bigBlind },
       button,
       dealtIn,
       deck: command.deck,
@@ -712,6 +722,10 @@ export const beginHand = (
       deadMoney: NO_CHIPS,
       deck: event.deck,
       game: HOLDEM,
+      otherBoards: Array.from(
+        { length: (event.bombPot?.boardCount ?? 1) - 1 },
+        () => []
+      ),
       paused: pausedBy(state, event),
       phase: Phases.Settling({ lastAggressor: Option.none() }),
       players: event.dealtIn.flatMap((seat) => dealtInPlayer(state, seat)),

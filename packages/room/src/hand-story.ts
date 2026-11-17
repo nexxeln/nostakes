@@ -41,6 +41,7 @@ export interface HandStory {
   readonly committed: readonly number[];
   readonly common: readonly Card[];
   readonly deadMoney: number;
+  readonly doubleBoard: boolean;
   readonly ended: boolean;
   readonly folded: readonly SeatIndex[];
   readonly game: Game;
@@ -55,15 +56,17 @@ export interface HandStory {
 const opening = (
   game: Game,
   handNumber: number,
-  bigBlind: number
+  bigBlind: number,
+  boards: number
 ): HandStory => ({
   allIn: [],
   bigBlind,
-  boards: [[]],
+  boards: Array.from({ length: boards }, () => []),
   bounty: 0,
   committed: Array.from({ length: SEAT_COUNT }, () => 0),
   common: [],
   deadMoney: 0,
+  doubleBoard: boards > 1,
   ended: false,
   folded: [],
   game,
@@ -74,6 +77,9 @@ const opening = (
   shown: Array.from({ length: SEAT_COUNT }, () => []),
   wagers: [],
 });
+
+const dealtSoFar = (story: HandStory) =>
+  story.doubleBoard ? (story.boards[0]?.length ?? 0) : story.common.length;
 
 const potOf = (story: HandStory) => {
   let total = story.deadMoney;
@@ -116,7 +122,7 @@ const committing = (
     reaches: [
       ...story.reaches,
       {
-        board: story.common.length,
+        board: dealtSoFar(story),
         seat,
         total: committed[seat] ?? 0,
       },
@@ -136,7 +142,7 @@ const wagering = (
   ...committing(story, wager.seat, wager.added, wager.allIn),
   wagers: [
     ...story.wagers,
-    { ...wager, board: story.common.length, potBefore: potOf(story) },
+    { ...wager, board: dealtSoFar(story), potBefore: potOf(story) },
   ],
 });
 
@@ -237,10 +243,13 @@ const told = (story: HandStory, event: SeenTableEvent): HandStory =>
       RaisedTo: ({ added, allIn, seat }) =>
         wagering(story, { added, allIn, raise: true, seat }),
       RulesChanged: () => story,
-      RunsAgreed: ({ runs }) => ({
-        ...story,
-        boards: Array.from({ length: runs }, () => story.common),
-      }),
+      RunsAgreed: ({ runs }) =>
+        runs === 1
+          ? story
+          : {
+              ...story,
+              boards: Array.from({ length: runs }, () => story.common),
+            },
       RunsChosen: () => story,
       ShowdownReached: ({ order }) => {
         let current: HandStory = { ...story, showdown: true };
@@ -276,7 +285,12 @@ export const storyOf = (
     return Option.none();
   }
 
-  let story = opening(HOLDEM, first.handNumber, first.bombPot?.bigBlind ?? 0);
+  let story = opening(
+    HOLDEM,
+    first.handNumber,
+    first.bombPot?.bigBlind ?? 0,
+    first.bombPot?.boardCount ?? 1
+  );
 
   for (const event of rest) {
     story = told(story, event);

@@ -51,6 +51,7 @@ export const SessionSchema = Schema.Struct({
   anteKind: between(0, 2),
   bigBlindExtra: between(0, 12),
   bombAnte: between(0, 40),
+  bombBoards: Schema.Literals([1, 2]),
   bombEvery: between(0, 4),
   bounty: between(0, 60),
   button: Schema.Boolean,
@@ -99,11 +100,12 @@ const bountyOf = (roll: number): SevenDeuce =>
 
 const BOMB_OFF_BELOW = 12;
 
-const bombOf = (roll: number, every: number): BombPot =>
+const bombOf = (roll: number, every: number, boards: 1 | 2): BombPot =>
   roll < BOMB_OFF_BELOW
     ? BombPots.NoBombPots()
     : BombPots.BombPots({
         ante: chipCount(roll - BOMB_OFF_BELOW + 1),
+        boardCount: boards,
         everyHands: every,
       });
 
@@ -113,7 +115,7 @@ export const configOf = (source: Session): TableConfig =>
     ante: anteOf(source.anteKind, source.anteAmount),
     bigBlind: chipCount(source.smallBlind + source.bigBlindExtra),
     blindPosting: source.casinoBlinds ? "Casino" : "HomeGame",
-    bombPot: bombOf(source.bombAnte, source.bombEvery),
+    bombPot: bombOf(source.bombAnte, source.bombEvery, source.bombBoards),
     maxRuns: runCount(source.maxRuns),
     rabbitHunt: source.rabbitHunt,
     rabbitHunters: source.rabbitStillIn ? "StillIn" : "DealtIn",
@@ -137,7 +139,11 @@ const randomConfig = (random: SeededRandom): TableConfig => {
     ante: anteOf(random.below(3), 1 + random.below(12)),
     bigBlind: chipCount(small + random.below(12)),
     blindPosting: random.chance(1, 2) ? "Casino" : "HomeGame",
-    bombPot: bombOf(random.below(41), random.below(5)),
+    bombPot: bombOf(
+      random.below(41),
+      random.below(5),
+      random.chance(1, 2) ? 2 : 1
+    ),
     maxRuns: runCount(1 + random.below(4)),
     rabbitHunt: random.chance(1, 2),
     rabbitHunters: random.chance(1, 3) ? "StillIn" : "DealtIn",

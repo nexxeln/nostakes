@@ -84,6 +84,7 @@ const CHECKED_HANDS = 2 * CHECKED_HANDS_PER_ROOM;
 const NIGHT_SPEAKS_WITHIN_MS = 105_000;
 
 interface SmallRoom {
+  readonly bombPotBoards?: 1 | 2;
   readonly bombPotEvery?: number;
   readonly knocks?: boolean;
   readonly race?: boolean;
@@ -98,6 +99,7 @@ interface SmallRoom {
 
 const ROOMS: readonly SmallRoom[] = [
   {
+    bombPotBoards: 2,
     bombPotEvery: 2,
     ending: "AsItComes",
     hands: CHECKED_HANDS_PER_ROOM,
@@ -177,6 +179,7 @@ test(
     const plans = ROOMS.map(
       (
         {
+          bombPotBoards,
           bombPotEvery,
           ending,
           hands,
@@ -215,6 +218,7 @@ test(
                 : {
                     bombPot: BombPots.BombPots({
                       ante: ChipsSchema.make(BOMB_POT_ANTE),
+                      boardCount: bombPotBoards ?? 1,
                       everyHands: bombPotEvery,
                     }),
                   },

@@ -64,6 +64,7 @@ const momentAt = (
         street: "River",
       }),
     SameHand: () => Moments.SameHand({ ...shared, rank }),
+    Scoop: () => Moments.Scoop({ ...shared }),
     SevenDeuce: () =>
       Moments.SevenDeuce({
         ...shared,

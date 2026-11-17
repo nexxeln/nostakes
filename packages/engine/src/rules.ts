@@ -28,9 +28,22 @@ export const Antes = Data.taggedEnum<Ante>();
 
 export const MAX_BOMB_POT_INTERVAL = 1000;
 
+export const MOST_BOARDS = 2;
+
+export const BoardCountSchema = Schema.Int.check(
+  Schema.isBetween({ maximum: MOST_BOARDS, minimum: 1 })
+);
+
+export type BoardCount = typeof BoardCountSchema.Type;
+
 export const BombPotSchema = Schema.TaggedUnion({
   BombPots: {
     ante: PositiveChipsSchema,
+    boardCount: setting(BoardCountSchema, 1, {
+      description:
+        "How many boards a bomb pot deals. With two, every pot is split between the boards, the odd chip to the first board, and each half goes to the best hand on its board. A double board runs each board once and always shows down by the automatic rule.",
+      title: "Boards in a bomb pot",
+    }),
     everyHands: Schema.Int.check(
       Schema.isBetween({ maximum: MAX_BOMB_POT_INTERVAL, minimum: 0 })
     ),
@@ -128,7 +141,7 @@ export const TableConfigSchema = Schema.Struct({
   }),
   bombPot: setting(BombPotSchema, BombPots.NoBombPots(), {
     description:
-      "NoBombPots, or bomb pots: a hand in which every seat dealt in posts the ante, nobody posts a blind or straddles, the flop is dealt at once, and the betting starts on the flop. everyHands deals one every that many hands, and 0 deals one only when the host calls it. A bomb pot deals in every seat with chips that is not sitting out, leaves the blinds and what each seat owes where they were, and pays no seven-deuce bounty.",
+      "NoBombPots, or bomb pots: a hand in which every seat dealt in posts the ante, nobody posts a blind or straddles, the flop is dealt at once, and the betting starts on the flop. everyHands deals one every that many hands, and 0 deals one only when the host calls it. A bomb pot deals in every seat with chips that is not sitting out, leaves the blinds and what each seat owes where they were, and pays no seven-deuce bounty. boardCount deals one board or two.",
     title: "Bomb pots",
   }),
   maxRuns: RunCountSchema.annotate({

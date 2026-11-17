@@ -62,7 +62,11 @@ const configOf = (maxRuns: number, house: House): TableConfig =>
     bigBlind: chipCount(10),
     bombPot:
       house === "BombPot"
-        ? BombPots.BombPots({ ante: chipCount(50), everyHands: 1 })
+        ? BombPots.BombPots({
+            ante: chipCount(50),
+            boardCount: 1,
+            everyHands: 1,
+          })
         : BombPots.NoBombPots(),
     maxRuns: RunCountSchema.make(maxRuns),
     rabbitHunt: false,
@@ -436,6 +440,7 @@ export const replayHand = (
       ),
       boards: boardsOf(feed),
       bounty: Option.none(),
+      doubleBoard: started?.bombPot?.boardCount === 2,
       dealtIn: dealtIn.map((at) => ({
         folded: folded.has(at),
         player: player(at),

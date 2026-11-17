@@ -64,7 +64,7 @@ export {
   type PotShare,
 } from "./events.js";
 
-export { bombPotDue } from "./forced-bets.js";
+export { bombPotBoards, bombPotDue } from "./forced-bets.js";
 
 export { invariants, type Violation } from "./invariants.js";
 
@@ -125,10 +125,12 @@ export {
   BlindPostingSchema,
   AnteSchema,
   Antes,
+  BoardCountSchema,
   BombPotSchema,
   BombPots,
   MAX_BOMB_POT_INTERVAL,
   MAX_RUNS,
+  MOST_BOARDS,
   RabbitHuntersSchema,
   RunCountRuleSchema,
   RunCountSchema,
@@ -142,6 +144,7 @@ export {
   VoluntaryShowsSchema,
   type AllInHands,
   type BlindPosting,
+  type BoardCount,
   type Ante,
   type BombPot,
   type RabbitHunters,
@@ -162,8 +165,10 @@ export {
   Seats,
   StreetSchema,
   TableStates,
+  boardsOf,
   initialTable,
   isBombPot,
+  isDoubleBoard,
   rotationAfter,
   type Hand,
   type HandPlayer,
