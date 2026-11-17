@@ -1,19 +1,36 @@
+import { PlayerIdSchema, TableStates } from "@nostakes/engine";
 import type { PlayerId } from "@nostakes/engine";
-import { TableStates } from "@nostakes/engine";
-import { Schema } from "effect";
+import { Effect, Option, Schema } from "effect";
 
-import { RoomStates, isMember } from "./state.js";
+import { RoomStates, isMember, seatOf } from "./state.js";
 import type { Open, RoomState } from "./state.js";
 
-export const REACTIONS = ["Clap", "Laugh", "Wow", "Cry", "Fire"] as const;
+export const REACTIONS = [
+  "Clap",
+  "Laugh",
+  "Wow",
+  "Cry",
+  "Fire",
+  "Dead",
+  "Fish",
+  "Eyes",
+  "Pray",
+] as const;
 
 export const ReactionSchema = Schema.Literals(REACTIONS);
 
 export type Reaction = typeof ReactionSchema.Type;
 
+const thrownAtNobody = Effect.sync(() => Option.none<PlayerId>());
+
 export const RoomSignalSchema = Schema.TaggedUnion({
   Peeking: { looking: Schema.Boolean },
-  Reaction: { reaction: ReactionSchema },
+  Reaction: {
+    at: Schema.Option(PlayerIdSchema).pipe(
+      Schema.withConstructorDefault(thrownAtNobody)
+    ),
+    reaction: ReactionSchema,
+  },
 });
 
 export type RoomSignal = typeof RoomSignalSchema.Type;
@@ -28,6 +45,12 @@ const holdsHoleCards = (state: Open, player: PlayerId) =>
       dealt.holeCards.length > 0
   );
 
+const canBeThrownAt = (state: RoomState, sender: PlayerId, target: PlayerId) =>
+  target !== sender &&
+  RoomStates.$is("Open")(state) &&
+  isMember(state, target) &&
+  Option.isSome(seatOf(state, target));
+
 export const signalAllowed = (
   state: RoomState,
   sender: PlayerId,
@@ -39,5 +62,9 @@ export const signalAllowed = (
       RoomStates.$is("Open")(state) &&
       state.settings.peeking &&
       holdsHoleCards(state, sender),
-    Reaction: () => true,
+    Reaction: ({ at }) =>
+      Option.match(at, {
+        onNone: () => true,
+        onSome: (target) => canBeThrownAt(state, sender, target),
+      }),
   });

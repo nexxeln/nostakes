@@ -36,9 +36,21 @@ const stillHoldsCards = (view: RoomView, player: PlayerId) =>
 const listedAsMember = (view: RoomView, player: PlayerId) =>
   view.members.some((member) => member.player === player);
 
+const seatedInView = (view: RoomView, player: PlayerId) =>
+  RoomViews.$is("Open")(view) &&
+  view.seats.some(({ occupant }) =>
+    Option.exists(occupant, (seated) => seated.player === player)
+  );
+
+const throwable = (view: RoomView, sender: PlayerId, target: PlayerId) =>
+  listedAsMember(view, sender) &&
+  sender !== target &&
+  listedAsMember(view, target) &&
+  seatedInView(view, target);
+
 describe("signals a poker room relays", () => {
   it.prop(
-    "a peek is allowed exactly when the room lists the sender as a member, shows peeks, and their own device shows them hole cards they still hold, and a reaction exactly when the room lists them as a member",
+    "a peek is allowed exactly when the room lists the sender as a member, shows peeks, and their own device shows them hole cards they still hold, and a reaction exactly when the room lists them as a member, and a reaction thrown at someone exactly when the target is another member the sender's view shows seated",
     { source: session },
     ({ source }) => {
       const wrong: string[] = [];
@@ -61,6 +73,25 @@ describe("signals a poker room relays", () => {
             ) {
               wrong.push(
                 `${step.command._tag}: ${player} peeking ${looking} should be ${peeks ? "allowed" : "dropped"}`
+              );
+            }
+          }
+
+          for (const [index, target] of POOL.entries()) {
+            const reaction = REACTIONS[index % REACTIONS.length];
+
+            const thrown = signalAllowed(
+              step.after,
+              player,
+              Signals.Reaction.make({
+                at: Option.some(target),
+                reaction: reaction ?? "Clap",
+              })
+            );
+
+            if (thrown !== throwable(view, player, target)) {
+              wrong.push(
+                `${step.command._tag}: ${player} throwing at ${target} should be ${thrown ? "dropped" : "allowed"}`
               );
             }
           }
