@@ -326,6 +326,7 @@ const playingOf = (lastHand: LastHand, seen: Seen): readonly Card[] =>
     : [];
 
 interface Telling {
+  readonly everyone: readonly string[];
   readonly flag: Option.Option<PictureFlag>;
   readonly lastHand: LastHand;
   readonly lead: Seen;
@@ -358,6 +359,30 @@ const pocketPair = (lastHand: LastHand, seen: Seen) => {
     ? Option.fromUndefinedOr([...ranks][0])
     : Option.none<number>();
 };
+
+const COUNT_WORDS = [
+  "",
+  "",
+  "two",
+  "three",
+  "four",
+  "five",
+  "six",
+  "seven",
+  "eight",
+  "nine",
+];
+
+const together = (names: readonly string[]) => {
+  const last = names.at(-1) ?? "";
+
+  return names.length < 2
+    ? last
+    : `${names.slice(0, -1).join(", ")} and ${last}`;
+};
+
+const ways = (names: readonly string[]) =>
+  `${COUNT_WORDS[names.length] ?? names.length} ways`;
 
 const versus = (telling: Telling, write: (other: Seen) => Words): Words =>
   Option.match(telling.other, {
@@ -458,7 +483,10 @@ const wordsFor = (telling: Telling): Words => {
     SameHand: ({ pot }) =>
       versus(telling, (other) => ({
         leadNote: "split the pot",
-        line: `Same hand, same pot. ${who} and ${named(other)} split ${chipsText(pot)}.`,
+        line:
+          telling.everyone.length > 2
+            ? `Same hand, same pot. ${together(telling.everyone)} split ${chipsText(pot)} ${ways(telling.everyone)}.`
+            : `Same hand, same pot. ${who} and ${named(other)} split ${chipsText(pot)}.`,
         otherNote: "split the pot",
         title: lead.whole
           ? `Both had ${startingHandName(playingHole(lastHand.game, lead.hole, lead.board))}`
@@ -490,7 +518,10 @@ const wordsFor = (telling: Telling): Words => {
     SplitRuns: ({ runs }) =>
       versus(telling, (other) => ({
         leadNote: "won a run",
-        line: `Ran it ${RUN_WORDS[runs] ?? `${runs} times`}, split it with ${named(other)}.`,
+        line:
+          telling.everyone.length > 2
+            ? `Ran it ${RUN_WORDS[runs] ?? `${runs} times`}, split it ${ways(telling.everyone)}: ${together(telling.everyone)}.`
+            : `Ran it ${RUN_WORDS[runs] ?? `${runs} times`}, split it with ${named(other)}.`,
         otherNote: "won a run",
         title: "One each",
         verb: "splits with",
@@ -634,7 +665,18 @@ export const pictureOf = (
   );
 
   const flag = flagOf(lastHand, lead, leader);
-  const telling = { flag, lastHand, lead: leader, moment: lead, other };
+
+  const telling = {
+    everyone: [...new Set(lead.seats)].map((seat) =>
+      isolated(personAt(people, lastHand, seat).name)
+    ),
+    flag,
+    lastHand,
+    lead: leader,
+    moment: lead,
+    other,
+  };
+
   const words = wordsFor(telling);
   const playing = playingOf(lastHand, leader);
 

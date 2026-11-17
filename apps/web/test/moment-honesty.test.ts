@@ -564,7 +564,7 @@ describe("a moment's picture and clip", () => {
         eachDevice(seed, (told, feed) => {
           const seats = [...new Set(told.found.lead.seats)];
 
-          if (seats.length < 2) {
+          if (seats.length !== 2) {
             return [];
           }
 
@@ -683,6 +683,40 @@ const partTooSoon = (plan: DriftPlan, spectator: readonly SeenTableEvent[]) => {
 
   return [...outOfOrder, ...early];
 };
+
+describe("a moment that names more than two seats", () => {
+  it.prop(
+    "draws two of its own seats and names every one of them in its line",
+    { seed: handSeed },
+    ({ seed }) => {
+      expect(
+        eachDevice(seed, (told, feed) => {
+          const seats = [...new Set(told.found.lead.seats)];
+
+          if (seats.length <= 2) {
+            return [];
+          }
+
+          const { picture } = sceneOfTold(told, feed);
+
+          const names = seats.map((seat) => `Player ${seat}`);
+
+          return [
+            ...picture.seats.flatMap((drawn) =>
+              names.includes(drawn.name) ? [] : [`drew ${drawn.name}`]
+            ),
+            ...names.flatMap((name) =>
+              picture.line.includes(name)
+                ? []
+                : [`left ${name} out of the line`]
+            ),
+          ];
+        }).flat()
+      ).toStrictEqual([]);
+    },
+    HANDS
+  );
+});
 
 describe("the night reel", () => {
   it.prop(
