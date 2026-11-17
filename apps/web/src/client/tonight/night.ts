@@ -101,7 +101,10 @@ export class Night {
   #held = false;
   #waiting: (() => void)[] = [];
   readonly #holdHeard = new Set<(held: boolean) => void>();
-  #pending: MomentHand[] = [];
+  #pending: {
+    readonly found: Option.Option<MomentScene>;
+    readonly hand: MomentHand;
+  }[] = [];
   #reel: ClipStatus = { tag: "Idle" };
   #reelEnd = "";
   readonly #drawing = new Set<string>();
@@ -158,9 +161,9 @@ export class Night {
     this.#look = look;
   }
 
-  saw(hand: MomentHand) {
+  saw(hand: MomentHand, found: Option.Option<MomentScene> = sceneOf(hand)) {
     if (!this.#loaded) {
-      this.#pending.push(hand);
+      this.#pending.push({ found, hand });
 
       return;
     }
@@ -170,8 +173,6 @@ export class Night {
     ) {
       return;
     }
-
-    const found = sceneOf(hand);
 
     if (Option.isNone(found)) {
       return;
@@ -420,8 +421,8 @@ export class Night {
     this.#pending = [];
     this.#tell();
 
-    for (const hand of pending) {
-      this.saw(hand);
+    for (const { found, hand } of pending) {
+      this.saw(hand, found);
     }
 
     this.#next();

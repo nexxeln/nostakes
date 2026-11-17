@@ -176,6 +176,14 @@ class NostakesTonight extends HTMLElement {
     this.#askReel();
   }
 
+  #tellLook() {
+    this.#night?.look({
+      calm: globalThis.matchMedia("(prefers-reduced-motion: reduce)").matches,
+      deck: this.#deck,
+      theme: this.#theme,
+    });
+  }
+
   #askReel() {
     const card = this.#settled;
 
@@ -207,6 +215,7 @@ class NostakesTonight extends HTMLElement {
   set theme(next: Theme) {
     if (next !== this.#theme) {
       this.#theme = next;
+      this.#tellLook();
       this.#thumbs.clear();
       this.#render();
     }
@@ -219,6 +228,7 @@ class NostakesTonight extends HTMLElement {
   set deck(next: Deck) {
     if (next !== this.#deck) {
       this.#deck = next;
+      this.#tellLook();
       this.#thumbs.clear();
       this.#render();
     }
@@ -236,6 +246,7 @@ class NostakesTonight extends HTMLElement {
     const night = nightOf(this.#room);
 
     this.#night = night;
+    this.#tellLook();
     this.#unlisten = night.listen(() => {
       this.#render();
     });

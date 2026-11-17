@@ -714,15 +714,15 @@ export const headlineOf = (hand: MomentHand): Option.Option<Headline> => {
   return headline(momentsOf(hand.record), hand.callouts);
 };
 
+export const momentIdOf = (hand: MomentHand, lead: Moment) =>
+  [hand.lastHand.handNumber, lead._tag, lead.tier, lead.seats.join(",")].join(
+    ":"
+  );
+
 export const shownMomentOf = (hand: MomentHand): Option.Option<ShownMoment> =>
   headlineOf(hand).pipe(
     Option.map((found) => ({
-      id: [
-        hand.lastHand.handNumber,
-        found.lead._tag,
-        found.lead.tier,
-        found.lead.seats.join(","),
-      ].join(":"),
+      id: momentIdOf(hand, found.lead),
       lead: found.lead,
       picture: pictureOf(hand.people, hand.lastHand, found, hand.record),
       seats: found.lead.seats,

@@ -8,7 +8,11 @@ import type {
 } from "../../features/moments/element.js";
 import { NewestHand } from "../../features/moments/newest-hand.js";
 import type { MomentPicture } from "../../features/moments/picture.js";
-import { shownMomentOf } from "../../features/moments/scene.js";
+import {
+  headlineOf,
+  momentIdOf,
+  sceneFor,
+} from "../../features/moments/scene.js";
 import { BUZZES, FAMILIES, momentScore } from "../../features/moments/score.js";
 import {
   cardPose,
@@ -27,7 +31,7 @@ import type { Synth } from "./synth.js";
 
 const STYLE = `
 :host { position: absolute; inset: 0 0 var(--moment-floor, 34%) 0; pointer-events: none; z-index: 30; display: block; }
-.card { position: absolute; left: 50%; top: 0; width: min(92%, 420px, calc(var(--moment-height, 520px) * 0.78)); transform: translateX(-50%); pointer-events: auto; cursor: pointer; }
+.card { position: absolute; left: 50%; top: 0; width: min(92%, 420px, calc((var(--moment-height, 520px) - 56px) * 0.78)); transform: translateX(-50%); pointer-events: auto; cursor: pointer; }
 .card.small { width: min(64%, 270px, calc(var(--moment-height, 520px) * 0.6)); top: 12%; }
 .card svg { display: block; width: 100%; height: auto; overflow: visible; }
 .card .part { transform-box: fill-box; transform-origin: center; }
@@ -207,16 +211,22 @@ class NostakesMoment extends HTMLElement {
       deck: hand.deck,
       theme: hand.theme,
     });
-    this.#night?.saw(hand);
+    const found = headlineOf(hand);
 
-    const found = shownMomentOf(hand);
+    const scene = found.pipe(
+      Option.map((headline) =>
+        sceneFor(hand.people, hand.lastHand, headline, hand.record)
+      )
+    );
 
-    if (Option.isSome(found)) {
+    this.#night?.saw(hand, scene);
+
+    if (Option.isSome(found) && Option.isSome(scene)) {
       this.#present({
         deck: hand.deck,
         hand: hand.lastHand.handNumber,
-        id: found.value.id,
-        picture: found.value.picture,
+        id: momentIdOf(hand, found.value.lead),
+        picture: scene.value.picture,
         theme: hand.theme,
       });
     }

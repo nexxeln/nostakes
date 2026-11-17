@@ -162,6 +162,17 @@ const tonight = (into: Element) => {
     theme,
   });
 
+  const tableHeight = globalThis.innerHeight * 0.6;
+
+  host.style.setProperty(
+    "--moment-floor",
+    `${Math.round(tableHeight * 0.3)}px`
+  );
+  host.style.setProperty(
+    "--moment-height",
+    `${Math.round(tableHeight * 0.7 - 6)}px`
+  );
+
   if (isMomentHost(host)) {
     const hands = handsAsked();
     const [first] = hands;
