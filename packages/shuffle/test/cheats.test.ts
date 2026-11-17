@@ -142,6 +142,28 @@ describe("planted cheats the verifier catches", () => {
     ).toEqual(new SpareDeckMismatch({ slot: replayed.spareSlot }));
   });
 
+  it("a four-card hand passed off under a two-card seal fails for every player shown a card", () => {
+    const fourCards = dealHonestly(
+      sealHand(context, [sorted, reversed], secret, ROUND, SEATS, 4),
+      beacon("round")
+    );
+
+    const { holeCardCount: _sealed, ...twoCardSeal } = fourCards.sealed.seal;
+
+    for (const [dealIndex, sighting] of fourCards.dealt.entries()) {
+      if (dealIndex < 4 * DEALT_IN + 5) {
+        expect(
+          outcome({
+            ...sawOf(fourCards, [sighting]),
+            seal: twoCardSeal,
+          })
+        ).not.toBe("checked out");
+      }
+    }
+
+    expect(outcome(sawOf(fourCards, fourCards.dealt))).toBe("checked out");
+  });
+
   it("a dealt deck holding cards twice fails for a player shown both copies of one", () => {
     const pairs = Arr.range(0, 51).map((position) =>
       CardSchema.make(Math.floor(position / 2))

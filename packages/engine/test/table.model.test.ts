@@ -13,7 +13,6 @@ import {
   TableStates,
   buildPots,
   decide,
-  evaluate,
   evolve,
   invariants,
   legalActions,
@@ -32,6 +31,7 @@ import type {
 } from "../src/index.js";
 import { dealProblems } from "./blind-checks.js";
 import { bankrollChange, chipCount, runCount, seat } from "./fixtures.js";
+import { gameOfHand, oracleRank } from "./hand-oracle.js";
 import { seededRandom } from "./random.js";
 import { generated } from "./scale.js";
 import {
@@ -521,10 +521,11 @@ describe("generated sessions", () => {
         const tabled = hand.some(Events.$is("HandsTabled"));
 
         const rankOn = (run: number, seatIndex: number) =>
-          evaluate([
-            ...(holes.get(seatIndex) ?? []),
-            ...(boards.get(run) ?? []),
-          ]);
+          oracleRank(
+            gameOfHand(hand),
+            holes.get(seatIndex) ?? [],
+            boards.get(run) ?? []
+          );
 
         for (const award of hand.filter(Events.$is("PotAwarded"))) {
           const best = Math.max(
@@ -689,7 +690,7 @@ describe("generated sessions", () => {
           claims,
           tabled,
           asked,
-          evaluate([...(player?.holeCards ?? []), ...hand.board])
+          oracleRank(hand.game, player?.holeCards ?? [], hand.board)
         );
 
         if (!accepts(step.before, Commands.TableHand({ seat: asked }))) {
@@ -736,12 +737,15 @@ describe("generated sessions", () => {
 
         const seats = hand.filter(Events.$is("HoleCardsDealt"));
         const count = seats.length;
+        const passes = started.game === "Omaha" ? 4 : 2;
 
         for (const [index, dealt] of seats.entries()) {
-          expect(dealt.cards).toStrictEqual([
-            started.deck[index],
-            started.deck[count + index],
-          ]);
+          expect(dealt.cards).toStrictEqual(
+            Array.from(
+              { length: passes },
+              (_, pass) => started.deck[pass * count + index]
+            )
+          );
         }
 
         const holes = new Map(seats.map((dealt) => [dealt.seat, dealt.cards]));
@@ -760,7 +764,7 @@ describe("generated sessions", () => {
         ];
 
         expect(fromDeck).toStrictEqual(
-          started.deck.slice(2 * count, 2 * count + fromDeck.length)
+          started.deck.slice(passes * count, passes * count + fromDeck.length)
         );
         expect(fromDeck.some((card) => allHoles.has(card))).toBe(false);
 

@@ -1,7 +1,8 @@
 import type { Types } from "effect";
 
-import { Events, evaluate } from "../src/index.js";
+import { Events } from "../src/index.js";
 import type { Card, Event, SeatIndex } from "../src/index.js";
+import { gameOfHand, oracleRank } from "./hand-oracle.js";
 
 type PotAwarded = Types.ExtractTag<Event, "PotAwarded">;
 
@@ -130,7 +131,7 @@ export const replayShowdown = (hand: readonly Event[]): ShowdownReplay => {
   const { board, holes } = dealtCards(hand);
 
   const rankOf = (seat: SeatIndex) =>
-    evaluate([...(holes.get(seat) ?? []), ...board]);
+    oracleRank(gameOfHand(hand), holes.get(seat) ?? [], board);
 
   const awards = hand.filter(Events.$is("PotAwarded"));
   const eligible = awards.map((award) => award.eligible);

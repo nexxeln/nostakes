@@ -9,12 +9,14 @@ import {
   sealHand,
   seedOf,
   sha256,
+  TWO_HOLE_CARDS,
 } from "@nostakes/shuffle";
 import type {
   Beacon,
   BeaconRound,
   DealingPlan,
   DrandChain,
+  HoleCards,
   SealedHand,
 } from "@nostakes/shuffle";
 import { Option } from "effect";
@@ -43,11 +45,16 @@ export const sealedHandOf = (code: RoomCode, sealed: Sealed): SealedHand =>
     sealed.decks,
     sealed.secret,
     sealed.round,
-    sealed.seats
+    sealed.seats,
+    sealed.holeCards
   );
+
+export const layoutOf = (holeCards: HoleCards) =>
+  holeCards === TWO_HOLE_CARDS ? {} : { holeCardCount: holeCards };
 
 export const sealOf = (sealed: Sealed) => ({
   beaconRound: sealed.round,
+  ...layoutOf(sealed.holeCards),
   roots: sealed.roots,
   seats: sealed.seats,
 });

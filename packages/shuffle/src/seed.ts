@@ -14,6 +14,7 @@ export const seedOf = (
       uint32(context.hand),
       ...seal.roots,
       Uint8Array.from(seal.seats),
+      ...(seal.holeCardCount === undefined ? [] : [uint32(seal.holeCardCount)]),
       uint64(beacon.round),
       beacon.randomness,
     ])

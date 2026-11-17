@@ -449,6 +449,8 @@ const postings = (
   ];
 };
 
+const gameOf = (game: Game) => (game === HOLDEM ? {} : { game });
+
 const holeCards = (
   game: Game,
   deck: readonly Card[],
@@ -539,6 +541,7 @@ const startBombPot = (
       button,
       dealtIn,
       deck: command.deck,
+      ...gameOf(state.config.game),
       handNumber: state.handNumber + 1,
       smallBlindSeat: blinds.small,
     }),
@@ -552,7 +555,7 @@ const startBombPot = (
         seat,
       });
     }),
-    ...holeCards(HOLDEM, command.deck, dealOrder),
+    ...holeCards(state.config.game, command.deck, dealOrder),
   ]);
 };
 
@@ -594,11 +597,12 @@ const startBlindHand = (
       button,
       dealtIn,
       deck: command.deck,
+      ...gameOf(state.config.game),
       handNumber: state.handNumber + 1,
       smallBlindSeat: blinds.small,
     }),
     ...postings(state, dealOrder, blinds, straddles.success, entries),
-    ...holeCards(HOLDEM, command.deck, dealOrder),
+    ...holeCards(state.config.game, command.deck, dealOrder),
   ]);
 };
 
@@ -721,7 +725,7 @@ export const beginHand = (
       board: [],
       deadMoney: NO_CHIPS,
       deck: event.deck,
-      game: HOLDEM,
+      game: event.game ?? HOLDEM,
       otherBoards: Array.from(
         { length: (event.bombPot?.boardCount ?? 1) - 1 },
         () => []

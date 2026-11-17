@@ -369,7 +369,7 @@ const potsWithEveryBet = (hand: HandView): readonly number[] => {
       )
     ),
     deck: [],
-    game: "Holdem",
+    game: hand.game,
     otherBoards: [],
     paused: Option.none(),
     phase: Phases.Settling({ lastAggressor: Option.none() }),

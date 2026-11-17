@@ -1,4 +1,4 @@
-import { ShowdownEntries } from "@nostakes/engine";
+import { HOLDEM, ShowdownEntries } from "@nostakes/engine";
 import type { Event } from "@nostakes/engine";
 import { Match, Option } from "effect";
 
@@ -51,12 +51,13 @@ export const recorded = (
   event: Event
 ): Option.Option<HandRecord> =>
   Match.value(event).pipe(
-    Match.tag("HandStarted", ({ bombPot, handNumber }) =>
+    Match.tag("HandStarted", ({ bombPot, game, handNumber }) =>
       Option.some({
         awards: [],
         boards: Array.from({ length: bombPot?.boardCount ?? 1 }, () => []),
         bounty: Option.none(),
         doubleBoard: bombPot?.boardCount === 2,
+        game: game ?? HOLDEM,
         handNumber,
         mucked: [],
         rabbit: [],

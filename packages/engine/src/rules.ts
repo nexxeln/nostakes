@@ -3,6 +3,7 @@ import { Data, Option, Schema } from "effect";
 import { CHIP_LIMIT, PositiveChipsSchema, chips } from "./primitives.js";
 import type { Chips } from "./primitives.js";
 import { setting } from "./setting.js";
+import { GameSchema, HOLDEM } from "./variants.js";
 
 export const MAX_RUNS = 9;
 
@@ -117,6 +118,15 @@ export type RunCountRule = typeof RunCountRuleSchema.Type;
 
 export const AllInHandsSchema = Schema.Literals(["FaceUp", "Hidden"]);
 
+export const BettingLimitSchema = Schema.TaggedUnion({
+  NoLimit: {},
+  PotLimit: {},
+});
+
+export type BettingLimit = typeof BettingLimitSchema.Type;
+
+export const BettingLimits = Data.taggedEnum<BettingLimit>();
+
 export type AllInHands = typeof AllInHandsSchema.Type;
 
 export const TableConfigSchema = Schema.Struct({
@@ -143,6 +153,16 @@ export const TableConfigSchema = Schema.Struct({
     description:
       "NoBombPots, or bomb pots: a hand in which every seat dealt in posts the ante, nobody posts a blind or straddles, the flop is dealt at once, and the betting starts on the flop. everyHands deals one every that many hands, and 0 deals one only when the host calls it. A bomb pot deals in every seat with chips that is not sitting out, leaves the blinds and what each seat owes where they were, and pays no seven-deuce bounty. boardCount deals one board or two.",
     title: "Bomb pots",
+  }),
+  game: setting(GameSchema, HOLDEM, {
+    description:
+      "Holdem deals two hole cards to each seat and a hand is the best five of those and the board. Omaha deals four, and a hand plays exactly two of them with exactly three board cards.",
+    title: "Game",
+  }),
+  limit: setting(BettingLimitSchema, BettingLimits.NoLimit(), {
+    description:
+      "NoLimit lets a seat bet or raise up to everything in front of it. PotLimit caps a bet or raise at the pot: a raise may go to the bet, plus every chip in the middle, plus the call, all counted before the raise.",
+    title: "Betting limit",
   }),
   maxRuns: RunCountSchema.annotate({
     description:

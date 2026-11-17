@@ -9,6 +9,7 @@ import type { Event, EventOf } from "./events.js";
 import type { Chips, SeatIndex } from "./primitives.js";
 import { SEAT_COUNT, chips } from "./primitives.js";
 import { IllegalAction, NoBettingRound, NotYourTurn } from "./rejection.js";
+import { BettingLimits } from "./rules.js";
 import type { RunCount, TableConfig } from "./rules.js";
 import { choosesRuns, runCap } from "./run-outs.js";
 import { showdownTurn } from "./showing-down.js";
@@ -122,6 +123,16 @@ const reopenedFor = (round: Round, seat: SeatIndex) =>
     onSome: (bet) => round.currentBet - bet >= round.lastFullRaise,
   });
 
+const chipsInTheMiddle = (state: InHand) => {
+  let pot: number = state.hand.deadMoney;
+
+  for (const player of state.hand.players) {
+    pot += player.committedTotal;
+  }
+
+  return pot;
+};
+
 const legalFor = (state: InHand, betting: Betting): LegalActions => {
   const player = state.hand.players.find(
     (candidate) => candidate.seat === betting.toAct
@@ -144,12 +155,21 @@ const legalFor = (state: InHand, betting: Betting): LegalActions => {
 
   const minTo = Math.min(betting.currentBet + betting.lastFullRaise, allInTo);
 
+  const maxTo = BettingLimits.$match(state.config.limit, {
+    NoLimit: () => allInTo,
+    PotLimit: () =>
+      Math.min(
+        allInTo,
+        Math.max(minTo, betting.currentBet + chipsInTheMiddle(state) + owed)
+      ),
+  });
+
   return {
     call: owed > 0 ? Option.some(chips(Math.min(owed, stack))) : Option.none(),
     canCheck: owed === 0,
     raise: canRaise
       ? Option.some({
-          maxTo: chips(allInTo),
+          maxTo: chips(maxTo),
           minTo: chips(minTo),
         })
       : Option.none(),

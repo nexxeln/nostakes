@@ -8,6 +8,7 @@ import {
   rotationAfter,
 } from "@nostakes/engine";
 import type { Chips, Event, PlayerId, SeatIndex } from "@nostakes/engine";
+import { TWO_HOLE_CARDS } from "@nostakes/shuffle";
 import { Option } from "effect";
 
 import { bombCalledFor, postingSeats } from "./dealing.js";
@@ -364,13 +365,23 @@ const evolveOpen = (state: Open, event: RoomEvent): RoomState =>
     GamePaused: (): Open => ({ ...state, dealCalled: false, game: "Waiting" }),
     GameStarted: (): Open => ({ ...state, game: "Running" }),
     HandCancelled: ({ restored }) => cancelled(state, restored),
-    HandSealed: ({ at, decks, hand, roots, round, seats, secret }) => ({
+    HandSealed: ({
+      at,
+      decks,
+      hand,
+      holeCardCount,
+      roots,
+      round,
+      seats,
+      secret,
+    }) => ({
       ...state,
       sealed: Option.some({
         at,
         bombPot: bombCalledFor(state),
         decks,
         hand,
+        holeCards: holeCardCount ?? TWO_HOLE_CARDS,
         posts: postingSeats(state),
         roots,
         round,

@@ -2,6 +2,7 @@ import {
   Actions,
   Antes,
   BombPots,
+  BettingLimits,
   CardFromText,
   ChipsSchema,
   Commands,
@@ -210,6 +211,10 @@ const generatedConfig = (random: SeededRandom): TableConfig =>
           everyHands: 1,
         })
       : BombPots.NoBombPots(),
+    game: random.chance(1, 3) ? "Omaha" : "Holdem",
+    limit: random.chance(2, 3)
+      ? BettingLimits.PotLimit()
+      : BettingLimits.NoLimit(),
     maxRuns: RunCountSchema.make(1 + random.below(3)),
     rabbitHunt: false,
     showdown: random.chance(1, 3) ? "Interactive" : "Automatic",

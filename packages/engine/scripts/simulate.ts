@@ -1,6 +1,7 @@
 import {
   Actions,
   Antes,
+  BettingLimits,
   BombPots,
   CHIP_LIMIT,
   ChipsSchema,
@@ -126,6 +127,10 @@ const randomConfig = (random: Random): TableConfig => {
           everyHands: random.pick([0, 0, 1, 3, 7]) ?? 0,
         })
       : BombPots.NoBombPots(),
+    game: random.chance(30) ? "Omaha" : "Holdem",
+    limit: random.chance(40)
+      ? BettingLimits.PotLimit()
+      : BettingLimits.NoLimit(),
     maxRuns: runCount(1 + random.below(4)),
     rabbitHunt: random.chance(50),
     rabbitHunters: random.chance(30) ? "StillIn" : "DealtIn",
@@ -371,6 +376,11 @@ const illegalInHand = (state: TableState, random: Random): Command => {
   return Commands.ChangeRules({ config: randomConfig(random) });
 };
 
+const potLimitRaises = (state: TableState, events: readonly Event[]) =>
+  BettingLimits.$is("PotLimit")(state.config.limit)
+    ? events.filter(Events.$is("RaisedTo")).length
+    : 0;
+
 const chipsOnTable = (state: TableState) => {
   let total = 0;
 
@@ -606,8 +616,11 @@ const newCounts = () => ({
   mustTableRefused: 0,
   noAntes: 0,
   oddChips: 0,
+  omahaHands: 0,
+  omahaShowdowns: 0,
   oneRunCutShort: 0,
   partialShowsRefused: 0,
+  potLimitRaises: 0,
   rabbitHunts: 0,
   runOuts: 0,
   shortAllIns: 0,
@@ -837,6 +850,11 @@ const countHand = (counts: Counts, hand: readonly Event[], seen: Seen) => {
     ? 1
     : 0;
   countDoubleBoard(counts, started, awards);
+  counts.omahaHands += started?.game === "Omaha" ? 1 : 0;
+  counts.omahaShowdowns +=
+    started?.game === "Omaha" && hand.some(Events.$is("ShowdownReached"))
+      ? 1
+      : 0;
   counts.sidePots += awards.some((award) => award.pot > 1) ? 1 : 0;
   counts.splitPots += awards.some((award) => award.winners.length > 1) ? 1 : 0;
   counts.oddChips += awards.some(
@@ -1455,6 +1473,8 @@ const simulate = (
     }
 
     const dealt = decision.success.some(Events.$is("HandStarted"));
+
+    counts.potLimitRaises += potLimitRaises(state, decision.success);
 
     const blinds =
       dealt && rulesChanged

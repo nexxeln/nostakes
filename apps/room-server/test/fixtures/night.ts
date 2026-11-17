@@ -1,5 +1,6 @@
 import {
   Antes,
+  BettingLimits,
   BombPots,
   ChipsSchema,
   SEAT_COUNT,
@@ -301,6 +302,17 @@ export const RULES: readonly RuleChange[] = [
     label:
       "bomb pots cycle from off to one board and then two boards every third hand",
   },
+  {
+    atHand: 0,
+    change: (settings) =>
+      withTable(
+        settings,
+        settings.table.game === "Omaha"
+          ? { game: "Holdem", limit: BettingLimits.NoLimit() }
+          : POT_LIMIT_OMAHA
+      ),
+    label: "the game flips between no-limit hold'em and pot-limit Omaha",
+  },
 ];
 
 export type StrangerPlan = "None" | "Sits" | "Watches";
@@ -342,6 +354,21 @@ const clientIndices = (random: Random, bots: number, percent: number) => {
   return drawn.length === bots ? drawn.slice(1) : drawn;
 };
 
+export const POT_LIMIT_OMAHA: TableRules = {
+  game: "Omaha",
+  limit: BettingLimits.PotLimit(),
+};
+
+const gameFrom = (random: Random): TableRules =>
+  random.chance(25)
+    ? POT_LIMIT_OMAHA
+    : {
+        game: "Holdem",
+        limit: random.chance(15)
+          ? BettingLimits.PotLimit()
+          : BettingLimits.NoLimit(),
+      };
+
 const tableFrom = (
   random: Random,
   small: number
@@ -357,6 +384,7 @@ const tableFrom = (
         everyHands: [0, 3, 4][random.below(3)] ?? 0,
       })
     : BombPots.NoBombPots(),
+  ...gameFrom(random),
   maxRuns: random.between(1, 3),
   rabbitHunt: random.chance(50),
   rabbitHunters: random.chance(30) ? "StillIn" : "DealtIn",

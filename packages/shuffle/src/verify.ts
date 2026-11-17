@@ -15,7 +15,7 @@ import {
   WrongPosition,
 } from "./rejection.js";
 import type { HandRejected } from "./rejection.js";
-import { DealIndexSchema, DECK_SIZE, Roles } from "./schemas.js";
+import { DealIndexSchema, DECK_SIZE, holeCardsOf, Roles } from "./schemas.js";
 import type {
   Card,
   DealIndex,
@@ -40,12 +40,15 @@ interface Seen {
 
 export const dealIndexOf = (
   role: Role,
-  dealtIn: number
+  dealtIn: number,
+  holeCards: number
 ): Option.Option<DealIndex> =>
   Roles.$match(role, {
-    Community: ({ drawn }) => Option.some(2 * dealtIn + drawn),
+    Community: ({ drawn }) => Option.some(holeCards * dealtIn + drawn),
     Hole: ({ pass, turn }) =>
-      turn < dealtIn ? Option.some(pass * dealtIn + turn) : Option.none(),
+      turn < dealtIn && pass < holeCards
+        ? Option.some(pass * dealtIn + turn)
+        : Option.none(),
   }).pipe(
     Option.filter((index) => index < DECK_SIZE),
     Option.map((index) => DealIndexSchema.make(index))
@@ -98,7 +101,7 @@ const checkSighting = (
     const outOfRange = new RoleOutOfRange({ dealtIn, role: sighting.role });
 
     const dealIndex = yield* Result.fromOption(
-      dealIndexOf(sighting.role, dealtIn),
+      dealIndexOf(sighting.role, dealtIn, holeCardsOf(saw.seal)),
       () => outOfRange
     );
 

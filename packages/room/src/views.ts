@@ -1,6 +1,8 @@
 import {
   CardSchema,
   ChipsSchema,
+  GameSchema,
+  HOLDEM,
   LegalActionsSchema,
   PendingDecisions,
   PlayerIdSchema,
@@ -32,6 +34,7 @@ import { allEntries } from "./money.js";
 import { recapField } from "./recap.js";
 import { Audiences } from "./redaction.js";
 import type { Audience } from "./redaction.js";
+import { layoutOf } from "./sealed-hand.js";
 import { ChipAmountSchema, RoomSettingsSchema } from "./settings.js";
 import {
   BalanceSchema,
@@ -166,6 +169,7 @@ export const HandViewSchema = Schema.Struct({
   ),
   smallBlindSeat: SeatIndexSchema,
   street: StreetSchema,
+  game: absentAs(GameSchema, HOLDEM),
   toAct: Schema.Option(SeatIndexSchema),
   toShow: Schema.Option(SeatIndexSchema),
 });
@@ -190,6 +194,7 @@ export const LastHandViewSchema = Schema.Struct({
     []
   ),
   doubleBoard: absentAs(Schema.Boolean, false),
+  game: absentAs(GameSchema, HOLDEM),
   handNumber: Schema.Int,
   mucked: Schema.Array(SeatIndexSchema),
   rabbit: cards,
@@ -220,6 +225,7 @@ export const ClocksViewSchema = Schema.Struct({
 
 export const SealViewSchema = Schema.Struct({
   hand: HandNumberSchema,
+  holeCardCount: sealFields.holeCardCount,
   roots: sealFields.roots,
   round: sealFields.round,
   seats: sealFields.seats,
@@ -471,6 +477,7 @@ const handView = (state: Open): Option.Option<HandView> => {
     choosingRuns: PendingDecisions.$is("ChooseRuns")(pending)
       ? Option.some({ maxRuns: pending.maxRuns, seats: pending.seats })
       : Option.none(),
+    game: hand.game,
     handNumber: table.handNumber,
     players: hand.players.map((player) => ({
       committedThisStreet: player.committedThisStreet,
@@ -533,6 +540,7 @@ const lastHandView = (
             player,
             seat,
           })),
+          game: record.game,
           handNumber: record.handNumber,
           mucked: record.mucked,
           rabbit: record.rabbit,
@@ -598,6 +606,7 @@ const clocksView = (state: Open, at: Millis) => ({
 
 const sealView = (sealed: Sealed) => ({
   hand: sealed.hand,
+  ...layoutOf(sealed.holeCards),
   roots: sealed.roots,
   round: sealed.round,
   seats: sealed.seats,

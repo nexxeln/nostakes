@@ -148,26 +148,39 @@ const CATEGORY_ORDER: readonly HandCategory[] = [
   "RoyalFlush",
 ];
 
-const BIG_HAND_TIERS: Readonly<Partial<Record<HandCategory, Tier>>> = {
-  Flush: 1,
-  FourOfAKind: 2,
-  FullHouse: 1,
-  RoyalFlush: 3,
-  StraightFlush: 3,
-};
+type TierOf = Readonly<Partial<Record<HandCategory, Tier>>>;
 
-const LOSING_HAND_TIERS: Readonly<Partial<Record<HandCategory, Tier>>> = {
-  FourOfAKind: 3,
-  FullHouse: 1,
-  RoyalFlush: 3,
-  StraightFlush: 3,
-};
+interface Calibration {
+  readonly bigHand: TierOf;
+  readonly coolerFloor: HandCategory;
+  readonly cooler: TierOf;
+  readonly losingHand: TierOf;
+}
 
-const COOLER_TIERS: Readonly<Partial<Record<HandCategory, Tier>>> = {
-  FourOfAKind: 3,
-  FullHouse: 2,
-  RoyalFlush: 3,
-  StraightFlush: 3,
+const CALIBRATION: Readonly<Record<Game, Calibration>> = {
+  Holdem: {
+    bigHand: {
+      Flush: 1,
+      FourOfAKind: 2,
+      FullHouse: 1,
+      RoyalFlush: 3,
+      StraightFlush: 3,
+    },
+    cooler: { FourOfAKind: 3, FullHouse: 2, RoyalFlush: 3, StraightFlush: 3 },
+    coolerFloor: "ThreeOfAKind",
+    losingHand: {
+      FourOfAKind: 3,
+      FullHouse: 1,
+      RoyalFlush: 3,
+      StraightFlush: 3,
+    },
+  },
+  Omaha: {
+    bigHand: { FourOfAKind: 1, RoyalFlush: 3, StraightFlush: 2 },
+    cooler: { FourOfAKind: 2, FullHouse: 1, RoyalFlush: 3, StraightFlush: 3 },
+    coolerFloor: "Flush",
+    losingHand: { FourOfAKind: 2, RoyalFlush: 3, StraightFlush: 3 },
+  },
 };
 
 const STREETS: readonly Street[] = [
@@ -306,7 +319,7 @@ export const collide = (
   return (
     ownsMore(game, loser, board) &&
     ownsMore(game, winner, board) &&
-    strength(lost) >= strength("ThreeOfAKind") &&
+    strength(lost) >= strength(CALIBRATION[game].coolerFloor) &&
     !kickerBattle &&
     (lost === won || strength(lost) >= strength("FullHouse"))
   );
@@ -353,7 +366,7 @@ export const bigHandTier = (
     return Option.none();
   }
 
-  return Option.fromUndefinedOr(BIG_HAND_TIERS[category]);
+  return Option.fromUndefinedOr(CALIBRATION[game].bigHand[category]);
 };
 
 export const favouriteTier = (
@@ -726,8 +739,9 @@ const mightSwing = (
       return (
         lost >= favouriteFloor - QUICK_SWING_MARGIN ||
         (lost + QUICK_SWING_MARGIN >= won &&
-          LOSING_HAND_TIERS[handCategory(finalRank(story, hole))] !==
-            undefined) ||
+          CALIBRATION[story.game].losingHand[
+            handCategory(finalRank(story, hole))
+          ] !== undefined) ||
         (coolerStake(story, seat) &&
           collide(story.game, hole, winning.hole, board) &&
           won + QUICK_SWING_MARGIN >= lost)
@@ -803,7 +817,9 @@ const swings = (
 
     const byHand =
       favoured && moneyIn < FULL_BOARD
-        ? Option.fromUndefinedOr(LOSING_HAND_TIERS[handCategory(rank)])
+        ? Option.fromUndefinedOr(
+            CALIBRATION[story.game].losingHand[handCategory(rank)]
+          )
         : Option.none<Tier>();
 
     const tier = Option.match(byOdds, {
@@ -866,7 +882,7 @@ const swings = (
             rank,
             seats: [seat, winner],
             street,
-            tier: COOLER_TIERS[handCategory(rank)] ?? 1,
+            tier: CALIBRATION[story.game].cooler[handCategory(rank)] ?? 1,
             winningRank,
           }),
         ]

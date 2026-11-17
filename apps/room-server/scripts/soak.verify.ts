@@ -38,6 +38,7 @@ import {
   openNight,
   planNight,
   playNight,
+  POT_LIMIT_OMAHA,
 } from "../test/fixtures/night.js";
 import type {
   NightPlan,
@@ -162,9 +163,14 @@ const bombPotsFor = (index: number): TableRules => {
 
 const CLOCKED_TABLE: TableRules = {};
 
+const OMAHA_ROOMS_IN_FIVE = 2;
+
+const GAME_AS_DRAWN: TableRules = {};
+
 const tableRulesFor = (turnSeconds: number, index: number): TableRules => ({
   ...(turnSeconds === 0 ? UNCLOCKED_TABLE : CLOCKED_TABLE),
   ...bombPotsFor(index),
+  ...(index % 5 < OMAHA_ROOMS_IN_FIVE ? POT_LIMIT_OMAHA : GAME_AS_DRAWN),
 });
 
 const CHECKED_ROOMS_IN_TEN = 7;

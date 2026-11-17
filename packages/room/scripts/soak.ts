@@ -1,6 +1,7 @@
 import {
   Actions,
   Antes,
+  BettingLimits,
   ChipsSchema,
   Events,
   PendingDecisions,
@@ -158,6 +159,10 @@ const tableConfig = (random: Random): TableConfig => {
     ante: anteOf(random, bigBlind),
     bigBlind: chips(bigBlind),
     blindPosting: random.chance(40) ? "Casino" : "HomeGame",
+    game: random.chance(30) ? "Omaha" : "Holdem",
+    limit: random.chance(40)
+      ? BettingLimits.PotLimit()
+      : BettingLimits.NoLimit(),
     maxRuns: RunCountSchema.make(1 + random.below(3)),
     rabbitHunt: random.chance(50),
     rabbitHunters: random.chance(30) ? "StillIn" : "DealtIn",

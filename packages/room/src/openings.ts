@@ -53,15 +53,17 @@ const revealsOf = (table: TableState, event: Event): readonly Reveal[] => {
     : [];
 };
 
-export const roleAt = (dealIndex: number, dealtIn: number): Role => {
-  if (dealIndex < dealtIn) {
-    return Roles.Hole({ pass: 0, turn: dealIndex });
-  }
-
-  return dealIndex < 2 * dealtIn
-    ? Roles.Hole({ pass: 1, turn: dealIndex - dealtIn })
-    : Roles.Community({ drawn: dealIndex - 2 * dealtIn });
-};
+export const roleAt = (
+  dealIndex: number,
+  dealtIn: number,
+  holeCards: number
+): Role =>
+  dealIndex < holeCards * dealtIn
+    ? Roles.Hole({
+        pass: Math.floor(dealIndex / dealtIn),
+        turn: dealIndex % dealtIn,
+      })
+    : Roles.Community({ drawn: dealIndex - holeCards * dealtIn });
 
 const roleKey = (role: Role) =>
   Roles.$match(role, {
@@ -129,7 +131,11 @@ const openingsFor = (
       return [];
     }
 
-    const role = roleAt(dealIndex, proof.sealed.seats.length);
+    const role = roleAt(
+      dealIndex,
+      proof.sealed.seats.length,
+      proof.sealed.holeCards
+    );
 
     if (alreadyOpened(proof, role, reveal.holder)) {
       return [];

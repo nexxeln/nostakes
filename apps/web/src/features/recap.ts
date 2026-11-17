@@ -109,6 +109,7 @@ const lastHandOf = (recapped: RecapMoment) => ({
     player,
     seat,
   })),
+  game: recapped.game,
   handNumber: recapped.hand,
   mucked: [],
   rabbit: [],

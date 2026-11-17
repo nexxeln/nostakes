@@ -2,6 +2,8 @@ import {
   CardSchema,
   ChipsSchema,
   Events,
+  GameSchema,
+  HOLDEM,
   PlayerIdSchema,
   SeatIndexSchema,
 } from "@nostakes/engine";
@@ -28,6 +30,9 @@ export const RecapMomentSchema = Schema.Struct({
   boards: Schema.Array(Schema.Array(CardSchema)),
   doubleBoard: Schema.Boolean.pipe(
     Schema.withDecodingDefaultTypeKey(Effect.succeed(false))
+  ),
+  game: GameSchema.pipe(
+    Schema.withDecodingDefaultTypeKey(Effect.succeed(HOLDEM))
   ),
   hand: HandNumberSchema,
   moment: MomentSchema,
@@ -118,6 +123,7 @@ const recapMomentOf = (
 ): RecapMoment => ({
   boards: story.boards,
   doubleBoard: story.doubleBoard,
+  game: story.game,
   hand: HandNumberSchema.make(hand.hand),
   moment,
   players: moment.seats.flatMap((seat) =>

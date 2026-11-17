@@ -11,6 +11,7 @@ import {
   DeckSchema as SealedDeckSchema,
   DigestSchema,
   DrandChainSchema,
+  HoleCardsSchema,
   OpeningSchema as CardOpeningSchema,
   QUICKNET,
   RoleSchema,
@@ -33,6 +34,7 @@ export const HandNumberSchema = Schema.Int.check(
 export const sealFields = {
   at,
   hand: HandNumberSchema,
+  holeCardCount: Schema.optionalKey(HoleCardsSchema),
   roots: Schema.Tuple([DigestSchema, DigestSchema]),
   round: BeaconRoundSchema,
   seats: Schema.Array(SeatIndexSchema),

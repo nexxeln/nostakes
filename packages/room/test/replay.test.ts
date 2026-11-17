@@ -1,5 +1,5 @@
 import { describe, expect, it } from "@effect/vitest";
-import { ShowdownEntries } from "@nostakes/engine";
+import { Events, ShowdownEntries } from "@nostakes/engine";
 import type { Card, Event } from "@nostakes/engine";
 import { Match, Option, Schema } from "effect";
 import * as Arbitrary from "effect/Arbitrary";
@@ -114,6 +114,20 @@ describe("a hand's replay", () => {
           boardTooSoon(replay.steps, spectator)
         )
       ).toStrictEqual([]);
+    },
+    generated(25, 60)
+  );
+
+  it.prop(
+    "reads the hand on every device as the game the table dealt, so no device ranks an Omaha hand as hold'em",
+    { seed: handSeed },
+    ({ seed }) => {
+      const events = generatedHand(seededRandom(seed));
+      const dealt = events.find(Events.$is("HandStarted"))?.game ?? "Holdem";
+
+      expect(everyDevice(events).map((replay) => replay.game)).toStrictEqual(
+        everyDevice(events).map(() => dealt)
+      );
     },
     generated(25, 60)
   );

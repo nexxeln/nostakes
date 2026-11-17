@@ -1,15 +1,18 @@
 import {
   BombPotStartSchema,
+  GameSchema,
   EventSchema,
   Events,
   PlayerIdSchema,
   SeatIndexSchema,
 } from "@nostakes/engine";
 import type { Event, SeatIndex } from "@nostakes/engine";
+import { TWO_HOLE_CARDS } from "@nostakes/shuffle";
 import { Data, Option, Schema } from "effect";
 
 import { RoomEvents, roomEventFields, sealFields } from "./events.js";
 import type { Holder, RoomEvent } from "./events.js";
+import { layoutOf } from "./sealed-hand.js";
 import { MillisSchema } from "./time.js";
 
 export const AudienceSchema = Schema.TaggedUnion({
@@ -29,6 +32,7 @@ export const PublicHandStartedSchema = Schema.TaggedStruct("HandStarted", {
   bombPot: Schema.optionalKey(BombPotStartSchema),
   button: SeatIndexSchema,
   dealtIn: Schema.Array(SeatIndexSchema),
+  game: Schema.optionalKey(GameSchema),
   handNumber: Schema.Int,
   smallBlindSeat: SeatIndexSchema,
 });
@@ -91,8 +95,13 @@ const seenTableEvent = (event: Event, audience: Audience): SeenTableEvent => {
       smallBlindSeat: event.smallBlindSeat,
     };
 
+    const withGame =
+      event.game === undefined ? shown : { ...shown, game: event.game };
+
     return PublicHandStartedSchema.make(
-      event.bombPot === undefined ? shown : { ...shown, bombPot: event.bombPot }
+      event.bombPot === undefined
+        ? withGame
+        : { ...withGame, bombPot: event.bombPot }
     );
   }
 
@@ -124,6 +133,7 @@ export const redact = (event: RoomEvent, audience: Audience): SeenEvent => {
     return SeenEvents.HandSealed({
       at: event.at,
       hand: event.hand,
+      ...layoutOf(event.holeCardCount ?? TWO_HOLE_CARDS),
       roots: event.roots,
       round: event.round,
       seats: event.seats,

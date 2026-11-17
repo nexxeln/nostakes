@@ -309,6 +309,8 @@ const seededSession = (seed: number): Session => {
     interactive: random.chance(1, 2),
     lastAggressorShows: random.chance(1, 2),
     maxRuns: 1 + random.below(4),
+    omaha: false,
+    potLimit: false,
     rabbitHunt: random.chance(1, 2),
     rabbitStillIn: random.chance(1, 2),
     smallBlind: 1 + random.below(10),

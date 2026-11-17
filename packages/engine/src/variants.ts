@@ -4,7 +4,7 @@ import type { Card } from "./cards.js";
 import { evaluate, evaluateJoined } from "./evaluation.js";
 import type { HandRank } from "./evaluation.js";
 
-export const GameSchema = Schema.Literals(["Holdem"]);
+export const GameSchema = Schema.Literals(["Holdem", "Omaha"]);
 
 export type Game = typeof GameSchema.Type;
 
@@ -28,6 +28,11 @@ export const VARIANTS: Readonly<Record<Game, Variant>> = {
     evaluationCost: 1,
     holeCards: 2,
     playsFromHole: { least: 0, most: 2 },
+  },
+  Omaha: {
+    evaluationCost: 10,
+    holeCards: 4,
+    playsFromHole: { least: 2, most: 2 },
   },
 };
 

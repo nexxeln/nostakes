@@ -57,15 +57,15 @@ describe("the Command type admits only what CommandSchema admits", () => {
     ).toStrictEqual([false, true, false, true, false, false]);
   });
 
-  it("Rule 26: a show is one or two distinct cards, so ShowCards with no card or one card twice does not typecheck", () => {
+  it("Rule 26: a show is one to five distinct cards, the most any variant deals, so ShowCards with no card, one card twice, or six cards does not typecheck", () => {
     expectTypeOf<readonly Card[]>().not.toExtend<
       FieldOf<"ShowCards", "cards">
     >();
     expect(
-      [[], [0], [0, 1], [0, 0], [0, 1, 2]].map((shown) =>
+      [[], [0], [0, 1], [0, 0], [0, 1, 2, 3], [0, 1, 2, 3, 4, 5]].map((shown) =>
         Schema.is(ShownCardsSchema)(shown)
       )
-    ).toStrictEqual([false, true, true, false, false]);
+    ).toStrictEqual([false, true, true, false, true, false]);
   });
 
   it("Rule 7: table rules come only from TableConfigSchema, so a ChangeRules config literal with the small blind above the big blind does not typecheck", () => {

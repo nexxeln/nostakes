@@ -8,7 +8,7 @@ import {
   bombPotBoards,
   bombPotDue,
 } from "@nostakes/engine";
-import type { Action, Event } from "@nostakes/engine";
+import type { Action, Event, Game } from "@nostakes/engine";
 import { Effect, Option } from "effect";
 import type { Types } from "effect";
 import * as Arbitrary from "effect/Arbitrary";
@@ -110,6 +110,48 @@ const answer = (state: RoomState, seed: number) =>
     state,
     serverAnswer(Option.getOrThrow(nextDeadline(openOf(state))), seed)
   );
+
+const holeCardCounts = (events: readonly RoomEvent[]) =>
+  events.flatMap((event) =>
+    RoomEvents.$is("Table")(event) && Events.$is("HoleCardsDealt")(event.event)
+      ? [event.event.cards.length]
+      : []
+  );
+
+describe("changing the game", () => {
+  it("leaves a hand already sealed as hold'em with two cards a seat, and deals the hand after it as Omaha with four", () => {
+    const omaha: RoomSettings = {
+      ...checked,
+      table: TableConfigSchema.make({ ...checked.table, game: "Omaha" }),
+    };
+
+    const sealed = runAll(seated(checked, START), [
+      sealAt(START, 1),
+      RoomCommands.ChangeSettings({
+        at: ms(START + 100),
+        by: as(ann),
+        settings: omaha,
+      }),
+    ]);
+
+    const dealt = run(sealed, dealFromBeacon(ROUND_DUE, SEALED_ROUND));
+
+    expect(startedIn(dealt.events)?.game).toBeUndefined();
+    expect(holeCardCounts(dealt.events)).toStrictEqual([2, 2, 2]);
+
+    const ended = runAll(dealt.state, [
+      act(ann, Actions.Fold(), ROUND_DUE + 100),
+      act(bob, Actions.Fold(), ROUND_DUE + 200),
+    ]);
+
+    const resealed = answer(ended, 7);
+    const next = answer(resealed.state, 8);
+
+    expect(tags(resealed.events)).toStrictEqual(["HandSealed"]);
+    expect(startedIn(next.events)?.game).toBe("Omaha");
+    expect(holeCardCounts(next.events)).toStrictEqual([4, 4, 4]);
+  });
+});
 
 describe("calling a bomb pot", () => {
   it("makes the next hand one: every seat antes, the flop is out, the table's view says so, and the call is spent", () => {
@@ -287,6 +329,25 @@ const boardProblems = (
       ];
 };
 
+const gameAt = (state: RoomState): Game =>
+  RoomStates.$match(state, {
+    Closed: (): Game => "Holdem",
+    Open: (open) => open.table.config.game,
+  });
+
+const gameProblems = (
+  started: Types.ExtractTag<Event, "HandStarted">,
+  expected: Game
+) => {
+  const dealt = started.game ?? "Holdem";
+
+  return dealt === expected
+    ? []
+    : [
+        `hand ${started.handNumber} was dealt as ${dealt}, the rules said ${expected}`,
+      ];
+};
+
 const anyRoom = (chosen: RoomSettings) => chosen;
 
 const checkedRoom = (chosen: RoomSettings): RoomSettings => ({
@@ -298,6 +359,7 @@ const kindProblems = (source: Source, room = anyRoom) => {
   const problems: string[] = [];
   const sealedAs = new Map<number, boolean>();
   const sealedBoards = new Map<number, number>();
+  const sealedGames = new Map<number, Game>();
   let previous: RoomState | undefined;
   let bombPots = 0;
   let sealedBombPots = 0;
@@ -312,11 +374,13 @@ const kindProblems = (source: Source, room = anyRoom) => {
 
         sealedAs.set(event.hand, due);
         sealedBoards.set(event.hand, boardsAt(before, due));
+        sealedGames.set(event.hand, gameAt(before));
       }
 
       if (RoomEvents.$is("SealWithdrawn")(event)) {
         sealedAs.delete(event.hand);
         sealedBoards.delete(event.hand);
+        sealedGames.delete(event.hand);
       }
 
       if (
@@ -342,6 +406,13 @@ const kindProblems = (source: Source, room = anyRoom) => {
           );
         }
 
+        problems.push(
+          ...gameProblems(
+            started,
+            sealedGames.get(started.handNumber) ?? gameAt(before)
+          )
+        );
+
         if (bomb && RoomStates.$is("Open")(state) && state.bombCalled) {
           problems.push(`hand ${started.handNumber} did not spend its call`);
         }
@@ -357,7 +428,7 @@ const kindProblems = (source: Source, room = anyRoom) => {
 
 describe("generated rooms with bomb pots", () => {
   it.prop(
-    "a hand is a bomb pot exactly when the rules, the schedule, and the host's call said so when it was sealed, or when it was dealt if no seal held it; nothing after the seal changes its kind, and a bomb pot spends the call",
+    "a hand is a bomb pot exactly when the rules, the schedule, and the host's call said so, and is dealt as the game the rules named, when it was sealed, or when it was dealt if no seal held it; nothing after the seal changes its kind or its game, and a bomb pot spends the call",
     { source: session },
     ({ source }) => {
       expect(kindProblems(source).problems).toStrictEqual([]);
@@ -382,7 +453,7 @@ describe("generated rooms with bomb pots", () => {
       });
 
       const outcomes = sources.map((source, index) =>
-        kindProblems(source, index % 6 === 0 ? checkedRoom : anyRoom)
+        kindProblems(source, index % 3 === 0 ? checkedRoom : anyRoom)
       );
 
       expect(outcomes.flatMap((outcome) => outcome.problems)).toStrictEqual([]);

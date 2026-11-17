@@ -4,6 +4,7 @@ import * as Arbitrary from "effect/Arbitrary";
 import {
   Actions,
   Antes,
+  BettingLimits,
   BombPots,
   CardSchema,
   Commands,
@@ -65,6 +66,8 @@ export const SessionSchema = Schema.Struct({
   interactive: Schema.Boolean,
   lastAggressorShows: Schema.Boolean,
   maxRuns: between(1, 4),
+  omaha: Schema.Boolean,
+  potLimit: Schema.Boolean,
   rabbitHunt: Schema.Boolean,
   rabbitStillIn: Schema.Boolean,
   smallBlind: between(1, 10),
@@ -116,6 +119,8 @@ export const configOf = (source: Session): TableConfig =>
     bigBlind: chipCount(source.smallBlind + source.bigBlindExtra),
     blindPosting: source.casinoBlinds ? "Casino" : "HomeGame",
     bombPot: bombOf(source.bombAnte, source.bombEvery, source.bombBoards),
+    game: source.omaha ? "Omaha" : "Holdem",
+    limit: source.potLimit ? BettingLimits.PotLimit() : BettingLimits.NoLimit(),
     maxRuns: runCount(source.maxRuns),
     rabbitHunt: source.rabbitHunt,
     rabbitHunters: source.rabbitStillIn ? "StillIn" : "DealtIn",
@@ -144,6 +149,10 @@ const randomConfig = (random: SeededRandom): TableConfig => {
       random.below(5),
       random.chance(1, 2) ? 2 : 1
     ),
+    game: random.chance(1, 3) ? "Omaha" : "Holdem",
+    limit: random.chance(1, 2)
+      ? BettingLimits.PotLimit()
+      : BettingLimits.NoLimit(),
     maxRuns: runCount(1 + random.below(4)),
     rabbitHunt: random.chance(1, 2),
     rabbitHunters: random.chance(1, 3) ? "StillIn" : "DealtIn",

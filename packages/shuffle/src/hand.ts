@@ -3,12 +3,14 @@ import { Option } from "effect";
 import { openCard, openDeck, sealDeck } from "./commitment.js";
 import type { SealedDeck } from "./commitment.js";
 import type { DealingPlan } from "./order.js";
+import { TWO_HOLE_CARDS } from "./schemas.js";
 import type {
   BeaconRound,
   DealIndex,
   Deck,
   DeckOpening,
   HandContext,
+  HoleCards,
   Opening,
   SaltSecret,
   Seal,
@@ -26,17 +28,27 @@ export const sealHand = (
   decks: readonly [Deck, Deck],
   secret: SaltSecret,
   beaconRound: BeaconRound,
-  seats: Seats
+  seats: Seats,
+  holeCards: HoleCards = TWO_HOLE_CARDS
 ): SealedHand => {
   const sealed = [
     sealDeck(context, 0, decks[0], secret),
     sealDeck(context, 1, decks[1], secret),
   ] as const;
 
+  const seal: Seal = {
+    beaconRound,
+    roots: [sealed[0].root, sealed[1].root],
+    seats,
+  };
+
   return {
     context,
     decks: sealed,
-    seal: { beaconRound, roots: [sealed[0].root, sealed[1].root], seats },
+    seal:
+      holeCards === TWO_HOLE_CARDS
+        ? seal
+        : { ...seal, holeCardCount: holeCards },
   };
 };
 

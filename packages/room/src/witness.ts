@@ -6,6 +6,7 @@ import {
   EpochMillisSchema,
   Roles,
   SealArrivals,
+  TWO_HOLE_CARDS,
 } from "@nostakes/shuffle";
 import type {
   BeaconRound,
@@ -21,6 +22,7 @@ import type {
 import { Data, Option, Predicate, Result } from "effect";
 
 import type { OpenedCard } from "./events.js";
+import { layoutOf } from "./sealed-hand.js";
 import { RoomViews, SeenEvents } from "./views.js";
 import type {
   DealtViewSchema,
@@ -32,6 +34,7 @@ import type {
 type OpenView = typeof RoomViewSchema.cases.Open.Type;
 
 interface SealSight {
+  readonly holeCardCount: number | undefined;
   readonly round: BeaconRound;
   readonly roots: readonly [Digest, Digest];
   readonly seats: readonly SeatIndex[];
@@ -300,6 +303,7 @@ export const witnessEvent = (
     return withHand(witness, event.hand, (sight) =>
       addSeal(sight, {
         arrival,
+        holeCardCount: event.holeCardCount,
         roots: event.roots,
         round: event.round,
         seats: event.seats,
@@ -524,6 +528,7 @@ const seenOpenView = (
       withHand(tabled, seal.hand, (sight) =>
         addSeal(sight, {
           arrival: caughtUp,
+          holeCardCount: seal.holeCardCount,
           roots: seal.roots,
           round: seal.round,
           seats: seal.seats,
@@ -560,6 +565,7 @@ const seenOpenView = (
               },
               {
                 arrival: caughtUp,
+                holeCardCount: dealt.seal.holeCardCount,
                 roots: dealt.seal.roots,
                 round: dealt.seal.round,
                 seats: dealt.seal.seats,
@@ -714,7 +720,12 @@ export const evidenceFor = (
   const common = {
     chain,
     context: { hand, room },
-    seal: { beaconRound: seal.round, roots: seal.roots, seats: seal.seats },
+    seal: {
+      beaconRound: seal.round,
+      ...layoutOf(seal.holeCardCount ?? TWO_HOLE_CARDS),
+      roots: seal.roots,
+      seats: seal.seats,
+    },
     sealArrival: seal.arrival,
   };
 

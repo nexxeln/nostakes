@@ -446,6 +446,7 @@ export const replayHand = (
         player: player(at),
         seat: at,
       })),
+      game: started?.game ?? "Holdem",
       handNumber: started?.handNumber ?? 1,
       mucked: [],
       rabbit: [],

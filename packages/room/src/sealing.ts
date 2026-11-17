@@ -4,6 +4,7 @@ import {
   DeckSchema as TableDeckSchema,
   Events,
   decide as decideTable,
+  variantOf,
 } from "@nostakes/engine";
 import type { Deck as TableDeck, SeatIndex } from "@nostakes/engine";
 import {
@@ -56,6 +57,7 @@ import {
   contextOf,
   dealtDeck,
   epochOf,
+  layoutOf,
   planOf,
   roundAt,
   sealLeadMs,
@@ -187,13 +189,15 @@ export const sealNextHand = (
     const seats = yield* onTableOrder(state, tableDeck);
     const secret = SaltSecretSchema.make(command.secret);
     const hand = nextHandNumber(state);
+    const { holeCards } = variantOf(state.table.config.game);
 
     const sealed = sealHand(
       contextOf(state.code, hand),
       decks,
       secret,
       command.round,
-      seats
+      seats,
+      holeCards
     );
 
     return [
@@ -201,6 +205,7 @@ export const sealNextHand = (
         at: command.at,
         decks,
         hand,
+        ...layoutOf(holeCards),
         roots: sealed.seal.roots,
         round: command.round,
         seats,

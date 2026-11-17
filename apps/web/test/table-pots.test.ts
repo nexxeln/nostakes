@@ -155,6 +155,7 @@ const handViewOf = (inHand: InHand): HandView => {
     button: inHand.button,
     doubleBoard: false,
     choosingRuns: Option.none(),
+    game: hand.game,
     handNumber: inHand.handNumber,
     players: hand.players.map((player) => ({
       committedThisStreet: player.committedThisStreet,

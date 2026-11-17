@@ -39,8 +39,9 @@ import {
   openNight,
   planNight,
   playNight,
+  POT_LIMIT_OMAHA,
 } from "./fixtures/night.js";
-import type { StrangerPlan } from "./fixtures/night.js";
+import type { StrangerPlan, TableRules } from "./fixtures/night.js";
 import {
   createPokerRoom,
   joinPokerRoom,
@@ -90,6 +91,7 @@ interface SmallRoom {
   readonly race?: boolean;
   readonly regular?: boolean;
   readonly stranger?: StrangerPlan;
+  readonly omaha?: boolean;
   readonly ending: NightEnding;
   readonly players: number;
   readonly shuffle: Shuffle;
@@ -103,6 +105,7 @@ const ROOMS: readonly SmallRoom[] = [
     bombPotEvery: 2,
     ending: "AsItComes",
     hands: CHECKED_HANDS_PER_ROOM,
+    omaha: true,
     players: 3,
     restarts: 0,
     shuffle: "Checked",
@@ -144,6 +147,24 @@ const ROOMS: readonly SmallRoom[] = [
   { ending: "Halted", hands: 3, players: 3, restarts: 0, shuffle: "Plain" },
 ];
 
+const AS_DRAWN: TableRules = {};
+
+const smallRoomRules = (
+  game: TableRules,
+  bombPotEvery: number | undefined,
+  bombPotBoards: 1 | 2 | undefined
+): TableRules =>
+  bombPotEvery === undefined
+    ? game
+    : {
+        ...game,
+        bombPot: BombPots.BombPots({
+          ante: ChipsSchema.make(BOMB_POT_ANTE),
+          boardCount: bombPotBoards ?? 1,
+          everyHands: bombPotEvery,
+        }),
+      };
+
 const TEMPER: Temper = {
   churnPercent: 6,
   dropPercent: 1,
@@ -184,6 +205,7 @@ test(
           ending,
           hands,
           knocks,
+          omaha,
           players,
           race,
           regular,
@@ -212,16 +234,11 @@ test(
             shuffle,
             silences: 1,
             stranger: stranger ?? "None",
-            tableRules:
-              bombPotEvery === undefined
-                ? {}
-                : {
-                    bombPot: BombPots.BombPots({
-                      ante: ChipsSchema.make(BOMB_POT_ANTE),
-                      boardCount: bombPotBoards ?? 1,
-                      everyHands: bombPotEvery,
-                    }),
-                  },
+            tableRules: smallRoomRules(
+              omaha === true ? POT_LIMIT_OMAHA : AS_DRAWN,
+              bombPotEvery,
+              bombPotBoards
+            ),
             turnSeconds: 1,
           },
           TEMPER,

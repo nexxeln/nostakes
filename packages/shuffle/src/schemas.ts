@@ -10,6 +10,10 @@ export const MIN_DEALT_IN = 2;
 
 export const MAX_DEALT_IN = 9;
 
+export const TWO_HOLE_CARDS = 2;
+
+export const MOST_HOLE_CARDS = 5;
+
 const deckIndex = Schema.Int.check(
   Schema.isBetween({ maximum: DECK_SIZE - 1, minimum: 0 })
 );
@@ -125,13 +129,23 @@ export const SeatsSchema = Schema.Array(SeatSchema).check(
 
 export type Seats = typeof SeatsSchema.Type;
 
+export const HoleCardsSchema = Schema.Int.check(
+  Schema.isBetween({ maximum: MOST_HOLE_CARDS, minimum: 1 })
+);
+
+export type HoleCards = typeof HoleCardsSchema.Type;
+
 export const SealSchema = Schema.Struct({
   beaconRound: BeaconRoundSchema,
+  holeCardCount: Schema.optionalKey(HoleCardsSchema),
   roots: Schema.Tuple([DigestSchema, DigestSchema]),
   seats: SeatsSchema,
 });
 
 export type Seal = typeof SealSchema.Type;
+
+export const holeCardsOf = (seal: Seal): HoleCards =>
+  seal.holeCardCount ?? TWO_HOLE_CARDS;
 
 export const RoleSchema = Schema.TaggedUnion({
   Community: {
@@ -139,7 +153,12 @@ export const RoleSchema = Schema.TaggedUnion({
       Schema.isBetween({ maximum: DECK_SIZE - 1, minimum: 0 })
     ),
   },
-  Hole: { pass: Schema.Literals([0, 1]), turn: SeatSchema },
+  Hole: {
+    pass: Schema.Int.check(
+      Schema.isBetween({ maximum: MOST_HOLE_CARDS - 1, minimum: 0 })
+    ),
+    turn: SeatSchema,
+  },
 });
 
 export type Role = typeof RoleSchema.Type;

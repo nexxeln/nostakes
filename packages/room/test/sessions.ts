@@ -1,6 +1,7 @@
 import {
   Actions,
   Antes,
+  BettingLimits,
   BombPots,
   CardSchema,
   ChipsSchema,
@@ -120,6 +121,10 @@ export const tableConfigFrom = (random: SeededRandom): TableConfig => {
           everyHands: [0, 0, 1, 2, 5][random.below(5)] ?? 0,
         })
       : BombPots.NoBombPots(),
+    game: random.chance(1, 3) ? "Omaha" : "Holdem",
+    limit: random.chance(1, 2)
+      ? BettingLimits.PotLimit()
+      : BettingLimits.NoLimit(),
     maxRuns: RunCountSchema.make(1 + random.below(3)),
     rabbitHunt: random.chance(1, 2),
     rabbitHunters: random.chance(1, 3) ? "StillIn" : "DealtIn",

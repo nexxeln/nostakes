@@ -57,8 +57,11 @@ export {
   DigestSchema,
   EpochMillisSchema,
   HandContextSchema,
+  HoleCardsSchema,
+  holeCardsOf,
   MAX_DEALT_IN,
   MIN_DEALT_IN,
+  MOST_HOLE_CARDS,
   OpeningSchema,
   PlayerSawSchema,
   PositionSchema,
@@ -73,6 +76,7 @@ export {
   SEALED_DECKS,
   SeedSchema,
   SightingSchema,
+  TWO_HOLE_CARDS,
 } from "./schemas.js";
 
 export type {
@@ -86,6 +90,7 @@ export type {
   Digest,
   EpochMillis,
   HandContext,
+  HoleCards,
   Opening,
   PlayerSaw,
   Position,

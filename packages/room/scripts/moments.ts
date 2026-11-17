@@ -1,6 +1,7 @@
 import {
   Actions,
   Antes,
+  BettingLimits,
   ChipsSchema,
   Commands,
   DeckSchema,
@@ -15,11 +16,11 @@ import {
   TableStates,
   decide,
   describe,
-  evaluate,
   evolve,
   handCategory,
   initialTable,
   pendingDecisions,
+  rankHand,
   rankOf,
   suitOf,
 } from "@nostakes/engine";
@@ -28,6 +29,7 @@ import type {
   Card,
   Command,
   Event,
+  Game,
   HandCategory,
   LegalActions,
   SeatIndex,
@@ -102,9 +104,13 @@ const chips = (amount: number) => ChipsSchema.make(amount);
 
 const seatAt = (index: number) => SeatIndexSchema.make(index);
 
+const GAME: Game = process.argv.includes("--omaha") ? "Omaha" : "Holdem";
+
 const config = TableConfigSchema.make({
   ante: Antes.NoAnte(),
   bigBlind: chips(BIG_BLIND),
+  game: GAME,
+  limit: GAME === "Omaha" ? BettingLimits.PotLimit() : BettingLimits.NoLimit(),
   maxRuns: RunCountSchema.make(2),
   rabbitHunt: false,
   showdown: "Automatic",
@@ -148,7 +154,7 @@ const shuffledDeck = (random: Random) => {
 
 const RANK_POINTS = [1, 1.5, 2, 2.5, 3, 3.5, 4, 4.5, 5, 6, 7, 8, 10];
 
-const startingScore = (hole: readonly Card[]) => {
+const twoCardScore = (hole: readonly Card[]) => {
   const [first = 0, second = 0] = hole
     .map((card) => rankOf(card))
     .toSorted((left, right) => right - left);
@@ -165,6 +171,24 @@ const startingScore = (hole: readonly Card[]) => {
   const connected = gap <= 1 && first < 10 ? 1 : 0;
 
   return (RANK_POINTS[first] ?? 0) + (suited ? 2 : 0) - gapPenalty + connected;
+};
+
+const OMAHA_SCORE_DISCOUNT = 3;
+
+const startingScore = (hole: readonly Card[]) => {
+  if (hole.length <= 2) {
+    return twoCardScore(hole);
+  }
+
+  let best = 0;
+
+  for (const [index, first] of hole.entries()) {
+    for (const second of hole.slice(index + 1)) {
+      best = Math.max(best, twoCardScore([first, second]));
+    }
+  }
+
+  return best - OMAHA_SCORE_DISCOUNT;
 };
 
 const CATEGORY_ORDER: readonly HandCategory[] = [
@@ -190,7 +214,7 @@ const flushDraw = (hole: readonly Card[], board: readonly Card[]) =>
   );
 
 const madeStrength = (hole: readonly Card[], board: readonly Card[]) => {
-  const rank = evaluate([...hole, ...board]);
+  const rank = rankHand(GAME, hole, board);
   const category = handCategory(rank);
   const own = level(category) - level(boardCategory(board));
   const top = Math.max(...board.map((card) => rankOf(card)));

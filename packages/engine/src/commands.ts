@@ -4,9 +4,14 @@ import { ActionSchema } from "./actions.js";
 import { CardSchema, DeckSchema } from "./cards.js";
 import { ChipsSchema, PlayerIdSchema, SeatIndexSchema } from "./primitives.js";
 import { RunCountSchema, TableConfigSchema } from "./rules.js";
+import { MOST_HOLE_CARDS } from "./variants.js";
 
 export const ShownCardsSchema = Schema.Array(CardSchema)
-  .check(Schema.isMinLength(1), Schema.isMaxLength(2), Schema.isUnique())
+  .check(
+    Schema.isMinLength(1),
+    Schema.isMaxLength(MOST_HOLE_CARDS),
+    Schema.isUnique()
+  )
   .pipe(Schema.brand("ShownCards"));
 
 export type ShownCards = typeof ShownCardsSchema.Type;

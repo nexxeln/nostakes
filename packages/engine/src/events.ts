@@ -9,6 +9,7 @@ import {
   TableConfigSchema,
 } from "./rules.js";
 import { StreetSchema } from "./state.js";
+import { GameSchema } from "./variants.js";
 
 export const BlindSchema = Schema.Literals(["Small", "Big"]);
 
@@ -72,6 +73,7 @@ export const EventSchema = Schema.TaggedUnion({
     button: SeatIndexSchema,
     dealtIn: Schema.Array(SeatIndexSchema),
     deck: DeckSchema,
+    game: Schema.optionalKey(GameSchema),
     handNumber: Schema.Int,
     smallBlindSeat: SeatIndexSchema,
   },

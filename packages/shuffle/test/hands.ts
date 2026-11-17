@@ -5,13 +5,16 @@ import {
   DealIndexSchema,
   DECK_SIZE,
   dealingPlan,
+  holeCardsOf,
   MAX_DEALT_IN,
+  MOST_HOLE_CARDS,
   openDealt,
   openSpare,
   RandomnessSchema,
   Roles,
   sealHand,
   seedOf,
+  TWO_HOLE_CARDS,
 } from "../src/index.js";
 import type {
   Beacon,
@@ -49,10 +52,14 @@ export const seats = Arbitrary.all({
   order: permutationOf(MAX_DEALT_IN),
 }).pipe(Arbitrary.map(({ count, order }): Seats => order.slice(0, count)));
 
-export const rolesFor = (dealtIn: number): readonly Role[] => [
-  ...Arr.range(0, dealtIn - 1).map((turn) => Roles.Hole({ pass: 0, turn })),
-  ...Arr.range(0, dealtIn - 1).map((turn) => Roles.Hole({ pass: 1, turn })),
-  ...Arr.range(0, DECK_SIZE - 2 * dealtIn - 1).map((drawn) =>
+export const rolesFor = (
+  dealtIn: number,
+  holeCards: number = TWO_HOLE_CARDS
+): readonly Role[] => [
+  ...Arr.range(0, holeCards - 1).flatMap((pass) =>
+    Arr.range(0, dealtIn - 1).map((turn) => Roles.Hole({ pass, turn }))
+  ),
+  ...Arr.range(0, DECK_SIZE - holeCards * dealtIn - 1).map((drawn) =>
     Roles.Community({ drawn })
   ),
 ];
@@ -63,7 +70,10 @@ export const dealHonestly = (
 ): HonestHand => {
   const plan = dealingPlan(seedOf(sealed.context, sealed.seal, beacon));
 
-  const dealt = rolesFor(sealed.seal.seats.length).map((role, dealIndex) => {
+  const dealt = rolesFor(
+    sealed.seal.seats.length,
+    holeCardsOf(sealed.seal)
+  ).map((role, dealIndex) => {
     const opening = Option.getOrThrow(
       openDealt(sealed, plan, DealIndexSchema.make(dealIndex))
     );
@@ -92,14 +102,16 @@ export const honestHand = Arbitrary.all({
   beacon: Arbitrary.all({ randomness, round: between(1, 10_000_000) }),
   context: handContext,
   decks: Arbitrary.all([deck, deck]),
+  holeCards: between(1, MOST_HOLE_CARDS),
   seats,
   secret: saltSecret,
 }).pipe(
-  Arbitrary.map(({ beacon, context, decks, seats: dealtIn, secret }) =>
-    dealHonestly(
-      sealHand(context, decks, secret, beacon.round, dealtIn),
-      beacon
-    )
+  Arbitrary.map(
+    ({ beacon, context, decks, holeCards, seats: dealtIn, secret }) =>
+      dealHonestly(
+        sealHand(context, decks, secret, beacon.round, dealtIn, holeCards),
+        beacon
+      )
   )
 );
 

@@ -7,6 +7,7 @@ import {
 import type {
   Card,
   Chips,
+  Game as TableGame,
   PlayerId,
   Seat,
   SeatIndex,
@@ -21,6 +22,7 @@ import type {
   DeckOpening,
   Digest,
   DrandChain,
+  HoleCards,
   SaltSecret,
 } from "@nostakes/shuffle";
 import { Data, Option, Result } from "effect";
@@ -125,6 +127,7 @@ export interface HandRecord {
   readonly boards: readonly (readonly Card[])[];
   readonly bounty: Option.Option<Bounty>;
   readonly doubleBoard: boolean;
+  readonly game: TableGame;
   readonly handNumber: number;
   readonly mucked: readonly SeatIndex[];
   readonly rabbit: readonly Card[];
@@ -136,6 +139,7 @@ export interface Sealed {
   readonly round: BeaconRound;
   readonly roots: readonly [Digest, Digest];
   readonly seats: readonly SeatIndex[];
+  readonly holeCards: HoleCards;
   readonly posts: readonly SeatIndex[];
   readonly bombPot: boolean;
   readonly decks: readonly [SealedDeck, SealedDeck];

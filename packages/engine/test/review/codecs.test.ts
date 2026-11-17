@@ -355,7 +355,7 @@ describe("JSON codecs for phase 2 storage and transport", () => {
       ["no runs", '{"_tag":"ChooseRuns","runs":0,"seat":0}'],
       ["fractional runs", '{"_tag":"ChooseRuns","runs":1.5,"seat":0}'],
       ["show no card", '{"_tag":"ShowCards","cards":[],"seat":0}'],
-      ["show three cards", '{"_tag":"ShowCards","cards":[1,2,3],"seat":0}'],
+      ["show six cards", '{"_tag":"ShowCards","cards":[1,2,3,4,5,6],"seat":0}'],
       ["show one card twice", '{"_tag":"ShowCards","cards":[4,4],"seat":0}'],
       ["show card 52", '{"_tag":"ShowCards","cards":[52],"seat":0}'],
       ["small blind above big blind", rules('"smallBlind":20')],

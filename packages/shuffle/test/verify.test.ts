@@ -6,6 +6,8 @@ import {
   CardSchema,
   DealIndexSchema,
   DealtSeatsDiffer,
+  holeCardsOf,
+  MOST_HOLE_CARDS,
   OpeningMismatch,
   openCard,
   PositionSchema,
@@ -325,12 +327,21 @@ describe("verifyHand on a changed hand", () => {
       }
 
       const dealtIn = dealtInOf(hand);
-      const pastDeck = Roles.Community({ drawn: 52 - 2 * dealtIn });
+      const holeCards = holeCardsOf(hand.sealed.seal);
+
+      const pastDeck = Roles.Community({
+        drawn: 52 - holeCards * dealtIn,
+      });
 
       const pastPlayers =
-        dealtIn < 9 ? [Roles.Hole({ pass: 1, turn: dealtIn })] : [];
+        dealtIn < 9 ? [Roles.Hole({ pass: 0, turn: dealtIn })] : [];
 
-      for (const role of [...pastPlayers, pastDeck]) {
+      const pastPasses =
+        holeCards < MOST_HOLE_CARDS
+          ? [Roles.Hole({ pass: holeCards, turn: 0 })]
+          : [];
+
+      for (const role of [...pastPlayers, ...pastPasses, pastDeck]) {
         expect(outcome(sawOf(hand, [{ ...first, role }]))).toEqual(
           new RoleOutOfRange({ dealtIn, role })
         );

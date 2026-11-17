@@ -286,7 +286,7 @@ export const storyOf = (
   }
 
   let story = opening(
-    HOLDEM,
+    first.game ?? HOLDEM,
     first.handNumber,
     first.bombPot?.bigBlind ?? 0,
     first.bombPot?.boardCount ?? 1
