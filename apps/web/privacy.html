@@ -43,15 +43,15 @@
       <section class="sheet">
         <h2>A note you send us</h2>
         <p>
-          When you send a note with Feedback, the server keeps what you wrote,
-          when it arrived, which screen you were on (such as your rooms or a
-          table), your screen size, which build of the page you had, and the
-          name your browser gives itself. It never adds the room, your name,
-          your face, your pass, your internet address, or the random number on
-          your device. Notes stay on nostakes's own server and only the owner
-          reads them. Each note is kept until the owner deletes it or 5,000
-          newer notes push it out. A note goes whether counts are on or off,
-          because you send it yourself.
+          When you send a note with Feedback, the server keeps what you wrote
+          and when it arrived. It also keeps which screen you were on (such as
+          your rooms or a table), your screen size, which build of the page you
+          had, and the name your browser gives itself. It never adds the room,
+          your name, your face, your pass, your internet address, or the random
+          number on your device. Notes stay on nostakes's own server and only
+          the owner reads them. Each note is kept until the owner deletes it or
+          5,000 newer notes push it out. A note goes whether counts are on or
+          off, because you send it yourself.
         </p>
       </section>
 
@@ -92,9 +92,9 @@
         <p>
           Each count from a room is filed under a one-way hash of the room's
           internal identifier, the same for every count from that room. The
-          room's code cannot be read back from it. Cloudflare stores the counts
-          for three months, which is how long its Workers Analytics Engine keeps
-          all data. It is Cloudflare's rule, not a setting of ours.
+          room's code can't be read back from it. Cloudflare keeps the counts
+          for 3 months. That's how long its Workers Analytics Engine keeps all
+          data: Cloudflare's rule, not a setting of ours.
         </p>
       </section>
 
@@ -139,12 +139,12 @@
           <li>
             Your voice goes from your device to Cloudflare Realtime, which
             forwards it to the others in the room's voice. Cloudflare relays it
-            through its own network when a direct path does not work. It is
+            through its own network when a direct path doesn't work. It is
             encrypted on the way, as every WebRTC call is.
           </li>
           <li>
             Nobody records it. Our server never sees the sound, only that you
-            joined voice, and it does not keep that once you leave. Voice is
+            joined voice, and it doesn't keep that once you leave. Voice is
             never in a moment, a clip, a replay, the recap, or a picture you
             keep.
           </li>
@@ -173,9 +173,9 @@
           <li>
             Cloudflare's per-request logs, which would record every web address
             requested and so the room code in a room's link, are turned off.
-            Cloudflare's documentation does not say what it adds to the lines
-            our code writes, such as the web address of the request, so we
-            cannot promise that a line never shows one.
+            Cloudflare's documentation doesn't say what it adds to the lines our
+            code writes, such as the web address of the request. So we can't
+            promise that a line never shows one.
           </li>
           <li>Cloudflare keeps our log lines for at most 7 days.</li>
         </ul>
@@ -195,11 +195,11 @@
             still exists and sending an error report count as connections. An
             IPv6 address is counted by its network, the first half of the
             address, so one home or office network shares one count.
-            Cloudflare's documentation does not say how long it keeps a count
+            Cloudflare's documentation doesn't say how long it keeps a count
             after its minute is up.
           </li>
           <li>
-            We do not store your internet address. Our code never puts it in a
+            We don't store your internet address. Our code never puts it in a
             room, in a log line, or in our counts of what happens.
           </li>
         </ul>
@@ -217,9 +217,9 @@
           </li>
           <li>
             Cloudflare, which runs our server, handles every request, and a
-            room's link holds its code. As the log section says, Cloudflare does
-            not say what it adds to our log lines, so a room's code could reach
-            one that way.
+            room's link holds its code. As the log section says, Cloudflare
+            doesn't say what it adds to our log lines, so a room's code could
+            reach one that way.
           </li>
           <li>
             No ads, no cookies, no tracking scripts from other companies, no
@@ -243,7 +243,7 @@
           You can also use the bar chart button in the menu at the table. With
           counts off, this device sends no random number and no error reports,
           and forgets the number it had. A home page or invite link opened is
-          counted either way, with the site that sent you: the server counts it
+          counted either way, with the site that sent you. The server counts it
           as the page loads, before it could know this setting, and the count
           holds no number and no address.
         </p>
