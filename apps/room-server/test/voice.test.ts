@@ -11,7 +11,7 @@ import {
 import type { PlayerId, RoomPass, VoiceAsk } from "@nostakes/protocol";
 import { DEFAULT_SETTINGS } from "@nostakes/room";
 import type { VoiceRule } from "@nostakes/room";
-import { Effect, Option, Schema } from "effect";
+import { Effect, Option, Queue, Schema } from "effect";
 import * as HttpClient from "effect/http/HttpClient";
 
 import { MemberCommandSchema } from "../src/poker-room.js";
@@ -111,6 +111,15 @@ const roomWith = (base: string, code: string, rule: VoiceRule) =>
 
     return { guest, host, room };
   });
+
+const closedSoon = (socket: PokerSocket) =>
+  Effect.gen(function* awaitClose() {
+    while (Option.isNone(socket.closed())) {
+      yield* Queue.take(socket.signal);
+    }
+
+    return socket.closed();
+  }).pipe(Effect.timeout("10 seconds"), Effect.orDie);
 
 const issue = (socket: PokerSocket, id: string, command: MemberCommand) =>
   socket.send(
@@ -213,7 +222,7 @@ test(
       )
     ).toEqual([]);
     expect((yield* voice(base, guest, Asks.join)).status).toBe(403);
-    expect(ben.closed()).not.toEqual(Option.none());
+    expect(yield* closedSoon(ben)).not.toEqual(Option.none());
 
     yield* issue(ana, "close", Commands.CloseRoom.make({}));
     yield* rosterSeen(ana, []);
