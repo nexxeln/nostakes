@@ -210,16 +210,13 @@ export const tableCss = `
 .hand { position: absolute; z-index: 6; perspective: 800px; cursor: grab; }
 .hand.gone { visibility: hidden; }
 .hand.dragging, .hand.armed { z-index: 9; }
-.hand .hc { position: absolute; left: 0; top: 0; transition: transform 0.32s var(--ease); }
+.hand .hc { position: absolute; left: 0; top: 0; transform: var(--rest); transition: transform 0.32s var(--ease), translate 0.32s var(--ease); }
 .hand .hc .card { transition: transform 0.32s var(--ease), opacity var(--duration-2) var(--ease); }
 .hand .hc .face, .hand .hc .back { transition: transform 0.32s var(--ease); }
 .hand .hc .face, .hand .hc .back { box-shadow: var(--shadow-sheet-2); }
 .hand.peek .hc .card .face, .hand.open .hc .card .face { transform: none; }
 .hand.peek .hc .card .back, .hand.open .hc .card .back { transform: rotateY(180deg); }
-.hand .hc:nth-child(1) { transform: translate(0px, 0px) rotate(-5deg); }
-.hand .hc:nth-child(2) { transform: translate(var(--spread), 3px) rotate(4deg); }
-.hand.peek .hc:nth-child(1) { transform: translate(-12px, -28px) rotate(-8deg); }
-.hand.peek .hc:nth-child(2) { transform: translate(calc(var(--spread) + 12px), -25px) rotate(7deg); }
+.hand.peek .hc { transform: var(--peek); }
 .hand.armed .hc .card { opacity: 0.45; }
 .hand .hc.up .card .face { transform: none; }
 .hand .hc.up .card .back { transform: rotateY(180deg); }
@@ -228,6 +225,12 @@ export const tableCss = `
   display: grid; place-items: center; border-radius: 6px; background: var(--color-toast); color: var(--color-on-toast);
   font-size: var(--text-1); font-weight: var(--weight-strong); letter-spacing: 0.02em; box-shadow: var(--shadow-sheet-1); white-space: nowrap;
 }
+.hand.many .hc.up::before { left: calc(var(--strip) / 2); padding: 0 4px; }
+.hand.many.open .hc.up::before { display: none; }
+.hand.many.open .hc.up:nth-last-child(2)::before { display: grid; left: calc(var(--cw-hand, 60px) - var(--span) / 2); padding: 0 7px; }
+.hand .hc.plays { translate: 0 calc(var(--cw-hand, 60px) * -0.12); }
+.card.rests .face, .hc.rests .face { filter: brightness(0.84); }
+.shown .card.plays { translate: 0 -12%; }
 .hand.offering { cursor: pointer; }
 .hand.beckon { animation: beckon 1.4s ease-in-out infinite; }
 @keyframes beckon { 0%, 100% { translate: 0 0; } 50% { translate: 0 -6px; } }

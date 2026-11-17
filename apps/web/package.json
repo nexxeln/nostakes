@@ -24,6 +24,7 @@
     "rules-shots": "node scripts/rules-shots.ts",
     "reactions-shots": "node scripts/reaction-shots.ts",
     "double-board-shots": "node scripts/double-board-shots.ts",
+    "hand-shots": "node scripts/hand-shots.ts",
     "throw-demos": "node scripts/throw-demos.ts",
     "moments": "node scripts/moment-pictures.ts",
     "keep": "node scripts/keep-pictures.ts",

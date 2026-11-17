@@ -1,3 +1,4 @@
+import { GameSchema } from "@nostakes/engine";
 import { ReactionSchema } from "@nostakes/room";
 import { Schema } from "effect";
 import { CustomElement } from "foldkit";
@@ -22,6 +23,7 @@ export const SeatSnapshotSchema = Schema.Struct({
   name: Schema.String,
   note: Schema.String,
   peeking: Schema.Boolean,
+  plays: Schema.Array(CardTextSchema),
   seat: Schema.Int,
   shown: Schema.Array(CardTextSchema),
   stack: Schema.Int,
@@ -77,7 +79,7 @@ export const HappeningSchema = Schema.TaggedUnion({
   Call: { added: Schema.Int, allIn: Schema.Boolean, seat: Schema.Int },
   Check: { seat: Schema.Int },
   Collect: { street: Schema.String },
-  Deal: { cards: Schema.Int, seat: Schema.Int },
+  Deal: { seat: Schema.Int },
   Fold: { seat: Schema.Int },
   Muck: { seat: Schema.Int },
   Post: { amount: Schema.Int, kind: PostKindSchema, seat: Schema.Int },
@@ -173,9 +175,11 @@ export const TableSnapshotSchema = Schema.Struct({
   clock: Schema.NullOr(ActionClockSchema),
   entry: Schema.NullOr(EntryOfferSchema),
   events: Schema.Array(TableEventSchema),
+  game: GameSchema,
   handId: Schema.Int,
   heroCards: Schema.Array(CardTextSchema),
   heroSeat: Schema.NullOr(Schema.Int),
+  holeCards: Schema.Int,
   hostTools: Schema.Boolean,
   learned: Schema.Array(HintSchema),
   legal: Schema.NullOr(HeroLegalSchema),

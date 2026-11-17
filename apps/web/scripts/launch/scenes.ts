@@ -39,6 +39,7 @@ const seatOf = (index: number, change: Partial<SeatSnapshot> = {}) => {
     name,
     note: "",
     peeking: false,
+    plays: [],
     seat: index,
     shown: [],
     stack: STACKS[index] ?? 1000,
@@ -61,9 +62,11 @@ const tableOf = (change: Partial<TableSnapshot>): TableSnapshot => ({
   doubleBoard: false,
   entry: null,
   events: [],
+  game: "Holdem",
   handId: 12,
   heroCards: [],
   heroSeat: HERO,
+  holeCards: 2,
   hostTools: false,
   learned: LEARNED,
   legal: null,
@@ -267,7 +270,7 @@ export const gestureStory = (): GestureStory => {
     events: [
       { happening: Happenings.Start.make({ hand: 12 }), id: 1 },
       ...RING.map((_, seat) => ({
-        happening: Happenings.Deal.make({ cards: 2, seat }),
+        happening: Happenings.Deal.make({ seat }),
         id: seat + 2,
       })),
     ],
@@ -359,7 +362,7 @@ export const gestureStory = (): GestureStory => {
     events: [
       { happening: Happenings.Start.make({ hand: 13 }), id: 101 },
       ...RING.map((_, seat) => ({
-        happening: Happenings.Deal.make({ cards: 2, seat }),
+        happening: Happenings.Deal.make({ seat }),
         id: seat + 102,
       })),
     ],
@@ -492,7 +495,7 @@ export const badBeatTold = (): Told => {
 
 const deals = (hand: number): readonly Happening[] => [
   Happenings.Start.make({ hand }),
-  ...RING.map((_, seat) => Happenings.Deal.make({ cards: 2, seat })),
+  ...RING.map((_, seat) => Happenings.Deal.make({ seat })),
 ];
 
 const bountyScene = (): Told => {

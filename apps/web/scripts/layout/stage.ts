@@ -36,10 +36,20 @@ const BOARDS = [
   ["Ah", "Kd", "7s", "3s", "Js"],
 ];
 
-const SHOWN = [
-  ["Ad", "Kh"],
-  ["Qs", "Qd"],
-  ["Tc", "Jc"],
+const HOLDEM_HOLE = 2;
+
+const MOST_HOLE = 5;
+
+const HOLES = [
+  ["Ad", "Kh", "8d", "8c", "5h"],
+  ["Qs", "Qd", "6h", "5s", "4h"],
+  ["Tc", "Jc", "9s", "6c", "4d"],
+];
+
+const PLAYING = [
+  [0, 2],
+  [1, 3],
+  [0, 1],
 ];
 
 const SHOWDOWN_SEATS = [0, 4, 7];
@@ -58,6 +68,19 @@ const boards = Math.min(
   Math.max(1, Number(params.get("boards") ?? "3"))
 );
 
+const hole = Math.min(
+  MOST_HOLE,
+  Math.max(HOLDEM_HOLE, Number(params.get("hole") ?? String(HOLDEM_HOLE)))
+);
+
+const SHOWN = HOLES.map((cards) => cards.slice(0, hole));
+
+const PLAYS = SHOWN.map((cards, index) =>
+  hole === HOLDEM_HOLE
+    ? []
+    : (PLAYING[index] ?? []).flatMap((at) => cards[at] ?? [])
+);
+
 const TALLEST_HAT = codeFor({
   ...DEFAULT_AVATAR,
   headwear: "Fedora",
@@ -74,10 +97,11 @@ const seatOf = (index: number): SeatSnapshot => {
     avatar: tallest ? TALLEST_HAT : codeFor(randomAvatar(index * 7919 + 17)),
     away: false,
     bet: 0,
-    cardsHeld: shown.length === 0 ? 0 : 2,
+    cardsHeld: shown.length === 0 ? 0 : hole,
     name: NAMES[index] ?? `Seat ${index + 1}`,
     note: "",
     peeking: false,
+    plays: PLAYS[shownAt] ?? [],
     seat: index,
     shown,
     stack: 0,
@@ -94,9 +118,11 @@ const showdown: TableSnapshot = {
   doubleBoard: false,
   entry: null,
   events: [],
+  game: "Holdem",
   handId: 7,
   heroCards: SHOWN[0] ?? [],
   heroSeat: 0,
+  holeCards: hole,
   hostTools: params.get("host") === "1",
   learned: ["Peek", "Fold", "Raise", "Keys"],
   legal: null,
@@ -115,9 +141,12 @@ const TURN_STACKS = [398, 398, 412, 376, 398, 521, 455, 398, 240];
 
 const TURN_BOARD = ["3c", "9h", "7d"];
 
+const HERO_CARDS = SHOWN[0] ?? [];
+
 const turnSeat = (index: number): SeatSnapshot => ({
   ...seatOf(index),
-  cardsHeld: 2,
+  cardsHeld: hole,
+  plays: [],
   shown: [],
   stack: TURN_STACKS[index] ?? 400,
   status: "In",
@@ -128,7 +157,7 @@ const turn: TableSnapshot = {
   boards: [TURN_BOARD],
   buttonSeat: players - 1,
   clock: { key: "turn", remainingMs: 600_000, seat: 0, totalMs: 967_742 },
-  heroCards: ["Ad", "Kh"],
+  heroCards: HERO_CARDS,
   learned: params.get("hints") === "1" ? [] : showdown.learned,
   legal: {
     call: null,
@@ -257,8 +286,6 @@ const postingIn: TableSnapshot = {
 
 const AFTER_BOARD = ["3c", "9h", "7d", "Qs", "2h"];
 
-const HERO_CARDS = ["Ad", "Kh"];
-
 const afterHand = (
   shown: readonly string[],
   bothOnly: boolean
@@ -275,7 +302,7 @@ const afterHand = (
   heroCards: HERO_CARDS,
   pots: [],
   seats: mid.seats.map((seat) =>
-    seat.seat === 0 ? { ...seat, cardsHeld: 2, shown, status: "In" } : seat
+    seat.seat === 0 ? { ...seat, cardsHeld: hole, shown, status: "In" } : seat
   ),
   toAct: null,
 });
@@ -329,9 +356,10 @@ const actingSeat = (index: number): SeatSnapshot => {
   return {
     ...seatOf(index),
     bet: everyoneBets,
-    cardsHeld: folded ? 0 : 2,
+    cardsHeld: folded ? 0 : hole,
     name: sameName ?? ACTING_NAMES[index] ?? `Seat ${index + 1}`,
     peeking: !nobodyActs && index === actor,
+    plays: [],
     shown: [],
     stack: ACTING_STACKS[index] ?? 1000,
     status: folded ? "Folded" : "In",
@@ -350,7 +378,7 @@ const acting: TableSnapshot = {
         seat: actor,
         totalMs: 30_000,
       },
-  heroCards: ["Ad", "Kh"],
+  heroCards: HERO_CARDS,
   legal: actor === 0 && !nobodyActs ? turn.legal : null,
   posts:
     everyoneBets > 0
@@ -370,7 +398,7 @@ const BOUNTY_POT = 26;
 
 const BOUNTY_WINNER = Math.min(2, players - 1);
 
-const BOUNTY_CARDS = ["7h", "2c"];
+const BOUNTY_CARDS = ["7h", "2c", "Js", "4s", "3d"].slice(0, hole);
 
 const bountyPaid: TableSnapshot = {
   ...afterHand([], false),
@@ -380,7 +408,7 @@ const bountyPaid: TableSnapshot = {
       ? {
           ...seat,
           bet: 0,
-          cardsHeld: 2,
+          cardsHeld: hole,
           shown: BOUNTY_CARDS,
           stack: seat.stack + BOUNTY_POT + BOUNTY * (players - 1),
           status: "In",
@@ -421,7 +449,7 @@ const HAND_LABELS = ["Full house", "Two pair", "Straight", "Flush"];
 const deals: readonly Happening[] = [
   Happenings.Start.make({ hand: 8 }),
   ...Array.from({ length: players }, (__, seat) =>
-    Happenings.Deal.make({ cards: 2, seat })
+    Happenings.Deal.make({ seat })
   ),
 ];
 
@@ -468,7 +496,7 @@ const riverOut = (toAct: number | null): TableSnapshot =>
     (seat) => ({
       ...seat,
       bet: RIVER_BET,
-      cardsHeld: 2,
+      cardsHeld: hole,
       stack: seat.stack - RIVER_BET,
       status: "In",
     })
@@ -486,6 +514,7 @@ const atShowdown: TableSnapshot = {
   ...withSeats(riverOut(null), (seat) => ({
     ...seat,
     bet: 0,
+    plays: seat.seat === 0 ? (PLAYS[0] ?? []) : seat.plays,
     shown: seat.seat === 0 ? HERO_CARDS : seat.shown,
   })),
   afterHand: {
@@ -506,10 +535,12 @@ const settledWith = (winner: number): TableSnapshot => ({
   pots: [],
 });
 
+const THEIR_CARDS = ["Qd", "Qc", "6h", "5s", "4h"].slice(0, hole);
+
 const shows = (seats: readonly number[]): readonly Happening[] =>
   seats.map((seat, index) =>
     Happenings.Show.make({
-      cards: seat === 0 ? HERO_CARDS : ["Qd", "Qc"],
+      cards: seat === 0 ? HERO_CARDS : THEIR_CARDS,
       label: HAND_LABELS[index % HAND_LABELS.length] ?? "Pair",
       seat,
     })
@@ -654,7 +685,7 @@ const SCENES = new Map<string, TableSnapshot>([
   ["hand", handSnapshot],
   ["bounty", bountyPaid],
   ["after", afterHand([], false)],
-  ["after-one", afterHand(["Kh"], false)],
+  ["after-one", afterHand(HERO_CARDS.slice(1, 2), false)],
   ["after-all", afterHand(HERO_CARDS, false)],
   ["after-both-only", afterHand([], true)],
   ["showdown-muck", showdownTurn(true)],

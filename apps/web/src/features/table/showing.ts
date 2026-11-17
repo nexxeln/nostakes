@@ -17,6 +17,21 @@ const NOTHING: readonly string[] = [];
 export const hiddenOf = ({ held, shown }: ShowState) =>
   held.filter((card) => !shown.includes(card));
 
+const HOLDEM_CARDS = 2;
+
+export const everyWord = (cards: number) =>
+  cards === HOLDEM_CARDS ? "both" : "all";
+
+const lastCardHint = ({ held }: ShowState, hidden: number) => {
+  if (hidden === held.length) {
+    return "Tap your card to show it";
+  }
+
+  return held.length > HOLDEM_CARDS
+    ? "Tap your last card to show it"
+    : "Tap your other card to show it";
+};
+
 export const showOffer = (state: ShowState): ShowOffer | null => {
   const hidden = hiddenOf(state);
 
@@ -28,27 +43,27 @@ export const showOffer = (state: ShowState): ShowOffer | null => {
     return {
       both: "",
       bothCards: NOTHING,
-      hint:
-        hidden.length < state.held.length
-          ? "Tap your other card to show it"
-          : "Tap your card to show it",
+      hint: lastCardHint(state, hidden.length),
       sub: "",
       tap: (card) => (hidden.includes(card) ? hidden : NOTHING),
     };
   }
 
+  const every = everyWord(hidden.length);
+
   if (state.bothOnly) {
     return {
-      both: "Show both",
+      both: `Show ${every}`,
       bothCards: hidden,
-      hint: "Tap to show both cards",
-      sub: "This room shows both or none",
+      hint:
+        every === "both" ? "Tap to show both cards" : "Tap to show your cards",
+      sub: `This room shows ${everyWord(state.held.length)} or none`,
       tap: (card) => (hidden.includes(card) ? hidden : NOTHING),
     };
   }
 
   return {
-    both: "Show both",
+    both: `Show ${every}`,
     bothCards: hidden,
     hint: "Tap a card to show it",
     sub: "",

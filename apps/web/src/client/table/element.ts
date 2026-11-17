@@ -5,7 +5,11 @@ import type { Reaction } from "@nostakes/room";
 
 import { PEEK_REFRESH_MS, REACTION_GLYPHS } from "../../features/signals.js";
 import { whoosh } from "../../features/table/gag-sounds.js";
-import { showdownWords, showOffer } from "../../features/table/showing.js";
+import {
+  everyWord,
+  showdownWords,
+  showOffer,
+} from "../../features/table/showing.js";
 import type { ShowOffer } from "../../features/table/showing.js";
 import { raiseDetents, raiseLadder } from "../../features/table/sizing.js";
 import type { Detent, RaiseSpot } from "../../features/table/sizing.js";
@@ -35,6 +39,9 @@ import {
   awardTabBox,
   clamp,
   computeGeo,
+  handCardsFor,
+  handPoses,
+  HOLDEM_HOLE_CARDS,
   entryPlace,
   deadButtonSpot,
   flightControl,
@@ -57,6 +64,7 @@ import type {
   ButtonSpot,
   ButtonSpots,
   Geo,
+  HandFan,
   Pt,
   Table,
   TagSide,
@@ -618,6 +626,51 @@ const keepsItsCards = (snapshot: TableSnapshot, me: SeatSnapshot) =>
 
 const dimmedOpacity = (folded: boolean) => (folded ? 0.45 : 0.72);
 
+const lightIfItPlays = (
+  node: Element,
+  card: string,
+  plays: readonly string[]
+) => {
+  toggle(node, "plays", plays.includes(card));
+  toggle(
+    node,
+    "rests",
+    card !== "" && plays.length > 0 && !plays.includes(card)
+  );
+};
+
+const showLabel = (cards: number) => {
+  if (cards <= 1) {
+    return "Show your card";
+  }
+
+  return everyWord(cards) === "both"
+    ? "Show both cards"
+    : "Show all your cards";
+};
+
+const FLYING_CARD_PX = 30;
+
+const HERO_DEAL_SCALE = 2.2;
+
+const heroDealScale = ({ cardW, cards }: HandFan) =>
+  cards > HOLDEM_HOLE_CARDS
+    ? Math.min(HERO_DEAL_SCALE, cardW / FLYING_CARD_PX)
+    : HERO_DEAL_SCALE;
+
+const tiltAlong = (index: number, cards: number) =>
+  cards <= 1 ? -1 : (2 * index) / (cards - 1) - 1;
+
+const SHOWN_GAP = 3;
+
+const tuckOf = (cards: number, cardW: number, tile: number) =>
+  cards <= HOLDEM_HOLE_CARDS
+    ? 0
+    : Math.max(
+        0,
+        (cards * cardW + (cards - 1) * SHOWN_GAP - tile) / (cards - 1)
+      );
+
 const selfScaleFor = (winning: boolean, mine: boolean) => {
   if (winning) {
     return 1.12;
@@ -851,7 +904,7 @@ export class NostakesTable extends HTMLElement {
   #entryLine!: HTMLDivElement;
   #entryAction!: HTMLButtonElement;
   #entryNote!: HTMLDivElement;
-  #handCards: HTMLDivElement[] = [];
+  readonly #handCards: HTMLDivElement[] = [];
   #handLabel!: HTMLDivElement;
   #hint!: HTMLDivElement;
   #hintSay!: HTMLDivElement;
@@ -1501,10 +1554,6 @@ export class NostakesTable extends HTMLElement {
 
   #buildHand() {
     this.#hand = el("div", "hand gone", this.#room);
-    this.#handCards = [
-      el("div", "hc", this.#hand),
-      el("div", "hc", this.#hand),
-    ];
     this.#handLabel = el("div", "hand-label", this.#hand);
     this.#hint = el("div", "hand-hint", this.#room);
     this.#hint.setAttribute("role", "status");
@@ -1730,6 +1779,7 @@ export class NostakesTable extends HTMLElement {
     const count = Math.max(1, this.#tiles.size);
     const most = mostOnTable(this.#snap);
     const boards = this.#snap?.doubleBoard === true ? 2 : 1;
+    const hole = handCardsFor(this.#snap?.holeCards ?? HOLDEM_HOLE_CARDS);
 
     const same =
       this.#geo !== null &&
@@ -1737,13 +1787,14 @@ export class NostakesTable extends HTMLElement {
       this.#geo.h === h &&
       this.#geo.seats.length === count &&
       this.#geo.secondBoard.length === (boards === 2 ? 5 : 0) &&
+      this.#geo.handFan.cards === hole &&
       this.#geo.pileW === pileWidthFor(most, this.#geo.compactPiles);
 
     if (same && !force) {
       return;
     }
 
-    const geo = this.#laidOut(w, h, count, most, boards);
+    const geo = this.#laidOut(w, h, count, most, boards, hole);
 
     this.#geo = geo;
     this.#spots = geo.buttons;
@@ -1883,21 +1934,50 @@ export class NostakesTable extends HTMLElement {
     this.#self.style.setProperty("--t", `${size}px`);
     placeRing(this.#selfRingSvg, size, ringRadius(this.#selfFrame, size));
 
+    const fan = geo.handFan;
     const cardW = geo.handCardW;
-    const spread = cardW * 0.5;
+    const poses = handPoses(fan);
 
-    this.#hand.style.setProperty("--spread", `${spread}px`);
     this.#hand.style.setProperty("--cw-hand", `${cardW}px`);
+    this.#hand.style.setProperty("--span", `${fan.span}px`);
+    toggle(this.#hand, "many", fan.cards > HOLDEM_HOLE_CARDS);
     Object.assign(this.#hand.style, {
       height: `${cardW * 1.4}px`,
-      left: `${geo.hand.x - (cardW + spread) / 2}px`,
+      left: `${geo.hand.x - fan.span / 2}px`,
       top: `${geo.hand.y - (cardW * 1.4) / 2}px`,
-      width: `${cardW + spread}px`,
+      width: `${fan.span}px`,
     });
 
-    for (const holder of this.#handCards) {
+    for (const holder of this.#handCards.splice(fan.cards)) {
+      holder.remove();
+    }
+
+    while (this.#handCards.length < fan.cards) {
+      const holder = el("div", "hc");
+
+      this.#handLabel.before(holder);
+      this.#handCards.push(holder);
+    }
+
+    for (const [index, holder] of this.#handCards.entries()) {
+      const resting = poses.resting[index];
+      const peeking = poses.peeking[index];
+      const last = index === fan.cards - 1;
+
       holder.replaceChildren();
       delete holder.dataset.card;
+      holder.style.setProperty(
+        "--rest",
+        `translate(${resting?.x ?? 0}px, ${resting?.y ?? 0}px) rotate(${resting?.tilt ?? 0}deg)`
+      );
+      holder.style.setProperty(
+        "--peek",
+        `translate(${peeking?.x ?? 0}px, ${peeking?.y ?? 0}px) rotate(${peeking?.tilt ?? 0}deg)`
+      );
+      holder.style.setProperty(
+        "--strip",
+        `${last ? cardW : Math.min(cardW, fan.step)}px`
+      );
     }
 
     const chipSize = geo.chip.size;
@@ -2012,16 +2092,17 @@ export class NostakesTable extends HTMLElement {
     h: number,
     count: number,
     most: number,
-    boards: BoardRows
+    boards: BoardRows,
+    hole: number
   ): Table {
-    const key = `${w}x${h}:${count}:${String(Math.trunc(Math.max(0, most))).length}:${boards}`;
+    const key = `${w}x${h}:${count}:${String(Math.trunc(Math.max(0, most))).length}:${boards}:${hole}`;
     const kept = this.#layouts.get(key);
 
     if (kept !== undefined) {
       return kept;
     }
 
-    const geo = computeGeo(w, h, count, most, boards);
+    const geo = computeGeo(w, h, count, most, boards, hole);
 
     this.#layouts.set(key, geo);
 
@@ -2075,6 +2156,7 @@ export class NostakesTable extends HTMLElement {
     for (const tile of this.#tiles.values()) {
       tile.shown.replaceChildren();
       delete tile.shown.dataset.cards;
+      delete tile.shown.dataset.plays;
       tile.status.until = 0;
       tile.root.classList.remove("acting");
       delete tile.root.dataset.awarded;
@@ -2198,17 +2280,29 @@ export class NostakesTable extends HTMLElement {
     labelThrowable(tile, info);
 
     const shownKey = info.shown.join(",");
+    const playsKey = info.plays.join(",");
 
-    if (shownKey !== (tile.shown.dataset.cards ?? "")) {
+    if (
+      shownKey !== (tile.shown.dataset.cards ?? "") ||
+      playsKey !== (tile.shown.dataset.plays ?? "")
+    ) {
       const before = (tile.shown.dataset.cards ?? "").split(",");
+      const cardW = Math.round(geo.tile * 0.36);
+      const tucked = tuckOf(info.shown.length, cardW, geo.tile);
 
       tile.shown.dataset.cards = shownKey;
+      tile.shown.dataset.plays = playsKey;
       tile.shown.replaceChildren();
 
       for (const [index, card] of info.shown.entries()) {
-        const node = cardEl(card, Math.round(geo.tile * 0.36), true);
-        const tilt = index === 0 ? -1 : 1;
+        const node = cardEl(card, cardW, true);
+        const tilt = tiltAlong(index, info.shown.length);
 
+        if (index > 0 && tucked > 0) {
+          node.style.marginLeft = `${-tucked}px`;
+        }
+
+        lightIfItPlays(node, card, info.plays);
         tile.shown.append(node);
 
         if (before.includes(card)) {
@@ -2314,21 +2408,7 @@ export class NostakesTable extends HTMLElement {
     toggle(this.#hand, "gone", !holding);
     this.#renderEntry(snapshot.entry, holding, seated);
 
-    for (const [index, holder] of this.#handCards.entries()) {
-      const card = snapshot.heroCards[index];
-      const want = index < dealt && card !== undefined ? card : "";
-
-      if ((holder.dataset.card ?? "") !== want) {
-        holder.dataset.card = want;
-        holder.replaceChildren();
-
-        if (want !== "") {
-          holder.append(cardEl(want, geo.handCardW));
-        }
-      }
-
-      toggle(holder, "up", want !== "" && me?.shown.includes(want) === true);
-    }
+    this.#renderHandCards(snapshot, me, dealt, geo);
 
     toggle(
       this.#hand,
@@ -2345,6 +2425,30 @@ export class NostakesTable extends HTMLElement {
     this.#renderChip(snapshot, me);
     this.#renderShowdown(snapshot);
     this.#renderKeys(this.#canAct() ? snapshot.legal : null, me, holding);
+  }
+
+  #renderHandCards(
+    snapshot: TableSnapshot,
+    me: SeatSnapshot | undefined,
+    dealt: number,
+    geo: Geo
+  ) {
+    for (const [index, holder] of this.#handCards.entries()) {
+      const card = snapshot.heroCards[index];
+      const want = index < dealt && card !== undefined ? card : "";
+
+      if ((holder.dataset.card ?? "") !== want) {
+        holder.dataset.card = want;
+        holder.replaceChildren();
+
+        if (want !== "") {
+          holder.append(cardEl(want, geo.handCardW));
+        }
+      }
+
+      toggle(holder, "up", want !== "" && me?.shown.includes(want) === true);
+      lightIfItPlays(holder, want, me?.plays ?? []);
+    }
   }
 
   #renderEntry(
@@ -2527,11 +2631,14 @@ export class NostakesTable extends HTMLElement {
 
     return {
       key: `show:${snapshot.handId}:${offer.bothCards.join(",")}`,
-      label: offer.bothCards.length > 1 ? "Show both cards" : "Show your card",
+      label: showLabel(offer.bothCards.length),
       run: () => {
         this.#showAfterHand(this.#chip);
       },
-      words: ["Show", offer.bothCards.length > 1 ? "both" : "it"],
+      words: [
+        "Show",
+        offer.bothCards.length > 1 ? everyWord(offer.bothCards.length) : "it",
+      ],
     };
   }
 
@@ -3018,8 +3125,8 @@ export class NostakesTable extends HTMLElement {
       Collect: () => {
         this.#collect();
       },
-      Deal: ({ cards, seat }) => {
-        this.#deal(seat, cards, geo);
+      Deal: ({ seat }) => {
+        this.#deal(seat, geo.handFan.cards, geo);
       },
       Fold: ({ seat }) => {
         this.#onFold(seat, geo);
@@ -3127,7 +3234,7 @@ export class NostakesTable extends HTMLElement {
       return;
     }
 
-    for (let index = 0; index < 2; index += 1) {
+    for (let index = 0; index < geo.handFan.cards; index += 1) {
       const card = el("div", "fly fcard");
 
       card.append(cardEl(null, 30));
@@ -3153,6 +3260,9 @@ export class NostakesTable extends HTMLElement {
     const hero = seat === this.#snap?.heroSeat;
     const tile = this.#tiles.get(seat);
 
+    const fan = geo.handFan;
+    const many = fan.cards > HOLDEM_HOLE_CARDS;
+
     const target = hero
       ? geo.hand
       : {
@@ -3163,14 +3273,22 @@ export class NostakesTable extends HTMLElement {
     for (let index = 0; index < cards; index += 1) {
       const card = el("div", "fly fcard");
 
+      const place =
+        hero && many
+          ? {
+              x: geo.hand.x - fan.span / 2 + index * fan.step + fan.cardW / 2,
+              y: geo.hand.y,
+            }
+          : target;
+
       this.#hold(`deal:${seat}`);
-      card.append(cardEl(null, 30));
-      this.#fly(card, geo.deck, target, {
+      card.append(cardEl(null, FLYING_CARD_PX));
+      this.#fly(card, geo.deck, place, {
         arc: -30,
         delay: index * 120,
         duration: 300,
         fade: !hero,
-        scaleTo: hero ? 2.2 : 0.7,
+        scaleTo: hero ? heroDealScale(fan) : 0.7,
         spin: 200,
       }).done(
         () => {
@@ -3648,7 +3766,7 @@ export class NostakesTable extends HTMLElement {
         duration: 420,
         fade: true,
         scaleTo: 0.35,
-        spin: index === 0 ? -40 : 40,
+        spin: tiltAlong(index, this.#handCards.length) * 40,
       });
     }
 

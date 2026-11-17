@@ -5,8 +5,9 @@ import {
   Events,
   handCategory,
   Phases,
+  variantOf,
 } from "@nostakes/engine";
-import type { Card, HandCategory, HandRank } from "@nostakes/engine";
+import type { Card, Game, HandCategory, HandRank } from "@nostakes/engine";
 import type { PlayerId } from "@nostakes/protocol";
 import { RoomViews, SeenEvents } from "@nostakes/room";
 import type { RoomView, SeenEvent, SeenTableEvent } from "@nostakes/room";
@@ -18,6 +19,7 @@ import { isActing, isLive, isYou, peopleOf } from "../room.js";
 import type { OpenView } from "../room.js";
 import { feltRulesOf } from "../setup.js";
 import { isPeeking } from "../signals.js";
+import { playingCards } from "./playing.js";
 import { HappeningSchema, Happenings } from "./snapshot.js";
 import type {
   ActionClock,
@@ -137,7 +139,7 @@ const tableHappenings = (
         hands.map(({ cards, seat }) =>
           Happenings.Show.make({ cards: texts(cards), label: "", seat })
         ),
-      HoleCardsDealt: ({ seat }) => [Happenings.Deal.make({ cards: 2, seat })],
+      HoleCardsDealt: ({ seat }) => [Happenings.Deal.make({ seat })],
       PlayerSat: () => [],
       PlayerStood: () => [],
       PotAwarded: ({ winners }) =>
@@ -341,6 +343,7 @@ type Occupant = NonNullable<
 >;
 
 interface SeatContext {
+  readonly game: Game;
   readonly view: OpenView;
   readonly room: InRoom;
   readonly presence: readonly PlayerId[];
@@ -395,6 +398,16 @@ const heldCards = (held: {
 
 type HandView = Option.Option.Value<OpenView["hand"]>;
 
+export const gameOnTheTable = (view: OpenView): Game =>
+  Option.match(view.hand, {
+    onNone: () =>
+      Option.match(view.lastHand, {
+        onNone: () => view.settings.table.game,
+        onSome: ({ game }) => game,
+      }),
+    onSome: ({ game }) => game,
+  });
+
 export const bettingClosed = (hand: HandView) => Option.isNone(hand.toAct);
 
 const chipsIn = (amounts: readonly number[]) =>
@@ -447,12 +460,22 @@ export const potsOnTheTable = (hand: HandView): readonly number[] =>
     ? potsWithEveryBet(hand)
     : hand.pots.map(({ amount }) => amount);
 
+const boardsOf = (view: OpenView): readonly (readonly Card[])[] =>
+  Option.match(view.hand, {
+    onNone: () =>
+      Option.match(view.lastHand, {
+        onNone: () => [],
+        onSome: ({ boards }) => boards,
+      }),
+    onSome: ({ boards }) => boards,
+  });
+
 const occupiedSeat = (
   context: SeatContext,
   seat: number,
   occupant: Occupant
 ): SeatSnapshot => {
-  const { presence, view } = context;
+  const { game, presence, view } = context;
   const mine = isYou(view, occupant.player);
   const collected = Option.exists(view.hand, bettingClosed);
   const here = presence.includes(occupant.player);
@@ -471,9 +494,14 @@ const occupiedSeat = (
     Option.flatMap((last) =>
       Option.fromNullishOr(last.shown.find((entry) => entry.seat === seat))
     ),
-    Option.map(({ cards }) => texts(cards)),
-    Option.getOrElse((): readonly string[] => [])
+    Option.map(({ cards }) => cards),
+    Option.getOrElse((): readonly Card[] => [])
   );
+
+  const shown = Option.match(inHand, {
+    onNone: () => lastShown,
+    onSome: (player) => player.shown,
+  });
 
   const status: SeatStatus = Option.match(inHand, {
     onNone: () =>
@@ -492,7 +520,8 @@ const occupiedSeat = (
 
   const othersCards = Option.match(inHand, {
     onNone: () => 0,
-    onSome: (player) => (player.mucked || player.shown.length > 0 ? 0 : 2),
+    onSome: (player) =>
+      player.mucked || player.shown.length > 0 ? 0 : variantOf(game).holeCards,
   });
 
   const ownCards = mine ? heroCards : othersCards;
@@ -521,11 +550,9 @@ const occupiedSeat = (
       (status === "In" || status === "AllIn") &&
       cardsHeld > 0 &&
       isPeeking(context.room, occupant.player),
+    plays: texts(playingCards(game, shown, boardsOf(view))),
     seat,
-    shown: Option.match(inHand, {
-      onNone: () => lastShown,
-      onSome: ({ shown }) => texts(shown),
-    }),
+    shown: texts(shown),
     stack: occupant.stack,
     status,
   };
@@ -539,6 +566,7 @@ const emptySeat = (seat: number): SeatSnapshot => ({
   name: "",
   note: "",
   peeking: false,
+  plays: [],
   seat,
   shown: [],
   stack: 0,
@@ -842,7 +870,8 @@ export const tableSnapshot = (
 ): TableSnapshot => {
   const heroSeat = heroSeatOf(view);
   const offerSeats = canTakeASeat(view, room);
-  const context: SeatContext = { presence, room, view };
+  const game = gameOnTheTable(view);
+  const context: SeatContext = { game, presence, room, view };
 
   const seats = view.seats
     .filter(({ seat }) => seat < view.settings.seats)
@@ -869,7 +898,9 @@ export const tableSnapshot = (
       )
     ),
     events: room.events,
+    game,
     heroSeat: Option.getOrNull(heroSeat),
+    holeCards: variantOf(game).holeCards,
     hostTools: isYou(view, view.host),
     learned,
     legal: free ? legalOfView(view) : null,
