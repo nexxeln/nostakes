@@ -144,7 +144,7 @@ const phoneNight = (opened: Browser, app: string, dir: string, size: Size) =>
     yield* attempt("deal two boards", () =>
       host
         .getByRole("radiogroup", { name: "Bomb pot boards" })
-        .getByRole("radio", { name: "Two" })
+        .getByRole("radio", { name: "2" })
         .click()
     );
     yield* shoot(host, dir, "setup-two-boards", size);

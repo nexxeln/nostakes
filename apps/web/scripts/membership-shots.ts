@@ -171,12 +171,12 @@ const program = Effect.gen(function* takeMembershipShots() {
   yield* seen(host, "Remove from the room");
   yield* shoot(host, dir, "person-sheet");
   yield* press(host, "Remove from the room");
-  yield* seen(host, "pass stops working");
+  yield* seen(host, "is out of the room");
   yield* shoot(host, dir, "remove-confirm");
   yield* press(host, "Remove");
 
   yield* seen(guest, "The host removed you from this room.");
-  yield* seen(guest, "nothing is owed");
+  yield* seen(guest, "nobody owes anything");
   yield* shoot(guest, dir, "removed");
 
   yield* press(host, "Menu");
@@ -199,7 +199,7 @@ const program = Effect.gen(function* takeMembershipShots() {
   yield* attempt("approve joins", () =>
     host.getByRole("switch", { name: "Approve joins" }).click()
   );
-  yield* seen(host, "Knocks wait");
+  yield* seen(host, "Knocks end after");
   yield* shoot(host, dir, "rules-approve-joins");
   yield* press(host, "Save");
 
