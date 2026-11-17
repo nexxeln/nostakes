@@ -611,6 +611,11 @@ const expireStatus = (status: Status, now: number) => {
   }
 };
 
+const keepsItsCards = (snapshot: TableSnapshot, me: SeatSnapshot) =>
+  me.status !== "Folded" ||
+  snapshot.afterHand.showable.length > 0 ||
+  me.shown.length > 0;
+
 const dimmedOpacity = (folded: boolean) => (folded ? 0.45 : 0.72);
 
 const selfScaleFor = (winning: boolean, mine: boolean) => {
@@ -2303,10 +2308,8 @@ export class NostakesTable extends HTMLElement {
         ? 0
         : me.cardsHeld - (this.#pending.get(`deal:${me.seat}`) ?? 0);
 
-    const showable = snapshot.afterHand.showable.length > 0;
-
     const holding =
-      me !== undefined && dealt > 0 && (me.status !== "Folded" || showable);
+      me !== undefined && dealt > 0 && keepsItsCards(snapshot, me);
 
     toggle(this.#hand, "gone", !holding);
     this.#renderEntry(snapshot.entry, holding, seated);
@@ -3651,6 +3654,7 @@ export class NostakesTable extends HTMLElement {
 
     this.#hand.style.transform = "";
     this.#hand.classList.remove("armed", "peek");
+    this.#handLabel.classList.remove("on");
     this.#sound.card();
     this.#sound.buzz([12]);
   }

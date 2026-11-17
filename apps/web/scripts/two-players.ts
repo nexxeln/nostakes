@@ -551,6 +551,58 @@ const handAfter = (page: Page, finished: number) =>
     )
   );
 
+const SHOWN_STAYS_MS = 1500;
+
+const PAPER_ARMS_MS = 800;
+
+const CARDS_SETTLE_MS = 1000;
+
+const foldsThenShows = (ana: Page, ben: Page) =>
+  Effect.gen(function* foldAndShowBoth() {
+    const played = yield* handOn(ana);
+
+    yield* handAfter(ana, played);
+    yield* handAfter(ben, played);
+
+    const folder = yield* whoseTurn([ana, ben]);
+    const other = folder === ana ? ben : ana;
+
+    yield* attempt("the folder's cards land", () =>
+      folder
+        .locator(`${HAND}:not(.gone) .hc .card`)
+        .nth(1)
+        .waitFor({ state: "visible", timeout: 15_000 })
+    );
+    yield* Effect.sleep(CARDS_SETTLE_MS);
+    yield* drag(folder, HAND, 170, "flick the cards up to fold");
+    yield* heard(folder, /^Fold$/u, "the table hears the fold");
+    yield* attempt("the folder is offered a show", () =>
+      folder
+        .locator(`${HAND}.offering`)
+        .waitFor({ state: "attached", timeout: 15_000 })
+    );
+    yield* shoot(folder, "fold-show-before.png");
+    yield* Effect.sleep(PAPER_ARMS_MS);
+    yield* attempt("the folder taps Show both", () =>
+      folder.locator(`${CHIP}[aria-label="Show both cards"]`).click()
+    );
+    yield* attempt("the other player sees both folded cards shown", () =>
+      other
+        .locator(`${TABLE} .tile .shown .card`)
+        .nth(1)
+        .waitFor({ state: "attached", timeout: SHOW_WAIT_MS })
+    );
+    yield* Effect.sleep(SHOWN_STAYS_MS);
+    yield* shoot(folder, "fold-show-after.png");
+    yield* shoot(other, "fold-show-other.png");
+    yield* attempt("the folder still sees both cards face up", () =>
+      folder
+        .locator(`${HAND}.open:not(.gone) .hc.up`)
+        .nth(1)
+        .waitFor({ state: "visible", timeout: SHOW_WAIT_MS })
+    );
+  });
+
 const passes = (page: Page, step: string) =>
   Effect.gen(function* tapAndWait() {
     const before = yield* cardsOn(page);
@@ -1223,6 +1275,10 @@ const night = Effect.gen(function* playOneHand() {
   yield* feltStayedClear(ben, "Ben");
   yield* Console.log(
     "a called river bet went into the pot before either hint showed the hands"
+  );
+  yield* foldsThenShows(ana, ben);
+  yield* Console.log(
+    "a player folds, shows both cards, and both players see them face up"
   );
   yield* whoseTurn([ana, ben]);
   yield* Console.log("the next hand is dealt");
