@@ -432,7 +432,7 @@ const LEAST_BITRATE = 500_000;
 
 const MOST_BITRATE = 3_000_000;
 
-const PICTURE_BYTES_ANY_CLIP_MAY_SPEND = 1_000_000;
+const PICTURE_BYTES_ANY_CLIP_MAY_SPEND = 1_400_000;
 
 export const videoBitrate = (
   film: Pick<Film, "fps" | "height" | "length" | "width">,
