@@ -12,7 +12,7 @@ const DEMOS = [
   {
     file: "gags-all-nine",
     script: "nine",
-    sheet: Array.from({ length: 9 }, (_, index) => 1400 + index * 1150),
+    sheet: Array.from({ length: 9 }, (_, index) => 1550 + index * 1150),
   },
   {
     file: "gags-self",

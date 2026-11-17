@@ -345,6 +345,7 @@ export const tableCss = `
 .gag { position: absolute; z-index: 9; pointer-events: none; line-height: 1; transform: translate(-50%, -50%); will-change: transform, opacity; }
 .gag > svg { display: block; overflow: visible; }
 .gag-bang { font-family: var(--font-display); font-weight: var(--weight-display); color: var(--color-ink); }
+.gag-ha { font-family: var(--font-display); font-weight: var(--weight-display); color: var(--color-ink); background: var(--color-raised); padding: 0.12em 0.26em 0.08em; border-radius: 0.3em; border: 1.5px solid var(--color-ink); box-shadow: 0.1em 0.12em 0 var(--color-sheet-shadow); white-space: nowrap; }
 .gag-drop { border-radius: 50% 50% 50% 50% / 38% 38% 62% 62%; background: var(--color-ink); }
 .gag-well { overflow: hidden; will-change: auto; }
 .gag-peeker { position: absolute; left: 50%; bottom: 0; line-height: 1; will-change: transform; }

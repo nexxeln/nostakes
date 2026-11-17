@@ -3,8 +3,13 @@ import type { Expression, Theme } from "@nostakes/avatar";
 import { REACTIONS } from "@nostakes/room";
 import type { Reaction } from "@nostakes/room";
 
+import type { Mono } from "../../features/moments/sound/dsp.js";
 import { PEEK_REFRESH_MS, REACTION_GLYPHS } from "../../features/signals.js";
-import { whoosh } from "../../features/table/gag-sounds.js";
+import {
+  FELT_SOUNDS,
+  THROWN_SOUNDS,
+  whoosh,
+} from "../../features/table/gag-sounds.js";
 import {
   everyWord,
   showdownWords,
@@ -33,8 +38,8 @@ import type {
 import { adoptEarlyProperties } from "../early-properties.js";
 import { Counter, formatChips } from "./counter.js";
 import { cardEl, el, svgEl, toggle } from "./dom.js";
-import { GAGS } from "./gags.js";
-import type { Mood } from "./gags.js";
+import { FELT, THROWN } from "./gags.js";
+import type { Hit, Mood, Part } from "./gags.js";
 import {
   awardTabBox,
   clamp,
@@ -117,6 +122,7 @@ interface Tile {
   readonly opacity: Spring;
   lastTransform: string;
   joyUntil: number;
+  ponderUntil: number;
   surpriseUntil: number;
   winUntil: number;
 }
@@ -782,6 +788,7 @@ const expressionFor = (mood: {
   readonly folded: boolean;
   readonly happy: boolean;
   readonly gutted: boolean;
+  readonly pondering: boolean;
   readonly thinking: boolean;
   readonly lookingDown: boolean;
 }): Expression => {
@@ -791,6 +798,10 @@ const expressionFor = (mood: {
 
   if (mood.gutted) {
     return "Gutted";
+  }
+
+  if (mood.pondering) {
+    return "Thinking";
   }
 
   if (mood.folded) {
@@ -945,7 +956,11 @@ export class NostakesTable extends HTMLElement {
   #pickerMore!: HTMLButtonElement;
   #pickerOpen = false;
   #pickerFor: number | null = null;
-  readonly #unprepared: Reaction[] = [...REACTIONS];
+  readonly #unprepared: { readonly key: string; readonly make: () => Mono }[] =
+    REACTIONS.flatMap((reaction) => [
+      { key: `felt:${reaction}`, make: FELT_SOUNDS[reaction] },
+      { key: `thrown:${reaction}`, make: THROWN_SOUNDS[reaction] },
+    ]);
   #pressPeek = false;
   #hoverPeek = false;
   #keyPeek = false;
@@ -958,6 +973,7 @@ export class NostakesTable extends HTMLElement {
   #heroWinUntil = 0;
   #heroGuttedUntil = 0;
   #heroJoyUntil = 0;
+  #heroPonderUntil = 0;
   #hushBeat = 0;
   #lastTick = -1;
   readonly #taught = new Set<Hint>();
@@ -1365,7 +1381,7 @@ export class NostakesTable extends HTMLElement {
       if (shown.seat === null) {
         this.#rise(shown, from);
       } else {
-        this.#gagAt(shown, shown.seat, from);
+        this.#feltGag(shown, shown.seat, from);
       }
 
       return;
@@ -1373,9 +1389,15 @@ export class NostakesTable extends HTMLElement {
 
     const to = this.#tilePoint(target);
     const glyph = REACTION_GLYPHS[shown.reaction];
+    const sender = shown.seat;
+    const { windUp } = THROWN[shown.reaction];
+
+    if (sender !== null && windUp !== null && !this.#reduced) {
+      this.#playPart(shown, windUp, sender, from, to);
+    }
 
     const landing = () => {
-      this.#gagAt(shown, target, to);
+      this.#landed(shown, target, to, sender, from);
     };
 
     if (this.#reduced) {
@@ -1424,38 +1446,99 @@ export class NostakesTable extends HTMLElement {
     });
   }
 
-  #gagAt(shown: TableSnapshot["reactions"][number], seat: number, at: Pt) {
+  #hitAt(
+    shown: TableSnapshot["reactions"][number],
+    seat: number,
+    at: Pt,
+    toward: Pt
+  ): Hit | null {
+    const geo = this.#geo;
+
+    if (geo === null) {
+      return null;
+    }
+
+    const size = seat === this.#snap?.heroSeat ? geo.self.size : geo.tile;
+
+    return {
+      at,
+      face: this.#faceOf(seat),
+      fx: this.#fx,
+      glyph: REACTION_GLYPHS[shown.reaction],
+      room: roomAround(geo, at, size),
+      size,
+      toward,
+    };
+  }
+
+  #playPart(
+    shown: TableSnapshot["reactions"][number],
+    part: Part,
+    seat: number,
+    at: Pt,
+    toward: Pt
+  ) {
+    this.#flinch(seat, part.mood, part.moodMs);
+
+    const hit = this.#hitAt(shown, seat, at, toward);
+
+    if (!this.#reduced && hit !== null && part.play !== null) {
+      part.play(hit);
+    }
+  }
+
+  #riseLater(
+    shown: TableSnapshot["reactions"][number],
+    at: Pt,
+    riseMs: number | null
+  ) {
+    if (riseMs !== null) {
+      this.#later.push({
+        at: performance.now() + riseMs,
+        run: () => {
+          this.#rise(shown, at);
+        },
+      });
+    }
+  }
+
+  #feltGag(shown: TableSnapshot["reactions"][number], seat: number, at: Pt) {
     const geo = this.#geo;
 
     if (geo === null) {
       return;
     }
 
-    const gag = GAGS[shown.reaction];
-    const size = seat === this.#snap?.heroSeat ? geo.self.size : geo.tile;
+    const gag = FELT[shown.reaction];
 
-    this.#sound.sample(shown.reaction, gag.sound);
-    this.#flinch(seat, gag.mood, gag.moodMs);
+    this.#sound.sample(`felt:${shown.reaction}`, FELT_SOUNDS[shown.reaction]);
+    this.#playPart(shown, gag, seat, at, { x: geo.pot.x, y: geo.pot.y });
+    this.#riseLater(shown, at, this.#reduced ? 0 : gag.riseMs);
+  }
 
-    const riseAfterMs = this.#reduced
-      ? 0
-      : gag.play({
-          at,
-          face: this.#faceOf(seat),
-          fx: this.#fx,
-          glyph: REACTION_GLYPHS[shown.reaction],
-          reaction: shown.reaction,
-          room: roomAround(geo, at, size),
-          size,
-        });
+  #landed(
+    shown: TableSnapshot["reactions"][number],
+    target: number,
+    to: Pt,
+    sender: number | null,
+    from: Pt
+  ) {
+    const gag = THROWN[shown.reaction];
 
-    if (riseAfterMs !== null) {
-      this.#later.push({
-        at: performance.now() + riseAfterMs,
-        run: () => {
-          this.#rise(shown, at);
-        },
-      });
+    this.#sound.sample(
+      `thrown:${shown.reaction}`,
+      THROWN_SOUNDS[shown.reaction]
+    );
+    this.#playPart(shown, gag.target, target, to, from);
+
+    if (sender !== null && gag.sender !== null) {
+      this.#playPart(shown, gag.sender, sender, from, to);
+    }
+
+    if (this.#reduced) {
+      this.#riseLater(shown, to, 0);
+    } else if (sender !== null) {
+      this.#riseLater(shown, from, gag.riseMs);
     }
   }
 
@@ -1464,7 +1547,7 @@ export class NostakesTable extends HTMLElement {
 
     if (
       next !== undefined &&
-      this.#sound.prepare(next, GAGS[next].sound) !== null
+      this.#sound.prepare(next.key, next.make) !== null
     ) {
       this.#unprepared.shift();
     }
@@ -1476,6 +1559,8 @@ export class NostakesTable extends HTMLElement {
     if (seat === this.#snap?.heroSeat) {
       if (expression === "Happy") {
         this.#heroJoyUntil = Math.max(this.#heroJoyUntil, until);
+      } else if (expression === "Thinking") {
+        this.#heroPonderUntil = Math.max(this.#heroPonderUntil, until);
       } else {
         this.#heroGuttedUntil = Math.max(this.#heroGuttedUntil, until);
       }
@@ -1491,6 +1576,8 @@ export class NostakesTable extends HTMLElement {
 
     if (expression === "Happy") {
       tile.joyUntil = Math.max(tile.joyUntil, until);
+    } else if (expression === "Thinking") {
+      tile.ponderUntil = Math.max(tile.ponderUntil, until);
     } else {
       tile.surpriseUntil = Math.max(tile.surpriseUntil, until);
     }
@@ -1767,6 +1854,7 @@ export class NostakesTable extends HTMLElement {
       note,
       opacity: new Spring(1, 80, 1),
       pic,
+      ponderUntil: 0,
       ring,
       ringSvg,
       root,
@@ -4902,6 +4990,7 @@ export class NostakesTable extends HTMLElement {
             folded: info.status === "Folded" || info.status === "Out",
             gutted: target.surpriseUntil > now,
             happy: target.joyUntil > now,
+            pondering: target.ponderUntil > now,
             lookingDown: info.peeking,
             thinking: active,
           }),
@@ -5042,6 +5131,7 @@ export class NostakesTable extends HTMLElement {
           folded: me.status === "Folded" || me.status === "Out",
           gutted: this.#heroGuttedUntil > now,
           happy: this.#heroWinUntil > now || this.#heroJoyUntil > now,
+          pondering: this.#heroPonderUntil > now,
           lookingDown: this.#peekOn || me.peeking,
           thinking: false,
         }),

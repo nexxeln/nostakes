@@ -248,14 +248,167 @@ const blat = (): Mono =>
     { at: 1, sound: raspberry() },
   ]);
 
-export const GAG_SOUNDS: Readonly<Record<Reaction, () => Mono>> = {
+const pap = (seed: number): Mono =>
+  scaled(
+    contoured(
+      filtered(hiss(0.05, chanceFrom(seed)), "Band", steady(2200), 1.4),
+      struck(0.0006, 0.035)
+    ),
+    0.5
+  );
+
+const pelt = (): Mono =>
+  spliced([
+    { at: 0, sound: giggle() },
+    ...[0, 1, 2, 3, 4].map((index) => ({
+      at: 0.29 + index * 0.15,
+      sound: pap(110 + index),
+    })),
+  ]);
+
+const slowClaps = (): Mono =>
+  spliced(
+    [0.42, 0.81, 1.2].map((at, index) => ({
+      at,
+      sound: clapOnce(80 + index * 2),
+    }))
+  );
+
+const thud = (): Mono =>
+  summed([
+    scaled(
+      contoured(tone("Sine", glide(140, 55, 0.12), 0.18), struck(0.002, 0.14)),
+      0.7
+    ),
+    scaled(
+      contoured(
+        filtered(hiss(0.04, chanceFrom(121)), "Band", steady(1800), 1),
+        struck(0.0005, 0.025)
+      ),
+      0.4
+    ),
+  ]);
+
+const stamped = (): Mono =>
+  spliced([
+    { at: 0, sound: dwoop() },
+    { at: 0.13, sound: thud() },
+  ]);
+
+const fiddle = (pitch: number, seconds: number): Mono =>
+  scaled(
+    contoured(
+      filtered(
+        filtered(
+          tone(
+            "Saw",
+            (time) =>
+              pitch *
+              (1 +
+                0.012 *
+                  Math.min(1, time / 0.12) *
+                  Math.sin(2 * Math.PI * 5.8 * time)),
+            seconds
+          ),
+          "Band",
+          steady(pitch * 2),
+          0.9
+        ),
+        "High",
+        steady(500),
+        0.7
+      ),
+      held(0.05, seconds - 0.11, 0.06)
+    ),
+    0.5
+  );
+
+const tinyViolin = (): Mono =>
+  scaled(
+    spliced([
+      { at: 0.14, sound: fiddle(880, 0.3) },
+      { at: 0.42, sound: fiddle(784, 0.3) },
+      { at: 0.7, sound: fiddle(698.5, 0.3) },
+      { at: 0.98, sound: fiddle(659.3, 0.42) },
+    ]),
+    0.55
+  );
+
+const toll = (): Mono =>
+  summed([
+    contoured(tone("Sine", steady(196), 1.1), struck(0.004, 1)),
+    scaled(
+      contoured(tone("Sine", steady(196 * 2.4), 0.6), struck(0.003, 0.5)),
+      0.35
+    ),
+    scaled(
+      contoured(tone("Sine", steady(196 * 3.9), 0.4), struck(0.002, 0.3)),
+      0.15
+    ),
+  ]);
+
+const buried = (): Mono =>
+  spliced([
+    { at: 0.15, sound: thud() },
+    { at: 0.32, sound: scaled(toll(), 0.3) },
+  ]);
+
+const gulp = (): Mono =>
+  scaled(
+    contoured(
+      tone("Sine", glide(330, 140, 0.12), 0.16),
+      held(0.005, 0.08, 0.07)
+    ),
+    0.4
+  );
+
+const stare = (): Mono =>
+  spliced([
+    { at: 0.05, sound: blip(420, 900) },
+    { at: 0.55, sound: gulp() },
+    { at: 0.96, sound: scaled(blip(1100, 1100), 0.5) },
+  ]);
+
+const groan = (): Mono =>
+  scaled(
+    contoured(
+      filtered(
+        tone("Saw", glide(160, 105, 0.45), 0.5),
+        "Band",
+        glide(700, 420, 0.45),
+        1.6
+      ),
+      held(0.04, 0.3, 0.16)
+    ),
+    0.32
+  );
+
+const palm = (): Mono =>
+  spliced([
+    { at: 0.2, sound: slapOnce(141) },
+    { at: 0.3, sound: groan() },
+  ]);
+
+export const FELT_SOUNDS: Readonly<Record<Reaction, () => Mono>> = {
   Bird: blat,
   Clap: clap,
   Cry: patter,
   Dead: drain,
   Eyes: peek,
   Fire: sizzle,
-  Fish: slap,
+  Fish: palm,
   Laugh: giggle,
   Wow: dwoop,
+};
+
+export const THROWN_SOUNDS: Readonly<Record<Reaction, () => Mono>> = {
+  Bird: blat,
+  Clap: slowClaps,
+  Cry: tinyViolin,
+  Dead: buried,
+  Eyes: stare,
+  Fire: sizzle,
+  Fish: slap,
+  Laugh: pelt,
+  Wow: stamped,
 };

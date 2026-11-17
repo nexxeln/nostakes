@@ -6,7 +6,11 @@ import {
   mastered,
   stereoOf,
 } from "../../src/features/moments/sound/dsp.js";
-import { GAG_SOUNDS, whoosh } from "../../src/features/table/gag-sounds.js";
+import {
+  FELT_SOUNDS,
+  THROWN_SOUNDS,
+  whoosh,
+} from "../../src/features/table/gag-sounds.js";
 import type { TableSnapshot } from "../../src/features/table/snapshot.js";
 import { wavOf } from "../launch/score.ts";
 
@@ -19,7 +23,7 @@ interface Scripted {
 
 interface Cue {
   readonly atMs: number;
-  readonly sound: "Whoosh" | "Hit";
+  readonly sound: "Whoosh" | "Thrown" | "Felt";
   readonly ms: number;
   readonly reaction: Reaction;
   readonly pan: number;
@@ -226,7 +230,7 @@ export const stageThrows = (
           if (isReaction(reaction)) {
             cues.push(
               { atMs: from, ms: now - from, pan: 0, reaction, sound: "Whoosh" },
-              { atMs: now, ms: 0, pan, reaction, sound: "Hit" }
+              { atMs: now, ms: 0, pan, reaction, sound: "Thrown" }
             );
           }
         }
@@ -260,7 +264,7 @@ export const stageThrows = (
           ms: 0,
           pan: 0,
           reaction: each.reaction,
-          sound: "Hit",
+          sound: "Felt",
         });
       }
     }
@@ -330,7 +334,9 @@ export const stageThrows = (
         const sound =
           cue.sound === "Whoosh"
             ? whoosh(cue.ms / 1000)
-            : GAG_SOUNDS[cue.reaction]();
+            : (cue.sound === "Felt" ? FELT_SOUNDS : THROWN_SOUNDS)[
+                cue.reaction
+              ]();
 
         laid(mix, sound, { at: cue.atMs / 1000, gain: 1, pan: cue.pan * 0.6 });
       }
