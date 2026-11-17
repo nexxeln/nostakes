@@ -4,6 +4,7 @@ import {
   REACTION_GAP,
   REACTION_PAD,
   REACTION_TARGET,
+  VOICE_ARCS,
 } from "./layout.js";
 
 export const tableCss = `
@@ -63,15 +64,20 @@ export const tableCss = `
 .folded .pic svg { filter: var(--filter-face-folded); }
 .away .frame, .away .pic { opacity: var(--opacity-away); }
 .voice-arcs {
-  position: absolute; left: 100%; top: 18%; width: 24%; height: 42%;
+  position: absolute; left: 100%; top: ${VOICE_ARCS.top * 100}%; width: ${VOICE_ARCS.w * 100}%; height: ${VOICE_ARCS.h * 100}%;
   pointer-events: none; opacity: 0; transform-origin: 0 50%;
   transform: scale(0.7); transition: opacity var(--duration-2) var(--ease), transform var(--duration-2) var(--ease);
 }
+[data-arcs="Before"] > .voice-arcs { left: auto; right: 100%; transform-origin: 100% 50%; }
+[data-arcs="InsideAfter"] > .voice-arcs { left: auto; right: ${VOICE_ARCS.inset * 100}%; transform-origin: 100% 50%; }
+[data-arcs="InsideBefore"] > .voice-arcs { left: ${VOICE_ARCS.inset * 100}%; }
 .voice-arcs svg { width: 100%; height: 100%; display: block; overflow: visible; }
+.voice-arcs .arcs-before, [data-arcs="Before"] > .voice-arcs .arcs-after, [data-arcs="InsideBefore"] > .voice-arcs .arcs-after { display: none; }
+[data-arcs="Before"] > .voice-arcs .arcs-before, [data-arcs="InsideBefore"] > .voice-arcs .arcs-before { display: inline; }
 .voice-arcs .arc-shadow { stroke: var(--color-sheet-shadow); }
 .voice-arcs .arc-ink { stroke: var(--color-ink); }
 .speaking .voice-arcs { opacity: 1; transform: scale(1); animation: voice-arcs-talk 900ms var(--ease) infinite alternate; }
-@keyframes voice-arcs-talk { from { transform: scale(0.9); } to { transform: scale(1.06); } }
+@keyframes voice-arcs-talk { from { transform: scale(0.9); } to { transform: scale(${VOICE_ARCS.swell}); } }
 .tile.empty, .tile.pickable { cursor: pointer; }
 .tile.empty .frame { background: transparent; box-shadow: none; border: 1.5px dashed var(--color-line-strong); }
 .tile.empty .pic { top: 0; color: var(--color-ink-muted); font-size: var(--text-3); font-weight: var(--weight-body); }

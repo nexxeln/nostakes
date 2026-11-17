@@ -35,8 +35,11 @@ import {
   postTagBox,
   potTabOf,
   ridingScale,
+  voiceArcSides,
+  voiceArcsBox,
 } from "../../src/client/table/layout.js";
 import type {
+  ArcSide,
   BoardRows,
   Box,
   ButtonSpot,
@@ -488,6 +491,22 @@ const coveringLaid = (item: Laid, laid: readonly Laid[]) =>
       : []
   );
 
+const ARC_SIDES_SEEN = new WeakMap<Table, readonly ArcSide[]>();
+
+const arcSidesOf = (geo: Table) => {
+  const seen = ARC_SIDES_SEEN.get(geo);
+
+  if (seen !== undefined) {
+    return seen;
+  }
+
+  const sides = voiceArcSides(geo);
+
+  ARC_SIDES_SEEN.set(geo, sides);
+
+  return sides;
+};
+
 export const laneProblemsOn = (
   table: LaneTable,
   geo: Table
@@ -619,6 +638,12 @@ export const laneProblemsOn = (
     }),
   });
 
+  const arcSides = arcSidesOf(geo);
+
+  const yoursUnderArcs = middle.filter(
+    ([what]) => what === "your cards" || what === "the chip"
+  );
+
   const whileActing = actors.flatMap((actor) => {
     const places = placeSeats(geo, plan(actor, true));
 
@@ -631,6 +656,22 @@ export const laneProblemsOn = (
     );
 
     const button = buttonAt(places);
+
+    const arcs: readonly Laid[] = [
+      ...geo.seats.map((home, index) => {
+        const place = places.find((seat) => seat.index === index);
+
+        return {
+          centre: place ?? home,
+          size: geo.tile * (place?.scale ?? 1),
+        };
+      }),
+      { centre: geo.self, size: geo.self.size },
+    ].map(({ centre, size }, seat) => ({
+      box: voiceArcsBox(centre, size, arcSides[seat] ?? "InsideAfter"),
+      owner: seat,
+      what: `seat ${seat} speaking arcs`,
+    }));
 
     const forButton: readonly Named[] = [
       ...middle,
@@ -673,6 +714,16 @@ export const laneProblemsOn = (
         ...coveringLaid(lesson, [...fixed, button]),
       ]),
       ...captionsNearFaces(geo, places, "grown"),
+      ...arcs.flatMap((item) => [
+        ...(onScreen(item.box, geo, table.screen)
+          ? []
+          : [`${item.what} leave the table`]),
+        ...covering(item, [
+          ...seats.filter(([what]) => !what.startsWith(`seat ${item.owner} `)),
+          ...yoursUnderArcs,
+        ]),
+        ...coveringLaid(item, [...fixed, button]),
+      ]),
       ...fixed.flatMap((item) => covering(item, seats)),
       ...(onScreen(button.box, geo, table.screen)
         ? []

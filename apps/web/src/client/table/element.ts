@@ -63,6 +63,7 @@ import {
   waitingCallBox,
   ridingScale,
   runLanes,
+  voiceArcSides,
 } from "./layout.js";
 import type {
   BoardRows,
@@ -1952,6 +1953,9 @@ export class NostakesTable extends HTMLElement {
   }
 
   #layoutTiles(geo: Table) {
+    const arcs = voiceArcSides(geo);
+
+    this.#self.dataset.arcs = arcs.at(-1) ?? "After";
     toggle(this.#self, "tab-inside", geo.tabsInside.at(-1) === true);
     this.#self.style.setProperty(
       "--tab-shift",
@@ -1966,6 +1970,8 @@ export class NostakesTable extends HTMLElement {
         "--tab-shift",
         `${geo.tabShifts[tile.index] ?? 0}px`
       );
+
+      tile.root.dataset.arcs = arcs[tile.index] ?? "After";
 
       if (spot !== undefined) {
         tile.x.settle(spot.x);

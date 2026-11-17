@@ -5357,3 +5357,203 @@ export const reactionsPlace = (
 
   return best;
 };
+
+export type ArcSide = "After" | "Before" | "InsideAfter" | "InsideBefore";
+
+export const VOICE_ARCS = {
+  h: 0.42,
+  inset: 0.06,
+  swell: 1.06,
+  top: 0.29,
+  w: 0.24,
+} as const;
+
+export const voiceArcsBox = (centre: Pt, size: number, side: ArcSide): Box => {
+  const w = size * VOICE_ARCS.w * VOICE_ARCS.swell;
+  const h = size * VOICE_ARCS.h * VOICE_ARCS.swell;
+
+  const middle =
+    centre.y - size / 2 + size * (VOICE_ARCS.top + VOICE_ARCS.h / 2);
+
+  const x = {
+    After: centre.x + size / 2,
+    Before: centre.x - size / 2 - w,
+    InsideAfter: centre.x + size / 2 - size * VOICE_ARCS.inset - w,
+    InsideBefore: centre.x - size / 2 + size * VOICE_ARCS.inset,
+  }[side];
+
+  return { h, w, x, y: middle - h / 2 };
+};
+
+const tagsOnTheFelt = (table: Table): readonly Box[] =>
+  pilesOf(table).flatMap((pile, index) => [
+    postTagBox(
+      pile,
+      table.tagSides.narrow[index] ?? "Before",
+      POST_TAG_WIDTHS.narrow,
+      table.pileW
+    ),
+    ...(table.tagSides.wideFits[index] === true
+      ? [
+          postTagBox(
+            pile,
+            table.tagSides.wide[index] ?? "Before",
+            POST_TAG_WIDTHS.wide,
+            table.pileW
+          ),
+        ]
+      : []),
+  ]);
+
+interface ActingPlan {
+  readonly tags: readonly Box[];
+  readonly folds: "Nobody" | "Everyone" | "Beside";
+  readonly button: -1 | 0 | 1;
+}
+
+const placesWhileSeatActs = (
+  table: Table,
+  actor: number,
+  { button, folds, tags }: ActingPlan
+) => {
+  const owner = actor + button;
+  const spot = table.buttons.seats[owner];
+
+  return placeSeats(table, {
+    bets: table.seats.map((__, index) => index),
+    button: button === 0 || spot === undefined ? null : { owner, spot },
+    heroBet: true,
+    seats: table.seats.map((__, index) => ({
+      active: index === actor,
+      folded:
+        index !== actor &&
+        (folds === "Everyone" || (folds === "Beside" && index === owner)),
+      index,
+      winner: false,
+    })),
+    someoneElse: true,
+    tabShifts: table.tabShifts,
+    tabsInside: table.tabsInside,
+    tags,
+  });
+};
+
+const ACTING_PLANS = (tags: readonly Box[]): readonly ActingPlan[] => [
+  { button: 0, folds: "Nobody", tags: [] },
+  { button: 0, folds: "Nobody", tags },
+  { button: 0, folds: "Everyone", tags: [] },
+  { button: -1, folds: "Nobody", tags: [] },
+  { button: 1, folds: "Nobody", tags: [] },
+  { button: -1, folds: "Beside", tags: [] },
+  { button: 1, folds: "Beside", tags: [] },
+];
+
+const ARC_MARGIN = 3;
+
+const ARC_EDGE = 12;
+
+const ARC_ROOM = 0;
+
+export const voiceArcSides = (table: Table): readonly ArcSide[] => {
+  const tags = tagsOnTheFelt(table);
+  const fullest = activeScaleFor(table.tile);
+
+  const self: SeatPlace = {
+    scale: table.self.size / table.tile,
+    x: table.self.x,
+    y: table.self.y,
+  };
+
+  const laid = [
+    ...pilesOf(table).map((pile) => pileBox(pile, table.pileW)),
+    ...tags,
+    ...[...table.buttons.seats, table.buttons.self].map(buttonBox),
+    liftedHand(table),
+    {
+      h: table.chip.size,
+      w: table.chip.size,
+      x: table.chip.x - table.chip.size / 2,
+      y: table.chip.y - table.chip.size / 2,
+    },
+  ];
+
+  const resting: readonly SeatPlace[] = [
+    ...table.seats.map(({ x, y }) => ({ scale: 1, x, y })),
+    self,
+  ];
+
+  const moments: readonly (readonly SeatPlace[])[] = [
+    resting,
+    ...ACTING_PLANS(tags).flatMap((plan) =>
+      table.seats.map((__, actor) => {
+        const places = placesWhileSeatActs(table, actor, plan);
+
+        return [
+          ...table.seats.map(({ x, y }, index) => {
+            const place = places.find((placed) => placed.index === index);
+            const scale = place?.scale ?? 1;
+
+            return {
+              scale: index === actor ? Math.max(scale, fullest) : scale,
+              x: place?.x ?? x,
+              y: place?.y ?? y,
+            };
+          }),
+          self,
+        ];
+      })
+    ),
+  ];
+
+  const clearAt = (
+    places: readonly SeatPlace[],
+    owner: number,
+    side: ArcSide
+  ) => {
+    const own = places[owner] ?? self;
+    const box = voiceArcsBox(own, table.tile * own.scale, side);
+
+    const widened = (by: number, across = by) => ({
+      h: box.h + 2 * by,
+      w: box.w + 2 * across,
+      x: box.x - across,
+      y: box.y - by,
+    });
+
+    const blocked = [
+      ...laid,
+      ...places.flatMap((place, other) =>
+        other === owner ? [] : roomyBoxes(table, place)
+      ),
+    ];
+
+    return (
+      onTable(table, widened(ARC_EDGE)) &&
+      clearIn(
+        table,
+        blocked,
+        widened(ARC_MARGIN, Math.max(ARC_MARGIN, table.tile * ARC_ROOM))
+      )
+    );
+  };
+
+  const sidesFor = (owner: number, inward: boolean): readonly ArcSide[] => {
+    if (owner === table.seats.length) {
+      return ["After", "Before", "InsideBefore"];
+    }
+
+    return inward ? ["After", "Before"] : ["Before", "After"];
+  };
+
+  return resting.map((place, owner) => {
+    const inward = place.x < table.w / 2;
+    const sides = sidesFor(owner, inward);
+
+    return (
+      sides.find((side) =>
+        moments.every((places) => clearAt(places, owner, side))
+      ) ??
+      (inward && owner < table.seats.length ? "InsideAfter" : "InsideBefore")
+    );
+  });
+};
