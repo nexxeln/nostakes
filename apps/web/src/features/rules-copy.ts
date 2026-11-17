@@ -175,7 +175,7 @@ export const RULES: readonly RuleCopy[] = [
     "Game",
     segments({ Holdem: "Hold'em", Omaha: "Omaha" }),
     {
-      help: "Omaha deals 4 cards. Your hand is exactly 2 of them plus 3 from the board.",
+      help: "4 cards each. Play exactly 2 of them with 3 from the board.",
     }
   ),
   rule(
@@ -186,7 +186,7 @@ export const RULES: readonly RuleCopy[] = [
     {
       brief: (draft) => said(gameShorthand(draft)),
       card: "Headline",
-      help: "Pot limit: the most you can bet or raise is the pot, counting your call.",
+      help: "Pot limit: raise at most the pot, counting your call.",
     }
   ),
   rule("buyIn.min", "Table", "Smallest buy-in", stepper("", 1, buyInStep)),
@@ -200,7 +200,7 @@ export const RULES: readonly RuleCopy[] = [
   }),
   rule("locked", "Table", "Lock the room", toggle(), {
     brief: (draft) => when(draft.locked === "true", () => "room locked"),
-    help: "Nobody new can join. People already in can still come and go.",
+    help: "Nobody new gets in. Everyone else can come and go.",
   }),
   rule("approval.joins", "Table", "Approve joins", toggle(), {
     brief: (draft) =>
@@ -219,12 +219,12 @@ export const RULES: readonly RuleCopy[] = [
   rule("approval.seats", "Table", "Approve seats", toggle(), {
     brief: (draft) =>
       when(draft["approval.seats"] === "true", () => "host seats players"),
-    help: "Players ask the host before they sit down.",
+    help: "Players ask before they sit.",
   }),
   rule("approval.chips", "Table", "Approve chips", toggle(), {
     brief: (draft) =>
       when(draft["approval.chips"] === "true", () => "host approves chips"),
-    help: "Players ask the host before they add chips.",
+    help: "Players ask before they add chips.",
   }),
   rule(
     "topUps",
@@ -242,7 +242,7 @@ export const RULES: readonly RuleCopy[] = [
             ? "top up when busted"
             : "top up below min"
         ),
-      help: "When players can add chips. Never past the largest buy-in.",
+      help: "Never past the largest buy-in.",
     }
   ),
   rule("table.smallBlind", "Blinds", "Small blind", stepper("", 1, by(1))),
@@ -279,7 +279,7 @@ export const RULES: readonly RuleCopy[] = [
     {
       brief: (draft) =>
         when(draft["table.blindPosting"] === "Casino", () => "post to come in"),
-      help: "Deal in: new players get cards right away. Post: they post a big blind or wait for it, and pay blinds they missed.",
+      help: "Deal in: cards right away. Post: pay a big blind, or wait for it.",
     }
   ),
   rule(
@@ -299,7 +299,7 @@ export const RULES: readonly RuleCopy[] = [
             ? `${kind} ${draft["table.bombPot.ante"]} every ${draft["table.bombPot.everyHands"]}`
             : `${kind} ${draft["table.bombPot.ante"]}`;
         }),
-      help: "Everyone antes, the flop comes right away, and betting starts on the flop.",
+      help: "Everyone antes, the flop comes out, and the betting starts there.",
     }
   ),
   rule(
@@ -314,7 +314,7 @@ export const RULES: readonly RuleCopy[] = [
     "Bomb pot boards",
     segments({ 1: "1", 2: "2" }, "1"),
     {
-      help: "2: each pot is split between the 2 boards. Win both to take it all.",
+      help: "2: half the pot on each board. Win both and scoop.",
     }
   ),
   rule(
@@ -332,7 +332,7 @@ export const RULES: readonly RuleCopy[] = [
           : "no clock"
       ),
     card: "Always",
-    help: "How long each player has to act. 0 turns the clock off.",
+    help: "0 turns the clock off.",
   }),
   rule("timeBankSeconds", "Clock", "Time bank", stepper("s", 0, by(15)), {
     brief: (draft) =>
@@ -380,7 +380,7 @@ export const RULES: readonly RuleCopy[] = [
     stepper("", 0, by(1)),
     {
       brief: straddleBrief,
-      help: "UTG is the seat left of the big blind. This is how many seats in a row, from there, may straddle.",
+      help: "UTG sits left of the big blind. How many seats in a row from there may straddle.",
     }
   ),
   rule("table.straddle.button", "Straddles", "Button straddle", toggle(), {
@@ -403,7 +403,7 @@ export const RULES: readonly RuleCopy[] = [
     }
   ),
   rule("table.maxRuns", "AllIn", "Run it up to", stepper("×", 1, by(1)), {
-    help: "When players are all in, the rest of the board can be dealt more than once. The pot is split between the runs.",
+    help: "All in? Deal the rest of the board more than once and split the pot.",
     brief: (draft) =>
       when(runsMoreThanOnce(draft), () =>
         draft["table.runCount"] === "Fixed"
@@ -415,9 +415,9 @@ export const RULES: readonly RuleCopy[] = [
     "table.runCount",
     "AllIn",
     "Runs",
-    segments({ Fixed: "Always the most", Vote: "Vote" }),
+    segments({ Fixed: "Always most", Vote: "Vote" }),
     {
-      help: "Vote: each player all in picks a number, and the lowest wins.",
+      help: "Vote: everyone all in picks, and the lowest wins.",
       relevant: runsMoreThanOnce,
     }
   ),
@@ -436,7 +436,7 @@ export const RULES: readonly RuleCopy[] = [
           draft["table.allInHands"] === "Hidden",
           () => "all-in hands hidden"
         ),
-      help: "Face up: every hand is turned over before the rest of the board comes.",
+      help: "Face up: hands turn over before the board runs out.",
     }
   ),
   rule(
@@ -447,7 +447,7 @@ export const RULES: readonly RuleCopy[] = [
     {
       brief: (draft) =>
         when(draft["table.showdown"] === "Automatic", () => "auto showdown"),
-      help: "Auto: every hand that can win is shown for you. Show or muck: each player chooses.",
+      help: "Auto shows every hand that can win.",
     }
   ),
   rule(
@@ -461,7 +461,7 @@ export const RULES: readonly RuleCopy[] = [
           draft["table.showdownOrder"] === "LastAggressor",
           () => "last bettor shows first"
         ),
-      help: "River bettor: the last to bet on the river shows first. Last bettor: the last to bet on any street.",
+      help: "Who bet last on the river, or on any street.",
     }
   ),
   rule("showdownSeconds", "Showdown", "Show clock", stepper("s", 1, by(5)), {
@@ -484,7 +484,7 @@ export const RULES: readonly RuleCopy[] = [
   rule("table.rabbitHunt", "Showdown", "Rabbit hunt", toggle(), {
     brief: (draft) =>
       when(draft["table.rabbitHunt"] === "true", () => "rabbit hunt"),
-    help: "When a hand ends early, a player can see the cards that would have come.",
+    help: "See the cards that would have come.",
   }),
   rule(
     "table.rabbitHunters",
@@ -563,7 +563,7 @@ export const RULES: readonly RuleCopy[] = [
   ),
   rule("shuffle", "Fairness", "Checked deck", toggle("Checked", "Plain"), {
     brief: (draft) => when(draft.shuffle === "Plain", () => "unchecked deck"),
-    help: "Every device checks the cards it sees against a deck sealed before the deal.",
+    help: "Every device checks each card it sees against a sealed deck.",
   }),
   rule("peeking", "Fairness", "Show peeks", toggle(), {
     brief: (draft) => when(draft.peeking === "false", () => "peeks hidden"),
@@ -590,7 +590,7 @@ export const RULES: readonly RuleCopy[] = [
     {
       brief: (draft) =>
         said(`sit out after ${draft.sitOutAfterTimeouts} timeouts`),
-      help: "Sit a player out after this many timeouts. 0 keeps them dealt in.",
+      help: "0 keeps them dealt in.",
       relevant: clockRuns,
     }
   ),

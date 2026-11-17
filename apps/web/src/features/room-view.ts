@@ -1032,8 +1032,8 @@ const leftRoomView = (room: InRoom, view: OpenView, h: H): Html =>
         [h.Class("muted")],
         [
           stillPlayingOut(view)
-            ? "Your seat finishes this hand. Then your chips count toward the settle-up. You can come back any time."
-            : "Your chips count toward the settle-up. You can come back any time.",
+            ? "Your seat finishes this hand, then your chips go to the settle-up. Come back any time."
+            : "Your chips count in the settle-up. Come back any time.",
         ]
       ),
       comeBackName(room, h),
@@ -1169,7 +1169,7 @@ const removedLines = (result: RemovedResult, h: H): readonly Html[] =>
           onNone: () =>
             h.p(
               [h.Class("muted")],
-              ["Who pays whom shows up when the night ends."]
+              ["Who pays whom shows once the night ends."]
             ),
           onSome: (transfers) =>
             h.ul(

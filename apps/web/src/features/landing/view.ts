@@ -44,8 +44,7 @@ export const LANDING_WORDS = {
     SettleUp:
       "A settle-up card. Jonas pays Priya 1,000. Sam pays Priya 250 and Maya 150. Dev pays Maya 160.",
   },
-  quiet:
-    "Every deck can be checked for a fair deal. nostakes never touches money.",
+  quiet: "Every deck is sealed before the deal. nostakes never touches money.",
   rules: {
     headline: "NL hold'em 10/20",
     label: "House rules",
@@ -72,7 +71,7 @@ export const LANDING_WORDS = {
       title: "One link and everyone's in.",
     },
     moment: {
-      body: "You get a picture and a clip to send the group chat.",
+      body: "With a picture and a clip for the group chat.",
       title: "Big hands get called out.",
     },
     rules: {
@@ -80,11 +79,11 @@ export const LANDING_WORDS = {
       title: "Your house, your rules.",
     },
     settle: {
-      body: "When the night ends, it shows who pays whom.",
-      title: "Settle up at a glance.",
+      body: "Who pays whom, when the night ends.",
+      title: "It settles up.",
     },
     table: {
-      body: "No buttons to hunt for. Peek, bet, and fold with a finger.",
+      body: "No buttons to hunt for. Your hands already know how.",
       title: "It plays like a real table.",
     },
   },

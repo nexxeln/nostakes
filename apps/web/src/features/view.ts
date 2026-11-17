@@ -230,7 +230,7 @@ const homeView = (
               h.p(
                 [h.Class("tagline")],
                 [
-                  "Poker night with friends. Play for chips. The app keeps the count.",
+                  "Poker night with friends. No money on the table, just the count.",
                 ]
               ),
             ]
