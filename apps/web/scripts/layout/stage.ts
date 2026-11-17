@@ -16,6 +16,7 @@ import type {
   SeatSnapshot,
   TableSnapshot,
 } from "../../src/features/table/snapshot.js";
+import { stageThrows } from "./throw-demo.ts";
 
 const NAMES = [
   "Sam",
@@ -731,6 +732,10 @@ const mount = () => {
 
   if (definedLate) {
     defineTable();
+  }
+
+  if (params.get("scene") === "throw") {
+    stageThrows(table, start, params);
   }
 
   const told = TOLD.get(params.get("scene") ?? "") ?? [];
