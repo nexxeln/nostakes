@@ -22,7 +22,7 @@ body {
 
 .reading {
   margin: 0 auto;
-  max-width: calc(var(--size-page) + var(--inset-left) + var(--inset-right));
+  max-width: calc(var(--size-reading) + var(--inset-left) + var(--inset-right));
   padding: calc(var(--space-4) + var(--inset-top)) var(--gutter-right)
     calc(var(--space-6) + var(--inset-bottom)) var(--gutter-left);
   display: flex;
@@ -70,6 +70,12 @@ body {
 .reading p,
 .reading ul {
   margin: 0;
+}
+
+.reading p,
+.reading li,
+.reading dd {
+  max-width: var(--measure);
 }
 
 .reading ul {
