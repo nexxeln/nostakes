@@ -56,6 +56,7 @@ import {
   reactionsGround,
   reactionsPlace,
   postTagBox,
+  boardLabelSpots,
   feltRulesBox,
   potTabOf,
   waitingCallBox,
@@ -886,6 +887,8 @@ export class NostakesTable extends HTMLElement {
   #potSide!: HTMLDivElement;
   #slots: HTMLDivElement[] = [];
   #secondSlots: HTMLDivElement[] = [];
+
+  #boardLabels: HTMLSpanElement[] = [];
   #secondShown: readonly string[] = [];
   #runs!: HTMLDivElement;
   #feltRules!: HTMLButtonElement;
@@ -1161,6 +1164,14 @@ export class NostakesTable extends HTMLElement {
     this.#secondSlots = Array.from({ length: 5 }, () =>
       el("div", "slot second gone", this.#room)
     );
+    this.#boardLabels = ["1", "2"].map((number) => {
+      const label = el("span", "board-label gone", this.#room);
+
+      label.textContent = number;
+      label.setAttribute("aria-hidden", "true");
+
+      return label;
+    });
     this.#runs = el("div", "runs", this.#room);
     this.#feltRules = el("button", "felt-rules gone", this.#room);
     this.#feltRules.type = "button";
@@ -1995,6 +2006,21 @@ export class NostakesTable extends HTMLElement {
           left: `${point.x}px`,
           top: `${point.y}px`,
           width: `${geo.cardW + 2}px`,
+        });
+      }
+    }
+
+    const labelSpots = boardLabelSpots(geo);
+
+    for (const [index, label] of this.#boardLabels.entries()) {
+      const spot = labelSpots[index];
+
+      toggle(label, "gone", spot === undefined);
+
+      if (spot !== undefined) {
+        Object.assign(label.style, {
+          left: `${spot.x}px`,
+          top: `${spot.y}px`,
         });
       }
     }

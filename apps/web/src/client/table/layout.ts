@@ -3265,17 +3265,48 @@ interface TabPlace {
 
 const TAB_SHIFTS = [0, -0.25, 0.25, -0.5, 0.5] as const;
 
+export const BOARD_LABEL = { gap: 2, h: 14, w: 12 } as const;
+
+export const boardLabelSpots = (
+  geo: Pick<Geo, "board" | "cardW" | "secondBoard">
+): readonly Pt[] =>
+  geo.secondBoard.length === 0
+    ? []
+    : [geo.board, geo.secondBoard].flatMap((row) => {
+        const last = row.at(-1);
+
+        return last === undefined
+          ? []
+          : [
+              {
+                x: last.x + geo.cardW / 2 + BOARD_LABEL.gap + BOARD_LABEL.w / 2,
+                y: last.y,
+              },
+            ];
+      });
+
 export const boardCardsBox = (geo: Geo): Box => {
   const cards = [...geo.board, ...geo.secondBoard];
-  const xs = cards.map(({ x }) => x);
-  const ys = cards.map(({ y }) => y);
+  const labels = boardLabelSpots(geo);
   const halfW = geo.cardW / 2;
   const halfH = geo.cardW * 0.7;
 
+  const lefts = [
+    ...cards.map(({ x }) => x - halfW),
+    ...labels.map(({ x }) => x - BOARD_LABEL.w / 2),
+  ];
+
+  const rights = [
+    ...cards.map(({ x }) => x + halfW),
+    ...labels.map(({ x }) => x + BOARD_LABEL.w / 2),
+  ];
+
+  const ys = cards.map(({ y }) => y);
+
   return {
     h: Math.max(...ys) - Math.min(...ys) + halfH * 2,
-    w: Math.max(...xs) - Math.min(...xs) + halfW * 2,
-    x: Math.min(...xs) - halfW,
+    w: Math.max(...rights) - Math.min(...lefts),
+    x: Math.min(...lefts),
     y: Math.min(...ys) - halfH,
   };
 };

@@ -9,6 +9,8 @@ import {
 import { Option } from "effect";
 
 import {
+  BOARD_LABEL,
+  boardLabelSpots,
   buttonBox,
   buttonGround,
   computeGeo,
@@ -202,6 +204,43 @@ export interface LaneTable {
   readonly posted: readonly number[];
   readonly screen: Screen;
 }
+
+const boardLabelProblems = (geo: Table, screen: Screen) => {
+  const cards = [...geo.board, ...geo.secondBoard].map(({ x, y }): Box => ({
+    h: geo.cardW * 1.4,
+    w: geo.cardW,
+    x: x - geo.cardW / 2,
+    y: y - geo.cardW * 0.7,
+  }));
+
+  const { strip } = geo;
+
+  return boardLabelSpots(geo).flatMap(({ x, y }, index) => {
+    const label: Box = {
+      h: BOARD_LABEL.h,
+      w: BOARD_LABEL.w,
+      x: x - BOARD_LABEL.w / 2,
+      y: y - BOARD_LABEL.h / 2,
+    };
+
+    const what = `board ${index + 1}'s label`;
+
+    return [
+      ...(label.x >= strip.x &&
+      label.y >= strip.y &&
+      label.x + label.w <= strip.x + strip.w &&
+      label.y + label.h <= strip.y + strip.h
+        ? []
+        : [`${what} leaves the board strip`]),
+      ...(label.x >= 0 && label.x + label.w <= screen.width
+        ? []
+        : [`${what} leaves the table`]),
+      ...(cards.some((card) => covers(label, card))
+        ? [`${what} covers a card`]
+        : []),
+    ];
+  });
+};
 
 export const covers = (a: Box, b: Box) =>
   Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x) >= VISIBLE_PX &&
@@ -582,11 +621,18 @@ export const laneProblemsOn = (
   const halfCard = { h: geo.cardW * 0.7, w: geo.cardW / 2 };
   const cardXs = [...geo.board, ...geo.secondBoard].map(({ x }) => x);
   const cardYs = [...geo.board, ...geo.secondBoard].map(({ y }) => y);
+  const labelXs = boardLabelSpots(geo).map(({ x }) => x);
+  const left = Math.min(...cardXs) - halfCard.w;
+
+  const right = Math.max(
+    ...cardXs.map((x) => x + halfCard.w),
+    ...labelXs.map((x) => x + BOARD_LABEL.w / 2)
+  );
 
   const boardCards: Box = {
     h: Math.max(...cardYs) - Math.min(...cardYs) + halfCard.h * 2,
-    w: Math.max(...cardXs) - Math.min(...cardXs) + halfCard.w * 2,
-    x: Math.min(...cardXs) - halfCard.w,
+    w: right - left,
+    x: left,
     y: Math.min(...cardYs) - halfCard.h,
   };
 
@@ -685,6 +731,7 @@ export const laneProblemsOn = (
     ...laidOnce,
     ...whileActing,
     ...awarded,
+    ...boardLabelProblems(geo, table.screen),
   ];
 };
 
