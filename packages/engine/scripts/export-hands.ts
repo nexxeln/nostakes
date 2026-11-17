@@ -1,6 +1,7 @@
 import {
   Actions,
   Antes,
+  BettingLimits,
   BombPots,
   ChipsSchema,
   Commands,
@@ -90,6 +91,7 @@ const anteOf = (random: Random, bigBlind: number): Ante => {
 const randomConfig = (random: Random): TableConfig => {
   const smallBlind = 1 + random.below(5);
   const bigBlind = smallBlind * (1 + random.below(3));
+  const omaha = random.chance(30);
 
   return TableConfigSchema.make({
     allInHands: random.chance(40) ? "Hidden" : "FaceUp",
@@ -103,6 +105,10 @@ const randomConfig = (random: Random): TableConfig => {
           everyHands: random.pick([0, 0, 1, 3, 7]) ?? 0,
         })
       : BombPots.NoBombPots(),
+    game: omaha ? "Omaha" : "Holdem",
+    limit: random.chance(omaha ? 75 : 15)
+      ? BettingLimits.PotLimit()
+      : BettingLimits.NoLimit(),
     maxRuns: runCount(1 + random.below(4)),
     rabbitHunt: random.chance(50),
     rabbitHunters: random.chance(30) ? "StillIn" : "DealtIn",
@@ -474,7 +480,10 @@ const afterHand = (
           cards: ShownCardsSchema.make(
             cards.length > 0
               ? cards
-              : shower.holeCards.slice(0, 1 + random.below(2))
+              : shower.holeCards.slice(
+                  0,
+                  1 + random.below(shower.holeCards.length)
+                )
           ),
           seat: shower.seat,
         })

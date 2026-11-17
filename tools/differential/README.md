@@ -1,6 +1,6 @@
 # PokerKit differential
 
-This harness checks `@nostakes/engine` against PokerKit, a no-limit hold'em implementation written by someone else. The engine's own tests and simulator share its author's reading of the rules. The differential finds the places where a second, independent reading disagrees.
+This harness checks `@nostakes/engine` against PokerKit, a poker implementation written by someone else, for hold'em and Omaha at no limit and pot limit. The engine's own tests and simulator share its author's reading of the rules. The differential finds the places where a second, independent reading disagrees.
 
 ## Run it
 
@@ -22,16 +22,16 @@ uv run --locked --script tools/differential/replay.py tools/differential/finding
 
 ## How it works
 
-1. `packages/engine/scripts/export-hands.ts` plays seeded tables through the real engine. Tables have two to nine seats, every ante kind, single, double, and button straddles, `maxRuns` from 1 to 4, `showdown` Automatic or Interactive, `allInHands` FaceUp or Hidden, `runCount` Vote or Fixed, `straddleSize` Doubling or TwoBigBlinds, `showdownOrder` RiverAggressor or LastAggressor, `voluntaryShows` EitherCard or BothCards, `rabbitHunters` DealtIn or StillIn, `blindPosting` HomeGame or Casino with posting choices, the `sevenDeuce` bounty on or off with decks that deal a seven-deuce on purpose, `bombPot` off, on a schedule, or called for the hand, with one board or two, and churn between hands. At an interactive showdown a seat tables, or mucks when it may. It also tries illegal actions, run choices, mucks of winning hands, and showdown choices out of turn. It prints one JSON object per hand: rules, seats and stacks, the previous button, the deck, the straddle list, every command with the pending decision before it and whether the engine accepted it, the events, after-hand shows and rabbit hunts, each with the rules in force when it was asked, and the final stacks. A rules change between hands can land before those shows and hunts, as a change the host queues during a hand lands when it ends.
-2. `replay.py` first checks every setting in the hand's rules, its refused starts, and its after-hand commands against the settings and values it was taught. Anything else is an `unknown-setting` difference, so a new engine setting fails the run until the replay models it or names an exclusion for it. It then rebuilds each hand in PokerKit with the same stacks, blinds, antes, and straddles. It deals every card explicitly from the exported deck, applies the same actions, and compares:
+1. `packages/engine/scripts/export-hands.ts` plays seeded tables through the real engine. Tables have two to nine seats, every ante kind, single, double, and button straddles, `maxRuns` from 1 to 4, `showdown` Automatic or Interactive, `allInHands` FaceUp or Hidden, `runCount` Vote or Fixed, `straddleSize` Doubling or TwoBigBlinds, `showdownOrder` RiverAggressor or LastAggressor, `voluntaryShows` EitherCard or BothCards, `rabbitHunters` DealtIn or StillIn, `blindPosting` HomeGame or Casino with posting choices, the `sevenDeuce` bounty on or off with decks that deal a seven-deuce on purpose, `bombPot` off, on a schedule, or called for the hand, with one board or two, `game` Holdem or Omaha (about 30% Omaha), `limit` NoLimit or PotLimit (PotLimit in three Omaha tables in four and one hold'em table in seven), and churn between hands. At an interactive showdown a seat tables, or mucks when it may. It also tries illegal actions, run choices, mucks of winning hands, and showdown choices out of turn. It prints one JSON object per hand: rules, seats and stacks, the previous button, the deck, the straddle list, every command with the pending decision before it and whether the engine accepted it, the events, after-hand shows and rabbit hunts, each with the rules in force when it was asked, and the final stacks. A rules change between hands can land before those shows and hunts, as a change the host queues during a hand lands when it ends.
+2. `replay.py` first checks every setting in the hand's rules, its refused starts, and its after-hand commands against the settings and values it was taught. Anything else is an `unknown-setting` difference, so a new engine setting fails the run until the replay models it or names an exclusion for it. It then rebuilds each hand in PokerKit with the same stacks, blinds, antes, and straddles, PokerKit's `OmahaHoldemHand` (exactly two hole cards and three board cards) and four hole cards a seat for Omaha, and `BettingStructure.POT_LIMIT` for PotLimit. It deals every card explicitly from the exported deck, the hole cards a pass at a time and the board from the cards after them, applies the same actions, and compares:
    - whose turn it is at every decision,
-   - the call amount and the minimum and maximum raise at every decision,
+   - the call amount and the minimum and maximum raise at every decision, which under PotLimit is the pot cap: PokerKit's `2 * max(bets) - bets[actor] + total_pot_amount`, the engine's bet plus every chip in the middle plus the call, both raised to the minimum raise when the pot is smaller (a bomb pot with a tiny ante) and cut to the stack,
    - that every accepted action is legal in PokerKit and every rejected action is illegal there,
    - antes, blinds, straddles, hole cards, and board cards, run by run,
    - who is asked for a run count,
    - the show and muck order at showdown and the hands tabled in an all-in,
    - at an interactive showdown, whose turn it is, and whether the seat asked is beaten in every pot it can still win (PokerKit's `can_win_now`), at every choice,
-   - the pots and their eligible seats, each award by run and seat, and the final stacks to the chip.
+   - the pots and their eligible seats, each award by run and seat, ranked with the game's own hand type, and the final stacks to the chip.
 
 ## Configured to match the brief
 
@@ -57,7 +57,7 @@ PokerKit can follow these engine rules when the replay sets it up a certain way.
 
 PokerKit cannot follow these rules. Each exclusion skips only the affected comparison and is counted. The reasons live in `EXCLUSIONS` in `replay.py`.
 
-- `short-big-blind`: the brief keeps the call at the full big blind when the big blind posts short and another seat can still act (rule 7). PokerKit uses the chips posted. Pre-flop is compared up to the first decision where the sizes differ. A size or turn difference at a decision where no other seat can act is not excluded: the engine must then match PokerKit.
+- `short-big-blind`: the brief keeps the call at the full big blind when the big blind posts short and another seat can still act (rule 7), and under PotLimit the pot cap counts that full bet. PokerKit uses the chips posted for the call, the minimum raise, and the pot cap. Pre-flop is compared up to the first decision where the sizes differ. A size or turn difference at a decision where no other seat can act is not excluded: the engine must then match PokerKit.
 - `pokerkit-short-all-in-reopens`: PokerKit counts the first short all-in of a street as a full raise and reopens the betting. TDA Rule 49-A does not.
 - `pokerkit-forgets-added-short-all-ins`: PokerKit restarts its sum of short all-ins once it reaches a full raise, so a later short all-in closes the betting again. TDA Rule 49-A counts them all.
 - `pokerkit-refuses-raise-nobody-can-call`: PokerKit refuses a raise that no other live seat can call. The engine allows it and returns the uncalled excess. The replay plays the raise as a call.
@@ -77,8 +77,8 @@ PokerKit has no model of these. The replay checks them with its own arithmetic f
 - which straddle lists are legal (rule 8),
 - the cap on the number of runs (rule 19),
 - rabbit hunting (rule 27), including who may hunt under `rabbitHunters` StillIn,
-- voluntary shows after the hand (rule 26), including both-or-neither under `voluntaryShows` BothCards,
-- the seven-deuce bounty: the replay picks the seat from PokerKit's own pots and winners (a seven and a deuce that won, alone, every pot it was in on every board), takes each payment from PokerKit's final stacks, and compares the engine's `BountyPaid`, the cards it showed, and the final stacks with the payment added,
+- voluntary shows after the hand (rule 26), any of a seat's two or four hole cards, including all-or-none under `voluntaryShows` BothCards,
+- the seven-deuce bounty: the replay picks the seat from PokerKit's own pots and winners (a seven and a deuce that won, alone, every pot it was in on every board), takes each payment from PokerKit's final stacks, and compares the engine's `BountyPaid`, the cards it showed, and the final stacks with the payment added. In Omaha it expects no payment and no forced show, because a seven-deuce is exactly two cards,
 - that a show or hunt after the hand follows the rules in force when the seat asks, not the rules the hand was dealt under,
 - at an interactive showdown, that a seat must table a hand that beats or ties the tabled hands of a pot another live seat contests, and may muck otherwise. PokerKit lets any seat muck, so the replay decides this with PokerKit's hand values.
 

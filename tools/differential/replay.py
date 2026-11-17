@@ -17,6 +17,7 @@ from pokerkit import (
     Card,
     Deck,
     Mode,
+    OmahaHoldemHand,
     Opening,
     StandardHighHand,
     State,
@@ -125,8 +126,9 @@ CONFIGURATIONS = {
 EXCLUSIONS = {
     "short-big-blind": (
         "Brief rule 7 keeps the call and the minimum raise at the full big blind when the "
-        "big blind posts short and another seat can still act. PokerKit sizes from the "
-        "chips actually posted. Pre-flop betting is compared up to the first decision where "
+        "big blind posts short and another seat can still act, and under PotLimit the pot "
+        "cap counts that full bet too. PokerKit sizes all three from the chips actually "
+        "posted. Pre-flop betting is compared up to the first decision where "
         "the two sizes differ, and the rest of the hand is not compared. A difference at a "
         "decision where no other seat can act is not excluded."
     ),
@@ -211,7 +213,7 @@ REPLAY_ONLY = {
     "seven-deuce-bounty": (
         "The sevenDeuce bounty: a seat holding a seven and a deuce that wins, alone, every pot "
         "it was in on every board is shown and paid by every other dealt-in seat, the amount or "
-        "all it holds. PokerKit has no bounty. The replay picks the seat from PokerKit's own "
+        "all it holds, and Omaha never pays it. PokerKit has no bounty. The replay picks the seat from PokerKit's own "
         "pots and winners, takes the payments from PokerKit's final stacks, and compares the "
         "engine's payment, the show, and the final stacks with the payment added."
     ),
@@ -238,6 +240,10 @@ ANTE_FIELDS = {"BigBlindPays": {"_tag", "amount"}, "EveryPlayer": {"_tag", "amou
 
 BOUNTY_FIELDS = {"Bounty": {"_tag", "amount"}, "NoBounty": {"_tag"}}
 
+GAMES = {"Holdem": (2, StandardHighHand), "Omaha": (4, OmahaHoldemHand)}
+
+LIMITS = {"NoLimit": BettingStructure.NO_LIMIT, "PotLimit": BettingStructure.POT_LIMIT}
+
 BOMB_FIELDS = {"BombPots": {"_tag", "ante", "boardCount", "everyHands"}, "NoBombPots": {"_tag"}}
 
 
@@ -254,6 +260,10 @@ def known_setting(key, value):
             return type(value) is int
         case "rabbitHunt":
             return type(value) is bool
+        case "game":
+            return value in GAMES
+        case "limit":
+            return isinstance(value, dict) and value.get("_tag") in LIMITS and set(value) == {"_tag"}
         case "ante":
             return isinstance(value, dict) and ANTE_FIELDS.get(value.get("_tag")) == set(value)
         case "straddle":
@@ -287,6 +297,9 @@ class Hand:
         self.big_blind = self.config["bigBlind"]
         self.max_runs = self.config["maxRuns"]
         self.deck = record["deck"]
+        self.game = self.config.get("game", "Holdem")
+        self.hole_count, self.hand_type = GAMES[self.game]
+        self.betting = LIMITS[self.config.get("limit", {"_tag": "NoLimit"})["_tag"]]
         self.straddles = record["straddles"]
         self.differences = []
         self.configured = set()
@@ -520,6 +533,10 @@ class Hand:
             self.features.add("bomb-pot")
         if self.boards > 1:
             self.features.add("double-board")
+        if self.game == "Omaha":
+            self.features.add("omaha")
+        if self.betting is BettingStructure.POT_LIMIT:
+            self.features.add("pot-limit")
         ante = self.config["ante"]["_tag"]
         self.features.add({"NoAnte": "ante-none", "EveryPlayer": "ante-every-player", "BigBlindPays": "ante-big-blind"}[ante])
         if not self.straddles:
@@ -606,25 +623,26 @@ class Hand:
             self.configured.add("straddle-sizes-preflop-raise")
         self.configured.add("no-burn-cards")
         self.opening = opening
+        holes = (False,) * self.hole_count
         later = (
             Street(False, (), 1, False, Opening.POSITION, self.big_blind, None),
             Street(False, (), 1, False, Opening.POSITION, self.big_blind, None),
         )
         if self.bomb is None:
             streets = (
-                Street(False, (False, False), 0, False, Opening.POSITION, opening, None),
+                Street(False, holes, 0, False, Opening.POSITION, opening, None),
                 Street(False, (), 3, False, Opening.POSITION, self.big_blind, None),
                 *later,
             )
         else:
-            streets = (Street(False, (False, False), 3, False, Opening.POSITION, self.big_blind, None), *later)
+            streets = (Street(False, holes, 3, False, Opening.POSITION, self.big_blind, None), *later)
         self.starting = stacks
         self.state = State(
             AUTOMATIONS,
             Deck.STANDARD,
-            (StandardHighHand,),
+            (self.hand_type,),
             streets,
-            BettingStructure.NO_LIMIT,
+            self.betting,
             trimming,
             antes,
             tuple(blinds),
@@ -660,18 +678,21 @@ class Hand:
 
     def deal_hole_cards(self):
         state = self.state
-        for k in range(2 * self.count):
+        for k in range(self.hole_count * self.count):
             dealee = state.hole_dealee_index
             if dealee != k % self.count:
                 self.differ("hole-deal-order", f"card {k} goes to player {dealee}, expected {k % self.count}")
             state.deal_hole((CARDS[self.deck[k]],), dealee)
-        self.hole = [[self.deck[i], self.deck[self.count + i]] for i in range(self.count)]
+        self.hole = [[self.deck[p * self.count + i] for p in range(self.hole_count)] for i in range(self.count)]
         for event in self.record["start"]:
             if event["_tag"] == "HoleCardsDealt":
                 expected = self.hole[self.index[event["seat"]]]
                 if event["cards"] != expected:
                     self.differ("hole-cards", f"seat {event['seat']} engine {event['cards']}, deck order {expected}")
-        self.pointer = 2 * self.count
+        self.pointer = self.hole_count * self.count
+        game = self.started().get("game", "Holdem")
+        if game != self.game:
+            self.differ("game", f"engine started a {game} hand, the rules say {self.game}")
         if (
             self.bomb is None
             and self.count == 2
@@ -1229,7 +1250,7 @@ class Hand:
             if e["_tag"] == "BountyPaid"
         ]
         expected = []
-        if rule["_tag"] == "Bounty" and self.bomb is None:
+        if rule["_tag"] == "Bounty" and self.bomb is None and self.game == "Holdem":
             self.replay_checked.add("seven-deuce-bounty")
             for seat in unbeaten:
                 if sorted(card // 4 for card in self.hole[self.index[seat]]) != [0, 5]:
@@ -1281,7 +1302,7 @@ class Hand:
         eligible = [seat for seat in eligible if seat not in mucked]
         cards = list(self.state.get_board_cards(board))
         hands = {
-            seat: StandardHighHand.from_game(tuple(CARDS[c] for c in self.hole[self.index[seat]]), cards)
+            seat: self.hand_type.from_game(tuple(CARDS[c] for c in self.hole[self.index[seat]]), cards)
             for seat in eligible
         }
         best = max(hands.values())
@@ -1305,7 +1326,7 @@ class Hand:
                 public[event["seat"]].update(event["cards"])
         board = sum(len(e["cards"]) for e in events if e["_tag"] == "StreetDealt" and e["run"] == 1)
         ran_out = any(e["_tag"] == "RunsAgreed" for e in events) or any(e["_tag"] == "HandsTabled" for e in events)
-        undealt = [] if ran_out or self.boards > 1 else self.deck[2 * self.count + board : 2 * self.count + 5]
+        undealt = [] if ran_out or self.boards > 1 else self.deck[self.hole_count * self.count + board : self.hole_count * self.count + 5]
         hunted = False
         folded = {e["seat"] for e in events if e["_tag"] == "Folded"}
         for step in self.record["after"]:
@@ -1484,7 +1505,7 @@ def summarize(results, path, report):
         + ["short-all-in", "short-big-blind", "side-pots", "split-pots", "odd-chips"]
         + ["fold-out", "showdown", "mucks", "rejected-commands", "rabbit-hunt", "voluntary-show"]
         + ["interactive-showdown", "concession", "unshown-winner", "hidden-run-out", "casino-blinds"]
-        + ["seven-deuce-bounty", "bomb-pot"]
+        + ["seven-deuce-bounty", "bomb-pot", "double-board", "omaha", "pot-limit"]
     )
     for feature in order + sorted(set(features) - set(order)):
         counts = features.get(feature, Counter())
