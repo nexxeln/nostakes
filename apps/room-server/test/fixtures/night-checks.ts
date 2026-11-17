@@ -184,6 +184,9 @@ export const COUNT_NAMES = [
   "silences",
   "straddles",
   "tablesUnattended",
+  "throwDeliveries",
+  "throwsSent",
+  "throwsTheRoomRefuses",
   "timeouts",
   "transfers",
   "unclockedVotesTimedOut",
@@ -279,6 +282,9 @@ export const emptyCounts = (): NightCounts => ({
   silences: 0,
   straddles: 0,
   tablesUnattended: 0,
+  throwDeliveries: 0,
+  throwsSent: 0,
+  throwsTheRoomRefuses: 0,
   timeouts: 0,
   transfers: 0,
   unclockedVotesTimedOut: 0,
@@ -568,6 +574,8 @@ const addBotStats = (checker: Checker, bot: BotRecord) => {
   counts.replyTimeouts += stats.replyTimeouts;
   counts.signalsSent += stats.signals.sent;
   counts.peeksWithoutCards += stats.signals.peeksWithoutCards;
+  counts.throwsSent += stats.signals.throws;
+  counts.throwsTheRoomRefuses += stats.signals.throwsTheRoomRefuses;
 
   if (stats.replyTimeouts > 0) {
     report(
@@ -1531,7 +1539,17 @@ const shownToSender = (
             )
           )
         ),
-      Reaction: () => true,
+      Reaction: ({ at }) =>
+        Option.match(at, {
+          onNone: () => true,
+          onSome: (target) =>
+            target !== from &&
+            view.members.some(({ player }) => player === target) &&
+            RoomViews.$is("Open")(view) &&
+            view.seats.some(({ occupant }) =>
+              Option.exists(occupant, ({ player }) => player === target)
+            ),
+        }),
     })
   );
 };
@@ -1552,6 +1570,10 @@ const checkSignals = (
     )
       ? 1
       : 0;
+    checker.counts.throwDeliveries +=
+      RoomSignalSchema.guards.Reaction(signal) && Option.isSome(signal.at)
+        ? 1
+        : 0;
 
     if (!shownToSender(state, from, signal)) {
       report(

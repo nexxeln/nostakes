@@ -251,6 +251,9 @@ test(
           "signalDeliveries",
           "peekDeliveries",
           "reactionDeliveries",
+          "throwsSent",
+          "throwsTheRoomRefuses",
+          "throwDeliveries",
           "clientSignalsSent",
           "clientSignalsKeptOnDevice",
           "clientSignalsHeard",
@@ -344,6 +347,8 @@ test(
     expect(total((counts) => counts.peekDeliveries)).toBeGreaterThan(0);
     expect(total((counts) => counts.reactionDeliveries)).toBeGreaterThan(0);
     expect(total((counts) => counts.peeksWithoutCards)).toBeGreaterThan(0);
+    expect(total((counts) => counts.throwDeliveries)).toBeGreaterThan(0);
+    expect(total((counts) => counts.throwsTheRoomRefuses)).toBeGreaterThan(0);
     expect(total((counts) => counts.clientSignalsSent)).toBeGreaterThan(0);
     expect(total((counts) => counts.clientSignalsHeard)).toBeGreaterThan(0);
   }).pipe(Effect.provide(harnessHttp)),
