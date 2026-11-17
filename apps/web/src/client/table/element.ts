@@ -50,6 +50,7 @@ import {
   entryPlace,
   deadButtonSpot,
   flightControl,
+  gestureHintsOn,
   pileWidthFor,
   placeSeats,
   POST_TAG_WIDTHS,
@@ -70,7 +71,9 @@ import type {
   ButtonSpot,
   ButtonSpots,
   Geo,
+  GestureHints,
   HandFan,
+  OnTheFelt,
   Pt,
   Table,
   TagSide,
@@ -946,6 +949,11 @@ export class NostakesTable extends HTMLElement {
   #detentEls: HTMLDivElement[] = [];
   readonly #fx!: HTMLDivElement;
   readonly #hints = new Map<Hint, HTMLDivElement>();
+  #gestureHints: {
+    readonly felt: string;
+    readonly geo: Table;
+    readonly hints: GestureHints;
+  } | null = null;
   #ghost!: HTMLDivElement;
   #ghostAnim: Animation | null = null;
   #keysEl!: HTMLDivElement;
@@ -4749,18 +4757,18 @@ export class NostakesTable extends HTMLElement {
     );
   }
 
-  #showHint(hint: Hint, on: boolean, point: Pt) {
+  #showHint(hint: Hint, on: boolean, box: Box | undefined) {
     const node = this.#hints.get(hint);
 
     if (node === undefined) {
       return;
     }
 
-    toggle(node, "on", on);
+    toggle(node, "on", on && box !== undefined);
 
-    if (on) {
-      node.style.left = `${point.x}px`;
-      node.style.top = `${point.y}px`;
+    if (on && box !== undefined) {
+      node.style.left = `${box.x + box.w / 2}px`;
+      node.style.top = `${box.y}px`;
     }
   }
 
@@ -4806,6 +4814,8 @@ export class NostakesTable extends HTMLElement {
 
     const { legal } = snapshot;
     const betting = this.#bettingTurn();
+
+    const gestureHints = this.#gestureHintsOn(snapshot, geo);
     const busy = this.#busy();
 
     const peekOn = this.#peekHintDue() && !betting;
@@ -4815,22 +4825,38 @@ export class NostakesTable extends HTMLElement {
     const foldOn =
       betting && !this.#learned("Fold") && this.#learned("Peek") && !raiseOn;
 
-    this.#showHint("Peek", peekOn && !busy, geo.handKeys);
-    this.#showHint("Fold", foldOn && !busy, geo.handKeys);
+    this.#showHint("Peek", peekOn && !busy, gestureHints.cards);
+    this.#showHint("Fold", foldOn && !busy, gestureHints.cards);
 
     if ((peekOn || foldOn) && !busy) {
       this.#handKeysEl.classList.remove("on");
     }
 
-    this.#showHint("Raise", raiseOn && !busy, {
-      x: clamp(geo.chip.x - 40, 110, geo.w - 110),
-      y: clamp(
-        geo.strip.y + geo.strip.h + 12,
-        geo.chip.y - geo.chip.size / 2 - 92,
-        geo.chip.y - geo.chip.size / 2 - 24
-      ),
-    });
+    this.#showHint("Raise", raiseOn && !busy, gestureHints.chip);
     this.#ghostHint(raiseOn && !busy && !this.#reduced, geo);
+  }
+
+  #gestureHintsOn(snapshot: TableSnapshot, geo: Table): GestureHints {
+    const felt: OnTheFelt = {
+      button: this.#buttonRide(snapshot, geo),
+      piles: snapshot.seats
+        .filter(({ bet }) => bet > 0)
+        .map(({ seat }) => this.#pilePoint(seat)),
+      tags: this.#postedTags(snapshot, geo),
+    };
+
+    const key = JSON.stringify(felt);
+    const known = this.#gestureHints;
+
+    if (known !== null && known.geo === geo && known.felt === key) {
+      return known.hints;
+    }
+
+    const hints = gestureHintsOn(geo, felt);
+
+    this.#gestureHints = { felt: key, geo, hints };
+
+    return hints;
   }
 
   #ghostHint(on: boolean, geo: Geo) {

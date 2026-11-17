@@ -17,6 +17,7 @@ import {
   entryPlace,
   flightControl,
   FELT_RULES_TAP_PX,
+  gestureHintsOn,
   feltRulesBox,
   HAND_CARD_FLOOR,
   HAND_INDEX_SHARE,
@@ -30,6 +31,7 @@ import {
   HINT_LINES,
   PIC_LIFT,
   placeSeats,
+  POST_TAG_WIDTHS,
   postTagBox,
   potTabOf,
   ridingScale,
@@ -183,6 +185,29 @@ const awardTabWidth = (most: number) =>
   DRAWN_AWARD_PX.get(String(most).length) ?? 0;
 
 const DRAWN_PILE_HEIGHT = 22;
+
+const DRAWN_GESTURE_HINT_PX = { cards: 152.5, chip: 143.5, h: 17.5 };
+
+const drawnGestureHint = (
+  placed: Box | undefined,
+  width: number,
+  what: string,
+  owner: number
+): readonly Laid[] =>
+  placed === undefined
+    ? []
+    : [
+        {
+          box: {
+            h: DRAWN_GESTURE_HINT_PX.h,
+            w: width,
+            x: placed.x + placed.w / 2 - width / 2,
+            y: placed.y,
+          },
+          owner,
+          what,
+        },
+      ];
 
 const DRAWN_TAG_HEIGHT = 20;
 
@@ -573,6 +598,27 @@ export const laneProblemsOn = (
     ...Array.from({ length: table.others }, (__, seat) => seat),
   ];
 
+  const gestureHints = gestureHintsOn(geo, {
+    button: {
+      owner,
+      spot:
+        owner === null
+          ? geo.buttons.self
+          : (geo.buttons.seats[owner] ?? geo.buttons.self),
+    },
+    piles,
+    tags: posted.map((seat) => {
+      const wide = geo.tagSides.wideFits[seat] === true && !geo.compactPiles;
+
+      return postTagBox(
+        piles[seat] ?? geo.interior,
+        (wide ? geo.tagSides.wide : geo.tagSides.narrow)[seat] ?? "Before",
+        wide ? POST_TAG_WIDTHS.wide : POST_TAG_WIDTHS.narrow,
+        geo.pileW
+      );
+    }),
+  });
+
   const whileActing = actors.flatMap((actor) => {
     const places = placeSeats(geo, plan(actor, true));
 
@@ -594,7 +640,38 @@ export const laneProblemsOn = (
       ["your cards as they lift", liftedCards(geo)],
     ];
 
+    const handHint: readonly Named[] = [
+      ["the hint", handHintBox(geo, geo.hint)],
+    ];
+
+    const lessons = [
+      ...(actor === null
+        ? drawnGestureHint(
+            gestureHints.chip,
+            DRAWN_GESTURE_HINT_PX.chip,
+            "the raise hint",
+            you
+          ).map((lesson) => ({ lesson, under: [...seats, ...middle] }))
+        : []),
+      ...drawnGestureHint(
+        gestureHints.cards,
+        DRAWN_GESTURE_HINT_PX.cards,
+        "the peek or fold hint",
+        you
+      ).map((lesson) => ({
+        lesson,
+        under: [...seats, ...middle, ...handHint],
+      })),
+    ];
+
     return [
+      ...lessons.flatMap(({ lesson, under }) => [
+        ...(onScreen(lesson.box, geo, table.screen)
+          ? []
+          : [`${lesson.what} leaves the table`]),
+        ...covering(lesson, under),
+        ...coveringLaid(lesson, [...fixed, button]),
+      ]),
       ...captionsNearFaces(geo, places, "grown"),
       ...fixed.flatMap((item) => covering(item, seats)),
       ...(onScreen(button.box, geo, table.screen)

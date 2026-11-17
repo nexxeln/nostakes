@@ -1894,30 +1894,44 @@ const nearestClear = (
   geo: Geo,
   blocked: readonly Box[],
   start: Box,
-  rises: number
+  rises: number,
+  falls = 0
 ): Box | undefined => {
   let best: { readonly box: Box; readonly cost: number } | undefined;
 
   for (
     let rise = 0;
-    rise <= rises && (best === undefined || rise * 2 < best.cost);
+    rise <= Math.max(rises, falls) &&
+    (best === undefined || rise * 2 < best.cost);
     rise += HINT_STEP
   ) {
+    const lifts = [
+      ...(rise <= rises ? [rise] : []),
+      ...(rise > 0 && rise <= falls ? [-rise] : []),
+    ];
+
     for (
       let shift = 0;
       shift <= geo.w / 2 &&
       (best === undefined || shift + rise * 2 < best.cost);
       shift += HINT_STEP
     ) {
-      for (const side of shift === 0 ? [0] : [-1, 1]) {
-        const box = { ...start, x: start.x + side * shift, y: start.y - rise };
-        const cost = shift + rise * 2;
+      for (const lift of lifts) {
+        for (const side of shift === 0 ? [0] : [-1, 1]) {
+          const box = {
+            ...start,
+            x: start.x + side * shift,
+            y: start.y - lift,
+          };
 
-        if (
-          (best === undefined || cost < best.cost) &&
-          clearIn(geo, blocked, box)
-        ) {
-          best = { box, cost };
+          const cost = shift + rise * 2;
+
+          if (
+            (best === undefined || cost < best.cost) &&
+            clearIn(geo, blocked, box)
+          ) {
+            best = { box, cost };
+          }
         }
       }
     }
@@ -2021,6 +2035,114 @@ const hintBoxOf = ({ foot, say }: HandHint): Box => {
 
 export const handHintBox = (geo: Geo, hint = handHint(geo)): Box =>
   hintBoxOf(hint);
+
+export const GESTURE_HINT = { cards: 156, chip: 148, h: 18 };
+
+const GESTURE_HINT_REACH = 48;
+
+const CHIP_HINT = { aside: 40, below: 24, edge: 110, under: 12, within: 92 };
+
+export interface GestureHints {
+  readonly cards: Box | undefined;
+  readonly chip: Box | undefined;
+}
+
+export interface OnTheFelt {
+  readonly piles: readonly Pt[];
+  readonly tags: readonly Box[];
+  readonly button: ButtonRide | null;
+}
+
+const buttonRidesWhile = (
+  table: Table,
+  button: ButtonRide | null,
+  actors: readonly (number | null)[]
+): readonly Box[] => {
+  if (button === null) {
+    return [];
+  }
+
+  const { owner, spot } = button;
+  const home = owner === null ? undefined : table.seats[owner];
+
+  if (home === undefined) {
+    return [buttonBox(spot)];
+  }
+
+  return actors.flatMap((active) =>
+    [null, owner].flatMap((folded) =>
+      placesWhileActing(table, active, folded)
+        .filter(({ index }) => index === owner)
+        .map((place) =>
+          buttonBox({
+            r: spot.r,
+            x: place.x + (spot.x - home.x) * ridingScale(place.scale),
+            y: place.y + (spot.y - home.y) * ridingScale(place.scale),
+          })
+        )
+    )
+  );
+};
+
+export const gestureHintsOn = (table: Table, felt: OnTheFelt): GestureHints => {
+  const ground = [
+    ...hintFixedGround(table),
+    ...felt.piles.map((pile) => pileBox(pile, table.pileW)),
+    ...felt.tags,
+    potTabBox(table),
+    handBox(table),
+  ];
+
+  const everyActor = [null, ...table.seats.map((__, index) => index)];
+
+  const chipTop = table.chip.y - table.chip.size / 2;
+
+  const chipAt = {
+    h: GESTURE_HINT.h,
+    w: GESTURE_HINT.chip,
+    x:
+      clamp(
+        table.chip.x - CHIP_HINT.aside,
+        CHIP_HINT.edge,
+        table.w - CHIP_HINT.edge
+      ) -
+      GESTURE_HINT.chip / 2,
+    y: clamp(
+      table.strip.y + table.strip.h + CHIP_HINT.under,
+      chipTop - CHIP_HINT.within,
+      chipTop - CHIP_HINT.below
+    ),
+  };
+
+  const cardsAt = {
+    h: GESTURE_HINT.h,
+    w: GESTURE_HINT.cards,
+    x: table.handKeys.x - GESTURE_HINT.cards / 2,
+    y: table.handKeys.y,
+  };
+
+  return {
+    cards: nearestClear(
+      table,
+      [
+        ...ground,
+        ...buttonRidesWhile(table, felt.button, everyActor),
+        ...seatsWhileAnyoneActs(table),
+        hintBoxOf(table.hint),
+      ],
+      cardsAt,
+      GESTURE_HINT_REACH,
+      GESTURE_HINT_REACH
+    ),
+    chip: nearestClear(
+      table,
+      [...ground, ...buttonRidesWhile(table, felt.button, [null])],
+      chipAt,
+      GESTURE_HINT_REACH,
+      GESTURE_HINT_REACH
+    ),
+  };
+};
 
 const middleObstacles = (geo: Geo, hint: Box): readonly Box[] => [
   ...pilesOf(geo).map((pile) => pileBox(pile, geo.pileW)),
@@ -3526,14 +3648,18 @@ const tagsAround = (geo: Table, seat: number, pile: Pt): readonly Box[] => {
       ];
 };
 
-const placesWhileActing = (geo: Table, active: number | null) =>
+const placesWhileActing = (
+  geo: Table,
+  active: number | null,
+  folded: number | null = null
+) =>
   placeSeats(geo, {
     bets: geo.seats.map((__, index) => index),
     button: null,
     heroBet: false,
     seats: geo.seats.map((__, index) => ({
       active: index === active,
-      folded: false,
+      folded: index === folded && index !== active,
       index,
       winner: false,
     })),
