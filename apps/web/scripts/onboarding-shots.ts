@@ -141,6 +141,13 @@ const phoneNight = (opened: Browser, app: string, dir: string, size: Size) =>
     yield* turnOn(host, "Seven-deuce bounty");
     yield* turnOn(host, "Bomb pots");
     yield* shoot(host, dir, "setup-extras", size);
+    yield* attempt("deal two boards", () =>
+      host
+        .getByRole("radiogroup", { name: "Bomb pot boards" })
+        .getByRole("radio", { name: "Two" })
+        .click()
+    );
+    yield* shoot(host, dir, "setup-two-boards", size);
     yield* press(host, "Go to the table");
     yield* attempt("see the rules on the felt", () =>
       host.locator(FELT).waitFor({ timeout: 15_000 })

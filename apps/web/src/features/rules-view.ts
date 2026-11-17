@@ -64,6 +64,7 @@ export const rulesCard = (view: OpenView, h: H): Html => {
 
 const optionsOf = (line: RuleLine): readonly string[] => {
   const { field } = line;
+  const { control } = line.copy;
 
   if (field.kind === "Choice") {
     return field.options;
@@ -73,7 +74,7 @@ const optionsOf = (line: RuleLine): readonly string[] => {
     return field.variants.map(({ tag }) => tag);
   }
 
-  return [];
+  return control.kind === "Segments" ? Object.keys(control.labels) : [];
 };
 
 type Change = (path: string, value: string) => Message;

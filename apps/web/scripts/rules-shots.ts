@@ -198,6 +198,14 @@ const program = Effect.gen(function* takeRulesShots() {
   );
   yield* bringUp(host, "Bomb pot every");
   yield* shoot(host, dir, "rules-bomb-pots");
+  yield* attempt("deal two boards", () =>
+    host
+      .getByRole("radiogroup", { name: "Bomb pot boards" })
+      .getByRole("radio", { name: "Two" })
+      .click()
+  );
+  yield* bringUp(host, "Bomb pot boards");
+  yield* shoot(host, dir, "rules-bomb-pot-two-boards");
   yield* press(host, "Save");
   yield* attempt("close the rules", () => host.keyboard.press("Escape"));
   yield* press(host, "Menu").pipe(Effect.ignore);
@@ -220,14 +228,12 @@ const program = Effect.gen(function* takeRulesShots() {
   yield* attempt("light the host's page", () =>
     host.emulateMedia({ colorScheme: "light" })
   );
-  yield* seen(host, "Bomb pot next hand. Everyone antes 4.").pipe(
-    Effect.ignore
-  );
+  yield* seen(host, "Double-board bomb pot next hand.").pipe(Effect.ignore);
   yield* press(host, "Start the game");
   yield* seen(host, "Bomb pot 4");
   yield* shoot(host, dir, "table-bomb-pot-dealt", 0);
   yield* press(host, "Menu");
-  yield* press(host, "Bomb pot next hand");
+  yield* press(host, "Double-board bomb pot next hand");
   yield* attempt("see the bomb pot called", () =>
     host
       .getByRole("button", { exact: true, name: "Call off the bomb pot" })
