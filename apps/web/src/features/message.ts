@@ -41,6 +41,7 @@ export const Messages = defineMessageUnion({
   AcquiredConnection: {},
   AcquiredVoice: {},
   ChangedVoice: { status: VoiceStatusSchema },
+  ClickedHearVoice: {},
   ClickedMic: {},
   ClickedMuteForEveryone: { muted: Schema.Boolean, player: PlayerIdSchema },
   ClickedVoice: {},

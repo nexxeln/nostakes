@@ -12,12 +12,13 @@ import type {
   VoiceAsk,
   VoiceReply,
 } from "@nostakes/protocol";
-import { Duration, Effect, Option, Schema, Stream } from "effect";
+import { Duration, Effect, Exit, Option, Schema, Stream } from "effect";
 import * as FetchHttpClient from "effect/http/FetchHttpClient";
 import * as HttpClient from "effect/http/HttpClient";
 import * as HttpClientRequest from "effect/http/HttpClientRequest";
 
 import type { PullPlan } from "../../features/voice.js";
+import { playOnSpeaker, releaseSpeaker, speakerBlocked } from "./speakers.js";
 import { VoiceFailed } from "./voice-failed.js";
 import type { VoiceTrouble } from "./voice-failed.js";
 
@@ -28,6 +29,8 @@ export const SPEAKING_LEVEL = 0.02;
 export const LEVEL_POLL_MS = 250;
 
 export const MIC_WAIT_MS = 20_000;
+
+export const ASK_WAIT_MS = 20_000;
 
 export interface VoiceSession {
   readonly pass: RoomPass;
@@ -93,6 +96,10 @@ export const askVoice = (pass: RoomPass, ask: VoiceAsk) =>
         )
       )
     ),
+    Effect.timeoutOrElse({
+      duration: Duration.millis(ASK_WAIT_MS),
+      orElse: () => Effect.fail(failed("Broken", ask._tag)),
+    }),
     Effect.provide(FetchHttpClient.layer)
   );
 
@@ -107,17 +114,36 @@ const promised = <A>(step: string, run: () => Promise<A>) =>
     try: run,
   });
 
+const stopAll = (stream: MediaStream) => {
+  for (const track of stream.getTracks()) {
+    track.stop();
+  }
+};
+
+const stoppedWhenAnswered = (asked: Promise<MediaStream>) => {
+  Effect.runFork(
+    Effect.tryPromise(() => asked).pipe(Effect.map(stopAll), Effect.ignore)
+  );
+};
+
 export const microphone = Effect.tryPromise({
   catch: () => failed("MicBlocked", "Microphone"),
-  try: () =>
-    globalThis.navigator.mediaDevices.getUserMedia({
+  try: (signal) => {
+    const asked = globalThis.navigator.mediaDevices.getUserMedia({
       audio: {
         autoGainControl: true,
         channelCount: 1,
         echoCancellation: true,
         noiseSuppression: true,
       },
-    }),
+    });
+
+    signal.addEventListener("abort", () => {
+      stoppedWhenAnswered(asked);
+    });
+
+    return asked;
+  },
 }).pipe(
   Effect.timeoutOrElse({
     duration: Duration.millis(MIC_WAIT_MS),
@@ -174,47 +200,86 @@ const iceServerOf = (server: IceServer): RTCIceServer => {
     : { credential: server.credential, urls, username: server.username };
 };
 
+const stopPlaying = (session: VoiceSession, mid: string) => {
+  for (const audio of Option.toArray(
+    Option.fromUndefinedOr(session.playing.get(mid))
+  )) {
+    releaseSpeaker(audio);
+  }
+
+  session.playing.delete(mid);
+};
+
+const stopPulled = (session: VoiceSession, mid: string) => {
+  stopPlaying(session, mid);
+
+  for (const transceiver of session.peer.getTransceivers()) {
+    if (transceiver.mid === mid) {
+      transceiver.receiver.track.stop();
+
+      if (
+        session.peer.signalingState !== "closed" &&
+        transceiver.currentDirection !== "stopped"
+      ) {
+        transceiver.stop();
+      }
+    }
+  }
+};
+
+const sessionOn = (
+  pass: RoomPass,
+  mic: Option.Option<MediaStreamTrack>,
+  joined: VoiceReply
+): VoiceSession => {
+  const iceServers = VoiceReplySchema.guards.Joined(joined)
+    ? joined.iceServers.map(iceServerOf)
+    : [];
+
+  const session: VoiceSession = {
+    mic,
+    pass,
+    peer: new RTCPeerConnection({ bundlePolicy: "max-bundle", iceServers }),
+    playing: new Map(),
+    pulled: new Map(),
+  };
+
+  session.peer.addEventListener("track", (event) => {
+    const mid = event.transceiver.mid ?? "";
+
+    stopPlaying(session, mid);
+    session.playing.set(mid, playOnSpeaker(event.track));
+  });
+
+  return session;
+};
+
 export const openSession = (
   pass: RoomPass,
   mic: Option.Option<MediaStreamTrack>,
   open: boolean
 ) =>
-  Effect.gen(function* openVoiceSession() {
-    const joined = yield* askVoice(pass, ASK.Join.make({}));
+  Effect.uninterruptibleMask((restore) =>
+    Effect.gen(function* openVoiceSession() {
+      const joined = yield* askVoice(pass, ASK.Join.make({}));
+      const session = sessionOn(pass, mic, joined);
 
-    const iceServers = VoiceReplySchema.guards.Joined(joined)
-      ? joined.iceServers.map(iceServerOf)
-      : [];
+      yield* restore(
+        Effect.gen(function* publishMicrophone() {
+          for (const track of Option.toArray(mic)) {
+            track.enabled = open;
+            yield* publish(pass, session.peer, track);
+          }
+        })
+      ).pipe(
+        Effect.onExit((exit) =>
+          Exit.isSuccess(exit) ? Effect.void : leave(session)
+        )
+      );
 
-    const peer = new RTCPeerConnection({
-      bundlePolicy: "max-bundle",
-      iceServers,
-    });
-
-    const session: VoiceSession = {
-      mic,
-      pass,
-      peer,
-      playing: new Map(),
-      pulled: new Map(),
-    };
-
-    peer.addEventListener("track", (event) => {
-      const mid = event.transceiver.mid ?? "";
-      const audio = new Audio();
-
-      audio.autoplay = true;
-      audio.srcObject = new MediaStream([event.track]);
-      session.playing.set(mid, audio);
-    });
-
-    for (const track of Option.toArray(mic)) {
-      track.enabled = open;
-      yield* publish(pass, peer, track);
-    }
-
-    return session;
-  });
+      return session;
+    })
+  );
 
 const playerOfMid = (session: VoiceSession, mid: string) =>
   Option.fromUndefinedOr(
@@ -258,19 +323,12 @@ export const syncPulls = (session: VoiceSession, plan: PullPlan) =>
       Option.toArray(Option.fromUndefinedOr(session.pulled.get(player)))
     );
 
+    for (const mid of dropped) {
+      stopPulled(session, mid);
+    }
+
     for (const player of plan.drop) {
-      const mid = session.pulled.get(player);
-
       session.pulled.delete(player);
-
-      for (const audio of Option.toArray(
-        Option.fromUndefinedOr(
-          mid === undefined ? undefined : session.playing.get(mid)
-        )
-      )) {
-        audio.pause();
-        audio.srcObject = null;
-      }
     }
 
     if (dropped.length > 0) {
@@ -297,17 +355,21 @@ export const setMic = (session: VoiceSession, open: boolean) => {
   }
 };
 
+export const closePeer = (session: VoiceSession) => {
+  for (const mid of session.playing.keys()) {
+    stopPlaying(session, mid);
+  }
+
+  session.pulled.clear();
+  session.peer.close();
+};
+
 export const closeLocally = (session: VoiceSession) => {
   for (const track of Option.toArray(session.mic)) {
     track.stop();
   }
 
-  for (const audio of session.playing.values()) {
-    audio.pause();
-    audio.srcObject = null;
-  }
-
-  session.peer.close();
+  closePeer(session);
 };
 
 export const leave = (session: VoiceSession) =>
@@ -360,8 +422,15 @@ const levelsOf = (session: VoiceSession, you: PlayerId) =>
   );
 
 export type PeerNews =
-  | { readonly type: "Speaking"; readonly players: readonly PlayerId[] }
+  | {
+      readonly type: "Heard";
+      readonly players: readonly PlayerId[];
+      readonly deaf: boolean;
+    }
   | { readonly type: "Dropped" };
+
+const deafIn = (session: VoiceSession) =>
+  [...session.playing.values()].some(speakerBlocked);
 
 const dropped: PeerNews = { type: "Dropped" };
 
@@ -380,9 +449,17 @@ export const peerNews = (session: VoiceSession, you: PlayerId) =>
       Stream.mapEffect(() =>
         levelsOf(session, you).pipe(Effect.orElseSucceed(() => []))
       ),
+      Stream.map((players): PeerNews => ({
+        deaf: deafIn(session),
+        players,
+        type: "Heard",
+      })),
       Stream.changesWith(
-        (before, after) => before.join(" ") === after.join(" ")
-      ),
-      Stream.map((players): PeerNews => ({ players, type: "Speaking" }))
+        (before, after) =>
+          before.type === "Heard" &&
+          after.type === "Heard" &&
+          before.deaf === after.deaf &&
+          before.players.join(" ") === after.players.join(" ")
+      )
     )
   );

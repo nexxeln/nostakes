@@ -66,7 +66,12 @@ import { sheet } from "./sheet.js";
 import { stuckLine } from "./stuck-line.js";
 import { heroSeatOf, tableSnapshot } from "./table/from-room.js";
 import { tableElement } from "./table/snapshot.js";
-import { micLive, mutedForEveryone, voiceAccessIn } from "./voice.js";
+import {
+  micLive,
+  mutedForEveryone,
+  VOICE_TAP_ATTRIBUTE,
+  voiceAccessIn,
+} from "./voice.js";
 import type { VoiceAccess } from "./voice.js";
 
 type H = HtmlBuilder<Message>;
@@ -170,6 +175,14 @@ const voiceLabel = (room: InRoom, access: VoiceAccess, you: PlayerId) => {
     return { icon: "MicOff" as const, label: "Voice is out", pressed: false };
   }
 
+  if (voice.status.deaf) {
+    return {
+      icon: "SoundOff" as const,
+      label: "Tap to hear voice",
+      pressed: false,
+    };
+  }
+
   if (access === "Listen") {
     return { icon: "MicOff" as const, label: "Listening", pressed: false };
   }
@@ -187,6 +200,14 @@ const voiceLabel = (room: InRoom, access: VoiceAccess, you: PlayerId) => {
     : { icon: "MicOff" as const, label: "Unmute", pressed: false };
 };
 
+const voiceClick = (deaf: boolean, talks: boolean) => {
+  if (deaf) {
+    return Messages.ClickedHearVoice();
+  }
+
+  return talks ? Messages.ClickedMic() : Messages.ClickedVoice();
+};
+
 const voiceButton = (room: InRoom, view: Option.Option<OpenView>, h: H): Html =>
   Option.match(view, {
     onNone: () => h.empty,
@@ -199,10 +220,8 @@ const voiceButton = (room: InRoom, view: Option.Option<OpenView>, h: H): Html =>
 
       const shown = voiceLabel(room, access, room.player);
 
-      const talks =
-        room.voice.on &&
-        room.voice.status.phase === "Live" &&
-        access === "Talk";
+      const live = room.voice.on && room.voice.status.phase === "Live";
+      const talks = live && access === "Talk";
 
       return h.button(
         [
@@ -215,7 +234,8 @@ const voiceButton = (room: InRoom, view: Option.Option<OpenView>, h: H): Html =>
           h.AriaPressed(String(shown.pressed)),
           h.AriaLabel(shown.label),
           h.Title(talks ? `${shown.label} (hold T to talk)` : shown.label),
-          h.OnClick(talks ? Messages.ClickedMic() : Messages.ClickedVoice()),
+          h.DataAttribute(VOICE_TAP_ATTRIBUTE, "true"),
+          h.OnClick(voiceClick(live && room.voice.status.deaf, talks)),
         ],
         [
           h.span(

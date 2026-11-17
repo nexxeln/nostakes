@@ -1,12 +1,13 @@
 import type { PlayerId, RoomPass, VoiceRoster } from "@nostakes/protocol";
 import { createEffectEventStreamLogic, setupEffect } from "@xstate/effect";
-import { Effect, Option, Stream } from "effect";
+import { Effect, Exit, Option, Stream } from "effect";
 import { types } from "xstate";
 
 import { inVoice, pullPlan } from "../../features/voice.js";
 import type { PullPlan } from "../../features/voice.js";
 import {
   closeLocally,
+  closePeer,
   leave,
   microphone,
   openSession,
@@ -37,7 +38,9 @@ export interface VoiceInput {
 
 export interface VoiceContext extends VoiceInput {
   readonly session: Option.Option<VoiceSession>;
+  readonly keptMic: Option.Option<MediaStreamTrack>;
   readonly micBlocked: boolean;
+  readonly deaf: boolean;
   readonly speaking: readonly PlayerId[];
   readonly failures: number;
   readonly retryInMs: number;
@@ -47,6 +50,7 @@ interface OpenInput {
   readonly pass: RoomPass;
   readonly talk: boolean;
   readonly micOpen: boolean;
+  readonly keptMic: Option.Option<MediaStreamTrack>;
 }
 
 type OpenNews =
@@ -59,31 +63,54 @@ const openFailed = (failure: VoiceFailed): OpenNews => ({
   type: "OpenFailed",
 });
 
+const stopMic = (mic: Option.Option<MediaStreamTrack>) =>
+  Effect.sync(() => {
+    for (const track of Option.toArray(mic)) {
+      track.stop();
+    }
+  });
+
+const liveMic = (mic: Option.Option<MediaStreamTrack>) =>
+  mic.pipe(Option.filter((track) => track.readyState === "live"));
+
+const micFor = (input: OpenInput) => {
+  const kept = liveMic(input.keptMic);
+
+  if (!input.talk) {
+    return stopMic(kept).pipe(Effect.as(Option.none<MediaStreamTrack>()));
+  }
+
+  return Option.isSome(kept)
+    ? Effect.succeed(kept)
+    : microphone.pipe(Effect.option, Effect.map(Option.flatten));
+};
+
 const opened = (input: OpenInput): Stream.Stream<OpenNews> =>
   Stream.unwrap(
-    Effect.gen(function* openVoice() {
-      const mic = input.talk
-        ? yield* microphone.pipe(Effect.option, Effect.map(Option.flatten))
-        : Option.none<MediaStreamTrack>();
+    Effect.uninterruptibleMask((restore) =>
+      Effect.gen(function* openVoice() {
+        const mic = yield* restore(micFor(input)).pipe(
+          Effect.onInterrupt(() => stopMic(input.keptMic))
+        );
 
-      const blocked: readonly OpenNews[] =
-        input.talk && Option.isNone(mic) ? [{ type: "MicBlocked" }] : [];
+        const blocked: readonly OpenNews[] =
+          input.talk && Option.isNone(mic) ? [{ type: "MicBlocked" }] : [];
 
-      const outcome = yield* openSession(input.pass, mic, input.micOpen).pipe(
-        Effect.map((session): OpenNews => ({ session, type: "Opened" })),
-        Effect.catchTag("VoiceFailed", (failure) =>
-          Effect.sync(() => {
-            for (const track of Option.toArray(mic)) {
-              track.stop();
-            }
+        const outcome = yield* restore(
+          openSession(input.pass, mic, input.micOpen)
+        ).pipe(
+          Effect.onExit((exit) =>
+            Exit.isSuccess(exit) ? Effect.void : stopMic(mic)
+          ),
+          Effect.map((session): OpenNews => ({ session, type: "Opened" })),
+          Effect.catchTag("VoiceFailed", (failure) =>
+            Effect.succeed(openFailed(failure))
+          )
+        );
 
-            return openFailed(failure);
-          })
-        )
-      );
-
-      return Stream.fromIterable([...blocked, outcome]);
-    })
+        return Stream.fromIterable([...blocked, outcome]);
+      })
+    )
   );
 
 interface SyncInput {
@@ -128,6 +155,15 @@ const planOf = (context: VoiceContext, session: VoiceSession) =>
 const hasWork = (plan: PullPlan) =>
   plan.pull.length > 0 || plan.drop.length > 0;
 
+const afterDrop = (failures: number) =>
+  ({
+    context: {
+      failures: failures + 1,
+      retryInMs: failures === 0 ? 0 : retryDelayMs(failures + 1),
+    },
+    target: "#voice.Waiting",
+  }) as const;
+
 const afterTrouble = (trouble: VoiceTrouble, failures: number) => {
   if (trouble === "Refused") {
     return { target: "#voice.Refused" } as const;
@@ -151,6 +187,24 @@ const closeHeld = (session: Option.Option<VoiceSession>) => {
     closeLocally(held);
   }
 };
+
+const closeKeepingMic = (session: Option.Option<VoiceSession>) => {
+  for (const held of Option.toArray(session)) {
+    closePeer(held);
+  }
+};
+
+const reopen = (context: VoiceContext) =>
+  ({
+    context: {
+      keptMic: context.session.pipe(
+        Option.flatMap((held) => liveMic(held.mic))
+      ),
+      micBlocked: false,
+      session: Option.none(),
+    },
+    target: "Opening",
+  }) as const;
 
 export const voiceMachine = () => {
   const open = createEffectEventStreamLogic({
@@ -185,7 +239,10 @@ export const voiceMachine = () => {
         OpenFailed: types<{ readonly trouble: VoiceTrouble }>(),
         Opened: types<{ readonly session: VoiceSession }>(),
         Roster: types<{ readonly roster: VoiceRoster }>(),
-        Speaking: types<{ readonly players: readonly PlayerId[] }>(),
+        Heard: types<{
+          readonly players: readonly PlayerId[];
+          readonly deaf: boolean;
+        }>(),
         Stop: types<{ readonly type: "Stop" }>(),
         SyncDue: types<{ readonly type: "SyncDue" }>(),
         SyncFailed: types<{ readonly trouble: VoiceTrouble }>(),
@@ -200,7 +257,9 @@ export const voiceMachine = () => {
   }).createMachine({
     context: ({ input }) => ({
       ...input,
+      deaf: false,
       failures: 0,
+      keptMic: Option.none(),
       micBlocked: false,
       retryInMs: 0,
       session: Option.none(),
@@ -229,7 +288,7 @@ export const voiceMachine = () => {
         on: { Left: { target: "Stopped" }, Stop: {} },
       },
       Live: {
-        exit: () => ({ context: { speaking: [] } }),
+        exit: () => ({ context: { deaf: false, speaking: [] } }),
         initial: "Idle",
         invoke: {
           input: ({ context }) => ({
@@ -239,7 +298,7 @@ export const voiceMachine = () => {
           src: "news",
         },
         on: {
-          Dropped: ({ context }) => afterTrouble("Broken", context.failures),
+          Dropped: ({ context }) => afterDrop(context.failures),
           Mic: ({ context, event }, enq) => {
             for (const session of Option.toArray(context.session)) {
               enq(setMic, session, event.open);
@@ -252,12 +311,11 @@ export const voiceMachine = () => {
               inVoice(context.roster, context.pass.player) &&
               !inVoice(event.roster, context.pass.player)
             ) {
+              const dropped = afterDrop(context.failures);
+
               return {
-                ...afterTrouble("Broken", context.failures),
-                context: {
-                  ...afterTrouble("Broken", context.failures).context,
-                  roster: event.roster,
-                },
+                ...dropped,
+                context: { ...dropped.context, roster: event.roster },
               };
             }
 
@@ -265,7 +323,9 @@ export const voiceMachine = () => {
 
             return { context: { roster: event.roster } };
           },
-          Speaking: ({ event }) => ({ context: { speaking: event.players } }),
+          Heard: ({ event }) => ({
+            context: { deaf: event.deaf, speaking: event.players },
+          }),
         },
         states: {
           Idle: {
@@ -305,6 +365,7 @@ export const voiceMachine = () => {
       Opening: {
         invoke: {
           input: ({ context }) => ({
+            keptMic: context.keptMic,
             micOpen: context.micOpen,
             pass: context.pass,
             talk: context.talk,
@@ -313,10 +374,20 @@ export const voiceMachine = () => {
         },
         on: {
           MicBlocked: () => ({ context: { micBlocked: true } }),
-          OpenFailed: ({ context, event }) =>
-            afterTrouble(event.trouble, context.failures),
+          OpenFailed: ({ context, event }) => {
+            const after = afterTrouble(event.trouble, context.failures);
+
+            return {
+              ...after,
+              context: { ...after.context, keptMic: Option.none() },
+            };
+          },
           Opened: ({ event }) => ({
-            context: { failures: 0, session: Option.some(event.session) },
+            context: {
+              failures: 0,
+              keptMic: Option.none(),
+              session: Option.some(event.session),
+            },
             target: "Live",
           }),
         },
@@ -327,7 +398,7 @@ export const voiceMachine = () => {
 
           return { context: { session: Option.none() } };
         },
-        on: { Wake: { target: "Opening" } },
+        on: { Wake: ({ context }) => reopen(context) },
       },
       Stopped: {
         entry: () => ({ context: { session: Option.none() } }),
@@ -335,20 +406,21 @@ export const voiceMachine = () => {
       },
       Waiting: {
         entry: ({ context }, enq) => {
-          enq(closeHeld, context.session);
+          enq(
+            context.retryInMs === 0 ? closeKeepingMic : closeHeld,
+            context.session
+          );
           enq.raise(
             { type: "RetryDue" },
             { delay: context.retryInMs, id: VOICE_TIMERS.retry }
           );
-
-          return { context: { session: Option.none() } };
         },
         exit: (_, enq) => {
           enq.cancel(VOICE_TIMERS.retry);
         },
         on: {
-          RetryDue: { target: "Opening" },
-          Wake: { target: "Opening" },
+          RetryDue: ({ context }) => reopen(context),
+          Wake: ({ context }) => reopen(context),
         },
       },
     },

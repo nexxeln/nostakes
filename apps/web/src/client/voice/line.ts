@@ -35,6 +35,7 @@ const PHASES = {
 } as const satisfies Record<string, VoicePhase>;
 
 const statusOf = (snapshot: SnapshotFrom<VoiceMachine>): VoiceStatus => ({
+  deaf: snapshot.context.deaf,
   micBlocked: snapshot.context.micBlocked,
   phase: PHASES[taggedState(snapshot)._tag],
   speaking: snapshot.context.speaking,
@@ -63,6 +64,7 @@ export const openVoiceLine = (code: string, talk: boolean) =>
           (before, after) =>
             before.phase === after.phase &&
             before.micBlocked === after.micBlocked &&
+            before.deaf === after.deaf &&
             before.speaking.join(" ") === after.speaking.join(" ")
         )
       ),

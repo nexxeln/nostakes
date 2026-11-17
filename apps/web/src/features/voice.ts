@@ -98,5 +98,7 @@ export const speakingIn = (room: InRoom, player: PlayerId) =>
 
 export const TALK_KEY = "t";
 
+export const VOICE_TAP_ATTRIBUTE = "voice-tap";
+
 export const talkKeyWanted = (room: InRoom) =>
   room.voice.on && room.voice.status.phase === "Live";

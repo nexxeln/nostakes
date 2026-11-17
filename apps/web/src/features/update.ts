@@ -1538,6 +1538,7 @@ export const update = (model: Model, message: Message): Return =>
       withVoice(model, (voice) => ({ ...voice, line: true })),
     ChangedVoice: ({ status }) =>
       editVoice(model, (voice) => ({ ...voice, status })),
+    ClickedHearVoice: () => ({ model }),
     ClickedMic: () =>
       withVoice(model, (voice) => ({ ...voice, micOpen: !voice.micOpen })),
     ClickedMuteForEveryone: ({ muted, player }) =>

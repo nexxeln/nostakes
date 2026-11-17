@@ -13,6 +13,7 @@ export const VoicePhaseSchema = Schema.Literals([
 export type VoicePhase = typeof VoicePhaseSchema.Type;
 
 export const VoiceStatusSchema = Schema.Struct({
+  deaf: Schema.Boolean,
   micBlocked: Schema.Boolean,
   phase: VoicePhaseSchema,
   speaking: Schema.Array(PlayerIdSchema),
@@ -32,6 +33,7 @@ export const VoiceSchema = Schema.Struct({
 export type Voice = typeof VoiceSchema.Type;
 
 export const VOICE_OFF: VoiceStatus = {
+  deaf: false,
   micBlocked: false,
   phase: "Off",
   speaking: [],

@@ -7,6 +7,7 @@ import { managedResources } from "./connection.js";
 import { defineLanding } from "./landing/element.js";
 import { readFlags } from "./storage.js";
 import { subscriptions } from "./subscriptions.js";
+import { watchVoiceTaps } from "./voice/speakers.js";
 import { watchZoom } from "./zoom.js";
 
 import "./tokens.css";
@@ -31,6 +32,8 @@ const application = Runtime.makeApplication({
 Runtime.run(application, { flags: readFlags });
 
 watchZoom();
+
+watchVoiceTaps();
 
 const { defineFaceBuilder } = await import("./face/define.js");
 
