@@ -40,12 +40,12 @@ export const LANDING_WORDS = {
   open: "Open a room",
   pictures: {
     Moment:
-      "The moment card for a bad beat, The cruellest card: Jonas was 95% to win with aces, and Priya took the pot of 2,120 with three kings.",
+      "A moment card for a bad beat. Jonas had aces and was 95% to win. Priya took the 2,120 pot with three kings.",
     SettleUp:
-      "The settle-up card: Jonas pays Priya 1,000, Sam pays Priya 250 and Maya 150, and Dev pays Maya 160.",
+      "A settle-up card. Jonas pays Priya 1,000. Sam pays Priya 250 and Maya 150. Dev pays Maya 160.",
   },
   quiet:
-    "Every deck is sealed before the deal, and nostakes never touches money.",
+    "Every deck can be checked for a fair deal. nostakes never touches money.",
   rules: {
     headline: "NL hold'em 10/20",
     label: "House rules",
@@ -68,23 +68,23 @@ export const LANDING_WORDS = {
       title: "Make your face.",
     },
     link: {
-      body: "No download, no accounts. Up to nine at a table.",
+      body: "No download, no accounts. Up to 9 at a table.",
       title: "One link and everyone's in.",
     },
     moment: {
-      body: "With a picture and a clip you can keep and send.",
+      body: "You get a picture and a clip to send the group chat.",
       title: "Big hands get called out.",
     },
     rules: {
-      body: "The host sets them, and calls the bomb pots.",
+      body: "The host picks them and calls the bomb pots.",
       title: "Your house, your rules.",
     },
     settle: {
-      body: "Who pays whom, when the night ends.",
-      title: "It settles up.",
+      body: "When the night ends, it shows who pays whom.",
+      title: "Settle up at a glance.",
     },
     table: {
-      body: "No buttons to hunt for. Your hands already know how.",
+      body: "No buttons to hunt for. Peek, bet, and fold with a finger.",
       title: "It plays like a real table.",
     },
   },
@@ -225,7 +225,7 @@ const facePiece = (h: H, theme: Theme): Html =>
         [
           h.Type("button"),
           h.Class("face-shuffle"),
-          h.AriaLabel("Shuffle the face"),
+          h.AriaLabel("Show another face"),
         ],
         [
           later(
@@ -403,7 +403,7 @@ export const landingView = (model: Model, h: H): Html => {
         [
           hero(h, theme),
           h.section(
-            [h.Class("tiles"), h.AriaLabel("What a night on nostakes has")],
+            [h.Class("tiles"), h.AriaLabel("What you get")],
             [
               tile(h, "link", linkPiece(h, theme)),
               tile(h, "face", facePiece(h, theme)),

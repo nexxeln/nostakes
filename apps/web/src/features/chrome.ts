@@ -21,7 +21,7 @@ export const LEARN_PATH = "/learn";
 export const learnLink = (h: H): Html =>
   h.a(
     [h.Class("learn-link"), h.Href(LEARN_PATH)],
-    ["New to poker? Learn in two minutes"]
+    ["New to poker? Learn in 2 minutes"]
   );
 
 export const learnInNewTab = (h: H): Html =>
