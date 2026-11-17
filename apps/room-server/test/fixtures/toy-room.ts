@@ -641,4 +641,6 @@ export const toyRoom: HostedRoom<ToyTypes> = {
   stamp: (by, at, command) =>
     ToyCommandSchema.cases.Member.make({ at, by, command }),
   viewFor,
+  voiceAccess: () => "None",
+  voiceModerator: () => false,
 };

@@ -218,6 +218,7 @@ const roomSettings = (random: Random): RoomSettings => {
       random.pick(["UpToMax", "UpToMax", "BelowMin", "WhenBust"] as const) ??
       "UpToMax",
     turnSeconds: random.pick([0, 10, 20, 30]) ?? 0,
+    voice: random.pick(["Off", "Seated", "Everyone"] as const) ?? "Off",
   };
 };
 

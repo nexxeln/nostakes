@@ -54,6 +54,11 @@ export const MEASURES = {
   TableQuiet: { blobs: [], doubles: [], from: "Server" },
   TableResumed: { blobs: [], doubles: ["quietMs"], from: "Server" },
   TableStalled: { blobs: ["deadline"], doubles: [], from: "Server" },
+  VoiceSession: {
+    blobs: [],
+    doubles: ["seconds", "pulledSeconds", "talked"],
+    from: "Server",
+  },
 } as const satisfies Record<string, Layout>;
 
 export type MeasureKind = keyof typeof MEASURES;

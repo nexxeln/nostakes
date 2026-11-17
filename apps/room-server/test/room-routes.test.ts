@@ -1,6 +1,6 @@
 import { RpcCallError } from "@alchemy.run/cloudflare";
 import { describe, expect, it } from "@effect/vitest";
-import { MAX_BODY_BYTES } from "@nostakes/protocol";
+import { MAX_BODY_BYTES, MAX_VOICE_BODY_BYTES } from "@nostakes/protocol";
 import { Effect, Logger, References } from "effect";
 import type { Schema } from "effect";
 import * as HttpRouter from "effect/http/HttpRouter";
@@ -41,6 +41,7 @@ const unreachableRooms: RoomNamespace = {
     join: () => refusedCall("join"),
     open: () => refusedCall("open"),
     standings: () => refusedCall("standings"),
+    voice: () => refusedCall("voice"),
   }),
   idFromName: (name) => ({ toString: () => objectIdOf(name) }),
 };
@@ -259,6 +260,10 @@ const callsTo = (calls: string[]): RoomNamespace => ({
       Effect.sync(() => calls.push("standings")).pipe(
         Effect.andThen(refusedCall("standings"))
       ),
+    voice: () =>
+      Effect.sync(() => calls.push("voice")).pipe(
+        Effect.andThen(refusedCall("voice"))
+      ),
   }),
   idFromName: (name) => ({ toString: () => objectIdOf(name) }),
 });
@@ -291,6 +296,32 @@ describe("a request body past the limit", () => {
             { body: '{"refusal":"BodyTooLarge"}', status: 413 },
           ])
         );
+        expect(calls).toStrictEqual([]);
+      })
+  );
+
+  it.effect(
+    "is refused on the voice route past its own larger limit, before the room is called",
+    () =>
+      Effect.gen(function* voiceTooLarge() {
+        const calls: string[] = [];
+        const statuses: number[] = [];
+
+        for (const length of ["Declared", "Chunked"] as const) {
+          const { status } = yield* answer(
+            callsTo(calls),
+            unlimited,
+            sentRaw(
+              `/rooms/${CODE}/voice`,
+              padded(MAX_VOICE_BODY_BYTES),
+              length
+            )
+          );
+
+          statuses.push(status);
+        }
+
+        expect(statuses).toStrictEqual([413, 413]);
         expect(calls).toStrictEqual([]);
       })
   );

@@ -5,6 +5,7 @@ import type {
   PlayerId,
   Seq,
   Token,
+  VoiceRoster,
 } from "@nostakes/protocol";
 import { Data } from "effect";
 import type { Option } from "effect";
@@ -78,6 +79,7 @@ export interface ClientContext<T extends RoomTypes> extends ClientInput {
   readonly view: Option.Option<T["View"]>;
   readonly you: Option.Option<PlayerId>;
   readonly presence: readonly PlayerId[];
+  readonly voice: VoiceRoster;
   readonly pending: readonly PendingCommand<T>[];
   readonly owed: Owed;
   readonly failures: number;
@@ -105,6 +107,7 @@ export interface ConnectionPayloads<T extends RoomTypes> {
   };
   readonly Reply: { readonly id: CommandId; readonly result: ReplyResult<T> };
   readonly Presence: { readonly connected: readonly PlayerId[] };
+  readonly Voice: { readonly roster: VoiceRoster };
   readonly Signal: { readonly from: PlayerId; readonly signal: T["Signal"] };
   readonly Closing: { readonly reason: CloseReason };
   readonly Closed: { readonly code: number; readonly reason: string };

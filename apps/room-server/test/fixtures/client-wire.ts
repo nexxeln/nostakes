@@ -64,6 +64,7 @@ const describeMessage = (message: PokerServerMessage) =>
     Events: ({ from, to }) => `Events ${from}..${to}`,
     Pong: () => "Pong",
     Presence: ({ connected }) => `Presence ${connected.length}`,
+    Voice: ({ roster }) => `Voice ${roster.length}`,
     Reply: ({ id, result }) => `Reply ${id} ${result._tag}`,
     Signal: ({ signal }) => `Signal ${signal._tag}`,
     Welcome: ({ catchUp, seq }) =>

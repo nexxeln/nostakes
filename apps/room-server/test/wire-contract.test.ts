@@ -11,6 +11,9 @@ import {
   StandingsRequestSchema,
   clientMessage,
   serverMessage,
+  VoiceRefusalSchema,
+  VoiceReplySchema,
+  VoiceRequestSchema,
 } from "@nostakes/protocol";
 import { sha256 } from "@nostakes/shuffle";
 import { Predicate, Schema } from "effect";
@@ -95,6 +98,10 @@ const wire = {
     ]),
   }),
   view: schemas.view,
+  voice: Schema.Struct({
+    reply: Schema.Union([VoiceReplySchema, VoiceRefusalSchema]),
+    request: VoiceRequestSchema,
+  }),
 } satisfies Record<keyof WireParts, Schema.Top>;
 
 const current: WireParts = {
@@ -111,6 +118,7 @@ const current: WireParts = {
   serverFrame: digestOf(wire.serverFrame),
   standings: digestOf(wire.standings),
   view: digestOf(wire.view),
+  voice: digestOf(wire.voice),
 };
 
 describe("the wire contract", () => {

@@ -127,6 +127,10 @@ export const MomentCalloutsSchema = Schema.Literals([
 
 export type MomentCallouts = typeof MomentCalloutsSchema.Type;
 
+export const VoiceRuleSchema = Schema.Literals(["Off", "Seated", "Everyone"]);
+
+export type VoiceRule = typeof VoiceRuleSchema.Type;
+
 export type Shuffle = typeof ShuffleSchema.Type;
 
 const settingsFields = (shuffleWhenAbsent: Shuffle) => ({
@@ -247,6 +251,11 @@ const settingsFields = (shuffleWhenAbsent: Shuffle) => ({
       "Seconds a player has to act on their turn. 0 turns the clock off.",
     title: "Turn clock",
   }),
+  voice: setting(VoiceRuleSchema, "Off", {
+    description:
+      "Whether the room has voice chat. Off: no voice. Seated: the host and everyone in a seat may talk, and anyone else in the room may listen. Everyone: everyone in the room may talk. Everyone joins muted and turns voice on themselves.",
+    title: "Voice chat",
+  }),
 });
 
 export const RoomSettingsSchema = Schema.Struct(settingsFields("Plain"));
@@ -291,6 +300,7 @@ export const DEFAULT_SETTINGS: RoomSettings = Schema.decodeSync(
   timeBankSeconds: 60,
   topUps: "UpToMax",
   turnSeconds: 30,
+  voice: "Off",
 });
 
 export const turnClockRuns = (settings: RoomSettings) =>

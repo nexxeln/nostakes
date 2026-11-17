@@ -43,6 +43,8 @@ export interface Deadline<Due> {
   readonly due: Due;
 }
 
+export type VoiceAccess = "None" | "Listen" | "Talk";
+
 export interface HostedRoom<T extends RoomTypes> {
   readonly schemas: RoomSchemas<T>;
   readonly open: (input: OpenInput<T["OpenRequest"]>) => readonly T["Event"][];
@@ -116,4 +118,6 @@ export interface HostedRoom<T extends RoomTypes> {
     sender: PlayerId,
     signal: T["Signal"]
   ) => boolean;
+  readonly voiceAccess: (state: T["State"], player: PlayerId) => VoiceAccess;
+  readonly voiceModerator: (state: T["State"], player: PlayerId) => boolean;
 }

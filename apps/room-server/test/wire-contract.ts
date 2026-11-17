@@ -12,6 +12,7 @@ export interface WireParts {
   readonly serverFrame: string;
   readonly standings?: string;
   readonly view: string;
+  readonly voice?: string;
 }
 
 export interface WireContract {
@@ -461,5 +462,24 @@ export const WIRE_CONTRACTS: readonly WireContract[] = [
       view: "c2d03c9f62f95f30",
     },
     protocol: 27,
+  },
+  {
+    parts: {
+      clientFrame: "5ed5f73a92fceeeb",
+      command: "ebd9a740441428b6",
+      event: "83c4d7134167f09d",
+      httpRefusal: "215d5d5e4baef1ba",
+      joinKnocking: "50d07270dfa9c8c4",
+      joinRefusal: "614c650c63d38830",
+      joinRequest: "06c8d1a0370bf3b3",
+      openRequest: "00bf952a24b5236b",
+      rejection: "1d064ed6f9543993",
+      roomPass: "c10081ecd072b4b7",
+      serverFrame: "b910c6241ad3dcbc",
+      standings: "ffc074dc80853b4d",
+      view: "bc4e815084c992c5",
+      voice: "eda1a45432d93fd9",
+    },
+    protocol: 28,
   },
 ];

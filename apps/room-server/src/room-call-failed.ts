@@ -6,6 +6,7 @@ export const RoomCallSchema = Schema.Literals([
   "connect",
   "check",
   "standings",
+  "voice",
 ]);
 
 export type RoomCall = typeof RoomCallSchema.Type;

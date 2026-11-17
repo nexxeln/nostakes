@@ -57,6 +57,16 @@ export const StandingsOutcomeSchema = Schema.TaggedUnion({
 
 export type StandingsOutcome = typeof StandingsOutcomeSchema.Type;
 
+export const VoiceOutcomeSchema = Schema.TaggedUnion({
+  Invalid: {},
+  NotAuthorized: {},
+  NotFound: {},
+  Refused: { refusal: Schema.Literals(["VoiceRefused", "VoiceUnavailable"]) },
+  Replied: { reply: Schema.Json },
+});
+
+export type VoiceOutcome = typeof VoiceOutcomeSchema.Type;
+
 export const InspectionSchema = Schema.Struct({
   alarmRuns: Schema.Array(
     Schema.Struct({ at: Schema.Int, outcome: Schema.String })

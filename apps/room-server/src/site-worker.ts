@@ -10,6 +10,7 @@ import {
   PAGE_ROUTES,
   sitePages,
 } from "./site-pages.js";
+import { siteVoice } from "./site-voice.js";
 import {
   APPLICATION_LOGS_ONLY,
   ROOM_ROUTES,
@@ -34,6 +35,7 @@ export default class SiteWorker extends Cloudflare.Worker<SiteWorker>()(
   "Site",
   Effect.gen(function* siteProps() {
     const stage = yield* siteStage;
+    const voice = yield* siteVoice(stage);
 
     return {
       assets: {
@@ -46,6 +48,7 @@ export default class SiteWorker extends Cloudflare.Worker<SiteWorker>()(
       },
       compatibility: { date: "2026-05-28" },
       domain: { name: SITE_HOSTS[stage], zoneName: ZONE },
+      env: voice,
       main: import.meta.url,
       name: `nostakes-${stage}`,
       observability: APPLICATION_LOGS_ONLY,

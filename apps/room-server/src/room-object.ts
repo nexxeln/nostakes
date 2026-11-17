@@ -16,6 +16,8 @@ import {
   SOCKETS_PER_PLAYER,
   StandingsRequestSchema,
   TOKEN_BYTES,
+  VoiceReplySchema,
+  VoiceRequestSchema,
   TokenTextSchema,
   fullBucket,
   spendToken,
@@ -28,6 +30,7 @@ import type {
   CommandId,
   PlainRefusal,
   PlayerId,
+  VoiceRoster,
 } from "@nostakes/protocol";
 import type { RuntimeContext } from "alchemy/RuntimeContext";
 import {
@@ -62,6 +65,8 @@ import { oversized } from "./frame-limits.js";
 import type { HostedRoom, RoomTypes } from "./hosted-room.js";
 import { measure } from "./measures.js";
 import type { Measure } from "./measures.js";
+import type { RealtimeFailed } from "./realtime-failed.js";
+import { Realtime } from "./realtime.js";
 import { RETRY_POLICY } from "./refused-deadline.js";
 import type { RefusedDeadline, RetryPolicy } from "./refused-deadline.js";
 import { refuseSocket } from "./refused-socket.js";
@@ -84,6 +89,7 @@ import {
   PENDING_GRACE_MS,
   PENDING_SOCKETS,
   StandingsOutcomeSchema,
+  VoiceOutcomeSchema,
 } from "./room-rpc.js";
 import type { Inspection } from "./room-rpc.js";
 import { servedBuildOrNone } from "./served-build.js";
@@ -98,11 +104,14 @@ import {
 import type { Attachment, KeptRejection } from "./socket-attachment.js";
 import { acknowledgeClose, closeWith } from "./socket-close.js";
 import { sqliteStorage } from "./sqlite-storage.js";
+import { VoiceOutcomes, sqliteVoiceStore, voiceHost } from "./voice-host.js";
+import type { VoiceRoom } from "./voice-host.js";
 import { workerdGlobals } from "./workerd.js";
 
 export interface RoomObjectOptions<T extends RoomTypes, Tally> {
   readonly entropy: Layer.Layer<Entropy>;
   readonly beacon: Layer.Layer<Beacon>;
+  readonly realtime: Layer.Layer<Realtime>;
   readonly retainFor: number;
   readonly retries?: RetryPolicy;
   readonly analytics: AnalyticsSink<RuntimeContext>;
@@ -239,11 +248,12 @@ export const roomObject = <T extends RoomTypes, Tally>(
 
       return Effect.gen(function* makeRoomInstance() {
         const services = yield* Layer.build(
-          Layer.merge(options.entropy, options.beacon)
+          Layer.mergeAll(options.entropy, options.beacon, options.realtime)
         );
 
         const entropy = Context.get(services, Entropy);
         const beacon = Context.get(services, Beacon);
+        const realtime = Context.get(services, Realtime);
         const { raw } = state;
 
         const runtime = yield* workerdGlobals(
@@ -319,7 +329,51 @@ export const roomObject = <T extends RoomTypes, Tally>(
           note(...measures);
         };
 
-        const flush = Effect.suspend(() => record(pending.splice(0)));
+        const voiceFailed = (failure: RealtimeFailed) =>
+          Effect.sync(() => {
+            note(measure("ServerFault", { fault: "RealtimeFailed" }));
+          }).pipe(
+            Effect.andThen(
+              Effect.logWarning(failure.message).pipe(
+                Effect.annotateLogs({ error: failure._tag })
+              )
+            )
+          );
+
+        const voice = voiceHost({
+          failed: (failure) => voiceFailed(failure).pipe(traced),
+          note,
+          realtime,
+          store: sqliteVoiceStore(raw.storage),
+          trackName: liveBytes(12).pipe(Effect.map(Hex.encode)),
+        });
+
+        const voiceRoomOf = (room: RoomHost<T>): VoiceRoom => ({
+          access: (player) =>
+            Option.isSome(room.snapshot().halted)
+              ? "None"
+              : core.voiceAccess(room.snapshot().state, player),
+          broadcast: (roster) => {
+            announceVoice(room, roster);
+          },
+          connected: () => connectedPlayers(Option.none()),
+          moderator: (player) =>
+            core.voiceModerator(room.snapshot().state, player),
+        });
+
+        const reconcileVoice = Effect.suspend(() =>
+          Option.match(host, {
+            onNone: () => Effect.void,
+            onSome: (room) =>
+              Clock.currentTimeMillis.pipe(
+                Effect.flatMap((at) => voice.reconcile(voiceRoomOf(room), at))
+              ),
+          })
+        );
+
+        const flush = reconcileVoice.pipe(
+          Effect.andThen(Effect.suspend(() => record(pending.splice(0))))
+        );
 
         const hosted = () =>
           loadRoom(core, storage, (events) => {
@@ -443,6 +497,19 @@ export const roomObject = <T extends RoomTypes, Tally>(
           );
 
           for (const { socket } of liveSockets(except)) {
+            send(socket, frame);
+          }
+        };
+
+        const voiceFrame = (room: RoomHost<T>, roster: VoiceRoster) =>
+          codecOf(room).encodeFrame(
+            codecOf(room).server.cases.Voice.make({ roster })
+          );
+
+        const announceVoice = (room: RoomHost<T>, roster: VoiceRoster) => {
+          const frame = voiceFrame(room, roster);
+
+          for (const { socket } of liveSockets(Option.none())) {
             send(socket, frame);
           }
         };
@@ -730,6 +797,8 @@ export const roomObject = <T extends RoomTypes, Tally>(
           } else {
             announcePresence(room, Option.none());
           }
+
+          send(socket, voiceFrame(room, voice.roster()));
 
           armAlarm(room);
         };
@@ -1368,6 +1437,58 @@ export const roomObject = <T extends RoomTypes, Tally>(
             Effect.orDie
           );
 
+        const askVoice = (input: typeof VoiceRequestSchema.Encoded) =>
+          Effect.gen(function* answerVoiceAsk() {
+            const decoded = yield* Schema.decodeEffect(VoiceRequestSchema)(
+              input
+            ).pipe(Effect.option);
+
+            if (Option.isNone(decoded)) {
+              return VoiceOutcomeSchema.cases.Invalid.make({});
+            }
+
+            if (Option.isNone(host)) {
+              return VoiceOutcomeSchema.cases.NotFound.make({});
+            }
+
+            const room = host.value;
+
+            const bytes = Base64Url.decode(
+              Redacted.value(decoded.value.token)
+            ).pipe(Result.getOrElse(() => new Uint8Array()));
+
+            const player = room.authenticate(yield* sha256(bytes));
+
+            if (
+              Option.isNone(player) ||
+              room.revoked(player.value) ||
+              room.knocking(player.value)
+            ) {
+              return VoiceOutcomeSchema.cases.NotAuthorized.make({});
+            }
+
+            const at = yield* Clock.currentTimeMillis;
+
+            const outcome = yield* voice.ask(
+              voiceRoomOf(room),
+              player.value,
+              decoded.value.ask,
+              at
+            );
+
+            return VoiceOutcomes.$match(outcome, {
+              Refused: ({ refusal }) =>
+                VoiceOutcomeSchema.cases.Refused.make({ refusal }),
+              Replied: ({ reply }) =>
+                VoiceOutcomeSchema.cases.Replied.make({
+                  reply: Schema.encodeSync(VoiceReplySchema)(reply),
+                }),
+            });
+          }).pipe(
+            Effect.flatMap(Schema.encodeEffect(VoiceOutcomeSchema)),
+            Effect.orDie
+          );
+
         const upgrade = Effect.gen(function* upgradeSocket() {
           const request = yield* HttpServerRequest.HttpServerRequest;
 
@@ -1414,6 +1535,8 @@ export const roomObject = <T extends RoomTypes, Tally>(
             open(input).pipe(Effect.ensuring(flush), traced),
           standings: (input: typeof StandingsRequestSchema.Encoded) =>
             standings(input).pipe(Effect.ensuring(flush), traced),
+          voice: (input: typeof VoiceRequestSchema.Encoded) =>
+            askVoice(input).pipe(Effect.ensuring(flush), traced),
           webSocketClose: (socket: Cloudflare.WebSocket) =>
             release(socket.ws, "ClosedByClient").pipe(
               Effect.andThen(attend(Option.some(socket.ws))),

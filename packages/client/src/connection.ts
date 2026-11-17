@@ -51,6 +51,10 @@ const fromServer = <T extends RoomTypes>(
           signal,
           type: "Signal",
         }),
+        Voice: ({ roster }): ConnectionEvent<T> => ({
+          roster,
+          type: "Voice",
+        }),
         Welcome: ({ build, catchUp, seq, view, you }): ConnectionEvent<T> => ({
           build,
           catchUp,

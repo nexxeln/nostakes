@@ -12,6 +12,7 @@ import type {
   PlayerId,
   Seq,
   Token,
+  VoiceRoster,
 } from "@nostakes/protocol";
 import {
   createEffectActor,
@@ -68,6 +69,7 @@ export interface ClientState<T extends RoomTypes> {
   readonly seq: Option.Option<Seq>;
   readonly you: Option.Option<PlayerId>;
   readonly presence: readonly PlayerId[];
+  readonly voice: VoiceRoster;
   readonly pending: readonly CommandId[];
   readonly waitingForTable: readonly CommandId[];
   readonly failures: number;
@@ -213,6 +215,7 @@ export const roomClient = <T extends RoomTypes>(
             : Option.none(),
         seq: context.applied,
         view: context.view,
+        voice: context.voice,
         waitingForTable: context.owed.late,
         you: context.you,
       };

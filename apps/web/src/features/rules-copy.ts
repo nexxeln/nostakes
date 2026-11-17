@@ -524,6 +524,19 @@ export const RULES: readonly RuleCopy[] = [
       help: "Calls out big hands, bluffs, and bad beats after a hand.",
     }
   ),
+  rule(
+    "voice",
+    "Table",
+    "Voice chat",
+    segments({ Everyone: "Everyone", Off: "Off", Seated: "Seated" }),
+    {
+      brief: (draft) =>
+        draft.voice === "Everyone"
+          ? said("voice for all")
+          : when(draft.voice === "Seated", () => "voice"),
+      help: "Seated: players talk and the rest listen. Everyone joins muted.",
+    }
+  ),
   rule("betweenHandsSeconds", "BetweenHands", "Pause", stepper("s", 0, by(1)), {
     brief: (draft) =>
       said(`${durationText(numberAt(draft, "betweenHandsSeconds"))} between`),
@@ -731,5 +744,6 @@ export const STANDARD = new Map<string, string>(
     "table.limit._tag": "NoLimit",
     "table.sevenDeuce._tag": "NoBounty",
     topUps: "UpToMax",
+    voice: "Off",
   })
 );

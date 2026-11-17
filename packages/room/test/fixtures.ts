@@ -79,6 +79,7 @@ export const settings: RoomSettings = {
   timeBankSeconds: 0,
   topUps: "UpToMax",
   turnSeconds: 0,
+  voice: "Off",
 };
 
 export const roomCode = RoomCodeSchema.make("NGHT22");

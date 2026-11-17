@@ -7,6 +7,7 @@ import { liveBeacon } from "./beacon.js";
 import { liveEntropy } from "./entropy.js";
 import { nightMeasures } from "./night-measures.js";
 import { pokerRoom } from "./poker-room.js";
+import { liveRealtime } from "./realtime.js";
 import { ROOM_RETENTION_MS } from "./room-host.js";
 import { roomObject } from "./room-object.js";
 
@@ -19,6 +20,7 @@ export default class PokerRoom extends Cloudflare.DurableObject<PokerRoom>()(
         beacon: liveBeacon(QUICKNET),
         entropy: liveEntropy,
         measures: nightMeasures,
+        realtime: liveRealtime,
         retainFor: ROOM_RETENTION_MS,
       })
     )

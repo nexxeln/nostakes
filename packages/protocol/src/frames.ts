@@ -7,6 +7,7 @@ import {
   TokenSchema,
 } from "./primitives.js";
 import { helloProtocol, welcomeBuild } from "./version.js";
+import { VoiceRosterSchema } from "./voice.js";
 
 export type WireCodec<T> = Schema.Codec<T, Schema.Json>;
 
@@ -143,6 +144,7 @@ export const serverMessage = <
     Presence: { connected: Schema.Array(PlayerIdSchema) },
     Reply: { id: CommandIdSchema, result: replyResult(schemas.rejection) },
     Signal: { from: PlayerIdSchema, signal: schemas.signal },
+    Voice: { roster: VoiceRosterSchema },
     Welcome: {
       build: welcomeBuild,
       catchUp: catchUp(schemas.event),

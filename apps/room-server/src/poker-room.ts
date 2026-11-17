@@ -31,6 +31,8 @@ import {
   removedView,
   replay,
   signalAllowed,
+  voiceAccess,
+  voiceModerator,
   stallCommand,
   standingsView,
   viewFor,
@@ -238,6 +240,8 @@ export const pokerRoomOn = (chain: DrandChain): HostedRoom<PokerTypes> => ({
     by: Actors.Member({ player }),
   }),
   viewFor: (state, audience, at) => viewFor(state, audience, millis(at)),
+  voiceAccess,
+  voiceModerator,
 });
 
 export const pokerRoom = pokerRoomOn(QUICKNET);

@@ -200,6 +200,7 @@ const drawnSettings = (random: SeededRandom): Omit<RoomSettings, "locked"> => ({
   timeBankSeconds: BANK_SECONDS[random.below(3)] ?? 0,
   topUps: TOP_UPS[random.below(TOP_UPS.length)] ?? "UpToMax",
   turnSeconds: CLOCK_SECONDS[random.below(3)] ?? 0,
+  voice: "Off",
 });
 
 export const settingsFrom = (random: SeededRandom): RoomSettings => ({

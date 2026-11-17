@@ -1,6 +1,9 @@
 import type { RpcCallError } from "@alchemy.run/cloudflare";
 import {
   MAX_BODY_BYTES,
+  MAX_VOICE_BODY_BYTES,
+  VoiceRefusalSchema,
+  VoiceRequestSchema,
   haltedStandings,
   joinRefused,
   knockStandings,
@@ -40,6 +43,7 @@ import {
   JoinOutcomeSchema,
   OpenOutcomeSchema,
   StandingsOutcomeSchema,
+  VoiceOutcomeSchema,
 } from "./room-rpc.js";
 import { logged, routeGuards } from "./route-guards.js";
 
@@ -60,6 +64,9 @@ export interface RoomStub {
   readonly standings: (input: {
     readonly token: string;
   }) => Effect.Effect<typeof StandingsOutcomeSchema.Encoded, RpcCallError>;
+  readonly voice: (
+    input: typeof VoiceRequestSchema.Encoded
+  ) => Effect.Effect<typeof VoiceOutcomeSchema.Encoded, RpcCallError>;
   readonly fetch: (
     request: HttpServerRequest.HttpServerRequest
   ) => Effect.Effect<HttpServerResponse.HttpServerResponse, HttpServerError>;
@@ -83,6 +90,8 @@ export const REPORTS_ROUTE = "/rooms/reports";
 
 export const CHECK_ROUTE = "/rooms/:code/check";
 
+export const VOICE_ROUTE = "/rooms/:code/voice";
+
 const withDevice = (device: Option.Option<string>) =>
   Option.match(device, {
     onNone: () => ({}),
@@ -96,6 +105,17 @@ const decodeJoinOutcome = Schema.decodeEffect(JoinOutcomeSchema);
 const decodeStandingsOutcome = Schema.decodeEffect(StandingsOutcomeSchema);
 
 const decodeCheckOutcome = Schema.decodeEffect(CheckOutcomeSchema);
+
+const decodeVoiceOutcome = Schema.decodeEffect(VoiceOutcomeSchema);
+
+const encodeVoiceRequest = Schema.encodeSync(VoiceRequestSchema);
+
+const voiceRefusalBody = HttpServerResponse.schemaJson(VoiceRefusalSchema);
+
+const VOICE_REFUSAL_STATUS = {
+  VoiceRefused: 403,
+  VoiceUnavailable: 503,
+} as const;
 
 const encodeStandingsRequest = Schema.encodeSync(StandingsRequestSchema);
 
@@ -152,6 +172,16 @@ const parsedOr =
 
 const jsonBody = bodyWithin(MAX_BODY_BYTES).pipe(
   Effect.map(Result.flatMap(parsedOr(decodeJsonText)))
+);
+
+const voiceBody = bodyWithin(MAX_VOICE_BODY_BYTES).pipe(
+  Effect.map(
+    Result.flatMap(
+      parsedOr(
+        Schema.decodeUnknownOption(Schema.fromJsonString(VoiceRequestSchema))
+      )
+    )
+  )
 );
 
 const keyIn = (rooms: RoomNamespace, code: RoomCode) =>
@@ -312,6 +342,42 @@ export const roomRoutes = <R>(
       });
     }).pipe(Effect.catchTag("RoomCallFailed", unavailable));
 
+    const askVoice = Effect.gen(function* askVoice() {
+      const code = yield* roomCodeOf.pipe(Effect.orDie);
+
+      if (Option.isNone(code)) {
+        return yield* refuse("NotFound");
+      }
+
+      const body = yield* voiceBody;
+
+      if (Result.isFailure(body)) {
+        return yield* refuse(body.failure);
+      }
+
+      const outcome = yield* callRoom(
+        keyIn(rooms, code.value),
+        "voice",
+        rooms
+          .getByName(code.value)
+          .voice(encodeVoiceRequest(body.success))
+          .pipe(Effect.flatMap(decodeVoiceOutcome))
+      );
+
+      return yield* VoiceOutcomeSchema.match(outcome, {
+        Invalid: () => refuse("BadRequest"),
+        NotAuthorized: () => refuse("NotAuthorized"),
+        NotFound: () => refuse("NotFound"),
+        Refused: ({ refusal }) =>
+          voiceRefusalBody(
+            { refusal },
+            { status: VOICE_REFUSAL_STATUS[refusal] }
+          ).pipe(Effect.orDie),
+        Replied: ({ reply }) =>
+          Effect.succeed(HttpServerResponse.jsonUnsafe(reply)),
+      });
+    }).pipe(Effect.catchTag("RoomCallFailed", unavailable));
+
     const connect = Effect.gen(function* connect() {
       const code = yield* roomCodeOf.pipe(Effect.orDie);
       const request = yield* HttpServerRequest.HttpServerRequest;
@@ -387,6 +453,14 @@ export const roomRoutes = <R>(
         guarded(
           `POST ${CHECK_ROUTE}`,
           limited("connect", tooManyRequests, checkRoom)
+        )
+      ),
+      HttpRouter.add(
+        "POST",
+        VOICE_ROUTE,
+        guarded(
+          `POST ${VOICE_ROUTE}`,
+          limited("connect", tooManyRequests, askVoice)
         )
       ),
       HttpRouter.add(

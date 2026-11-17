@@ -189,6 +189,7 @@ export {
 
 export type {
   BuyInRange,
+  VoiceRule,
   MomentCallouts,
   RoomSettings,
   Shuffle,
@@ -204,6 +205,10 @@ export {
 } from "./signals.js";
 
 export type { Reaction, RoomSignal } from "./signals.js";
+
+export { voiceAccess, voiceModerator } from "./voice.js";
+
+export type { VoiceAccess } from "./voice.js";
 
 export {
   BalanceSchema,

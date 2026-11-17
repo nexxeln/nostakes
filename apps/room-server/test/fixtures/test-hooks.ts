@@ -26,6 +26,7 @@ import {
 import type { AnalyticsMode } from "./test-analytics.js";
 import { testBeacon } from "./test-beacon.js";
 import type { scriptedEntropy } from "./test-entropy.js";
+import { FakeSfuSchema, fakeSfu } from "./test-realtime.js";
 
 const AlarmAt = Schema.Int;
 
@@ -68,6 +69,7 @@ export const roomObjectWithTestHooks = <T extends RoomTypes, Tally>(
   Cloudflare.DurableObjectState.pipe(
     Effect.flatMap((state) => {
       const jam = { on: Option.none<boolean>() };
+      const sfu = fakeSfu();
 
       const jammed = () => {
         const on = Option.getOrElse(jam.on, () => storedJam(state.raw.storage));
@@ -82,6 +84,7 @@ export const roomObjectWithTestHooks = <T extends RoomTypes, Tally>(
         beacon: options.beacon ?? testBeacon,
         entropy: entropyFor(state.raw),
         measures,
+        realtime: sfu.layer,
         retainFor: options.retainFor ?? ROOM_RETENTION_MS,
         retries: options.retries ?? RETRY_POLICY,
       }).pipe(
@@ -128,6 +131,10 @@ export const roomObjectWithTestHooks = <T extends RoomTypes, Tally>(
                   ),
                   Effect.orDie
                 ),
+              sfu: () =>
+                Effect.suspend(() =>
+                  Schema.encodeEffect(FakeSfuSchema)(sfu.sessions())
+                ).pipe(Effect.orDie),
               restart: () =>
                 Effect.sync(() => {
                   state.raw.abort("restart requested by a test");
@@ -154,6 +161,7 @@ export interface TestRoomStub {
   readonly inspect: () => Effect.Effect<typeof InspectionSchema.Encoded>;
   readonly jam: (on: boolean) => Effect.Effect<void>;
   readonly restart: () => Effect.Effect<void>;
+  readonly sfu: () => Effect.Effect<typeof FakeSfuSchema.Encoded>;
   readonly lose: (seq: number) => Effect.Effect<void>;
   readonly wakeAt: (at: number) => Effect.Effect<void>;
 }
@@ -175,6 +183,8 @@ const LoseBody = Schema.Struct({ seq: Schema.Int });
 const ModeBody = Schema.Struct({ mode: AnalyticsModeSchema });
 
 const inspection = HttpServerResponse.schemaJson(InspectionSchema);
+
+const fakeSfuBody = HttpServerResponse.schemaJson(FakeSfuSchema);
 
 const stampedPoints = HttpServerResponse.schemaJson(
   Schema.Array(StampedPointSchema)
@@ -259,6 +269,13 @@ export const testRoutes = (
     return HttpServerResponse.empty({ status: 204 });
   }).pipe(Effect.orDie);
 
+  const sfuSessions = roomOf.pipe(
+    Effect.flatMap((room) => room.sfu()),
+    Effect.flatMap(Schema.decodeEffect(FakeSfuSchema)),
+    Effect.flatMap((sessions) => fakeSfuBody(sessions)),
+    Effect.orDie
+  );
+
   const siteAnalytics = Effect.suspend(() => stampedPoints(site.points())).pipe(
     Effect.orDie
   );
@@ -269,6 +286,7 @@ export const testRoutes = (
     HttpRouter.add("POST", "/test/rooms/:code/analytics", setAnalyticsMode),
     HttpRouter.add("GET", "/test/rooms/:code", inspect),
     HttpRouter.add("POST", "/test/rooms/:code/restart", restart),
+    HttpRouter.add("GET", "/test/rooms/:code/sfu", sfuSessions),
     HttpRouter.add("POST", "/test/rooms/:code/alarm", wake),
     HttpRouter.add("POST", "/test/rooms/:code/jam", jam),
     HttpRouter.add("POST", "/test/rooms/:code/lose", lose),

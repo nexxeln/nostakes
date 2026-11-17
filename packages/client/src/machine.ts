@@ -217,6 +217,7 @@ export const roomClientMachine = <T extends RoomTypes>(
         Signal: types<ConnectionPayloads<T>["Signal"]>(),
         Start: NoPayload,
         Stop: NoPayload,
+        Voice: types<ConnectionPayloads<T>["Voice"]>(),
         Wake: NoPayload,
         Welcome: types<ConnectionPayloads<T>["Welcome"]>(),
       },
@@ -248,6 +249,7 @@ export const roomClientMachine = <T extends RoomTypes>(
       token: input.token,
       url: input.url,
       view: Option.none(),
+      voice: [],
       you: Option.none(),
     }),
     id: "roomClient",
@@ -613,6 +615,15 @@ export const roomClientMachine = <T extends RoomTypes>(
                 );
 
                 return { context: { presence: event.connected } };
+              },
+              Voice: ({ event }, enq) => {
+                enq.cancel(TIMERS.silence);
+                enq.raise(
+                  { type: "Silent" },
+                  { delay: SILENCE_LIMIT_MS, id: TIMERS.silence }
+                );
+
+                return { context: { voice: event.roster } };
               },
               Reply: ({ context, event }, enq) => {
                 enq.cancel(TIMERS.silence);
