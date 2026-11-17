@@ -371,23 +371,25 @@ const playedAutomatic = (step: Step): readonly Event[] => {
 };
 
 const seatsWhere = (events: readonly Event[], shown: boolean) =>
-  events
-    .flatMap((event) => {
-      if (Events.$is("HandTabled")(event)) {
-        return shown ? [event.seat] : [];
-      }
+  [
+    ...new Set(
+      events.flatMap((event) => {
+        if (Events.$is("HandTabled")(event)) {
+          return shown ? [event.seat] : [];
+        }
 
-      if (Events.$is("HandMucked")(event)) {
-        return shown ? [] : [event.seat];
-      }
+        if (Events.$is("HandMucked")(event)) {
+          return shown ? [] : [event.seat];
+        }
 
-      return Events.$is("ShowdownReached")(event)
-        ? event.order.flatMap((entry) =>
-            ShowdownEntries.$is("Shown")(entry) === shown ? [entry.seat] : []
-          )
-        : [];
-    })
-    .toSorted((left, right) => left - right);
+        return Events.$is("ShowdownReached")(event)
+          ? event.order.flatMap((entry) =>
+              ShowdownEntries.$is("Shown")(entry) === shown ? [entry.seat] : []
+            )
+          : [];
+      })
+    ),
+  ].toSorted((left, right) => left - right);
 
 const outcomeOf = (events: readonly Event[]) => ({
   awards: events.filter(Events.$is("PotAwarded")),

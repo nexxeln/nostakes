@@ -185,7 +185,7 @@ export const TableSnapshotSchema = Schema.Struct({
   legal: Schema.NullOr(HeroLegalSchema),
   posts: Schema.Array(SeatPostSchema),
   pots: Schema.Array(Schema.Int),
-  rabbit: Schema.Array(CardTextSchema),
+  rabbit: Schema.Array(Schema.Array(CardTextSchema)),
   reactions: Schema.Array(ShownReactionSchema),
   rules: Schema.NullOr(FeltRulesSchema),
   runVote: Schema.NullOr(Schema.Int),

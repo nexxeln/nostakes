@@ -2976,7 +2976,7 @@ export class NostakesTable extends HTMLElement {
     }
 
     const dealt = snapshot.boards[0] ?? [];
-    const board = [...dealt, ...snapshot.rabbit].slice(0, 5);
+    const board = [...dealt, ...(snapshot.rabbit[0] ?? [])].slice(0, 5);
 
     if (
       board.length < this.#boardShown.length ||
@@ -3017,7 +3017,11 @@ export class NostakesTable extends HTMLElement {
   }
 
   #renderSecondBoard(snapshot: TableSnapshot, geo: Table, animate: boolean) {
-    const board = snapshot.doubleBoard ? (snapshot.boards[1] ?? []) : [];
+    const dealt = snapshot.doubleBoard ? (snapshot.boards[1] ?? []) : [];
+
+    const board = snapshot.doubleBoard
+      ? [...dealt, ...(snapshot.rabbit[1] ?? [])].slice(0, 5)
+      : [];
 
     if (
       board.length < this.#secondShown.length ||
@@ -3042,6 +3046,7 @@ export class NostakesTable extends HTMLElement {
       if (slot !== undefined && card !== undefined) {
         const node = cardEl(card, geo.cardW, true);
 
+        toggle(node, "rabbit", index >= dealt.length);
         slot.append(node);
 
         if (animate) {
@@ -3054,7 +3059,9 @@ export class NostakesTable extends HTMLElement {
   }
 
   #renderHunt(snapshot: TableSnapshot, filled: number) {
-    const hunting = snapshot.afterHand.rabbit && snapshot.rabbit.length === 0;
+    const hunting =
+      snapshot.afterHand.rabbit &&
+      snapshot.rabbit.every((cards) => cards.length === 0);
 
     for (const [index, slot] of this.#slots.entries()) {
       const open = hunting && index >= filled;

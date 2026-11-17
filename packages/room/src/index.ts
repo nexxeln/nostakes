@@ -320,6 +320,7 @@ export {
   emptyWitness,
   evidenceFor,
   handsWitnessed,
+  rabbitByBoard,
   sealsSeen,
   witnessEvent,
   witnessView,

@@ -203,7 +203,7 @@ REPLAY_ONLY = {
     "straddle-list": "Brief rule 8, recomputed for accepted and rejected straddle lists. PokerKit takes any blind list.",
     "run-cap": "Brief rule 19's cap of maxRuns and the remaining deck. PokerKit has no cap.",
     "rabbit-hunt": (
-        "Brief rule 27, the next undealt cards from the exported deck (none after a double board), and with rabbitHunters "
+        "Brief rule 27, the next undealt cards from the exported deck, street by street and board by board after a double board, and with rabbitHunters "
         "StillIn that only a seat that never folded may hunt. PokerKit has no rabbit hunt."
     ),
     "voluntary-show": (
@@ -1045,18 +1045,19 @@ class Hand:
         self.state.show_or_muck_hole_cards(True, player)
         self.showdown.append((seat, True, False))
 
-    def shown_hand(self, player):
+    def shown_hand(self, player, board):
         statuses = self.state.hole_card_statuses[player]
-        return self.state.get_hand(player, 0, 0) if statuses and all(statuses) else None
+        return self.state.get_hand(player, board, 0) if statuses and all(statuses) else None
 
     def must_table(self, player):
-        own = self.state.get_hand(player, 0, 0)
-        for pot in self.live_pots():
-            if player not in pot or len(pot) < 2:
-                continue
-            shown = [hand for hand in (self.shown_hand(i) for i in pot if i != player) if hand is not None]
-            if shown and all(hand <= own for hand in shown):
-                return True
+        for board in self.state.board_indices:
+            own = self.state.get_hand(player, board, 0)
+            for pot in self.live_pots():
+                if player not in pot or len(pot) < 2:
+                    continue
+                shown = [hand for hand in (self.shown_hand(i, board) for i in pot if i != player) if hand is not None]
+                if shown and all(hand <= own for hand in shown):
+                    return True
         return False
 
     def keeps_uncontested(self, player):
@@ -1326,7 +1327,8 @@ class Hand:
                 public[event["seat"]].update(event["cards"])
         board = sum(len(e["cards"]) for e in events if e["_tag"] == "StreetDealt" and e["run"] == 1)
         ran_out = any(e["_tag"] == "RunsAgreed" for e in events) or any(e["_tag"] == "HandsTabled" for e in events)
-        undealt = [] if ran_out or self.boards > 1 else self.deck[self.hole_count * self.count + board : self.hole_count * self.count + 5]
+        dealt = self.hole_count * self.count
+        undealt = [] if ran_out else self.deck[dealt + self.boards * board : dealt + self.boards * 5]
         hunted = False
         folded = {e["seat"] for e in events if e["_tag"] == "Folded"}
         for step in self.record["after"]:

@@ -69,7 +69,7 @@ const sortedText = (seats: readonly number[]) =>
 
 const dealtCards = (hand: readonly Event[]) => {
   const holes = new Map<number, readonly Card[]>();
-  const board: Card[] = [];
+  const boards: Card[][] = [];
 
   for (const event of hand) {
     if (Events.$is("HoleCardsDealt")(event)) {
@@ -77,11 +77,13 @@ const dealtCards = (hand: readonly Event[]) => {
     }
 
     if (Events.$is("StreetDealt")(event)) {
-      board.push(...event.cards);
+      const board = boards[event.run - 1] ?? [];
+
+      boards[event.run - 1] = [...board, ...event.cards];
     }
   }
 
-  return { board, holes };
+  return { boards, holes };
 };
 
 const awardProblems = (
@@ -121,6 +123,21 @@ const awardProblems = (
   return problems;
 };
 
+const onBoards = (
+  boards: readonly (readonly Card[])[],
+  tabled: ReadonlyMap<SeatIndex, readonly Card[]>,
+  rankOn: (cards: readonly Card[], board: readonly Card[]) => number
+) =>
+  boards.map((board) => {
+    const ranks = new Map<SeatIndex, number>();
+
+    for (const [seat, cards] of tabled) {
+      ranks.set(seat, rankOn(cards, board));
+    }
+
+    return ranks;
+  });
+
 export const replayShowdown = (hand: readonly Event[]): ShowdownReplay => {
   const started = hand.find(Events.$is("ShowdownStarted"));
 
@@ -128,15 +145,17 @@ export const replayShowdown = (hand: readonly Event[]): ShowdownReplay => {
     return { asked: [], hidden: new Set(), problems: [] };
   }
 
-  const { board, holes } = dealtCards(hand);
+  const { boards, holes } = dealtCards(hand);
+  const game = gameOfHand(hand);
 
-  const rankOf = (seat: SeatIndex) =>
-    oracleRank(gameOfHand(hand), holes.get(seat) ?? [], board);
+  const rankOn = (cards: readonly Card[], board: readonly Card[]) =>
+    oracleRank(game, cards, board);
 
   const awards = hand.filter(Events.$is("PotAwarded"));
-  const eligible = awards.map((award) => award.eligible);
+  const firstRun = awards.filter((award) => award.run === 1);
+  const eligible = firstRun.map((award) => award.eligible);
   const choices: Choice[] = [];
-  const tabled = new Map<SeatIndex, number>();
+  const tabled = new Map<SeatIndex, readonly Card[]>();
   const asked: SeatIndex[] = [];
   const problems: string[] = [];
 
@@ -163,30 +182,36 @@ export const replayShowdown = (hand: readonly Event[]): ShowdownReplay => {
       asked.push(event.seat);
     }
 
-    if (
-      Events.$is("HandMucked")(event) &&
-      mustTable(
-        claimsAfterChoices(eligible, choices),
-        tabled,
-        event.seat,
-        rankOf(event.seat)
-      )
-    ) {
-      problems.push(
-        `seat ${event.seat} mucked a hand that beats or ties the tabled hands`
+    if (Events.$is("HandMucked")(event)) {
+      const claims = claimsAfterChoices(eligible, choices);
+      const ranks = onBoards(boards, tabled, rankOn);
+
+      const forced = boards.some((board, index) =>
+        mustTable(
+          claims,
+          ranks[index] ?? new Map(),
+          event.seat,
+          rankOn(holes.get(event.seat) ?? [], board)
+        )
       );
+
+      if (forced) {
+        problems.push(
+          `seat ${event.seat} mucked a hand that beats or ties the tabled hands on a board`
+        );
+      }
     }
 
     if (
       Events.$is("HandTabled")(event) &&
       (event.cards.join(",") !== (holes.get(event.seat) ?? []).join(",") ||
-        event.rank !== rankOf(event.seat))
+        event.rank !== rankOn(event.cards, boards[0] ?? []))
     ) {
       problems.push(`seat ${event.seat} tabled cards it was not dealt`);
     }
 
     if (Events.$is("HandTabled")(event)) {
-      tabled.set(event.seat, event.rank);
+      tabled.set(event.seat, event.cards);
     }
 
     if (Events.$is("HandTabled")(event) || Events.$is("HandMucked")(event)) {
@@ -198,6 +223,9 @@ export const replayShowdown = (hand: readonly Event[]): ShowdownReplay => {
   }
 
   const left = due();
+  const claims = claimsAfterChoices(eligible, choices);
+  const ranks = onBoards(boards, tabled, rankOn);
+  const runs = sortedText([...new Set(awards.map((award) => award.run))]);
 
   return {
     asked,
@@ -205,7 +233,17 @@ export const replayShowdown = (hand: readonly Event[]): ShowdownReplay => {
     problems: [
       ...problems,
       ...(left === undefined ? [] : [`seat ${left} was never asked`]),
-      ...awardProblems(awards, claimsAfterChoices(eligible, choices), tabled),
+      ...(awards.length === 0 ||
+      runs === boards.map((_, index) => index + 1).join(",")
+        ? []
+        : [`awarded runs ${runs} for ${boards.length} boards`]),
+      ...boards.flatMap((_, index) =>
+        awardProblems(
+          awards.filter((award) => award.run === index + 1),
+          claims,
+          ranks[index] ?? new Map()
+        )
+      ),
     ],
   };
 };

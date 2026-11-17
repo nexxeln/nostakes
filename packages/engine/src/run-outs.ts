@@ -232,12 +232,7 @@ export const runOut = (state: InHand, runs: RunCount): readonly Event[] => {
   const dealt = dealRuns(state.hand, runs);
   const hidden = state.config.allInHands === "Hidden";
 
-  if (
-    hidden &&
-    runs === ONE_RUN &&
-    !isDoubleBoard(state.hand) &&
-    state.config.showdown === "Interactive"
-  ) {
+  if (hidden && runs === ONE_RUN && state.config.showdown === "Interactive") {
     return [
       Events.RunsAgreed({ runs }),
       ...dealt.events,

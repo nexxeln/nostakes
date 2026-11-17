@@ -33,6 +33,7 @@ import { seededRandom } from "./random.js";
 import { generated } from "./scale.js";
 import { handsIn, playSession, session } from "./sessions.js";
 import type { Session } from "./sessions.js";
+import { replayShowdown } from "./showdown-oracle.js";
 
 const ANTE = 20;
 
@@ -413,6 +414,12 @@ const doubleBoardProblems = (hand: readonly Event[]) => {
   const boardCards = streets.flatMap((street) => street.cards);
   const showdowns = hand.filter(Events.$is("ShowdownReached"));
 
+  const rabbit = hand.flatMap((event) =>
+    Events.$is("RabbitHunted")(event) ? event.cards : []
+  );
+
+  const fromDeck = [...boardCards, ...rabbit];
+
   return [
     ...(hand.some(
       (event) =>
@@ -425,10 +432,15 @@ const doubleBoardProblems = (hand: readonly Event[]) => {
     first.length === second.length
       ? []
       : [`hand ${opened.handNumber} dealt its boards out of step`]),
-    ...(boardCards.join(",") ===
-    opened.deck.slice(holes.length, holes.length + boardCards.length).join(",")
+    ...(fromDeck.join(",") ===
+    opened.deck.slice(holes.length, holes.length + fromDeck.length).join(",")
       ? []
       : [`hand ${opened.handNumber} did not deal the boards off the deck`]),
+    ...(rabbit.length === 0 || rabbit.length === 2 * (5 - first.length)
+      ? []
+      : [
+          `hand ${opened.handNumber} hunted ${rabbit.length} cards for two boards of ${first.length}`,
+        ]),
     ...(showdowns.length === 0 ||
     (showdowns.map((showdown) => showdown.run).join(",") === "1,2" &&
       first.length === 5 &&
@@ -515,13 +527,31 @@ const bombProblems = (source: Session) => {
     }
   }
 
+  const doubleBoards = handsIn(played.events).filter(
+    (hand) => hand.find(Events.$is("HandStarted"))?.bombPot?.boardCount === 2
+  );
+
   problems.push(
     ...handsIn(played.events).flatMap(flopProblems),
     ...handsIn(played.events).flatMap(doubleBoardProblems),
+    ...doubleBoards
+      .filter((hand) => hand.some(Events.$is("HandEnded")))
+      .flatMap((hand) => replayShowdown(hand).problems),
     ...rotationProblems(source)
   );
 
-  return { bombPots, inARow, problems, shortAntes };
+  return {
+    bombPots,
+    doubleHunts: doubleBoards.filter((hand) =>
+      hand.some(Events.$is("RabbitHunted"))
+    ).length,
+    doubleInteractive: doubleBoards.filter((hand) =>
+      hand.some(Events.$is("ShowdownStarted"))
+    ).length,
+    inARow,
+    problems,
+    shortAntes,
+  };
 };
 
 const seededSession = (seed: number): Session => {
@@ -568,10 +598,12 @@ describe("generated sessions with bomb pots", () => {
     generated(25, 100)
   );
 
-  it("reaches bomb pots, short antes, and two in a row in seeded sessions", () => {
+  it("reaches bomb pots, short antes, two in a row, and double boards hunted and shown down by choice in seeded sessions", () => {
     let bombPots = 0;
     let shortAntes = 0;
     let inARow = 0;
+    let doubleHunts = 0;
+    let doubleInteractive = 0;
 
     for (let seed = 1; seed <= 30; seed += 1) {
       const outcome = bombProblems(seededSession(seed));
@@ -580,10 +612,14 @@ describe("generated sessions with bomb pots", () => {
       bombPots += outcome.bombPots;
       shortAntes += outcome.shortAntes;
       inARow += outcome.inARow;
+      doubleHunts += outcome.doubleHunts;
+      doubleInteractive += outcome.doubleInteractive;
     }
 
     expect(bombPots).toBeGreaterThan(100);
     expect(shortAntes).toBeGreaterThan(10);
     expect(inARow).toBeGreaterThan(10);
+    expect(doubleHunts).toBeGreaterThan(0);
+    expect(doubleInteractive).toBeGreaterThan(3);
   });
 });

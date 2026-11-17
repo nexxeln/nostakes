@@ -76,11 +76,11 @@ PokerKit has no model of these. The replay checks them with its own arithmetic f
 - under `blindPosting` Casino, that the big blind moves on exactly one seat: it never skips a seat dealt into both hands and no seat pays it twice in a row while another stays. The replay checks this on every Casino hand, including the hands the `casino-blind-posting` exclusion keeps it from comparing further,
 - which straddle lists are legal (rule 8),
 - the cap on the number of runs (rule 19),
-- rabbit hunting (rule 27), including who may hunt under `rabbitHunters` StillIn,
+- rabbit hunting (rule 27), including who may hunt under `rabbitHunters` StillIn, and after a double board the next cards of the deck for every board, street by street,
 - voluntary shows after the hand (rule 26), any of a seat's two or four hole cards, including all-or-none under `voluntaryShows` BothCards,
 - the seven-deuce bounty: the replay picks the seat from PokerKit's own pots and winners (a seven and a deuce that won, alone, every pot it was in on every board), takes each payment from PokerKit's final stacks, and compares the engine's `BountyPaid`, the cards it showed, and the final stacks with the payment added. In Omaha it expects no payment and no forced show, because a seven-deuce is exactly two cards,
 - that a show or hunt after the hand follows the rules in force when the seat asks, not the rules the hand was dealt under,
-- at an interactive showdown, that a seat must table a hand that beats or ties the tabled hands of a pot another live seat contests, and may muck otherwise. PokerKit lets any seat muck, so the replay decides this with PokerKit's hand values.
+- at an interactive showdown, that a seat must table a hand that beats or ties the tabled hands of a pot another live seat contests, on any board of a double board, and may muck otherwise. PokerKit lets any seat muck, so the replay decides this with PokerKit's hand values on each board.
 
 ## Findings
 

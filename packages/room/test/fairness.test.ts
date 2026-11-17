@@ -286,6 +286,86 @@ const nightWithALateArrival = (): readonly Watched[] => {
   return steps;
 };
 
+const DOUBLE_BOARD_HUNTED: RoomSettings = {
+  ...CHECKED,
+  table: {
+    ...CHECKED.table,
+    bombPot: BombPots.BombPots({
+      ante: ChipsSchema.make(10),
+      boardCount: 2,
+      everyHands: 1,
+    }),
+    rabbitHunt: true,
+  },
+};
+
+const doubleBoardHuntedOnTheFlop = (): readonly Watched[] => {
+  const steps: Watched[] = [];
+  let state = openedBy(ann, DOUBLE_BOARD_HUNTED);
+
+  const play = (command: RoomCommand) => {
+    const at = reachedDevicesAt(state, command);
+    const { events, state: after } = run(state, command);
+
+    state = after;
+    steps.push({ after, at, events });
+  };
+
+  for (const command of [
+    join(bob),
+    join(cat),
+    sit(ann, 0),
+    sit(bob, 1),
+    sit(cat, 2),
+    RoomCommands.StartGame({ at: ms(SEALED_AT), by: as(ann) }),
+    sealAt(SEALED_AT, 1),
+    dealFromBeacon(ROUND_DUE, ROUND),
+  ]) {
+    play(command);
+  }
+
+  play(foldAt(state, ROUND_DUE + 1000));
+  play(foldAt(state, ROUND_DUE + 2000));
+  play(RoomCommands.RabbitHunt({ at: ms(ROUND_DUE + 3000), by: as(bob) }));
+
+  return steps;
+};
+
+const judgedFromTheViewAfter = (
+  steps: readonly Watched[],
+  missed: (events: readonly RoomEvent[]) => boolean
+) => {
+  const judge = judgeOnce();
+  let witness = emptyWitness;
+
+  for (const step of steps) {
+    const at = EpochMillisSchema.make(step.at);
+
+    if (!missed(step.events)) {
+      for (const event of step.events) {
+        witness = witnessEvent(
+          witness,
+          redact(event, Audiences.Spectator()),
+          SealArrivals.Live({ at })
+        );
+      }
+    }
+
+    witness = witnessView(
+      witness,
+      viewFor(step.after, Audiences.Spectator(), step.at),
+      at
+    );
+  }
+
+  return handsWitnessed(witness).map((hand) =>
+    Result.match(evidenceFor(witness, hand, roomCode, drand.chain), {
+      onFailure: (missing) => `hand ${hand}: ${missing._tag}`,
+      onSuccess: (evidence) => `hand ${hand}: ${verdictKind(judge(evidence))}`,
+    })
+  );
+};
+
 const judgedAwayAndBack = (played: ReturnType<typeof playSession>) => {
   const witnesses = new Map<string, Witness>();
   const spectator = SPECTATOR;
@@ -394,7 +474,7 @@ describe("what a device sees of a checked hand", () => {
   );
 
   it.prop(
-    "lets every device check a double-board bomb pot, whose boards are dealt street by street from the sealed deck",
+    "lets every device check a double-board bomb pot, whose boards and rabbit are dealt street by street from the sealed deck",
     { source: session },
     ({ source }) => {
       const played = playSession(source, undefined, (drawn) => ({
@@ -407,6 +487,7 @@ describe("what a device sees of a checked hand", () => {
             boardCount: 2,
             everyHands: 1,
           }),
+          rabbitHunt: true,
         },
       }));
 
@@ -436,6 +517,31 @@ describe("what a device sees of a checked hand", () => {
     },
     nights(2, 6)
   );
+
+  it("checks the rabbit of a double-board bomb pot that ended on the flop, live and from the view of a device that missed the hunt", () => {
+    const steps = doubleBoardHuntedOnTheFlop();
+
+    const rabbit = steps
+      .flatMap((step) => step.events)
+      .flatMap((event) =>
+        RoomEvents.$is("Table")(event) &&
+        Events.$is("RabbitHunted")(event.event)
+          ? event.event.cards
+          : []
+      );
+
+    expect(rabbit).toHaveLength(4);
+    expect(judgedLive(roomCode, steps, []).problems).toStrictEqual([]);
+    expect(
+      judgedFromTheViewAfter(steps, (events) =>
+        events.some(
+          (event) =>
+            RoomEvents.$is("Table")(event) &&
+            Events.$is("RabbitHunted")(event.event)
+        )
+      )
+    ).toStrictEqual(["hand 1: Checked InTime"]);
+  });
 
   it("gives someone who joined after a sealed hand was over no verdict on it, because the view no longer says who was dealt in, and never an alarm", () => {
     expect(judgedLive(roomCode, nightWithALateArrival(), [])).toStrictEqual({

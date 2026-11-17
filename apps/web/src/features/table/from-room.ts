@@ -5,11 +5,12 @@ import {
   Events,
   handCategory,
   Phases,
+  rankHand,
   variantOf,
 } from "@nostakes/engine";
 import type { Card, Game, HandCategory, HandRank } from "@nostakes/engine";
 import type { PlayerId } from "@nostakes/protocol";
-import { RoomViews, SeenEvents } from "@nostakes/room";
+import { RoomViews, SeenEvents, rabbitByBoard } from "@nostakes/room";
 import type { RoomView, SeenEvent, SeenTableEvent } from "@nostakes/room";
 import { Match, Option } from "effect";
 
@@ -249,20 +250,48 @@ export const facingEach = <Entry extends { readonly event: SeenEvent }>(
 interface HandKind {
   readonly bombPot: boolean;
   readonly doubleBoard: boolean;
+  readonly game: Game;
 }
 
 const startedKind = (event: SeenEvent): Option.Option<HandKind> =>
   SeenEvents.$is("Table")(event)
     ? Match.value(event.event).pipe(
-        Match.tag("HandStarted", ({ bombPot }) =>
+        Match.tag("HandStarted", ({ bombPot, game }) =>
           Option.some({
             bombPot: bombPot !== undefined,
             doubleBoard: bombPot?.boardCount === 2,
+            game: game ?? "Holdem",
           })
         ),
         Match.orElse(() => Option.none<HandKind>())
       )
     : Option.none();
+
+const secondBoardShows = (
+  event: SeenEvent,
+  kind: HandKind,
+  secondBoard: Card[]
+): readonly Happening[] => {
+  if (!SeenEvents.$is("Table")(event)) {
+    return [];
+  }
+
+  const table = event.event;
+
+  if (Events.$is("StreetDealt")(table) && table.run === 2) {
+    secondBoard.push(...table.cards);
+  }
+
+  return Events.$is("HandTabled")(table) && secondBoard.length === 5
+    ? [
+        Happenings.Show.make({
+          cards: texts(table.cards),
+          label: rankLabel(rankHand(kind.game, table.cards, secondBoard)),
+          seat: table.seat,
+        }),
+      ]
+    : [];
+};
 
 const winnersText = (seats: readonly number[]) =>
   seats.toSorted((left, right) => left - right).join(" ");
@@ -298,7 +327,13 @@ export const happeningsFrom = (
 ): readonly TableEvent[] => {
   const happenings: TableEvent[] = [];
   const firstBoard = new Map<number, string>();
-  let kind: HandKind = { bombPot: false, doubleBoard: false };
+  const secondBoard: Card[] = [];
+
+  let kind: HandKind = {
+    bombPot: false,
+    doubleBoard: false,
+    game: "Holdem",
+  };
 
   for (const { event, facing, seq } of facingEach(facingFirst, applied)) {
     const started = startedKind(event);
@@ -306,10 +341,17 @@ export const happeningsFrom = (
     if (Option.isSome(started)) {
       kind = started.value;
       firstBoard.clear();
+      secondBoard.length = 0;
     }
 
     const own = happeningsOf(seq, event, facing, kind.bombPot);
-    const says = kind.doubleBoard ? boardSays(event, firstBoard) : [];
+
+    const says = kind.doubleBoard
+      ? [
+          ...secondBoardShows(event, kind, secondBoard),
+          ...boardSays(event, firstBoard),
+        ]
+      : [];
 
     happenings.push(
       ...own,
@@ -846,7 +888,12 @@ const handFields = (view: OpenView) =>
         handId: last?.handNumber ?? 0,
         heroCards: texts(last?.yourCards ?? []),
         pots: [],
-        rabbit: texts(last?.rabbit ?? []),
+        rabbit:
+          last === null
+            ? []
+            : rabbitByBoard(last.boards, last.rabbit, last.doubleBoard).map(
+                texts
+              ),
         toAct: null,
       };
     },

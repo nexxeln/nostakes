@@ -271,7 +271,11 @@ const afterStreet = (
     return foldOut(state);
   }
 
-  if (state.hand.board.length === 5 && isDoubleBoard(state.hand)) {
+  if (
+    state.hand.board.length === 5 &&
+    isDoubleBoard(state.hand) &&
+    state.config.showdown === "Automatic"
+  ) {
     return [
       ...showdownOnBoards(
         state,

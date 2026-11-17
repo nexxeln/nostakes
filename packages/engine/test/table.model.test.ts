@@ -11,6 +11,7 @@ import {
   Seats,
   ShowdownEntries,
   TableStates,
+  boardsOf,
   buildPots,
   decide,
   evolve,
@@ -670,13 +671,6 @@ describe("generated sessions", () => {
         const { entries } = hand.phase;
         const asked = pending.choices.seat;
         const player = hand.players.find((dealt) => dealt.seat === asked);
-        const tabled = new Map<SeatIndex, number>();
-
-        for (const entry of entries) {
-          if (ShowdownEntries.$is("Shown")(entry)) {
-            tabled.set(entry.seat, entry.rank);
-          }
-        }
 
         const claims = claimsAfterChoices(
           buildPots(hand).map((pot) => pot.eligible),
@@ -686,12 +680,22 @@ describe("generated sessions", () => {
           }))
         );
 
-        const forced = mustTable(
-          claims,
-          tabled,
-          asked,
-          oracleRank(hand.game, player?.holeCards ?? [], hand.board)
-        );
+        const forced = boardsOf(hand).some((board) => {
+          const tabled = new Map<SeatIndex, number>();
+
+          for (const entry of entries) {
+            if (ShowdownEntries.$is("Shown")(entry)) {
+              tabled.set(entry.seat, oracleRank(hand.game, entry.cards, board));
+            }
+          }
+
+          return mustTable(
+            claims,
+            tabled,
+            asked,
+            oracleRank(hand.game, player?.holeCards ?? [], board)
+          );
+        });
 
         if (!accepts(step.before, Commands.TableHand({ seat: asked }))) {
           mismatches.push(`seat ${asked} could not table`);
@@ -767,6 +771,24 @@ describe("generated sessions", () => {
           started.deck.slice(passes * count, passes * count + fromDeck.length)
         );
         expect(fromDeck.some((card) => allHoles.has(card))).toBe(false);
+
+        const rabbit = hand
+          .filter(Events.$is("RabbitHunted"))
+          .flatMap((hunt) => hunt.cards);
+
+        const firstBoard = hand
+          .filter(Events.$is("StreetDealt"))
+          .filter((dealt) => dealt.run === 1)
+          .flatMap((dealt) => dealt.cards);
+
+        const ranOut = hand.some(Events.$is("RunsAgreed"));
+
+        expect(
+          rabbit.length === 0 ||
+            (!ranOut &&
+              rabbit.length ===
+                (started.bombPot?.boardCount ?? 1) * (5 - firstBoard.length))
+        ).toBe(true);
 
         const mucked = new Set(
           hand

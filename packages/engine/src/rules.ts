@@ -42,7 +42,7 @@ export const BombPotSchema = Schema.TaggedUnion({
     ante: PositiveChipsSchema,
     boardCount: setting(BoardCountSchema, 1, {
       description:
-        "How many boards a bomb pot deals. With two, every pot is split between the boards, the odd chip to the first board, and each half goes to the best hand on its board. A double board runs each board once and always shows down by the automatic rule.",
+        "How many boards a bomb pot deals. With two, every pot is split between the boards, the odd chip to the first board, and each half goes to the best hand on its board. A double board runs each board once, shows down by the table's showdown rule with every board counted, and a rabbit hunt after it reveals what each board was owed.",
       title: "Boards in a bomb pot",
     }),
     everyHands: Schema.Int.check(

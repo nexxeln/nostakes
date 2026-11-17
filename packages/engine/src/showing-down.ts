@@ -1,12 +1,13 @@
 import { Option, Result, Schema } from "effect";
 
+import type { Card } from "./cards.js";
 import type { CommandOf } from "./commands.js";
 import type { HandRank } from "./evaluation.js";
 import { Events } from "./events.js";
 import type { Event, EventOf } from "./events.js";
 import { buildPots, handEnded, potAwarded, shareAmong } from "./pots.js";
 import type { Pot } from "./pots.js";
-import { SeatIndexSchema } from "./primitives.js";
+import { SeatIndexSchema, chips, splitEvenly } from "./primitives.js";
 import type { SeatIndex } from "./primitives.js";
 import { NoShowdownChoiceOwed, WinningHandMustTable } from "./rejection.js";
 import type { Rejection } from "./rejection.js";
@@ -14,6 +15,7 @@ import { ShowdownEntries } from "./showdown.js";
 import type { ShowdownEntry } from "./showdown.js";
 import {
   Phases,
+  boardsOf,
   handPlayerAt,
   isInHand,
   updatePlayer,
@@ -56,12 +58,16 @@ export const claimsAfter = (
   return claims;
 };
 
-const tabledRanks = (entries: readonly ShowdownEntry[]) => {
+const tabledRanks = (
+  hand: Hand,
+  entries: readonly ShowdownEntry[],
+  board: readonly Card[]
+) => {
   const ranks = new Map<SeatIndex, HandRank>();
 
   for (const entry of entries) {
     if (ShowdownEntries.$is("Shown")(entry)) {
-      ranks.set(entry.seat, entry.rank);
+      ranks.set(entry.seat, rankHand(hand.game, entry.cards, board));
     }
   }
 
@@ -79,13 +85,19 @@ interface Standing {
   readonly winsPot: Option.Option<number>;
 }
 
+interface PotStanding {
+  readonly beaten: boolean;
+  readonly pot: number;
+  readonly wins: boolean;
+}
+
 const standingAgainst = (
   claims: readonly (readonly SeatIndex[])[],
   ranks: ReadonlyMap<SeatIndex, HandRank>,
   seat: SeatIndex,
   rank: HandRank
-): Standing => {
-  const claimed = claims.flatMap((claimants, index) => {
+): readonly PotStanding[] =>
+  claims.flatMap((claimants, index) => {
     if (!claimants.includes(seat)) {
       return [];
     }
@@ -105,23 +117,27 @@ const standingAgainst = (
     ];
   });
 
+const standingOf = (
+  hand: Hand,
+  entries: readonly ShowdownEntry[],
+  player: HandPlayer
+): Standing => {
+  const claims = claimsAfter(buildPots(hand), entries);
+
+  const claimed = boardsOf(hand).flatMap((board) =>
+    standingAgainst(
+      claims,
+      tabledRanks(hand, entries, board),
+      player.seat,
+      rankHand(hand.game, player.holeCards, board)
+    )
+  );
+
   return {
     beatenInEveryPot: claimed.every((pot) => pot.beaten),
     winsPot: Option.fromUndefinedOr(claimed.find((pot) => pot.wins)?.pot),
   };
 };
-
-const standingOf = (
-  hand: Hand,
-  entries: readonly ShowdownEntry[],
-  player: HandPlayer
-): Standing =>
-  standingAgainst(
-    claimsAfter(buildPots(hand), entries),
-    tabledRanks(entries),
-    player.seat,
-    rankInHand(hand, player)
-  );
 
 const nextToShow = (
   hand: Hand,
@@ -154,13 +170,20 @@ const showingDown = (
 const completeBoard = (hand: Hand): Hand => {
   const { phase } = hand;
 
-  if (!Phases.$is("RunningOut")(phase) || phase.runs.length !== 1) {
+  if (
+    !Phases.$is("RunningOut")(phase) ||
+    phase.runs.length !== boardsOf(hand).length
+  ) {
     return hand;
   }
 
   return {
     ...hand,
     board: [...hand.board, ...(phase.runs[0] ?? [])],
+    otherBoards: hand.otherBoards.map((board, index) => [
+      ...board,
+      ...(phase.runs[index + 1] ?? []),
+    ]),
     street: "River",
   };
 };
@@ -319,21 +342,31 @@ export const awardShowdown = (
 ): readonly Event[] => {
   const pots = buildPots(state.hand);
   const claims = claimsAfter(pots, phase.entries);
-  const ranks = tabledRanks(phase.entries);
+  const boards = boardsOf(state.hand);
 
   return [
-    ...pots.map((pot, index) =>
-      potAwarded(
-        1,
-        index + 1,
-        pot,
-        shareAmong(
-          pot.amount,
-          state.button,
-          winnersAmong(claims[index] ?? pot.eligible, ranks)
-        )
-      )
-    ),
+    ...boards.flatMap((board, boardIndex) => {
+      const ranks = tabledRanks(state.hand, phase.entries, board);
+
+      return pots.map((pot, index) => {
+        const part = splitEvenly(pot.amount, boards.length);
+
+        const amount = chips(
+          part.share + (boardIndex < part.remainder ? 1 : 0)
+        );
+
+        return potAwarded(
+          boardIndex + 1,
+          index + 1,
+          { ...pot, amount },
+          shareAmong(
+            amount,
+            state.button,
+            winnersAmong(claims[index] ?? pot.eligible, ranks)
+          )
+        );
+      });
+    }),
     handEnded(state),
   ];
 };

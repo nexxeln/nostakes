@@ -907,13 +907,21 @@ const sameShowdown = (
     Events.$is("HandMucked")(event) ? [event.seat] : []
   );
 
-  const shown = order.flatMap((entry) =>
-    ShowdownEntries.$is("Shown")(entry) ? [entry.seat] : []
-  );
+  const shown = [
+    ...new Set(
+      order.flatMap((entry) =>
+        ShowdownEntries.$is("Shown")(entry) ? [entry.seat] : []
+      )
+    ),
+  ];
 
-  const hidden = order.flatMap((entry) =>
-    ShowdownEntries.$is("Mucked")(entry) ? [entry.seat] : []
-  );
+  const hidden = [
+    ...new Set(
+      order.flatMap((entry) =>
+        ShowdownEntries.$is("Mucked")(entry) ? [entry.seat] : []
+      )
+    ),
+  ];
 
   return (
     awardsText(interactive) === awardsText(automatic) &&

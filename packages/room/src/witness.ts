@@ -380,13 +380,38 @@ const streetByStreet = (boards: readonly (readonly Card[])[]) =>
     boards.flatMap((board) => board.slice(from, to))
   );
 
+export const rabbitByBoard = (
+  boards: readonly (readonly Card[])[],
+  rabbit: readonly Card[],
+  doubleBoard: boolean
+): readonly (readonly Card[])[] => {
+  if (!doubleBoard) {
+    return [rabbit];
+  }
+
+  const dealt = boards[0]?.length ?? 0;
+  const hunted: Card[][] = boards.map(() => []);
+  let next = 0;
+
+  for (const [from, to] of STREET_CARDS) {
+    if (from >= dealt) {
+      for (const cards of hunted) {
+        cards.push(...rabbit.slice(next, next + to - from));
+        next += to - from;
+      }
+    }
+  }
+
+  return hunted;
+};
+
 const drawOrder = (
   boards: readonly (readonly Card[])[],
   rabbit: readonly Card[],
   doubleBoard: boolean
 ): readonly Card[] => {
   if (doubleBoard) {
-    return streetByStreet(boards);
+    return [...streetByStreet(boards), ...rabbit];
   }
 
   const [first = [], ...rest] = boards;
