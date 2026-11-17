@@ -93,7 +93,9 @@ const actionLine = (
   );
 
   const folded =
-    folds === 0 ? [] : [folds === 1 ? "one folds" : `${folds} fold`];
+    folds === 0
+      ? []
+      : [folds === 1 ? "1 player folds" : `${folds} players fold`];
 
   return [...shown, ...folded].join(" · ");
 };

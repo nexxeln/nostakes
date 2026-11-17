@@ -296,8 +296,7 @@ class NostakesTonight extends HTMLElement {
       const empty = document.createElement("li");
 
       empty.className = "empty";
-      empty.textContent =
-        "No moments yet tonight. When a hand is worth talking about, it lands here.";
+      empty.textContent = "No moments yet. The good hands land here.";
       this.#list.replaceChildren(empty);
     }
   }
@@ -337,7 +336,7 @@ class NostakesTonight extends HTMLElement {
       );
     } else if (reel.tag === "Failed") {
       buttons.append(
-        actOf("Play", "Try the reel again", false, () => {
+        actOf("Play", "Try again", false, () => {
           this.#askReel();
         })
       );
@@ -368,7 +367,7 @@ class NostakesTonight extends HTMLElement {
   #detail(moment: NightMoment): HTMLLIElement {
     const item = document.createElement("li");
 
-    const back = actOf(null, "Back to tonight", false, () => {
+    const back = actOf(null, "Back", false, () => {
       this.#open(null);
     });
 
@@ -381,7 +380,7 @@ class NostakesTonight extends HTMLElement {
 
     Option.match(slipOf(moment.source, moment.scene.picture), {
       onNone: () => {
-        paper.textContent = "This hand's record is not on this device.";
+        paper.textContent = "This hand's record isn't on this phone.";
       },
       onSome: (slip) => {
         paintSvg(paper, () =>
@@ -393,7 +392,7 @@ class NostakesTonight extends HTMLElement {
     const buttons = document.createElement("div");
 
     buttons.className = "buttons";
-    buttons.append(back, pictureButton(moment, "Slip", "Share the slip"));
+    buttons.append(back, pictureButton(moment, "Slip", "Share slip"));
     item.append(buttons, paper);
 
     return item;
@@ -468,7 +467,7 @@ class NostakesTonight extends HTMLElement {
 
     open.type = "button";
     open.className = "open";
-    open.setAttribute("aria-label", `Open the slip for hand ${moment.hand}`);
+    open.setAttribute("aria-label", `Open hand ${moment.hand}'s slip`);
     open.addEventListener("click", () => {
       this.#open(moment.hand);
     });
@@ -489,10 +488,18 @@ class NostakesTonight extends HTMLElement {
       ring.style.setProperty("--made", String(made));
       words.textContent =
         moment.clip.tag === "Queued"
-          ? "Waiting to make the clip"
-          : `Making the clip, ${Math.floor(made * 100)}%`;
+          ? "Clip next in line"
+          : `Making clip ${Math.floor(made * 100)}%`;
       making.append(ring, words);
       body.append(making);
+    }
+
+    if (moment.clip.tag === "Failed") {
+      const failed = document.createElement("p");
+
+      failed.className = "who";
+      failed.textContent = "The clip didn't work.";
+      body.append(failed);
     }
 
     const buttons = document.createElement("div");
@@ -515,7 +522,7 @@ class NostakesTonight extends HTMLElement {
       );
     } else if (clip.tag === "Failed") {
       buttons.append(
-        actOf("Play", "Clip failed. Try again", false, () => {
+        actOf("Play", "Try the clip again", false, () => {
           night.retry(moment.hand);
         })
       );
@@ -534,6 +541,12 @@ class NostakesTonight extends HTMLElement {
   }
 }
 
+const SHARE_LABELS: Readonly<Record<PictureKind, string>> = {
+  Chat: "Share the picture",
+  Slip: "Share the slip",
+  Story: "Share the story picture",
+};
+
 const pictureButton = (
   moment: NightMoment,
   kind: PictureKind,
@@ -548,6 +561,7 @@ const pictureButton = (
   });
 
   button.dataset.picture = kind;
+  button.setAttribute("aria-label", SHARE_LABELS[kind]);
   button.setAttribute("aria-disabled", String(file === undefined));
 
   return button;

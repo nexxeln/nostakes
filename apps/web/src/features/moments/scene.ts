@@ -228,7 +228,7 @@ const KICKERS: Readonly<Record<Moment["_tag"], string>> = {
   Suckout: "Suckout",
 };
 
-const RUN_WORDS = ["", "once", "twice", "three times"];
+const RUN_WORDS = ["", "once", "twice", "3 times"];
 
 const STREET_WORDS = ["Flop", "Flop", "Flop", "Turn", "River"];
 
@@ -360,19 +360,6 @@ const pocketPair = (lastHand: LastHand, seen: Seen) => {
     : Option.none<number>();
 };
 
-const COUNT_WORDS = [
-  "",
-  "",
-  "two",
-  "three",
-  "four",
-  "five",
-  "six",
-  "seven",
-  "eight",
-  "nine",
-];
-
 const together = (names: readonly string[]) => {
   const last = names.at(-1) ?? "";
 
@@ -381,8 +368,7 @@ const together = (names: readonly string[]) => {
     : `${names.slice(0, -1).join(", ")} and ${last}`;
 };
 
-const ways = (names: readonly string[]) =>
-  `${COUNT_WORDS[names.length] ?? names.length} ways`;
+const ways = (names: readonly string[]) => `${names.length} ways`;
 
 const versus = (telling: Telling, write: (other: Seen) => Words): Words =>
   Option.match(telling.other, {
@@ -405,8 +391,8 @@ const wordsFor = (telling: Telling): Words => {
     BadBeat: ({ odds }) =>
       versus(telling, (other) => ({
         leadNote: `got there on the ${flagStreet(telling)}`,
-        line: `${named(other)} was ${odds.percent}% to win when the chips went in. Then the ${flagStreet(telling)} came.`,
-        otherNote: `was ${odds.percent}% to win`,
+        line: `${named(other)} was ${odds.percent}% when the money went in. The ${flagStreet(telling)} disagreed.`,
+        otherNote: `${odds.percent}% to win`,
         title: Option.match(pocketPair(lastHand, other), {
           onNone: () => `${odds.percent}% and still lost`,
           onSome: (rank) => `${capitalised(ranksWord(rank))} cracked`,
@@ -416,31 +402,31 @@ const wordsFor = (telling: Telling): Words => {
     BigHand: () =>
       Option.match(telling.other, {
         onNone: () => ({
-          leadNote: "everyone folded",
-          line: `${who} showed ${lower(hand)}. Everyone else had folded.`,
+          leadNote: "no callers",
+          line: `Everyone folded. ${who} showed it anyway.`,
           otherNote: "",
           title: hand,
           verb: "",
         }),
         onSome: (other) => ({
-          leadNote: "the best hand of the night so far",
+          leadNote: "the winner",
           line: Option.match(lossOf(other), {
-            onNone: () => `${named(other)} ran into ${lower(hand)}.`,
+            onNone: () => `${named(other)} ran into it.`,
             onSome: (loss) => `${named(other)} paid ${loss} to see it.`,
           }),
-          otherNote: "paid to see it",
+          otherNote: "second best",
           title: hand,
           verb: "beats",
         }),
       }),
     Bluff: ({ bet, street }) => ({
       foot: "Shown after the fold",
-      leadNote: `bet ${chipsText(bet)} with nothing`,
+      leadNote: `bet ${chipsText(bet)} on air`,
       line: Option.match(telling.other, {
         onNone: () =>
-          `${who} bet ${chipsText(bet)} on the ${lower(street)} with nothing, and showed it.`,
+          `${who} bet ${chipsText(bet)} on the ${lower(street)} with nothing.`,
         onSome: (other) =>
-          `${who} bet ${chipsText(bet)} on the ${lower(street)} with nothing. ${named(other)} folded, then ${who} showed.`,
+          `${who} bet ${chipsText(bet)} on the ${lower(street)} with nothing. ${named(other)} folded.`,
       }),
       otherHand: "Folded",
       otherNote: "never shown",
@@ -472,22 +458,22 @@ const wordsFor = (telling: Telling): Words => {
       }),
     HeroCall: ({ call, street }) =>
       versus(telling, (other) => ({
-        leadNote: `called ${chipsText(call)}`,
+        leadNote: "read it right",
         line: other.whole
           ? `${who} called ${chipsText(call)} on the ${lower(street)}. ${named(other)} had ${lower(handOf(lastHand, other))}.`
-          : `${who} called ${chipsText(call)} on the ${lower(street)}, and was right.`,
+          : `${who} called ${chipsText(call)} on the ${lower(street)}. Right call.`,
         otherNote: "caught",
         title: `Called with ${lower(hand)}`,
         verb: "calls down",
       })),
     SameHand: ({ pot }) =>
       versus(telling, (other) => ({
-        leadNote: "split the pot",
+        leadNote: "chopped",
         line:
           telling.everyone.length > 2
-            ? `Same hand, same pot. ${together(telling.everyone)} split ${chipsText(pot)} ${ways(telling.everyone)}.`
-            : `Same hand, same pot. ${who} and ${named(other)} split ${chipsText(pot)}.`,
-        otherNote: "split the pot",
+            ? `${together(telling.everyone)} split ${chipsText(pot)} ${ways(telling.everyone)}.`
+            : `${who} and ${named(other)} split ${chipsText(pot)}.`,
+        otherNote: "chopped",
         title: lead.whole
           ? `Both had ${startingHandName(playingHole(lastHand.game, lead.hole, lead.board))}`
           : "Same hand",
@@ -495,8 +481,8 @@ const wordsFor = (telling: Telling): Words => {
       })),
     Scoop: ({ pot }) =>
       versus(telling, (other) => ({
-        leadNote: "won both boards",
-        line: `${who} took both boards and all ${chipsText(pot)}.`,
+        leadNote: "won both",
+        line: `${who} took all ${chipsText(pot)}.`,
         otherNote: Option.match(lossOf(other), {
           onNone: () => "lost both",
           onSome: (loss) => `lost ${loss} on two boards`,
@@ -505,12 +491,11 @@ const wordsFor = (telling: Telling): Words => {
         verb: "scoops",
       })),
     SevenDeuce: ({ bounty }) => ({
-      leadNote:
-        bounty > 0 ? `collected a ${chipsText(bounty)} bounty` : "seven-deuce",
+      leadNote: bounty > 0 ? `+${chipsText(bounty)} bounty` : "seven-deuce",
       line:
         bounty > 0
-          ? `The worst hand in poker won, and the table paid ${who} ${chipsText(bounty)}.`
-          : `${who} won with the worst hand in poker.`,
+          ? `The worst hand in poker. The table paid ${who} ${chipsText(bounty)}.`
+          : `The worst hand in poker. ${who} played it anyway.`,
       otherNote: "lost to seven-deuce",
       title: "Seven-deuce wins",
       verb: "beats",
@@ -520,7 +505,7 @@ const wordsFor = (telling: Telling): Words => {
         leadNote: "won a run",
         line:
           telling.everyone.length > 2
-            ? `Ran it ${RUN_WORDS[runs] ?? `${runs} times`}, split it ${ways(telling.everyone)}: ${together(telling.everyone)}.`
+            ? `Ran it ${RUN_WORDS[runs] ?? `${runs} times`}, split ${ways(telling.everyone)}: ${together(telling.everyone)}.`
             : `Ran it ${RUN_WORDS[runs] ?? `${runs} times`}, split it with ${named(other)}.`,
         otherNote: "won a run",
         title: "One each",
@@ -528,7 +513,7 @@ const wordsFor = (telling: Telling): Words => {
       })),
     Suckout: ({ odds }) =>
       versus(telling, (other) => ({
-        leadNote: `had ${odds.percent}% to win`,
+        leadNote: `${odds.percent}% to win`,
         line: Option.match(lossOf(other), {
           onNone: () => `${who} had ${odds.percent}% and found it.`,
           onSome: (loss) =>
@@ -712,7 +697,10 @@ export const pictureOf = (
         onSome: (second) => `Also: ${lower(KICKERS[second._tag])}`,
       }),
     hand: lastHand.handNumber,
-    kicker: KICKERS[lead._tag].toUpperCase(),
+    kicker: (Moments.$is("SplitRuns")(lead)
+      ? `Ran it ${RUN_WORDS[lead.runs] ?? `${lead.runs} times`}`
+      : KICKERS[lead._tag]
+    ).toUpperCase(),
     kind: lead._tag,
     lifted: playing.filter((card) => board.includes(card)).map(cardText),
     line,
@@ -867,7 +855,7 @@ const betLineOf = (acted: Acted | null, leadName: string) => {
   }
 
   if (acted.allIn) {
-    return `${leadName} shoves. All in for ${chipsText(acted.to)}.`;
+    return `${leadName}'s all in for ${chipsText(acted.to)}.`;
   }
 
   return `${leadName} ${acted.act === "Raise" ? "raises to" : "bets"} ${chipsText(acted.to)}.`;
@@ -892,7 +880,7 @@ const hookOf = ({ hidden, lastHand, leader, visible }: Cast) => {
 
   return visible.length >= FLOP_CARDS
     ? `The ${STREET_NAMES[visible.length] ?? "board"}. ${nameOrSomeone(leader)} to act.`
-    : `${nameOrSomeone(leader)} looks down at the cards.`;
+    : `${nameOrSomeone(leader)} looks at the cards.`;
 };
 
 const pauseOf = (cast: Cast, answer: Answer, toCall: number) => {
@@ -906,13 +894,13 @@ const pauseOf = (cast: Cast, answer: Answer, toCall: number) => {
 };
 
 const calledOf = ({ lastHand, other, runOut, visible }: Cast) => {
-  if (other === null || !other.whole) {
+  if (other === null) {
     return "Call.";
   }
 
-  return runOut
-    ? `Call. ${named(other)} has ${handAt(lastHand, other, visible)}. Run it.`
-    : `Call. ${named(other)} has ${handAt(lastHand, other, other.board)}.`;
+  return other.whole
+    ? `${named(other)} calls with ${handAt(lastHand, other, runOut ? visible : other.board)}.`
+    : `${named(other)} calls.`;
 };
 
 const hitOf = (cast: Cast, answer: Answer) => {

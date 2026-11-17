@@ -3,7 +3,7 @@ const counted = (count: number, one: string, many: string) =>
 
 export const tonightSummary = (clips: readonly string[]) => {
   if (clips.length === 0) {
-    return "Nothing yet.";
+    return "No moments yet.";
   }
 
   const ready = clips.filter((clip) => clip === "Ready").length;
@@ -24,23 +24,23 @@ export const tonightCountText = (ready: number, making: number) => {
     return `${ready} ready`;
   }
 
-  return making > 0 ? "Making a clip" : "Moments and clips";
+  return making > 0 ? "Making a clip" : "The night's moments";
 };
 
 export const reelLine = (state: string, made: number) => {
   if (state === "Ready") {
-    return "The night's best moments and the settle-up, cut to music.";
+    return "Your best moments and the settle-up, cut to music.";
   }
 
   if (state === "Making") {
-    return `Making the reel, ${Math.floor(made * 100)}%`;
+    return `Making reel ${Math.floor(made * 100)}%`;
   }
 
   if (state === "Queued") {
-    return "The reel is made once the clips are done.";
+    return "Starts when the clips are done.";
   }
 
   return state === "Failed"
-    ? "This device could not make the reel."
-    : "This device cannot make the reel.";
+    ? "The reel didn't work on this phone."
+    : "This phone can't make the reel.";
 };
