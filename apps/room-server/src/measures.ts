@@ -30,6 +30,7 @@ export const MEASURES = {
     doubles: ["hand", "players"],
     from: "Server",
   },
+  LinkShared: { blobs: ["how"], doubles: [], from: "Page" },
   MemberJoined: { blobs: ["device"], doubles: ["members"], from: "Server" },
   MemberRemoved: { blobs: [], doubles: ["members"], from: "Server" },
   NightAbandoned: {

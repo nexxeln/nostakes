@@ -27,6 +27,8 @@ const ErrorNameSchema = Schema.String.check(
   Schema.isPattern(/^[A-Za-z][A-Za-z0-9_$.]{0,47}$/u)
 );
 
+export const LINK_SHARES = ["Shared", "Copied"] as const;
+
 export const ClientReportSchema = Schema.TaggedUnion({
   ClientError: {
     build: BuildSchema,
@@ -39,6 +41,7 @@ export const ClientReportSchema = Schema.TaggedUnion({
     build: BuildSchema,
     reason: Schema.Literals(["NewProtocol", "NewBuild"]),
   },
+  LinkShared: { how: Schema.Literals(LINK_SHARES) },
   Reconnects: {
     build: BuildSchema,
     reconnects: Schema.Int.check(
@@ -48,6 +51,8 @@ export const ClientReportSchema = Schema.TaggedUnion({
 });
 
 export type ClientReport = typeof ClientReportSchema.Type;
+
+export type LinkShare = (typeof LINK_SHARES)[number];
 
 const ROOM_CODE = new RegExp(
   `(?<![A-Za-z0-9])[${ROOM_CODE_ALPHABET}]{${ROOM_CODE_LENGTH}}(?![A-Za-z0-9])`,

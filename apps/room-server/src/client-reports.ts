@@ -39,6 +39,8 @@ export const GUIDE_TIMES = [
   "Over5m",
 ] as const;
 
+export const LINK_SHARES = ["Shared", "Copied"] as const;
+
 export const ClientReportSchema = Schema.TaggedUnion({
   ClientError: {
     build: BuildSchema,
@@ -53,6 +55,7 @@ export const ClientReportSchema = Schema.TaggedUnion({
   },
   GuideStep: { step: Schema.Literals(GUIDE_STEPS) },
   GuideTook: { took: Schema.Literals(GUIDE_TIMES) },
+  LinkShared: { how: Schema.Literals(LINK_SHARES) },
   Reconnects: {
     build: BuildSchema,
     reconnects: Schema.Int.check(
@@ -103,6 +106,7 @@ export const reportMeasure = (report: ClientReport): Measure =>
       measure("ForcedReload", { build, reason }),
     GuideStep: ({ step }) => measure("GuideStep", { step }),
     GuideTook: ({ took }) => measure("GuideTook", { took }),
+    LinkShared: ({ how }) => measure("LinkShared", { how }),
     Reconnects: ({ build, reconnects }) =>
       measure("ClientReconnects", { build, reconnects }),
   });

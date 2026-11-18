@@ -164,6 +164,9 @@ describe("the stats report", () => {
       stamp(SITE_SCOPE, T0 + 25, measure("GuideStep", { step: "Started" })),
       stamp(SITE_SCOPE, T0 + 26, measure("GuideStep", { step: "Finished" })),
       stamp(SITE_SCOPE, T0 + 27, measure("GuideTook", { took: "1to2m" })),
+      stamp(SITE_SCOPE, T0 + 28, measure("LinkShared", { how: "Shared" })),
+      stamp(SITE_SCOPE, T0 + 29, measure("LinkShared", { how: "Copied" })),
+      stamp(SITE_SCOPE, T0 + 30, measure("LinkShared", { how: "Shared" })),
     ];
 
     const honest = funnelOf(groupPoints(points, period), period);
@@ -187,6 +190,7 @@ describe("the stats report", () => {
         "  reconnects           40",
         "  guide steps          3: Started 2, Finished 1",
         "  guide took           1: 1to2m 1",
+        "  links shared         3: Shared 2, Copied 1",
       ],
     ]);
   });

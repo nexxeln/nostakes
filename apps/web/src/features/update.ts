@@ -127,7 +127,7 @@ import {
   reportScreen,
   scrubMessage,
 } from "./reports.js";
-import type { ClientReport } from "./reports.js";
+import type { ClientReport, LinkShare } from "./reports.js";
 import {
   departedSelf,
   isActing,
@@ -246,6 +246,17 @@ const checksFor = (model: Model) =>
 
 const reported = (model: Model, report: ClientReport) =>
   model.counting ? [SendReport({ report })] : [];
+
+const linkShared = (model: Model, copied: InRoom["copied"]) =>
+  Match.value(copied).pipe(
+    Match.when("Shared", () => Option.some<LinkShare>("Shared")),
+    Match.when("Link", () => Option.some<LinkShare>("Copied")),
+    Match.orElse(() => Option.none<LinkShare>()),
+    Option.map((how) =>
+      reported(model, ClientReportSchema.cases.LinkShared.make({ how }))
+    ),
+    Option.getOrElse(() => [])
+  );
 
 export const init = (flags: Flags): Return => {
   const base = {
@@ -1892,8 +1903,14 @@ export const update = (model: Model, message: Message): Return =>
         ).model,
       };
     },
-    CompletedCopy: ({ copied }) =>
-      editRoom(model, (room) => ({ ...room, copied })),
+    CompletedCopy: ({ copied }) => {
+      const step = editRoom(model, (room) => ({ ...room, copied }));
+
+      return {
+        ...step,
+        commands: [...(step.commands ?? []), ...linkShared(model, copied)],
+      };
+    },
     CompletedForget: () => ({ model }),
     CompletedNavigation: () => ({ model }),
     CompletedPreference: () => ({ model }),
