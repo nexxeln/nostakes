@@ -498,7 +498,7 @@ export const clearingText = (
 
   const door = view.settings.locked
     ? "The room stays locked."
-    : "The room locks too. Unlock it to let someone back in.";
+    : "The room locks too.";
 
   return {
     action: `Remove ${going.length}`,
@@ -767,23 +767,24 @@ export const playerSheet = (
 ): Html => sheet(h, nameOf(view, player), memberTools(room, view, player, h));
 
 const removalText = (view: OpenView, player: PlayerId) => {
-  const name = nameOf(view, player);
-
   const inHand = Option.exists(view.hand, ({ players }) =>
     players.some((seated) => seated.player === player)
   );
 
   const door = view.settings.locked
-    ? ""
-    : " Lock the room, or the link lets them back in.";
+    ? []
+    : ["Lock the room, or the link lets them back in."];
 
   if (inHand) {
-    return `${name} is out of the room. Their seat finishes this hand, then their chips go to the settle-up.${door}`;
+    return [
+      "Their seat finishes this hand, then their chips go to the settle-up.",
+      ...door,
+    ].join(" ");
   }
 
   return Option.isSome(occupantOf(view, player))
-    ? `${name} is out of the room. Their chips stay in the settle-up.${door}`
-    : `${name} is out of the room.${door}`;
+    ? ["Their chips stay in the settle-up.", ...door].join(" ")
+    : door.join(" ");
 };
 
 const ENDINGS: Readonly<Record<OpenView["closing"], string>> = {
@@ -816,7 +817,7 @@ const confirmText = (view: OpenView, confirm: Confirm) =>
       }),
       RemoveFromSeat: ({ player }) => ({
         action: "Stand them up",
-        body: `${nameOf(view, player)} stands up with their chips and stays in the room.`,
+        body: "They keep their chips and stay in the room.",
         pending: "Standing them up",
         title: `Stand ${nameOf(view, player)} up?`,
       }),
@@ -922,7 +923,7 @@ export const confirmSheet = (
   const text = confirmText(view, confirm);
 
   return sheet(h, text.title, [
-    h.p([h.Class("confirm-text")], [text.body]),
+    text.body === "" ? h.empty : h.p([h.Class("confirm-text")], [text.body]),
     MemberCommandSchema.guards.LeaveRoom(confirm)
       ? heirLine(room, view, presence, h)
       : h.empty,

@@ -171,7 +171,7 @@ const program = Effect.gen(function* takeMembershipShots() {
   yield* seen(host, "Remove from the room");
   yield* shoot(host, dir, "person-sheet");
   yield* press(host, "Remove from the room");
-  yield* seen(host, "is out of the room");
+  yield* seen(host, "Remove Ben?");
   yield* shoot(host, dir, "remove-confirm");
   yield* press(host, "Remove");
 
