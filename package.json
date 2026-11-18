@@ -34,7 +34,7 @@
     "verify:status": "node apps/room-server/scripts/verify-status.ts"
   },
   "devDependencies": {
-    "@effect/tsgo": "0.69.0",
+    "@effect/tsgo": "0.70.0",
     "@foldkit/oxlint-plugin": "0.15.4",
     "@oxlint/plugins": "1.94.0",
     "@types/node": "24.19.2",
