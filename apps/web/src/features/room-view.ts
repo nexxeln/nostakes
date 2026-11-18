@@ -12,6 +12,7 @@ import { faceButton, wordmark } from "./chrome.js";
 import { DOOR_LINES, knocksAgain } from "./door.js";
 import { face } from "./face-builder.js";
 import {
+  FAIR_LIMIT,
   fairLabel,
   fairParagraph,
   fairSymbol,
@@ -426,6 +427,9 @@ const fairnessSheet = (room: InRoom, view: OpenView, h: H): Html =>
           ]
         )
       ),
+    room.fairness.some(({ mark }) => FairMarks.guards.Checked(mark))
+      ? h.p([h.Class("fair-text")], [FAIR_LIMIT])
+      : h.empty,
   ]);
 
 const sitSheet = (room: InRoom, view: OpenView, seat: number, h: H): Html =>

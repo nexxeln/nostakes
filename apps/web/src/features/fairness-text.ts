@@ -5,7 +5,7 @@ import type { FairHand, FairMark } from "./model.js";
 
 const WAIT_SECONDS = beaconWaitLimitMs(QUICKNET) / 1000;
 
-const LIMIT =
+export const FAIR_LIMIT =
   "This proves nobody rigged or changed the deck after it was sealed. It doesn't hide cards from whoever runs the server.";
 
 const timingText = (round: number, timing: string) => {
@@ -23,7 +23,7 @@ export const fairParagraph = ({ hand, mark }: FairHand): string =>
     Cancelled: ({ round }) =>
       `Hand ${hand} was sealed for drand round ${round}, then called off while this device was away. This device can't tell if that happened before the round. Players who were connected can.`,
     Checked: ({ cards, round, timing }) =>
-      `Hand ${hand} checks out. Before the deal, the server sealed the deck. ${timingText(round, timing)} All ${cards} cards this device was shown match the sealed deck in that order. ${LIMIT}`,
+      `Hand ${hand} checks out. Before the deal, the server sealed the deck. ${timingText(round, timing)} All ${cards} cards this device was shown match the sealed deck in that order.`,
     Failed: ({ reason }) =>
       `Hand ${hand} failed the check. ${reason} Copy the proof and share it with the table.`,
     NotChecked: ({ reachedLater, round }) =>
