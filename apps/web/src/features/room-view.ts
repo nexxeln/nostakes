@@ -1032,8 +1032,8 @@ const leftRoomView = (room: InRoom, view: OpenView, h: H): Html =>
         [h.Class("muted")],
         [
           stillPlayingOut(view)
-            ? "Your seat finishes this hand, then your chips go to the settle-up. Come back any time."
-            : "Your chips count in the settle-up. Come back any time.",
+            ? "Your seat finishes this hand, then your chips go to the settle-up."
+            : "Your chips count in the settle-up.",
         ]
       ),
       comeBackName(room, h),
@@ -1222,7 +1222,6 @@ const haltedView = (room: InRoom, standing: HaltedStanding, h: H): Html =>
         [h.Class("card-panel settlement")],
         [
           h.h2([h.Class("sheet-title")], ["The table stopped"]),
-          h.p([h.Class("halted-line")], [HALTED_LINE]),
           h.p([h.Class("problem")], [`Can't get the standings. ${reason}`]),
           homeButton("Back home", h),
         ]
@@ -1235,7 +1234,6 @@ const haltedView = (room: InRoom, standing: HaltedStanding, h: H): Html =>
             [h.Class("card-panel settlement")],
             [
               h.h2([h.Class("sheet-title")], ["The table stopped"]),
-              h.p([h.Class("halted-line")], [HALTED_LINE]),
               h.p(
                 [h.Class("problem")],
                 ["The room couldn't settle its last hand."]

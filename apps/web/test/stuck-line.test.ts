@@ -38,7 +38,7 @@ const hostGone = (table: OpenView, you: Option.Option<typeof ANA>) => ({
 
 describe("the line about a stuck table", () => {
   it.prop(
-    "shows exactly while the room is stalled, and says anyone can end the night",
+    "shows exactly while the room is stalled",
     { table: tables },
     ({ table }) => {
       expect(stuckLine(table)).toStrictEqual(
@@ -64,9 +64,7 @@ describe("the offer to take over from a host who is gone", () => {
         ),
       ]).toStrictEqual([
         Option.none(),
-        Option.some(
-          "Ana has been gone for 2 minutes. Anyone here can take over as host."
-        ),
+        Option.some("Ana, the host, has been gone for 2 minutes."),
         Option.none(),
         Option.none(),
         Option.none(),
