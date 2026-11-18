@@ -212,19 +212,16 @@ export const RULES: readonly RuleCopy[] = [
     relevant: (draft) => draft.locked !== "true",
   }),
   rule("knockSeconds", "Table", "Knocks end after", stepper("s", 10, by(60)), {
-    help: "A knock nobody answers ends after this.",
     relevant: (draft) =>
       draft["approval.joins"] === "true" && draft.locked !== "true",
   }),
   rule("approval.seats", "Table", "Approve seats", toggle(), {
     brief: (draft) =>
       when(draft["approval.seats"] === "true", () => "host seats players"),
-    help: "Players ask before they sit.",
   }),
   rule("approval.chips", "Table", "Approve chips", toggle(), {
     brief: (draft) =>
       when(draft["approval.chips"] === "true", () => "host approves chips"),
-    help: "Players ask before they add chips.",
   }),
   rule(
     "topUps",
@@ -242,7 +239,7 @@ export const RULES: readonly RuleCopy[] = [
             ? "top up when busted"
             : "top up below min"
         ),
-      help: "Never past the largest buy-in.",
+      help: "Up to the largest buy-in.",
     }
   ),
   rule("table.smallBlind", "Blinds", "Small blind", stepper("", 1, by(1))),
@@ -478,7 +475,6 @@ export const RULES: readonly RuleCopy[] = [
           draft["table.voluntaryShows"] === "BothCards",
           () => "show both or none"
         ),
-      help: "After a hand, a player may show just some of their cards.",
     }
   ),
   rule("table.rabbitHunt", "Showdown", "Rabbit hunt", toggle(), {
@@ -544,7 +540,7 @@ export const RULES: readonly RuleCopy[] = [
         draft.voice === "Everyone"
           ? said("voice for all")
           : when(draft.voice === "Off", () => "no voice"),
-      help: "Seated: players talk and the rest listen. Everyone joins muted.",
+      help: "Seated: players talk and the rest listen.",
     }
   ),
   rule("betweenHandsSeconds", "BetweenHands", "Pause", stepper("s", 0, by(1)), {
@@ -579,7 +575,6 @@ export const RULES: readonly RuleCopy[] = [
         said(
           `pause after ${durationText(numberAt(draft, "pauseWhenAwaySeconds"))} away`
         ),
-      help: "Stop dealing when nobody at the table is connected.",
     }
   ),
   rule(
