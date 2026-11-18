@@ -112,7 +112,7 @@ const WHOLE_BEATS: readonly Beat[] = [
     cue: "Tap the chip to check",
     hand: "Whole",
     id: "Whole.Check",
-    line: "One more card: the turn. Nobody has bet, so a tap checks. It's free.",
+    line: "One more card: the turn. Nobody has bet, so checking is free.",
     moves: [call("mara"), street("Turn"), check("mara")],
   }),
   play({
@@ -120,7 +120,7 @@ const WHOLE_BEATS: readonly Beat[] = [
     cue: "Tap the chip to call 40",
     hand: "Whole",
     id: "Whole.River",
-    line: "The last card: the river. Mara bet 40. A tap now calls it.",
+    line: "The last card: the river. Mara bet 40.",
     moves: [street("River"), bet("mara", 40)],
   }),
   outcome({
