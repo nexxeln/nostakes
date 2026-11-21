@@ -165,6 +165,7 @@ export default defineConfig({
     "nostakes-patterns/shared-waiters": "error",
     "oxc/no-accumulating-spread": "error",
     "promise/prefer-await-to-then": "error",
+    "typescript/consistent-type-imports": "error",
     "typescript/promise-function-async": "off",
     "unicorn/no-useless-undefined": ["error", { checkArguments: true }],
     "unicorn/throw-new-error": "off",
