@@ -29,10 +29,10 @@
     "@nostakes/ledger": "workspace:*",
     "@nostakes/protocol": "workspace:*",
     "@nostakes/shuffle": "workspace:*",
-    "effect": "4.1.4"
+    "effect": "4.1.5"
   },
   "devDependencies": {
-    "@effect/vitest": "4.1.4",
+    "@effect/vitest": "4.1.5",
     "@types/node": "24.19.2",
     "typescript": "7.0.2",
     "vitest": "5.1.1"
