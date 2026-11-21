@@ -44,7 +44,7 @@
     "oxlint": "1.94.0",
     "oxlint-tsgolint": "7.0.2007",
     "tsrs": "7.1.0-beta.tsrs2",
-    "turbo": "2.11.11",
+    "turbo": "2.11.13",
     "typescript": "7.0.2",
     "ultracite": "8.2.1",
     "vitest": "5.1.0"
