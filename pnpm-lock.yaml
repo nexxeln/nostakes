@@ -273,8 +273,8 @@ importers:
         specifier: 4.1.4
         version: 4.1.4(effect@4.1.4)
       '@mediabunny/aac-encoder':
-        specifier: 1.66.0
-        version: 1.66.0(mediabunny@1.66.0)
+        specifier: 1.66.2
+        version: 1.66.2(mediabunny@1.66.2)
       '@nostakes/avatar':
         specifier: workspace:*
         version: link:../../packages/avatar
@@ -303,8 +303,8 @@ importers:
         specifier: 0.170.0
         version: 0.170.0(@effect/platform-browser@4.1.4(effect@4.1.4))(effect@4.1.4)
       mediabunny:
-        specifier: 1.66.0
-        version: 1.66.0
+        specifier: 1.66.2
+        version: 1.66.2
       xstate:
         specifier: 6.0.0-beta.3
         version: 6.0.0-beta.3
@@ -1002,8 +1002,8 @@ packages:
   '@jridgewell/trace-mapping@0.3.31':
     resolution: {integrity: sha512-zzNR+SdQSDJzc8joaeP8QQoCQr8NuYx2dIIytl1QeBEZHJ9uW6hebsrYgbz8hJwUQao3TWCMtmfV8Nu1twOLAw==}
 
-  '@mediabunny/aac-encoder@1.66.0':
-    resolution: {integrity: sha512-46RM06RQGIqC+HQI30e2HR2JTgk6dzyD/ybD23E6zuc7R22/x1XIQHghJDkfKnHF72ztJBZxNbt/NncH7SrvYQ==}
+  '@mediabunny/aac-encoder@1.66.2':
+    resolution: {integrity: sha512-4OLUxYFkUAF3Q1/1mhZ/uBUTU6dLw9y0Cw9Ln9+jGGtrIN6vDjrYm+DAu18hlp5EMOTPjwdbsxWKs2RKO86Y4g==}
     peerDependencies:
       mediabunny: ^1.0.0
 
@@ -2241,8 +2241,8 @@ packages:
   magicast@0.5.5:
     resolution: {integrity: sha512-UicdXN8zQ3JHlxVq+28afMXPr1z7WNY6+7EJnzTdQWkTAlMLF5fNCCKxJHBQwGaNGR11581EiQmQzx73+MvszA==}
 
-  mediabunny@1.66.0:
-    resolution: {integrity: sha512-0Zff/qLkY1ZRyjBEt2vQjLeMigmU/dFKwJLpiPyCiskIel2f2R2kqMxaLYbeHN+rmyz4PVwwLSnU9anjUHHeJQ==}
+  mediabunny@1.66.2:
+    resolution: {integrity: sha512-NTzRrBhAyRVi8qpJ9AH6XPyxiDVkfugxYY+gu3Z5zi+Nw2R/7nTAnXJEt2Ucy8wTIve1/UYGnCFf50x2LpvMDQ==}
 
   merge2@1.4.1:
     resolution: {integrity: sha512-8q7VEgMJW4J8tcfVPy8g09NcQwZdbwFEqhe/WZkoIzjn/3TGDwtOCYtXGxA3O8tPzpczCCDgv+P2P5y00ZJOOg==}
@@ -3112,9 +3112,9 @@ snapshots:
       '@jridgewell/resolve-uri': 3.1.2
       '@jridgewell/sourcemap-codec': 1.6.0
 
-  '@mediabunny/aac-encoder@1.66.0(mediabunny@1.66.0)':
+  '@mediabunny/aac-encoder@1.66.2(mediabunny@1.66.2)':
     dependencies:
-      mediabunny: 1.66.0
+      mediabunny: 1.66.2
 
   '@napi-rs/wasm-runtime@1.2.6(@emnapi/core@2.0.0-beta.2)(@emnapi/runtime@2.0.0-beta.2)':
     dependencies:
@@ -3897,7 +3897,7 @@ snapshots:
       '@babel/types': 7.29.11
       source-map-js: 1.2.2
 
-  mediabunny@1.66.0:
+  mediabunny@1.66.2:
     dependencies:
       '@types/dom-mediacapture-transform': 0.1.12
       '@types/dom-webcodecs': 0.1.13
