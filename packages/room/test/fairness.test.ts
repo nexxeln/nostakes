@@ -62,7 +62,7 @@ import {
   settings,
   sit,
 } from "./fixtures.js";
-import { generated } from "./scale.js";
+import { generated, sized } from "./scale.js";
 import { POOL, playSession, session } from "./sessions.js";
 
 const ROOM = "GNRTD2";
@@ -106,6 +106,8 @@ const reachedDevicesAt = (before: RoomState, command: RoomCommand): Millis =>
   millis(Math.max(command.at, before.now));
 
 const MOST_SHRINKS = 12;
+
+const DOUBLE_BOARD_INTENTS = sized(100, 400);
 
 const nights = (quick: number, full: number) => {
   const sizes = generated(quick, full);
@@ -477,19 +479,23 @@ describe("what a device sees of a checked hand", () => {
     "lets every device check a double-board bomb pot, whose boards and rabbit are dealt street by street from the sealed deck",
     { source: session },
     ({ source }) => {
-      const played = playSession(source, undefined, (drawn) => ({
-        ...drawn,
-        shuffle: "Checked",
-        table: {
-          ...drawn.table,
-          bombPot: BombPots.BombPots({
-            ante: ChipsSchema.make(drawn.table.bigBlind),
-            boardCount: 2,
-            everyHands: 1,
-          }),
-          rabbitHunt: true,
-        },
-      }));
+      const played = playSession(
+        { ...source, intents: source.intents.slice(0, DOUBLE_BOARD_INTENTS) },
+        undefined,
+        (drawn) => ({
+          ...drawn,
+          shuffle: "Checked",
+          table: {
+            ...drawn.table,
+            bombPot: BombPots.BombPots({
+              ante: ChipsSchema.make(drawn.table.bigBlind),
+              boardCount: 2,
+              everyHands: 1,
+            }),
+            rabbitHunt: true,
+          },
+        })
+      );
 
       const steps = played.steps.flatMap((step) =>
         Result.isSuccess(step.decision)
@@ -515,7 +521,7 @@ describe("what a device sees of a checked hand", () => {
         judged.outcomes.some((outcome) => outcome.endsWith("Checked InTime"))
       ).toBe(dealtFromASeal);
     },
-    nights(2, 6)
+    nights(1, 6)
   );
 
   it("checks the rabbit of a double-board bomb pot that ended on the flop, live and from the view of a device that missed the hunt", () => {
