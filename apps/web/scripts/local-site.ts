@@ -4,6 +4,9 @@ import type { BrowserType } from "playwright-core";
 import { createServer } from "vite";
 import type { InlineConfig, ProxyOptions } from "vite";
 
+import { MEDIA_PACKAGES } from "../src/client/moments/mediabunny/packages.ts";
+import { pagePolicy } from "./stage-policy.ts";
+
 const REPO = new URL("../../..", import.meta.url).pathname;
 
 const WEB = new URL("..", import.meta.url).pathname;
@@ -134,6 +137,22 @@ export const servedVite = (
     return address === undefined
       ? yield* new LocalSiteFailed({ detail: "it reported no address", step })
       : address.replace(/\/$/u, "");
+  });
+
+const STAGE_PAGES = [
+  "scripts/moments/stage.html",
+  "scripts/moments/film.html",
+  "scripts/night/stage.html",
+];
+
+export const servedStage = (step: string) =>
+  servedVite(step, "STAGE_PORT", {
+    configFile: false,
+    logLevel: "warn",
+    optimizeDeps: { entries: STAGE_PAGES, include: MEDIA_PACKAGES },
+    plugins: [pagePolicy()],
+    root: WEB,
+    server: { hmr: false },
   });
 
 export interface WebApp {

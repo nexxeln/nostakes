@@ -6,8 +6,7 @@ import { ChildProcessSpawner } from "effect/process/ChildProcessSpawner";
 import { chromium, firefox, webkit } from "playwright-core";
 import type { BrowserType, Page } from "playwright-core";
 
-import { MEDIA_PACKAGES } from "../src/client/moments/mediabunny/packages.ts";
-import { mutedBrowser, servedVite } from "./local-site.ts";
+import { mutedBrowser, servedStage } from "./local-site.ts";
 import {
   declaredColour,
   declaredText,
@@ -20,9 +19,7 @@ import type { Picture, Swatches } from "./moments/clip-colour.ts";
 import { policyBreaks, watchPolicy } from "./page-evidence.ts";
 import { SAFARI_ACTIVATION, SHARE_STUB, sharedAtLeast } from "./share-stub.ts";
 import { StageOrigin } from "./stage-origin.ts";
-import { PAGE_POLICY_ASKED, pagePolicy } from "./stage-policy.ts";
-
-const WEB = new URL("..", import.meta.url).pathname;
+import { PAGE_POLICY_ASKED } from "./stage-policy.ts";
 
 const STAGE = "/scripts/moments";
 
@@ -76,13 +73,7 @@ const policed = (page: Page, name: string) =>
     )
   );
 
-const stageServer = servedVite("start the stage server", "STAGE_PORT", {
-  configFile: false,
-  logLevel: "warn",
-  optimizeDeps: { include: MEDIA_PACKAGES },
-  plugins: [pagePolicy()],
-  root: WEB,
-}).pipe(
+const stageServer = servedStage("start the stage server").pipe(
   Effect.mapError(
     (failure) =>
       new ClipCheckFailed({ detail: failure.detail, step: failure.step })

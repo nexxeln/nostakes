@@ -4,13 +4,10 @@ import * as FileSystem from "effect/FileSystem";
 import { chromium, webkit } from "playwright-core";
 import type { BrowserType, Page } from "playwright-core";
 
-import { mutedBrowser, servedVite } from "./local-site.ts";
+import { mutedBrowser, servedStage } from "./local-site.ts";
 import { policyBreaks, watchPolicy } from "./page-evidence.ts";
 import { SHARE_STUB, sharedAtLeast } from "./share-stub.ts";
 import { StageOrigin } from "./stage-origin.ts";
-import { pagePolicy } from "./stage-policy.ts";
-
-const WEB = new URL("..", import.meta.url).pathname;
 
 const STAGE = "/scripts/moments/stage.html";
 
@@ -35,12 +32,7 @@ const attempt = <A>(step: string, run: () => Promise<A>) =>
     try: run,
   });
 
-const stageServer = servedVite("start the stage server", "STAGE_PORT", {
-  configFile: false,
-  logLevel: "warn",
-  plugins: [pagePolicy()],
-  root: WEB,
-}).pipe(
+const stageServer = servedStage("start the stage server").pipe(
   Effect.mapError(
     (failure) =>
       new KeepCheckFailed({ detail: failure.detail, step: failure.step })
