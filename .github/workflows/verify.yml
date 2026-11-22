@@ -48,7 +48,7 @@ jobs:
         run: corepack enable && corepack prepare pnpm@12.21.0 --activate
       - name: Install uv
         if: matrix.target == 'differential'
-        uses: astral-sh/setup-uv@v10.3.3
+        uses: astral-sh/setup-uv@v10.4.0
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
       - name: Read the playwright-core version
