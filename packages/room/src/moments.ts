@@ -704,6 +704,7 @@ const scoops = (story: HandStory, pot: Chips): readonly Moment[] => {
     story.showdown &&
     contenders.length >= 2 &&
     winner !== undefined &&
+    Option.isSome(shownHand(story, winner)) &&
     first?.length === 1 &&
     others.every((winners) => winners.length === 1 && winners[0] === winner)
     ? [

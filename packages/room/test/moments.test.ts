@@ -51,6 +51,16 @@ const bothCardsPublicSomewhere = (feed: readonly SeenTableEvent[]) => {
   return [...seen.values()].some((cards) => cards.size >= 2);
 };
 
+const SCOOP_OVER_A_MUCK = 1_268_867_264;
+
+const privateMoments = (seed: number) => {
+  const feed = spectatorFeed(generatedHand(seededRandom(seed)));
+
+  return bothCardsPublicSomewhere(feed)
+    ? []
+    : momentsOf(feed).filter((moment) => !Moments.$is("SplitRuns")(moment));
+};
+
 describe("moments any device can compute", () => {
   it.prop(
     "a spectator and any player dealt in compute the same moments for the same hand",
@@ -100,18 +110,14 @@ describe("moments any device can compute", () => {
     "a hand in which nobody's two cards were public has no moment except a board run twice that split",
     { seed: handSeed },
     ({ seed }) => {
-      const feed = spectatorFeed(generatedHand(seededRandom(seed)));
-
-      if (bothCardsPublicSomewhere(feed)) {
-        return;
-      }
-
-      expect(
-        momentsOf(feed).filter((moment) => !Moments.$is("SplitRuns")(moment))
-      ).toStrictEqual([]);
+      expect(privateMoments(seed)).toStrictEqual([]);
     },
     generated(20, 40)
   );
+
+  it("calls no scoop when the loser mucks a double board and the winner never tables", () => {
+    expect(privateMoments(SCOOP_OVER_A_MUCK)).toStrictEqual([]);
+  });
 });
 
 describe("the moment a hand leads with", () => {
