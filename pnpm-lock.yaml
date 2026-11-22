@@ -294,8 +294,8 @@ importers:
         specifier: workspace:*
         version: link:../../packages/shuffle
       '@xstate/effect':
-        specifier: 1.0.0-beta.2
-        version: 1.0.0-beta.2(@oxlint/plugins@1.94.0)(effect@4.1.5)(xstate@6.0.0-beta.3)
+        specifier: 1.0.0-beta.3
+        version: 1.0.0-beta.3(@oxlint/plugins@1.94.0)(effect@4.1.5)(xstate@6.0.0-beta.4)
       effect:
         specifier: 4.1.5
         version: 4.1.5
@@ -306,8 +306,8 @@ importers:
         specifier: 1.66.2
         version: 1.66.2
       xstate:
-        specifier: 6.0.0-beta.3
-        version: 6.0.0-beta.3
+        specifier: 6.0.0-beta.4
+        version: 6.0.0-beta.4
     devDependencies:
       '@effect/platform-node':
         specifier: 4.1.5
@@ -359,14 +359,14 @@ importers:
         specifier: workspace:*
         version: link:../protocol
       '@xstate/effect':
-        specifier: 1.0.0-beta.2
-        version: 1.0.0-beta.2(@oxlint/plugins@1.94.0)(effect@4.1.5)(xstate@6.0.0-beta.3)
+        specifier: 1.0.0-beta.3
+        version: 1.0.0-beta.3(@oxlint/plugins@1.94.0)(effect@4.1.5)(xstate@6.0.0-beta.4)
       effect:
         specifier: 4.1.5
         version: 4.1.5
       xstate:
-        specifier: 6.0.0-beta.3
-        version: 6.0.0-beta.3
+        specifier: 6.0.0-beta.4
+        version: 6.0.0-beta.4
     devDependencies:
       '@effect/vitest':
         specifier: 4.1.5
@@ -1817,12 +1817,12 @@ packages:
   '@vitest/spy@5.1.1':
     resolution: {integrity: sha512-6K8C6alQG1/Yc8/ZI22iJS7JEsxPdVzqtqDq+/xM4Z0mGVykemMVjLhqMy/q6/IHYG3kKD8hKSwRen/ZdyI9vQ==}
 
-  '@xstate/effect@1.0.0-beta.2':
-    resolution: {integrity: sha512-BGyeP2E2vRxRtMiUKrG797qGMQfE8WqZNYiC5VLFrwIEj73C25LnyQpk5VwhYL2vUntIH629klM/sDWZ1ZjPyQ==}
+  '@xstate/effect@1.0.0-beta.3':
+    resolution: {integrity: sha512-7ajF2zFjNPZHKL8x9CrwIfzhLt8D0aIKNea9LwTieXZrtbcbydixXxSrEJkYXrHNQ3W6t5dQCTFn5tcm1x2wzg==}
     peerDependencies:
       '@oxlint/plugins': ^1.76.0
       effect: ^4.0.0
-      xstate: ^6.0.0-beta.3
+      xstate: ^6.0.0-beta.4
     peerDependenciesMeta:
       '@oxlint/plugins':
         optional: true
@@ -2679,8 +2679,8 @@ packages:
       utf-8-validate:
         optional: true
 
-  xstate@6.0.0-beta.3:
-    resolution: {integrity: sha512-b6C6SQ9cern6sD531uHcwOH94lBL+701Jd/VRSkzT8oAV1AKTT9oXFZtvC5DajUU4+8gmTLBTMHjZjd0VrsmAg==}
+  xstate@6.0.0-beta.4:
+    resolution: {integrity: sha512-sGFj6r5YOVqYepCtv1VVksodsFYMhAWKAvRGiK2/6sTJh9ZOZV8K27FESE+tMvpWE2tDRHsKHUbxny3adn/ZcA==}
     hasBin: true
 
   y18n@5.0.8:
@@ -3573,10 +3573,10 @@ snapshots:
 
   '@vitest/spy@5.1.1': {}
 
-  '@xstate/effect@1.0.0-beta.2(@oxlint/plugins@1.94.0)(effect@4.1.5)(xstate@6.0.0-beta.3)':
+  '@xstate/effect@1.0.0-beta.3(@oxlint/plugins@1.94.0)(effect@4.1.5)(xstate@6.0.0-beta.4)':
     dependencies:
       effect: 4.1.5
-      xstate: 6.0.0-beta.3
+      xstate: 6.0.0-beta.4
     optionalDependencies:
       '@oxlint/plugins': 1.94.0
 
@@ -4363,7 +4363,7 @@ snapshots:
 
   ws@8.23.0: {}
 
-  xstate@6.0.0-beta.3: {}
+  xstate@6.0.0-beta.4: {}
 
   y18n@5.0.8: {}
 
