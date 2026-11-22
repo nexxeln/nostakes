@@ -10,7 +10,7 @@ pnpm --filter @nostakes/engine differential --seed 20261110 --hands 100000
 
 The command builds the engine, exports the seeded hands to a temporary directory, and replays them in PokerKit. It prints a summary and exits non-zero on any unexplained difference. Set `DIFFERENTIAL_DIR` to keep the export and the JSON report in a directory you choose.
 
-It needs `uv` and Python 3.14. The oracle is PokerKit 0.7.7 (`pokerkit` on PyPI, source `uoftcprg/pokerkit`), MIT-licensed by the Universal, Open, Free, and Transparent Computer Poker Research Group. The PEP 723 header of `replay.py` pins the version, and `replay.py.lock` pins the wheel and sdist by sha256. Nothing is added to the pnpm lockfile.
+It needs `uv` and Python 3.14. The oracle is PokerKit 0.7.8 (`pokerkit` on PyPI, source `uoftcprg/pokerkit`), MIT-licensed by the Universal, Open, Free, and Transparent Computer Poker Research Group. The PEP 723 header of `replay.py` pins the version, and `replay.py.lock` pins the wheel and sdist by sha256. Nothing is added to the pnpm lockfile.
 
 Replay one saved hand:
 

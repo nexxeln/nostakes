@@ -1,6 +1,6 @@
 # /// script
 # requires-python = ">=3.14"
-# dependencies = ["pokerkit==0.7.7"]
+# dependencies = ["pokerkit==0.7.8"]
 # ///
 import json
 import os
