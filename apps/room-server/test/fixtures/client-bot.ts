@@ -704,6 +704,7 @@ export const startClientBot = (setup: ClientBotSetup) => {
         !control.stop &&
         !control.closing &&
         !control.stagingTheTable &&
+        !control.answeringTheDoor &&
         !control.tableQuiet &&
         control.head - from <= MAX_MISSED_EVENTS + 5 &&
         wallClock() - started < NAP_LIMIT_MS
@@ -781,8 +782,38 @@ export const startClientBot = (setup: ClientBotSetup) => {
         : Option.none();
     };
 
+    let wokeForTheDoorAt = 0;
+
+    const mendForTheDoor = Effect.gen(function* mendForTheDoor() {
+      const line = wire.lastLine();
+
+      if (
+        line !== undefined &&
+        line.raw.readyState <= WebSocket.OPEN &&
+        line.mode !== "Clear"
+      ) {
+        note(
+          `mending line ${line.number}, which is ${line.mode}, for the door`
+        );
+        wire.closeFromBot();
+      }
+
+      const waiting = current.pipe(
+        Option.exists(({ connection }) => connection === "Waiting")
+      );
+
+      if (waiting && wallClock() - wokeForTheDoorAt >= MEND_WAKE_GAP_MS) {
+        wokeForTheDoorAt = wallClock();
+        yield* wake;
+      }
+    });
+
     const mend = Effect.gen(function* mendAtClose() {
       while (!control.closing && !control.stop) {
+        if (control.answeringTheDoor) {
+          yield* mendForTheDoor;
+        }
+
         yield* Effect.sleep(Duration.millis(MEND_POLL_MS));
       }
 
@@ -862,7 +893,9 @@ export const startClientBot = (setup: ClientBotSetup) => {
         stats.signalsKeptOnDevice += outcome === "Sent" ? 0 : 1;
       }
 
-      const calm = control.closing || control.stagingTheTable;
+      const calm =
+        control.closing || control.stagingTheTable || control.answeringTheDoor;
+
       const disruption = calm ? Option.none() : disruptionFor(open.value);
 
       if (Option.isNone(disruption)) {

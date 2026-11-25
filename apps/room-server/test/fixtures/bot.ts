@@ -155,6 +155,7 @@ export interface NightControl {
   raced: boolean;
   closesWhileABotHoldsTheAction: boolean;
   stagingTheTable: boolean;
+  answeringTheDoor: boolean;
   tableQuiet: boolean;
   checkedInTime: number;
   readonly holdingTheAction: Set<PlayerId>;
@@ -746,7 +747,10 @@ export const plannerFor = (setup: PlannerSetup) => {
 
   const grants = () => control.stagingTheTable || random.chance(80);
 
-  const handsOver = () => !control.stagingTheTable && random.chance(0.05);
+  const handsOver = () =>
+    !control.stagingTheTable &&
+    !control.answeringTheDoor &&
+    random.chance(0.05);
 
   const hostIntent = (open: OpenView): Option.Option<Intent> => {
     const [seatRequest] = open.requests.seats;
@@ -1523,7 +1527,11 @@ export const startBot = (setup: BotSetup) => {
     });
 
   const chaos = Effect.gen(function* chaos() {
-    if (control.closing || control.stagingTheTable) {
+    if (
+      control.closing ||
+      control.stagingTheTable ||
+      control.answeringTheDoor
+    ) {
       return;
     }
 
@@ -1626,6 +1634,7 @@ export const startBot = (setup: BotSetup) => {
       if (
         !control.closing &&
         !control.stagingTheTable &&
+        !control.answeringTheDoor &&
         random.chance(temper.illegalPercent / 20)
       ) {
         yield* sendServerOnly;

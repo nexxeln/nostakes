@@ -824,6 +824,7 @@ export const playNight = (base: string, opened: OpenedNight) =>
       ];
 
     const control: NightControl = {
+      answeringTheDoor: false,
       approval: Option.none(),
       checkedInTime: 0,
       closesWhileABotHoldsTheAction: false,
@@ -1427,11 +1428,21 @@ export const playNight = (base: string, opened: OpenedNight) =>
               view.settings.knockSeconds === MIN_KNOCK_SECONDS
           );
 
+          control.answeringTheDoor = true;
+
+          yield* viewShows((view) =>
+            watched.some(
+              (record) => record.pass.player === view.host && record.connected()
+            )
+          );
+
           if (control.stop) {
             return;
           }
 
-          note("the host turned on join approval; three strangers knock");
+          note(
+            "the host turned on join approval and is at the door; three strangers knock"
+          );
 
           let unanswered = KNOCK_PLANS.length;
 
@@ -1441,6 +1452,7 @@ export const playNight = (base: string, opened: OpenedNight) =>
                 unanswered -= 1;
 
                 if (unanswered === 0) {
+                  control.answeringTheDoor = false;
                   control.owed.delete("the knocks at the door");
                 }
               })
@@ -1452,6 +1464,7 @@ export const playNight = (base: string, opened: OpenedNight) =>
         }).pipe(
           Effect.ensuring(
             Effect.sync(() => {
+              control.answeringTheDoor = false;
               control.owed.delete("the knocks at the door");
             })
           )
