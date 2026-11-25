@@ -14,7 +14,7 @@ Workspace `package.json` files declare the pinned stack. Keep every dependency e
 - Effect `4.1.5` and `@effect/vitest` `4.1.5`. Every package resolves the same Effect runtime.
 - TypeScript `7.0.2` in strict mode, patched by `@effect/tsgo` `0.73.4` in `prepare` so the Effect diagnostics fail `tsc` too
 - `@yielded/effect-tsrs` `0.2.3` runs `typecheck` and `check` with `diagnostics --strict --type-check`. `--strict` makes Effect warnings fail.
-- tsrs `7.1.0-beta.tsrs4` runs `typecheck:fast`. It has no Effect diagnostics.
+- tsrs `7.1.0-beta.tsrs5` runs `typecheck:fast`. It has no Effect diagnostics.
 - Vitest `5.1.1`
 - Oxlint `1.95.0` with `oxlint-tsgolint` `7.0.2008` for type-aware rules, `@oxlint/plugins` `1.95.0`, `@foldkit/oxlint-plugin` `0.15.4` (its recommended rules on `apps/web/src`, with `no-impure-call-at-decision-time` off only in the five `src/client` files that read the clock or the random source themselves, listed in `oxlint.config.ts`: the list only shrinks, and a new file takes its time from the frame callback or an Effect instead), Ultracite `8.3.1`, and Oxfmt `0.80.0`
 - Lefthook `2.2.2` and `@types/node` `24.19.2`
