@@ -28,7 +28,7 @@
     "@nostakes/protocol": "workspace:*",
     "@xstate/effect": "1.0.0-beta.3",
     "effect": "4.1.5",
-    "xstate": "6.0.0-beta.4"
+    "xstate": "6.0.0-beta.5"
   },
   "devDependencies": {
     "@effect/vitest": "4.1.5",
