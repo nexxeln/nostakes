@@ -37,7 +37,7 @@
     "@effect/tsgo": "0.73.7",
     "@foldkit/oxlint-plugin": "0.15.4",
     "@oxlint/plugins": "1.95.0",
-    "@types/node": "24.19.2",
+    "@types/node": "24.19.4",
     "@yielded/effect-tsrs": "0.2.3",
     "lefthook": "2.2.4",
     "oxfmt": "0.80.0",

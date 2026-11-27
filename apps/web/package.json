@@ -53,7 +53,7 @@
     "@effect/platform-node": "4.1.6",
     "@effect/vitest": "4.1.6",
     "@foldkit/vite-plugin": "0.29.0",
-    "@types/node": "24.19.2",
+    "@types/node": "24.19.4",
     "playwright-core": "1.65.1",
     "typescript": "7.0.2",
     "vite": "8.3.8",
