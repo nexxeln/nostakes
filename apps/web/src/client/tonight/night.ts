@@ -94,7 +94,9 @@ export class Night {
   #moments: NightMoment[] = [];
   readonly #heard = new Set<() => void>();
   #look: NightLook = { calm: false, deck: "TwoColour", theme: "Light" };
-  #support: Option.Option<ClipSupport> | null = null;
+  #support: Option.Option<ClipSupport> | null =
+    clipScales(deviceMemory()).length === 0 ? Option.none() : null;
+  #probing = false;
   #loaded = false;
   #making: { readonly hand: number; readonly stop: AbortController } | null =
     null;
@@ -133,7 +135,7 @@ export class Night {
       return;
     }
 
-    this.#reel = { tag: "Queued" };
+    this.#reel = this.#clipAtStart(true);
     this.#tell();
     this.#next();
   }
@@ -188,7 +190,7 @@ export class Night {
       {
         asked: false,
         auto,
-        clip: { tag: auto ? "Queued" : "Idle" },
+        clip: this.#clipAtStart(auto),
         hand: hand.lastHand.handNumber,
         pictures: {},
         scene,
@@ -216,12 +218,7 @@ export class Night {
     this.#update(hand, (moment) => ({
       ...moment,
       asked: true,
-      clip: {
-        tag:
-          this.#support !== null && Option.isNone(this.#support)
-            ? "Unavailable"
-            : "Queued",
-      },
+      clip: this.#clipAtStart(true),
     }));
 
     this.#remember(found.source, true);
@@ -394,7 +391,7 @@ export class Night {
           auto,
           clip:
             clip === undefined
-              ? { tag: row.asked || auto ? "Queued" : "Idle" }
+              ? this.#clipAtStart(row.asked || auto)
               : { file: asFile(clip), tag: "Ready" },
           hand: row.hand,
           pictures,
@@ -509,18 +506,18 @@ export class Night {
   }
 
   #next() {
-    if (!this.#loaded || this.#making !== null) {
+    if (!this.#loaded || this.#making !== null || this.#probing) {
       return;
     }
 
     if (this.#support === null) {
-      this.#support = Option.none();
+      this.#probing = true;
       Effect.runFork(
         clipSupport("Story").pipe(
           Effect.flatMap((found) =>
             Effect.sync(() => {
-              this.#support =
-                clipScales(deviceMemory()).length === 0 ? Option.none() : found;
+              this.#probing = false;
+              this.#support = found;
               this.#supported();
             })
           )
@@ -569,6 +566,14 @@ export class Night {
     }
 
     this.#next();
+  }
+
+  #clipAtStart(wanted: boolean): ClipStatus {
+    if (this.#support !== null && Option.isNone(this.#support)) {
+      return { tag: "Unavailable" };
+    }
+
+    return { tag: wanted ? "Queued" : "Idle" };
   }
 
   get clipsAvailable(): boolean {
@@ -763,7 +768,7 @@ export class Night {
       this.#update(hand, (moment) => ({
         ...moment,
         asked: true,
-        clip: { tag: "Queued" },
+        clip: this.#clipAtStart(true),
       }));
       this.#next();
     }
