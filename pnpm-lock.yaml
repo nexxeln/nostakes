@@ -225,8 +225,8 @@ importers:
         specifier: 8.3.1
         version: 8.3.1(oxfmt@0.80.0)(oxlint@1.95.0(oxlint-tsgolint@7.0.2008))
       vitest:
-        specifier: 5.1.1
-        version: 5.1.1(@types/node@24.19.2)(vite@8.3.8(@types/node@24.19.2)(yaml@2.9.1))
+        specifier: 5.1.2
+        version: 5.1.2(@types/node@24.19.2)(vite@8.3.8(@types/node@24.19.2)(yaml@2.9.1))
 
   apps/room-server:
     dependencies:
@@ -254,7 +254,7 @@ importers:
     devDependencies:
       '@alchemy.run/test':
         specifier: 2.0.0-beta.87
-        version: 2.0.0-beta.87(@effect/vitest@4.1.6(effect@4.1.6)(vitest@5.1.1(@types/node@24.19.2)(vite@8.3.8(@types/node@24.19.2)(yaml@2.9.1))))(alchemy@2.0.0-beta.87(@effect/platform-bun@4.1.4(effect@4.1.6))(@effect/platform-node@4.1.6(effect@4.1.6)(redis@6.3.1))(effect@4.1.6)(vite@8.3.8(@types/node@24.19.2)(yaml@2.9.1))(ws@8.22.2))(effect@4.1.6)(vitest@5.1.1(@types/node@24.19.2)(vite@8.3.8(@types/node@24.19.2)(yaml@2.9.1)))
+        version: 2.0.0-beta.87(@effect/vitest@4.1.6(effect@4.1.6)(vitest@5.1.2(@types/node@24.19.2)(vite@8.3.8(@types/node@24.19.2)(yaml@2.9.1))))(alchemy@2.0.0-beta.87(@effect/platform-bun@4.1.4(effect@4.1.6))(@effect/platform-node@4.1.6(effect@4.1.6)(redis@6.3.1))(effect@4.1.6)(vite@8.3.8(@types/node@24.19.2)(yaml@2.9.1))(ws@8.22.2))(effect@4.1.6)(vitest@5.1.2(@types/node@24.19.2)(vite@8.3.8(@types/node@24.19.2)(yaml@2.9.1)))
       '@cloudflare/workers-types':
         specifier: 5.20261124.1
         version: 5.20261124.1
@@ -263,7 +263,7 @@ importers:
         version: 4.1.6(effect@4.1.6)(redis@6.3.1)
       '@effect/vitest':
         specifier: 4.1.6
-        version: 4.1.6(effect@4.1.6)(vitest@5.1.1(@types/node@24.19.2)(vite@8.3.8(@types/node@24.19.2)(yaml@2.9.1)))
+        version: 4.1.6(effect@4.1.6)(vitest@5.1.2(@types/node@24.19.2)(vite@8.3.8(@types/node@24.19.2)(yaml@2.9.1)))
       '@nostakes/client':
         specifier: workspace:*
         version: link:../../packages/client
@@ -274,8 +274,8 @@ importers:
         specifier: 7.0.2
         version: 7.0.2
       vitest:
-        specifier: 5.1.1
-        version: 5.1.1(@types/node@24.19.2)(vite@8.3.8(@types/node@24.19.2)(yaml@2.9.1))
+        specifier: 5.1.2
+        version: 5.1.2(@types/node@24.19.2)(vite@8.3.8(@types/node@24.19.2)(yaml@2.9.1))
 
   apps/web:
     dependencies:
@@ -324,7 +324,7 @@ importers:
         version: 4.1.6(effect@4.1.6)(redis@6.3.1)
       '@effect/vitest':
         specifier: 4.1.6
-        version: 4.1.6(effect@4.1.6)(vitest@5.1.1(@types/node@24.19.2)(vite@8.3.8(@types/node@24.19.2)(yaml@2.9.1)))
+        version: 4.1.6(effect@4.1.6)(vitest@5.1.2(@types/node@24.19.2)(vite@8.3.8(@types/node@24.19.2)(yaml@2.9.1)))
       '@foldkit/vite-plugin':
         specifier: 0.29.0
         version: 0.29.0(effect@4.1.6)(foldkit@0.170.0(@effect/platform-browser@4.1.6(effect@4.1.6))(effect@4.1.6))(redis@6.3.1)(vite@8.3.8(@types/node@24.19.2)(yaml@2.9.1))
@@ -341,8 +341,8 @@ importers:
         specifier: 8.3.8
         version: 8.3.8(@types/node@24.19.2)(yaml@2.9.1)
       vitest:
-        specifier: 5.1.1
-        version: 5.1.1(@types/node@24.19.2)(vite@8.3.8(@types/node@24.19.2)(yaml@2.9.1))
+        specifier: 5.1.2
+        version: 5.1.2(@types/node@24.19.2)(vite@8.3.8(@types/node@24.19.2)(yaml@2.9.1))
 
   packages/avatar:
     dependencies:
@@ -352,7 +352,7 @@ importers:
     devDependencies:
       '@effect/vitest':
         specifier: 4.1.6
-        version: 4.1.6(effect@4.1.6)(vitest@5.1.1(@types/node@24.19.2)(vite@8.3.8(@types/node@24.19.2)(yaml@2.9.1)))
+        version: 4.1.6(effect@4.1.6)(vitest@5.1.2(@types/node@24.19.2)(vite@8.3.8(@types/node@24.19.2)(yaml@2.9.1)))
       '@types/node':
         specifier: 24.19.2
         version: 24.19.2
@@ -360,8 +360,8 @@ importers:
         specifier: 7.0.2
         version: 7.0.2
       vitest:
-        specifier: 5.1.1
-        version: 5.1.1(@types/node@24.19.2)(vite@8.3.8(@types/node@24.19.2)(yaml@2.9.1))
+        specifier: 5.1.2
+        version: 5.1.2(@types/node@24.19.2)(vite@8.3.8(@types/node@24.19.2)(yaml@2.9.1))
 
   packages/client:
     dependencies:
@@ -380,7 +380,7 @@ importers:
     devDependencies:
       '@effect/vitest':
         specifier: 4.1.6
-        version: 4.1.6(effect@4.1.6)(vitest@5.1.1(@types/node@24.19.2)(vite@8.3.8(@types/node@24.19.2)(yaml@2.9.1)))
+        version: 4.1.6(effect@4.1.6)(vitest@5.1.2(@types/node@24.19.2)(vite@8.3.8(@types/node@24.19.2)(yaml@2.9.1)))
       '@types/node':
         specifier: 24.19.2
         version: 24.19.2
@@ -388,8 +388,8 @@ importers:
         specifier: 7.0.2
         version: 7.0.2
       vitest:
-        specifier: 5.1.1
-        version: 5.1.1(@types/node@24.19.2)(vite@8.3.8(@types/node@24.19.2)(yaml@2.9.1))
+        specifier: 5.1.2
+        version: 5.1.2(@types/node@24.19.2)(vite@8.3.8(@types/node@24.19.2)(yaml@2.9.1))
 
   packages/engine:
     dependencies:
@@ -399,7 +399,7 @@ importers:
     devDependencies:
       '@effect/vitest':
         specifier: 4.1.6
-        version: 4.1.6(effect@4.1.6)(vitest@5.1.1(@types/node@24.19.2)(vite@8.3.8(@types/node@24.19.2)(yaml@2.9.1)))
+        version: 4.1.6(effect@4.1.6)(vitest@5.1.2(@types/node@24.19.2)(vite@8.3.8(@types/node@24.19.2)(yaml@2.9.1)))
       '@types/node':
         specifier: 24.19.2
         version: 24.19.2
@@ -407,8 +407,8 @@ importers:
         specifier: 7.0.2
         version: 7.0.2
       vitest:
-        specifier: 5.1.1
-        version: 5.1.1(@types/node@24.19.2)(vite@8.3.8(@types/node@24.19.2)(yaml@2.9.1))
+        specifier: 5.1.2
+        version: 5.1.2(@types/node@24.19.2)(vite@8.3.8(@types/node@24.19.2)(yaml@2.9.1))
 
   packages/ledger:
     dependencies:
@@ -418,7 +418,7 @@ importers:
     devDependencies:
       '@effect/vitest':
         specifier: 4.1.6
-        version: 4.1.6(effect@4.1.6)(vitest@5.1.1(@types/node@24.19.2)(vite@8.3.8(@types/node@24.19.2)(yaml@2.9.1)))
+        version: 4.1.6(effect@4.1.6)(vitest@5.1.2(@types/node@24.19.2)(vite@8.3.8(@types/node@24.19.2)(yaml@2.9.1)))
       '@types/node':
         specifier: 24.19.2
         version: 24.19.2
@@ -426,8 +426,8 @@ importers:
         specifier: 7.0.2
         version: 7.0.2
       vitest:
-        specifier: 5.1.1
-        version: 5.1.1(@types/node@24.19.2)(vite@8.3.8(@types/node@24.19.2)(yaml@2.9.1))
+        specifier: 5.1.2
+        version: 5.1.2(@types/node@24.19.2)(vite@8.3.8(@types/node@24.19.2)(yaml@2.9.1))
 
   packages/protocol:
     dependencies:
@@ -437,7 +437,7 @@ importers:
     devDependencies:
       '@effect/vitest':
         specifier: 4.1.6
-        version: 4.1.6(effect@4.1.6)(vitest@5.1.1(@types/node@24.19.2)(vite@8.3.8(@types/node@24.19.2)(yaml@2.9.1)))
+        version: 4.1.6(effect@4.1.6)(vitest@5.1.2(@types/node@24.19.2)(vite@8.3.8(@types/node@24.19.2)(yaml@2.9.1)))
       '@types/node':
         specifier: 24.19.2
         version: 24.19.2
@@ -445,8 +445,8 @@ importers:
         specifier: 7.0.2
         version: 7.0.2
       vitest:
-        specifier: 5.1.1
-        version: 5.1.1(@types/node@24.19.2)(vite@8.3.8(@types/node@24.19.2)(yaml@2.9.1))
+        specifier: 5.1.2
+        version: 5.1.2(@types/node@24.19.2)(vite@8.3.8(@types/node@24.19.2)(yaml@2.9.1))
 
   packages/room:
     dependencies:
@@ -468,7 +468,7 @@ importers:
     devDependencies:
       '@effect/vitest':
         specifier: 4.1.6
-        version: 4.1.6(effect@4.1.6)(vitest@5.1.1(@types/node@24.19.2)(vite@8.3.8(@types/node@24.19.2)(yaml@2.9.1)))
+        version: 4.1.6(effect@4.1.6)(vitest@5.1.2(@types/node@24.19.2)(vite@8.3.8(@types/node@24.19.2)(yaml@2.9.1)))
       '@types/node':
         specifier: 24.19.2
         version: 24.19.2
@@ -476,8 +476,8 @@ importers:
         specifier: 7.0.2
         version: 7.0.2
       vitest:
-        specifier: 5.1.1
-        version: 5.1.1(@types/node@24.19.2)(vite@8.3.8(@types/node@24.19.2)(yaml@2.9.1))
+        specifier: 5.1.2
+        version: 5.1.2(@types/node@24.19.2)(vite@8.3.8(@types/node@24.19.2)(yaml@2.9.1))
 
   packages/shuffle:
     dependencies:
@@ -493,7 +493,7 @@ importers:
     devDependencies:
       '@effect/vitest':
         specifier: 4.1.6
-        version: 4.1.6(effect@4.1.6)(vitest@5.1.1(@types/node@24.19.2)(vite@8.3.8(@types/node@24.19.2)(yaml@2.9.1)))
+        version: 4.1.6(effect@4.1.6)(vitest@5.1.2(@types/node@24.19.2)(vite@8.3.8(@types/node@24.19.2)(yaml@2.9.1)))
       '@types/node':
         specifier: 24.19.2
         version: 24.19.2
@@ -501,14 +501,14 @@ importers:
         specifier: 7.0.2
         version: 7.0.2
       vitest:
-        specifier: 5.1.1
-        version: 5.1.1(@types/node@24.19.2)(vite@8.3.8(@types/node@24.19.2)(yaml@2.9.1))
+        specifier: 5.1.2
+        version: 5.1.2(@types/node@24.19.2)(vite@8.3.8(@types/node@24.19.2)(yaml@2.9.1))
 
   tools/fence:
     devDependencies:
       '@effect/vitest':
         specifier: 4.1.6
-        version: 4.1.6(effect@4.1.6)(vitest@5.1.1(@types/node@24.19.2)(vite@8.3.8(@types/node@24.19.2)(yaml@2.9.1)))
+        version: 4.1.6(effect@4.1.6)(vitest@5.1.2(@types/node@24.19.2)(vite@8.3.8(@types/node@24.19.2)(yaml@2.9.1)))
       '@types/node':
         specifier: 24.19.2
         version: 24.19.2
@@ -519,8 +519,8 @@ importers:
         specifier: 7.0.2
         version: 7.0.2
       vitest:
-        specifier: 5.1.1
-        version: 5.1.1(@types/node@24.19.2)(vite@8.3.8(@types/node@24.19.2)(yaml@2.9.1))
+        specifier: 5.1.2
+        version: 5.1.2(@types/node@24.19.2)(vite@8.3.8(@types/node@24.19.2)(yaml@2.9.1))
 
 packages:
 
@@ -1813,8 +1813,8 @@ packages:
     cpu: [x64]
     os: [win32]
 
-  '@vitest/mocker@5.1.1':
-    resolution: {integrity: sha512-b2OgTB4+3ImWIVafXKazJXwLKwQxUNnix6b3xUvUTMh7RyXlrtzoxfZr8aEz9zkHOMAS4K5lu3TvFWoiVeVTQg==}
+  '@vitest/mocker@5.1.2':
+    resolution: {integrity: sha512-UGc97wUIy0Ji2+9GxzHEJiOhiwkaukgE7VYcUNnjpX3sWnwQ8XogmNXX4WyOukxYgKb8Nh2XFa7KId0ZjpmVhQ==}
     peerDependencies:
       msw: ^2.4.9 || ^3.0.0
       vite: ^6.0.0 || ^7.0.0 || ^8.0.0
@@ -1824,8 +1824,8 @@ packages:
       vite:
         optional: true
 
-  '@vitest/spy@5.1.1':
-    resolution: {integrity: sha512-6K8C6alQG1/Yc8/ZI22iJS7JEsxPdVzqtqDq+/xM4Z0mGVykemMVjLhqMy/q6/IHYG3kKD8hKSwRen/ZdyI9vQ==}
+  '@vitest/spy@5.1.2':
+    resolution: {integrity: sha512-PQl0/3+p9GaY71+MHywN6oyHfLhVDD5kcbm7oNRldA2F0ExMU3S8RQdnpteJ9gFAdK5P6KCgE6LqCpUgy57KzA==}
 
   '@xstate/effect@1.0.0-beta.3':
     resolution: {integrity: sha512-7ajF2zFjNPZHKL8x9CrwIfzhLt8D0aIKNea9LwTieXZrtbcbydixXxSrEJkYXrHNQ3W6t5dQCTFn5tcm1x2wzg==}
@@ -2601,20 +2601,20 @@ packages:
       vite:
         optional: true
 
-  vitest@5.1.1:
-    resolution: {integrity: sha512-trVmzUFOSraCZcI3uZIMD5FqBh4atFkC/XuJP/IU7qtyQay0FCs3Ia+0QiQ2JJwGyWG/xrcBoJNel2+O7kEZ0g==}
+  vitest@5.1.2:
+    resolution: {integrity: sha512-VIa2wXV208WraXUbzH+dQUrGcFpPuaiRA8HlhXS8R6/sy9cynw6OMqGj8fmAlH1hot7huTCtWUE14+FdXU3eLw==}
     engines: {node: ^22.12.0 || ^24.0.0 || >=26.0.0}
     hasBin: true
     peerDependencies:
       '@edge-runtime/vm': '*'
       '@opentelemetry/api': ^1.9.0
       '@types/node': ^22.0.0 || >=24.0.0
-      '@vitest/browser-playwright': 5.1.1
-      '@vitest/browser-preview': 5.1.1
+      '@vitest/browser-playwright': 5.1.2
+      '@vitest/browser-preview': 5.1.2
       '@vitest/browser-webdriverio': ^5.0.0-beta.5 || >=5.0.0
-      '@vitest/coverage-istanbul': 5.1.1
-      '@vitest/coverage-v8': 5.1.1
-      '@vitest/ui': 5.1.1
+      '@vitest/coverage-istanbul': 5.1.2
+      '@vitest/coverage-v8': 5.1.2
+      '@vitest/ui': 5.1.2
       happy-dom: '*'
       jsdom: '*'
       vite: ^6.4.0 || ^7.0.0 || ^8.0.0
@@ -2805,14 +2805,14 @@ snapshots:
       alchemy: 2.0.0-beta.87(@effect/platform-bun@4.1.4(effect@4.1.6))(@effect/platform-node@4.1.6(effect@4.1.6)(redis@6.3.1))(effect@4.1.6)(vite@8.3.8(@types/node@24.19.2)(yaml@2.9.1))(ws@8.22.2)
       effect: 4.1.6
 
-  '@alchemy.run/test@2.0.0-beta.87(@effect/vitest@4.1.6(effect@4.1.6)(vitest@5.1.1(@types/node@24.19.2)(vite@8.3.8(@types/node@24.19.2)(yaml@2.9.1))))(alchemy@2.0.0-beta.87(@effect/platform-bun@4.1.4(effect@4.1.6))(@effect/platform-node@4.1.6(effect@4.1.6)(redis@6.3.1))(effect@4.1.6)(vite@8.3.8(@types/node@24.19.2)(yaml@2.9.1))(ws@8.22.2))(effect@4.1.6)(vitest@5.1.1(@types/node@24.19.2)(vite@8.3.8(@types/node@24.19.2)(yaml@2.9.1)))':
+  '@alchemy.run/test@2.0.0-beta.87(@effect/vitest@4.1.6(effect@4.1.6)(vitest@5.1.2(@types/node@24.19.2)(vite@8.3.8(@types/node@24.19.2)(yaml@2.9.1))))(alchemy@2.0.0-beta.87(@effect/platform-bun@4.1.4(effect@4.1.6))(@effect/platform-node@4.1.6(effect@4.1.6)(redis@6.3.1))(effect@4.1.6)(vite@8.3.8(@types/node@24.19.2)(yaml@2.9.1))(ws@8.22.2))(effect@4.1.6)(vitest@5.1.2(@types/node@24.19.2)(vite@8.3.8(@types/node@24.19.2)(yaml@2.9.1)))':
     dependencies:
       '@effect/platform-bun': 4.1.4(effect@4.1.6)
       effect: 4.1.6
     optionalDependencies:
-      '@effect/vitest': 4.1.6(effect@4.1.6)(vitest@5.1.1(@types/node@24.19.2)(vite@8.3.8(@types/node@24.19.2)(yaml@2.9.1)))
+      '@effect/vitest': 4.1.6(effect@4.1.6)(vitest@5.1.2(@types/node@24.19.2)(vite@8.3.8(@types/node@24.19.2)(yaml@2.9.1)))
       alchemy: 2.0.0-beta.87(@effect/platform-bun@4.1.4(effect@4.1.6))(@effect/platform-node@4.1.6(effect@4.1.6)(redis@6.3.1))(effect@4.1.6)(vite@8.3.8(@types/node@24.19.2)(yaml@2.9.1))(ws@8.22.2)
-      vitest: 5.1.1(@types/node@24.19.2)(vite@8.3.8(@types/node@24.19.2)(yaml@2.9.1))
+      vitest: 5.1.2(@types/node@24.19.2)(vite@8.3.8(@types/node@24.19.2)(yaml@2.9.1))
     transitivePeerDependencies:
       - bufferutil
       - utf-8-validate
@@ -2987,10 +2987,10 @@ snapshots:
       '@effect/tsgo-win32-arm64': 0.73.7
       '@effect/tsgo-win32-x64': 0.73.7
 
-  '@effect/vitest@4.1.6(effect@4.1.6)(vitest@5.1.1(@types/node@24.19.2)(vite@8.3.8(@types/node@24.19.2)(yaml@2.9.1)))':
+  '@effect/vitest@4.1.6(effect@4.1.6)(vitest@5.1.2(@types/node@24.19.2)(vite@8.3.8(@types/node@24.19.2)(yaml@2.9.1)))':
     dependencies:
       effect: 4.1.6
-      vitest: 5.1.1(@types/node@24.19.2)(vite@8.3.8(@types/node@24.19.2)(yaml@2.9.1))
+      vitest: 5.1.2(@types/node@24.19.2)(vite@8.3.8(@types/node@24.19.2)(yaml@2.9.1))
 
   '@emnapi/core@2.0.0-beta.2':
     dependencies:
@@ -3572,16 +3572,16 @@ snapshots:
   '@typescript/typescript-win32-x64@7.0.2':
     optional: true
 
-  '@vitest/mocker@5.1.1(vite@8.3.8(@types/node@24.19.2)(yaml@2.9.1))':
+  '@vitest/mocker@5.1.2(vite@8.3.8(@types/node@24.19.2)(yaml@2.9.1))':
     dependencies:
       '@jridgewell/trace-mapping': 0.3.31
-      '@vitest/spy': 5.1.1
+      '@vitest/spy': 5.1.2
       estree-walker: 3.0.3
       magic-string: 1.4.5
     optionalDependencies:
       vite: 8.3.8(@types/node@24.19.2)(yaml@2.9.1)
 
-  '@vitest/spy@5.1.1': {}
+  '@vitest/spy@5.1.2': {}
 
   '@xstate/effect@1.0.0-beta.3(@oxlint/plugins@1.95.0)(effect@4.1.6)(xstate@6.0.0-beta.5)':
     dependencies:
@@ -4325,10 +4325,10 @@ snapshots:
     optionalDependencies:
       vite: 8.3.8(@types/node@24.19.2)(yaml@2.9.1)
 
-  vitest@5.1.1(@types/node@24.19.2)(vite@8.3.8(@types/node@24.19.2)(yaml@2.9.1)):
+  vitest@5.1.2(@types/node@24.19.2)(vite@8.3.8(@types/node@24.19.2)(yaml@2.9.1)):
     dependencies:
       '@types/chai': 5.2.3
-      '@vitest/mocker': 5.1.1(vite@8.3.8(@types/node@24.19.2)(yaml@2.9.1))
+      '@vitest/mocker': 5.1.2(vite@8.3.8(@types/node@24.19.2)(yaml@2.9.1))
       chai: 6.3.0
       es-module-lexer: 2.3.2
       expect-type: 1.4.0
