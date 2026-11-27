@@ -39,7 +39,7 @@
     "@oxlint/plugins": "1.95.0",
     "@types/node": "24.19.2",
     "@yielded/effect-tsrs": "0.2.3",
-    "lefthook": "2.2.2",
+    "lefthook": "2.2.4",
     "oxfmt": "0.80.0",
     "oxlint": "1.95.0",
     "oxlint-tsgolint": "7.0.2008",
