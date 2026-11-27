@@ -357,7 +357,7 @@ const AAC_CHUNK = /^assets\/mediabunny-aac-encoder-[\w-]+\.js$/u;
 
 const AAC_NOTICE = "assets/mediabunny-aac-encoder-notice.txt";
 
-const ENCODER_WORKER_OPENS = "inlineWorker(`";
+const ENCODER_WORKER_OPENS = ["inlineWorker(`", "inline_worker_default(`"];
 
 const ManifestSchema = Schema.fromJsonString(
   Schema.Struct({
@@ -389,7 +389,8 @@ const packageText = (root: URL, file: string) =>
     fs.readFileString(new URL(file, root).pathname)
   );
 
-const templateText = (source: string, opens: string) => {
+const templateText = (source: string, openers: readonly string[]) => {
+  const opens = openers.find((opener) => source.includes(opener)) ?? "";
   const start = source.indexOf(opens) + opens.length;
   let end = start;
 
@@ -397,7 +398,7 @@ const templateText = (source: string, opens: string) => {
     end += source[end] === "\\" ? 2 : 1;
   }
 
-  return start < opens.length ? "" : source.slice(start, end);
+  return opens === "" ? "" : source.slice(start, end);
 };
 
 const sourceAt = (manifest: typeof ManifestSchema.Type) =>
