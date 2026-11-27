@@ -36,7 +36,7 @@
   },
   "dependencies": {
     "@effect/platform-browser": "4.1.6",
-    "@mediabunny/aac-encoder": "1.66.2",
+    "@mediabunny/aac-encoder": "1.66.4",
     "@nostakes/avatar": "workspace:*",
     "@nostakes/client": "workspace:*",
     "@nostakes/engine": "workspace:*",
@@ -46,7 +46,7 @@
     "@xstate/effect": "1.0.0-beta.3",
     "effect": "4.1.6",
     "foldkit": "0.170.0",
-    "mediabunny": "1.66.2",
+    "mediabunny": "1.66.4",
     "xstate": "6.0.0-beta.5"
   },
   "devDependencies": {

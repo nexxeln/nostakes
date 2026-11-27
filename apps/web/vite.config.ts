@@ -357,7 +357,7 @@ const AAC_CHUNK = /^assets\/mediabunny-aac-encoder-[\w-]+\.js$/u;
 
 const AAC_NOTICE = "assets/mediabunny-aac-encoder-notice.txt";
 
-const ENCODER_WORKER_OPENS = ["inlineWorker(`", "inline_worker_default(`"];
+const ENCODER_WORKER_OPENS = ["inline_worker_default(`"];
 
 const ManifestSchema = Schema.fromJsonString(
   Schema.Struct({
