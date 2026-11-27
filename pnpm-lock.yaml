@@ -256,8 +256,8 @@ importers:
         specifier: 2.0.0-beta.87
         version: 2.0.0-beta.87(@effect/vitest@4.1.6(effect@4.1.6)(vitest@5.1.2(@types/node@24.19.4)(vite@8.3.8(@types/node@24.19.4)(yaml@2.9.1))))(alchemy@2.0.0-beta.87(@effect/platform-bun@4.1.4(effect@4.1.6))(@effect/platform-node@4.1.6(effect@4.1.6)(redis@6.3.1))(effect@4.1.6)(vite@8.3.8(@types/node@24.19.4)(yaml@2.9.1))(ws@8.22.2))(effect@4.1.6)(vitest@5.1.2(@types/node@24.19.4)(vite@8.3.8(@types/node@24.19.4)(yaml@2.9.1)))
       '@cloudflare/workers-types':
-        specifier: 5.20261124.1
-        version: 5.20261124.1
+        specifier: 5.20261125.1
+        version: 5.20261125.1
       '@effect/platform-node':
         specifier: 4.1.6
         version: 4.1.6(effect@4.1.6)(redis@6.3.1)
@@ -699,8 +699,8 @@ packages:
     cpu: [x64]
     os: [win32]
 
-  '@cloudflare/workers-types@5.20261124.1':
-    resolution: {integrity: sha512-n99jv9oDm6AYg7dTkRYJVgD5GhXG14Cd8rLDtbld28ZjGJVKFtQPXJxnVoOV2IBSRuqHt0PnP/4oqoiUKw2SAA==}
+  '@cloudflare/workers-types@5.20261125.1':
+    resolution: {integrity: sha512-FBFIY/srJZZtZjxyH56AerZ0ZDbhr6Ifa5O707q0f7YzHmzqd+2zD3vG6d8cAcSDL/heJvsP7eEAsYRLFd7jpw==}
 
   '@distilled.cloud/acme@1.0.0-rc.20':
     resolution: {integrity: sha512-+rLrcJaCJJGOWDmF0cIN47fu6Gjt0QbKV4U5rX5KbYZpSe6qhE6h5ZVo8yfQYIlLkqal7r3Lt/eplDMidqK7pw==}
@@ -2863,7 +2863,7 @@ snapshots:
   '@cloudflare/workerd-windows-64@1.20261026.1':
     optional: true
 
-  '@cloudflare/workers-types@5.20261124.1': {}
+  '@cloudflare/workers-types@5.20261125.1': {}
 
   '@distilled.cloud/acme@1.0.0-rc.20(effect@4.1.6)':
     dependencies:
@@ -2953,7 +2953,7 @@ snapshots:
 
   '@effect/sql-d1@4.1.4(effect@4.1.6)':
     dependencies:
-      '@cloudflare/workers-types': 5.20261124.1
+      '@cloudflare/workers-types': 5.20261125.1
       effect: 4.1.6
 
   '@effect/tsgo-darwin-arm64@0.73.7':
