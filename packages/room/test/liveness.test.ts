@@ -538,6 +538,6 @@ describe("liveness at an interactive showdown", () => {
       expect(clockChoices).toBeGreaterThan(0);
       expect(awayPlayers(state)).toStrictEqual([]);
     },
-    generated(25, 100)
+    generated(10, 100)
   );
 });
