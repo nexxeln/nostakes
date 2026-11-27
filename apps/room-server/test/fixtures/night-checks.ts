@@ -169,6 +169,7 @@ export const COUNT_NAMES = [
   "reactionDeliveries",
   "reconnects",
   "rejected",
+  "rejectionsLostToARestart",
   "replyTimeouts",
   "resent",
   "restarts",
@@ -267,6 +268,7 @@ export const emptyCounts = (): NightCounts => ({
   reactionDeliveries: 0,
   reconnects: 0,
   rejected: 0,
+  rejectionsLostToARestart: 0,
   replyTimeouts: 0,
   resent: 0,
   restarts: 0,
@@ -308,6 +310,11 @@ export interface HaltEvidence {
   readonly standings: readonly HaltStandings[];
 }
 
+export interface RestartWindow {
+  readonly from: number;
+  readonly to: number;
+}
+
 export interface NightEvidence {
   readonly checked: boolean;
   readonly ending: NightEnding;
@@ -321,6 +328,7 @@ export interface NightEvidence {
   readonly memoryMatchesLog: boolean;
   readonly bots: readonly BotRecord[];
   readonly clients: readonly ClientBotRecord[];
+  readonly restartWindows: readonly RestartWindow[];
   readonly restarts: number;
   readonly voteRestarts: number;
 }
@@ -810,9 +818,41 @@ const viewOf = (arrival: Arrival) => {
   return Option.none();
 };
 
-const indexBot = (checker: Checker, received: Received, bot: BotRecord) => {
+interface ArrivedReply {
+  readonly at: number;
+  readonly rejected: boolean;
+  readonly text: string;
+}
+
+const restartedBetween = (
+  restarts: readonly RestartWindow[],
+  earlier: ArrivedReply,
+  later: ArrivedReply
+) => restarts.some(({ from, to }) => earlier.at <= to && later.at >= from);
+
+const lostToARestart = (
+  restarts: readonly RestartWindow[],
+  arrived: readonly ArrivedReply[]
+) =>
+  arrived.every(({ rejected }) => rejected) &&
+  arrived.every((later, index) => {
+    const earlier = arrived[index - 1];
+
+    return (
+      earlier === undefined ||
+      later.text === earlier.text ||
+      restartedBetween(restarts, earlier, later)
+    );
+  });
+
+const indexBot = (
+  checker: Checker,
+  received: Received,
+  bot: BotRecord,
+  restarts: readonly RestartWindow[]
+) => {
   const { player } = bot.pass;
-  const replies = new Map<string, string[]>();
+  const replies = new Map<string, ArrivedReply[]>();
   let latest = Option.none<{ readonly at: number; readonly view: RoomView }>();
 
   addBotStats(checker, bot);
@@ -866,7 +906,11 @@ const indexBot = (checker: Checker, received: Received, bot: BotRecord) => {
         if (guards.Reply(arrival.message)) {
           const list = replies.get(arrival.message.id) ?? [];
 
-          list.push(pokerCodec.encodeReply(arrival.message.result));
+          list.push({
+            at: arrival.at,
+            rejected: pokerCodec.reply.guards.Rejected(arrival.message.result),
+            text: pokerCodec.encodeReply(arrival.message.result),
+          });
           replies.set(arrival.message.id, list);
         }
       }
@@ -878,13 +922,21 @@ const indexBot = (checker: Checker, received: Received, bot: BotRecord) => {
   }
 
   for (const [id, times] of bot.sent) {
-    const texts = replies.get(id) ?? [];
+    const arrived = (replies.get(id) ?? []).toSorted(
+      (one, other) => one.at - other.at
+    );
+
+    const texts = arrived.map(({ text }) => text);
 
     if (new Set(texts).size > 1) {
-      report(
-        checker,
-        `${bot.label} got different replies to ${id}: ${texts.join(" / ")}`
-      );
+      if (lostToARestart(restarts, arrived)) {
+        checker.counts.rejectionsLostToARestart += 1;
+      } else {
+        report(
+          checker,
+          `${bot.label} got different replies to ${id}: ${texts.join(" / ")}`
+        );
+      }
     }
 
     checker.counts.duplicatesConfirmed += times > 1 && texts.length > 1 ? 1 : 0;
@@ -2051,7 +2103,7 @@ export const checkNight = (evidence: NightEvidence): NightVerdict => {
   checkStorage(checker, evidence);
 
   for (const bot of evidence.bots) {
-    indexBot(checker, received, bot);
+    indexBot(checker, received, bot, evidence.restartWindows);
   }
 
   for (const client of evidence.clients) {

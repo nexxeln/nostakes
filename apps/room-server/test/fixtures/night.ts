@@ -61,6 +61,7 @@ import type {
   NightEnding,
   NightEvidence,
   NightVerdict,
+  RestartWindow,
 } from "./night-checks.js";
 import { createPokerRoom, joinPokerRoom } from "./poker-http.js";
 import { pokerCodec, wallClock } from "./poker-socket.js";
@@ -940,6 +941,7 @@ export const playNight = (base: string, opened: OpenedNight) =>
 
     let restarts = 0;
     let voteRestarts = 0;
+    const restartWindows: RestartWindow[] = [];
 
     let closedAt = Option.none<number>();
 
@@ -1270,7 +1272,11 @@ export const playNight = (base: string, opened: OpenedNight) =>
           restarts += moment.value === "mid-vote" ? 0 : 1;
           voteRestarts += moment.value === "mid-vote" ? 1 : 0;
           note(`restart ${moment.value}`);
+
+          const asked = wallClock();
+
           yield* restart(base, plan.code);
+          restartWindows.push({ from: asked, to: wallClock() });
           progress = wallClock();
 
           continue;
@@ -1539,6 +1545,7 @@ export const playNight = (base: string, opened: OpenedNight) =>
         halted: inspection.halted,
         memoryMatchesLog: inspection.memoryMatchesLog,
         refusedAlarms: refusedAlarms(inspection),
+        restartWindows,
         restarts,
         seed: plan.seed,
         seqs: inspection.seqs,
